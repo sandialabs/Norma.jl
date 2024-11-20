@@ -1,6 +1,7 @@
 abstract type Solver end
 abstract type Minimizer <: Solver end
 abstract type Step end
+abstract type StepLength end
 
 using SparseArrays
 
@@ -48,14 +49,27 @@ mutable struct SteepestDescent <: Solver
     step::Step
 end
 
+struct FixedStepLength <: StepLength
+    value::Float64
+end
+
+mutable struct AdaptiveStepLength <: StepLength
+    value::Float64
+end
+
+
 struct NewtonStep <: Step
-    step_length::Float64
+    step_length::FixedStepLength
 end
 
 struct ExplicitStep <: Step
-    step_length::Float64
+    step_length::FixedStepLength
 end
 
 struct SteepestDescentStep <: Step
-    step_length::Float64
+    step_length::StepLength
+    max_step_length::Float64
+    min_step_length::Float64
+    reduction_factor::Float64
+    increase_factor::Float64
 end
