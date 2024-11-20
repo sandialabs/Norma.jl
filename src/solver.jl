@@ -559,9 +559,9 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         step = compute_step(integrator, model, solver, step_type)
         if model.failed == true
             if solver.step.step_length isa AdaptiveStepLength
-                if solver.step.reduction_factor < 1.0
-                && solver.step.reduction_factor > 0.0
-                && solver.step.step_length.value * solver.step.reduction_factor > solver.step.min_step_length
+                if (solver.step.reduction_factor < 1.0 
+                    && solver.step.reduction_factor > 0.0
+                    && solver.step.step_length.value * solver.step.reduction_factor > solver.step.min_step_length)
                     @info "Reducing step length from $(solver.step.step_length.value) to $(solver.step.step_length.value * solver.step.reduction_factor)"
                     solver.step.step_length.value *= solver.step.reduction_factor
                     model.failed = false
