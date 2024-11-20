@@ -132,7 +132,33 @@ function SteepestDescentStep(params::Dict{Any,Any})
     else
         step_length = 1.0
     end
-    SteepestDescentStep(step_length)
+    if haskey(params, "max step length") == true
+        max_step_length = params["max step length"]
+    else
+        max_step_length = step_length
+    end
+    if haskey(params, "min step length") == true
+        min_step_length = params["min step length"]
+    else
+        min_step_length = step_length
+    end
+    if haskey(params, "step reduction factor") == true
+        reduction_factor = params["reduction factor"]
+    else
+        reduction_factor = 0.5
+    end
+    if haskey(params, "step increase factor") == true
+        increase_factor = params["increase factor"]
+    else
+        increase_factor = 1.1
+    end
+    SteepestDescentStep(
+        AdaptiveStepLength(step_length),
+        max_step_length,
+        min_step_length,
+        reduction_factor,
+        increase_factor
+   )
 end
 
 function create_solver(params::Dict{Any,Any})
@@ -378,7 +404,7 @@ function backtrack_line_search(
     resid = solver.gradient
     merit = 0.5 * dot(resid, resid)
     merit_prime = -2.0 * merit
-    step_length = solver.step.step_length
+    step_length = solver.step.step_length.value
     step = step_length * direction
     initial_solution = 1.0 * solver.solution
     max_ls_iters = 20
@@ -528,13 +554,34 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     iteration_number = 0
     solver.failed = solver.failed || model.failed
     step_type = solver.step
+    prev_solution = 1.0 * solver.solution
     while true
         step = compute_step(integrator, model, solver, step_type)
+        if model.failed == true
+            if solver.step.step_length isa AdaptiveStepLength
+                if solver.step.reduction_factor < 1.0
+                && solver.step.reduction_factor > 0.0
+                && solver.step.step_length.value * solver.step.reduction_factor > solver.step.min_step_length
+                    @info "Reducing step length from $(solver.step.step_length.value) to $(solver.step.step_length.value * solver.step.reduction_factor)"
+                    solver.step.step_length.value *= solver.step.reduction_factor
+                    model.failed = false
+                    solver.solution = 1.0 * prev_solution
+                    continue
+                else
+                    error("evaluation of model has failed and step length cannot be reduced")
+                end
+            else
+                error("evaluation of model has failed")
+            end
+        end
+        prev_solution = 1.0 * solver.solution
         solver.solution[model.free_dofs] += step
         correct(integrator, solver, model)
         evaluate(integrator, solver, model)
-        if model.failed == true
-            return
+        if (solver.step.step_length isa AdaptiveStepLength
+            && solver.step.increase_factor > 1.0
+            && solver.step.step_length.value * solver.step.reduction_factor < solver.step.max_step_length)
+            solver.step.step_length.value *= solver.step.increase_factor
         end
         residual = solver.gradient
         norm_residual = norm(residual[model.free_dofs])
