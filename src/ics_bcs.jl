@@ -102,7 +102,8 @@ function SMNonOverlapSchwarzBC(side_set_id::Int64,
     coupled_subsim::Simulation,
     subsim::Simulation,
     coupled_side_set_id::Int64,
-    is_dirichlet::Bool)
+    is_dirichlet::Bool,
+    swap_bcs::Bool)
     transfer_operator = Matrix{Float64}(undef, 0, 0)
     return SMNonOverlapSchwarzBC(side_set_id,
         side_set_node_indices,
@@ -112,6 +113,7 @@ function SMNonOverlapSchwarzBC(side_set_id::Int64,
         subsim,
         coupled_side_set_id,
         is_dirichlet,
+        swap_bcs,
         transfer_operator)
 end
 
@@ -150,6 +152,7 @@ function SMCouplingSchwarzBC(
         push!(interpolation_function_values, N)
     end
     is_dirichlet = true
+    swap_bcs = false 
     if bc_type == "Schwarz overlap"
         SMOverlapSchwarzBC(
             side_set_node_indices,
@@ -157,9 +160,23 @@ function SMCouplingSchwarzBC(
             interpolation_function_values,
             coupled_subsim,
             subsim,
-            is_dirichlet
+            is_dirichlet,
+            swap_bcs
         )
     elseif bc_type == "Schwarz nonoverlap"
+        if haskey(bc_params, "default BC type") == true
+            default_bc_type = bc_params["default BC type"]
+            if default_bc_type == "Dirichlet"  
+                is_dirichlet = true
+            elseif default_bc_type == "Neumann"  
+                is_dirichlet = false
+            else 
+                error("Invalid sting for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")  
+            end 
+        end 
+        if haskey(bc_params, "swap BC types") == true
+            swap_bcs = bc_params["swap BC types"]
+        end
         SMNonOverlapSchwarzBC(
             side_set_id,
             side_set_node_indices,
@@ -168,7 +185,8 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             subsim,
             coupled_side_set_id,
-            is_dirichlet
+            is_dirichlet, 
+            swap_bcs
         )
     else
         error("Unknown boundary condition type : ", bc_type)
@@ -297,9 +315,17 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
+        println("IKT DBC!")
         apply_sm_schwarz_coupling_dirichlet(model, bc)
+        if bc.swap_bcs == true
+            bc.is_dirichlet = false
+        end
     else
+        println("IKT NBC!")
         apply_sm_schwarz_coupling_neumann(model, bc)
+        if bc.swap_bcs == true
+            bc.is_dirichlet = true
+        end
     end
 end
 
