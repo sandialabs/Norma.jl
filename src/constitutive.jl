@@ -1,4 +1,4 @@
-function elastic_constants(params::Dict{Any,Any})
+function elastic_constants(params::Dict{String,Any})
     E = 0.0
     ν = 0.0
     κ = 0.0
@@ -90,7 +90,7 @@ mutable struct SaintVenant_Kirchhoff <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function SaintVenant_Kirchhoff(params::Dict{Any,Any})
+    function SaintVenant_Kirchhoff(params::Dict{String,Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ)
@@ -104,7 +104,7 @@ mutable struct Linear_Elastic <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function Linear_Elastic(params::Dict{Any,Any})
+    function Linear_Elastic(params::Dict{String,Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ)
@@ -118,21 +118,7 @@ mutable struct Neohookean <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function Neohookean(params::Dict{Any,Any})
-        E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
-    end
-end
-
-mutable struct NeohookeanAD <: Solid
-    E::Float64
-    ν::Float64
-    κ::Float64
-    λ::Float64
-    μ::Float64
-    ρ::Float64
-    function NeohookeanAD(params::Dict{Any,Any})
+    function Neohookean(params::Dict{String,Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ)
@@ -148,7 +134,7 @@ mutable struct SethHill <: Solid
     ρ::Float64
     m::Int
     n::Int
-    function SethHill(params::Dict{Any,Any})
+    function SethHill(params::Dict{String,Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
@@ -173,7 +159,7 @@ mutable struct J2 <: Solid
     T₀::Float64
     Tₘ::Float64
     M::Float64
-    function J2(params::Dict{Any,Any})
+    function J2(params::Dict{String,Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         Y₀ = params["yield stress"]
@@ -361,7 +347,7 @@ end
 
 mutable struct Linear_Isotropic <: Thermal
     κ::Float64
-    function Linear_Isotropic(params::Dict{Any,Any})
+    function Linear_Isotropic(params::Dict{String,Any})
         κ = params["thermal conductivity"]
         new(κ)
     end
@@ -553,33 +539,6 @@ function constitutive(material::Neohookean, F::Matrix{Float64})
     return W, P, AA
 end
 
-function energy_neohookean(F::Matrix{Float64}, material::NeohookeanAD)
-    C = F' * F
-    J2 = det(C)
-    Jm23 = 1.0 / cbrt(J2)
-    trC = tr(C)
-    κ = material.κ
-    μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
-    W = Wvol + Wdev
-    return W
-end
-
-function constitutive(material::NeohookeanAD, F::Matrix{Float64})
-    C = F' * F
-    J2 = det(C)
-    Jm23 = 1.0 / cbrt(J2)
-    trC = tr(C)
-    κ = material.κ
-    μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
-    energy(F) = Wvol + Wdev
-    W, P, AA = constitutive(material, energy, F)
-    return W, P, AA
-end
-
 function constitutive(material::SethHill, F::Matrix{Float64})
     C = F' * F
     F⁻ᵀ = inv(F)'
@@ -607,7 +566,7 @@ function constitutive(material::SethHill, F::Matrix{Float64})
     return W, P, AA
 end
 
-function create_material(params::Dict{Any,Any})
+function create_material(params::Dict{String,Any})
     model_name = params["model"]
     if model_name == "linear elastic"
         return Linear_Elastic(params)
@@ -615,15 +574,24 @@ function create_material(params::Dict{Any,Any})
         return SaintVenant_Kirchhoff(params)
     elseif model_name == "neohookean"
         return Neohookean(params)
-    elseif model_name == "neohookeanAD"
-        return NeohookeanAD(params)
-    elseif model_name == "linear isotropic"
-        return Linear_Isotropic(params)
     elseif model_name == "seth-hill"
         return SethHill(params)
     else
         error("Unknown material model : ", model_name)
     end
+end
+
+function get_kinematics(material::Solid)
+    if typeof(material) == Linear_Elastic
+        return Infinitesimal
+    elseif typeof(material) == SaintVenant_Kirchhoff
+        return Finite
+    elseif typeof(material) == Neohookean
+        return Finite
+    elseif typeof(material) == SethHill
+        return Finite
+    end
+    error("Unknown material model : ", typeof(material))
 end
 
 function get_p_wave_modulus(material::Solid)

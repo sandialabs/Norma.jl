@@ -8,7 +8,7 @@ using YAML
     cp("../examples/contact/static/cubes/cube-1.g", "cube-1.g", force=true)
     cp("../examples/contact/static/cubes/cube-2.g", "cube-2.g", force=true)
     input_file = "cubes.yaml"
-    params = YAML.load_file(input_file)
+    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
     params["initial time"] = -2.0
     params["final time"] = 0.0
     sim = Norma.run(params, input_file)

@@ -248,7 +248,7 @@ block 10 volume 2 3 5 6 1 4 7
 #{ratioSizeCoarseFine = 2}
 #{sizeElementFine = (sizeElementCoarse) / (ratioSizeCoarseFine)}
 ##{ratioSizeCoarseMedium = 3} #IKT 11/5/2024: this was orig resolution
-#{ratioSizeCoarseMedium = 1 
+#{ratioSizeCoarseMedium = 1} 
 #{sizeElementMedium = (sizeElementCoarse) / (ratioSizeCoarseMedium)}
 
 
@@ -342,6 +342,8 @@ mesh volume 3 6
 
 reset nodeset
 
+nodeset 1 surface 30 37
+nodeset 1 name "nodeset_symmetry"
 
 nodeset 2 surface 16
 nodeset 2 name "nodeset_negative_y"
@@ -366,6 +368,9 @@ volume 4 7 size {sizeElementCoarse}
 mesh volume 4 7
 
 reset nodeset
+
+nodeset 1 surface 41 47
+nodeset 1 name "nodeset_symmetry"
 
 nodeset 2 surface 17
 nodeset 2 name "nodeset_negative_y"
@@ -395,6 +400,8 @@ export mesh "holder-0.g" block all overwrite
 
 reset
 import mesh geometry "holder-1.g" 
+nodeset 1 surface 4 
+nodeset 1 name "nodeset_symmetry"
 sideset 1 surface 2 
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 3 
@@ -404,6 +411,8 @@ export mesh "holder-1.g" block all overwrite
 
 reset
 import mesh geometry "gauge.g" 
+nodeset 1 surface 6 10 14 
+nodeset 1 name "nodeset_symmetry"
 sideset 1 surface 17 
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 1 

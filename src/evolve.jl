@@ -57,6 +57,7 @@ function solve_contact(sim::MultiDomainSimulation)
 end
 
 function advance(sim::MultiDomainSimulation)
+    update_transfer_operators(sim)
     if sim.schwarz_controller.schwarz_contact == false
         schwarz(sim)
         return
@@ -104,6 +105,7 @@ function initialize(sim::SingleDomainSimulation)
 end
 
 function initialize(sim::MultiDomainSimulation)
+    initialize_transfer_operators(sim)
     for subsim ∈ sim.subsims
         apply_bcs(subsim)
         initialize(subsim)
@@ -165,7 +167,7 @@ using Printf
 function watch_keep_time(sim::SingleDomainSimulation)
     synchronize(sim)
     stop = sim.integrator.stop
-    initial_time = sim.integrator.time - sim.integrator.time_step
+    initial_time = sim.integrator.prev_time
     final_time = sim.integrator.time
     if stop == 0
         @printf("Initializing run at stop 0 with time = %6.2e\n", final_time)
@@ -183,7 +185,7 @@ end
 function watch_keep_time(sim::MultiDomainSimulation)
     synchronize(sim)
     stop = sim.schwarz_controller.stop
-    initial_time = sim.schwarz_controller.time - sim.schwarz_controller.time_step
+    initial_time = sim.schwarz_controller.prev_time
     final_time = sim.schwarz_controller.time
     if stop == 0
         @printf("Initializing run at stop 0 with time = %6.2e\n", final_time)
@@ -204,29 +206,28 @@ end
 
 function synchronize(sim::MultiDomainSimulation)
     time = sim.schwarz_controller.prev_time
-    stop = 0
+    subsim_stop = 0
     for subsim ∈ sim.subsims
         subsim.integrator.time = subsim.model.time = time
-        subsim.integrator.stop = stop
+        subsim.integrator.stop = subsim_stop
     end
 end
 
 function advance_time(sim::SingleDomainSimulation)
+    sim.integrator.prev_time = sim.integrator.time
     next_time = round(sim.integrator.time + sim.integrator.time_step; digits=12)
     sim.integrator.time = sim.model.time = next_time
     sim.integrator.stop += 1
 end
 
-function regress_time(sim::SingleDomainSimulation)
-    prev_time = sim.integrator.prev_time
-    sim.integrator.time = sim.model.time = prev_time
-    sim.integrator.stop -= 1
-end
-
 function advance_time(sim::MultiDomainSimulation)
     sim.schwarz_controller.prev_time = sim.schwarz_controller.time
-    next_time =
-        round(sim.schwarz_controller.time + sim.schwarz_controller.time_step, digits=12)
+    next_time = round(sim.schwarz_controller.time + sim.schwarz_controller.time_step, digits=12)
     sim.schwarz_controller.time = next_time
     sim.schwarz_controller.stop += 1
+end
+
+function regress_time(sim::SingleDomainSimulation)
+    sim.integrator.time = sim.model.time = sim.integrator.prev_time
+    sim.integrator.stop -= 1
 end

@@ -1,5 +1,5 @@
 import LinearAlgebra
-function create_step(solver_params::Dict{Any,Any})
+function create_step(solver_params::Dict{String,Any})
     step_name = solver_params["step"]
     if step_name == "full Newton"
         return NewtonStep(solver_params)
@@ -12,11 +12,10 @@ function create_step(solver_params::Dict{Any,Any})
     end
 end
 
-function NewtonSolver(params::Dict{Any,Any})
+function HessianMinimizer(params::Dict{String,Any},model::Any)
     solver_params = params["solver"]
-    input_mesh = params["input_mesh"]
-    num_nodes = Exodus.num_nodes(input_mesh.init)
-    num_dof = num_nodes
+    num_dof, = size(model.free_dofs)
+    num_dof = 3 * num_nodes
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
     absolute_tolerance = solver_params["absolute tolerance"]
@@ -24,14 +23,27 @@ function NewtonSolver(params::Dict{Any,Any})
     absolute_error = 0.0
     relative_error = 0.0
     value = 0.0
-    residual = zeros(num_dof)
-    jacobian = spzeros(num_dof, num_dof)
+    gradient = zeros(num_dof)
+    hessian = spzeros(num_dof, num_dof)
     solution = zeros(num_dof)
     initial_norm = 0.0
     converged = false
     failed = false
     step = create_step(solver_params)
-    NewtonSolver(
+    ls_backtrack_factor = 0.5
+    ls_decrease_factor = 1.0e-04
+    ls_max_iters = 16
+    if haskey(solver_params, "line search backtrack factor")
+        ls_backtrack_factor = solver_params["line search backtrack factor"]
+    end
+    if haskey(solver_params, "line search decrease factor")
+        ls_decrease_factor = solver_params["line search decrease factor"]
+    end
+    if haskey(solver_params, "line search maximum iterations")
+        ls_max_iters = solver_params["line search maximum iterations"]
+    end
+    line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
+    HessianMinimizer(
         minimum_iterations,
         maximum_iterations,
         absolute_tolerance,
@@ -39,23 +51,19 @@ function NewtonSolver(params::Dict{Any,Any})
         absolute_error,
         relative_error,
         value,
-        residual,
-        jacobian,
+        gradient,
+        hessian,
         solution,
         initial_norm,
         converged,
         failed,
         step,
+        line_search
     )
 end
 
-
-
-function HessianMinimizer(params::Dict{Any,Any},model::Any)
+function HessianMinimizer(params::Dict{String,Any},model::Any)
     solver_params = params["solver"]
-    #input_mesh = params["input_mesh"]
-    #num_nodes = Exodus.num_nodes(input_mesh.init)
-    #num_dof = 3 * num_nodes
     num_dof, = size(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
@@ -103,7 +111,7 @@ function HessianMinimizer(params::Dict{Any,Any},model::Any)
     )
 end
 
-function ExplicitSolver(params::Dict{Any,Any})
+function ExplicitSolver(params::Dict{String,Any})
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
     num_nodes = Exodus.num_nodes(input_mesh.init)
@@ -128,7 +136,7 @@ function ExplicitSolver(params::Dict{Any,Any})
     )
 end
 
-function SteepestDescent(params::Dict{Any,Any})
+function SteepestDescent(params::Dict{String,Any})
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
     num_nodes = Exodus.num_nodes(input_mesh.init)
@@ -177,7 +185,7 @@ function SteepestDescent(params::Dict{Any,Any})
     )
 end
 
-function NewtonStep(params::Dict{Any,Any})
+function NewtonStep(params::Dict{String,Any})
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -186,7 +194,7 @@ function NewtonStep(params::Dict{Any,Any})
     NewtonStep(step_length)
 end
 
-function ExplicitStep(params::Dict{Any,Any})
+function ExplicitStep(params::Dict{String,Any})
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -195,7 +203,7 @@ function ExplicitStep(params::Dict{Any,Any})
     ExplicitStep(step_length)
 end
 
-function SteepestDescentStep(params::Dict{Any,Any})
+function SteepestDescentStep(params::Dict{String,Any})
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -204,13 +212,11 @@ function SteepestDescentStep(params::Dict{Any,Any})
     SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Dict{Any,Any},model::Any)
+function create_solver(params::Dict{String,Any},model::Any)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
         return HessianMinimizer(params,model)
-    elseif solver_name == "Newton solver"
-        return NewtonSolver(params)
     elseif solver_name == "explicit solver"
         return ExplicitSolver(params)
     elseif solver_name == "steepest descent"
@@ -228,7 +234,11 @@ function copy_solution_source_targets(
     displacement_local = integrator.displacement
     solver.solution = displacement_local
     # BRP: apply inclined support inverse transform
-    displacement = model.global_transform' * displacement_local
+    if model.inclined_support == true
+        displacement = model.global_transform' * displacement_local
+    else
+        displacement = displacement_local
+    end
 
     _, num_nodes = size(model.reference)
     for node ∈ 1:num_nodes
@@ -244,7 +254,11 @@ function copy_solution_source_targets(
 )
     displacement_local = solver.solution
     integrator.displacement = displacement_local
-    displacement = model.global_transform' * displacement_local
+    if model.inclined_support == true
+        displacement = model.global_transform' * displacement_local
+    else
+        displacement = displacement_local
+    end
     _, num_nodes = size(model.reference)
     for node ∈ 1:num_nodes
         nodal_displacement = displacement[3*node-2:3*node]
@@ -301,7 +315,9 @@ function copy_solution_source_targets(
         integrator.displacement[3*node-2:3*node] = nodal_displacement
     end
     # Convert integrator displacement from global to local
-    integrator.displacement = model.global_transform * integrator.displacement
+    if model.inclined_support == true
+        integrator.displacement = model.global_transform * integrator.displacement
+    end
     solver.solution = integrator.displacement
 end
 
@@ -314,6 +330,13 @@ function copy_solution_source_targets(
     velocity = integrator.velocity
     acceleration = integrator.acceleration
     solver.solution = displacement
+
+    if model.inclined_support == true
+        displacement = model.global_transform' * displacement
+        velocity = model.global_transform' * velocity
+        acceleration = model.global_transform' * integrator.acceleration
+    end
+
     _, num_nodes = size(model.reference)
     for node ∈ 1:num_nodes
         nodal_displacement = displacement[3*node-2:3*node]
@@ -334,6 +357,13 @@ function copy_solution_source_targets(
     integrator.displacement = displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
+
+    if model.inclined_support == true
+        displacement = model.global_transform' * displacement
+        velocity = model.global_transform' * velocity
+        acceleration = model.global_transform' * acceleration
+    end
+
     _, num_nodes = size(model.reference)
     for node ∈ 1:num_nodes
         nodal_displacement = displacement[3*node-2:3*node]
@@ -355,6 +385,14 @@ function copy_solution_source_targets(
         nodal_displacement = model.current[:, node] - model.reference[:, node]
         nodal_velocity = model.velocity[:, node]
         nodal_acceleration = model.acceleration[:, node]
+        
+        if model.inclined_support == true
+            base = 3*(node-1) # Block index in global stiffness
+            local_transform = model.global_transform[base+1:base+3, base+1:base+3]
+            nodal_displacement = local_transform * nodal_displacement
+            nodal_velocity  = local_transform * nodal_velocity
+            nodal_acceleration = local_transform * nodal_acceleration
+        end
         integrator.displacement[3*node-2:3*node] = nodal_displacement
         integrator.velocity[3*node-2:3*node] = nodal_velocity
         integrator.acceleration[3*node-2:3*node] = nodal_acceleration
@@ -449,16 +487,20 @@ end
 
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix =
-        evaluate(integrator, model)
+    stored_energy, internal_force, body_force, stiffness_matrix = evaluate(integrator, model)
     if model.failed == true
         return
     end
     integrator.stored_energy = stored_energy
     solver.value = stored_energy
     external_force = body_force + model.boundary_force
-    solver.gradient = model.global_transform * (internal_force - external_force)
-    solver.hessian = model.global_transform * stiffness_matrix * model.global_transform'
+    if model.inclined_support == true
+        solver.gradient = model.global_transform * (internal_force - external_force)
+        solver.hessian = model.global_transform * stiffness_matrix * model.global_transform'
+    else
+        solver.gradient = internal_force - external_force
+        solver.hessian = stiffness_matrix
+    end 
 end
 
 
@@ -474,8 +516,7 @@ function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::Solid
 end
 
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix =
-        evaluate(integrator, model)
+    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix = evaluate(integrator, model)
     if model.failed == true
         return
     end
@@ -486,16 +527,17 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     external_force = body_force + model.boundary_force
+    if model.inclined_support == true
+        stiffness_matrix = model.global_transform * stiffness_matrix * model.global_transform'
+        external_force = model.global_transform * external_force
+        internal_force = model.global_transform * internal_force
+    end
     solver.hessian = stiffness_matrix + mass_matrix / β / Δt / Δt
     solver.value = stored_energy - external_force ⋅ integrator.displacement + kinetic_energy
     solver.gradient = internal_force - external_force + inertial_force
 end
 
-function evaluate(
-    integrator::CentralDifference,
-    solver::ExplicitSolver,
-    model::SolidMechanics,
-)
+function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     stored_energy, internal_force, body_force, lumped_mass = evaluate(integrator, model)
     if model.failed == true
         return
@@ -616,17 +658,6 @@ function update_solver_convergence_criterion(
     solver.converged = converged_absolute || converged_relative
 end
 
-function update_solver_convergence_criterion(
-    solver::NewtonSolver,
-    absolute_error::Float64,
-)
-    solver.absolute_error = absolute_error
-    solver.relative_error =
-        solver.initial_norm > 0.0 ? absolute_error / solver.initial_norm : absolute_error
-    converged_absolute = solver.absolute_error ≤ solver.absolute_tolerance
-    converged_relative = solver.relative_error ≤ solver.relative_tolerance
-    solver.converged = converged_absolute || converged_relative
-end
 
 function update_solver_convergence_criterion(
     solver::SteepestDescent,
@@ -645,24 +676,6 @@ function update_solver_convergence_criterion(solver::ExplicitSolver, _::Float64)
 end
 
 
-function stop_solve(solver::NewtonSolver, iteration_number::Int64)
-    if solver.failed == true
-        return true
-    end
-    zero_residual = solver.absolute_error == 0.0
-    if zero_residual == true
-        return true
-    end
-    exceeds_minimum_iterations = iteration_number > solver.minimum_iterations
-    if exceeds_minimum_iterations == false
-        return false
-    end
-    exceeds_maximum_iterations = iteration_number > solver.maximum_iterations
-    if exceeds_maximum_iterations == true
-        return true
-    end
-    return solver.converged
-end
 
 
 function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
@@ -742,7 +755,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             break
         end
     end
-    if typeof(model) == SolidMechanics
-      solver.gradient = model.global_transform' * solver.gradient
+    if model.inclined_support == true
+        solver.gradient = model.global_transform' * solver.gradient
     end
 end

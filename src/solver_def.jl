@@ -29,23 +29,6 @@ mutable struct HessianMinimizer <: Minimizer
     line_search::BackTrackLineSearch
 end
 
-mutable struct NewtonSolver <: Solver
-    minimum_iterations::Int64
-    maximum_iterations::Int64
-    absolute_tolerance::Float64
-    relative_tolerance::Float64
-    absolute_error::Float64
-    relative_error::Float64
-    value::Float64
-    gradient::Vector{Float64}
-    hessian::SparseMatrixCSC{Float64,Int64}
-    solution::Vector{Float64}
-    initial_norm::Float64
-    converged::Bool
-    failed::Bool
-    step::Step
-end
-
 
 mutable struct ExplicitSolver <: Solver
     value::Float64

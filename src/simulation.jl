@@ -6,7 +6,7 @@ include("time_integrator.jl")
 include("solver.jl")
 include("schwarz.jl")
 
-function create_simulation(params::Dict{Any,Any}, name::String)
+function create_simulation(params::Dict{String,Any}, name::String)
     params["name"] = name
     sim_type = params["type"]
     if sim_type == "single"
@@ -24,13 +24,20 @@ end
 
 function create_simulation(input_file::String)
     println("Reading simulation file: ", input_file)
-    params = YAML.load_file(input_file)
+    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
     return create_simulation(params, input_file)
 end
 
 function create_bcs(sim::SingleDomainSimulation)
     boundary_conditions = create_bcs(sim.params)
+    for bc in boundary_conditions
+        if isa(bc, SMDirichletInclined)
+            sim.model.inclined_support = true
+            break
+        end
+    end
     sim.model.boundary_conditions = boundary_conditions
+    
 end
 
 function create_bcs(sim::MultiDomainSimulation)
@@ -40,7 +47,7 @@ function create_bcs(sim::MultiDomainSimulation)
     pair_schwarz_bcs(sim)
 end
 
-function SingleDomainSimulation(params::Dict{Any,Any})
+function SingleDomainSimulation(params::Dict{String,Any})
     name = params["name"]
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
@@ -61,7 +68,7 @@ function SingleDomainSimulation(params::Dict{Any,Any})
     return SingleDomainSimulation(name, params, integrator, solver, model, failed)
 end
 
-function MultiDomainSimulation(params::Dict{Any,Any})
+function MultiDomainSimulation(params::Dict{String,Any})
     name = params["name"]
     domain_names = params["domains"]
     subsims = Vector{SingleDomainSimulation}()
@@ -76,7 +83,7 @@ function MultiDomainSimulation(params::Dict{Any,Any})
     subsim_index = 1
     for domain_name ∈ domain_names
         println("Reading subsimulation file: ", domain_name)
-        subparams = YAML.load_file(domain_name)
+        subparams = YAML.load_file(domain_name; dicttype=Dict{String,Any})
         subparams["name"] = domain_name
         subparams["time integrator"]["initial time"] = initial_time
         subparams["time integrator"]["final time"] = final_time
@@ -87,10 +94,8 @@ function MultiDomainSimulation(params::Dict{Any,Any})
         subparams["CSV output interval"] = csv_interval
         subsim = SingleDomainSimulation(subparams)
         params[domain_name] = subsim.params
-        integrator_name = subsim.params["time integrator"]["type"]
         subsim_type =
-            is_static_or_dynamic(integrator_name) * " " * subparams["model"]["type"]
-        print(subsim_type)
+            get_analysis_type(subsim.integrator) * " " * subparams["model"]["type"]
         if sim_type == "none"
             sim_type = subsim_type
         elseif subsim_type ≠ sim_type && subsim_type != "dynamic linear opinf rom"

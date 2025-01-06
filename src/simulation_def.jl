@@ -9,7 +9,7 @@ include("schwarz_def.jl")
 
 mutable struct SingleDomainSimulation <: Simulation
     name::String
-    params::Dict{Any,Any}
+    params::Dict{String,Any}
     integrator::TimeIntegrator
     solver::Solver
     model::Model
@@ -18,7 +18,7 @@ end
 
 mutable struct MultiDomainSimulation <: Simulation
     name::String
-    params::Dict{Any,Any}
+    params::Dict{String,Any}
     schwarz_controller::SchwarzController
     subsims::Vector{SingleDomainSimulation}
     subsim_name_index_map::Dict{String,Int64}

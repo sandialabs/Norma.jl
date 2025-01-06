@@ -7,7 +7,7 @@ using YAML
     cp("../examples/contact/dynamic/2_bars/bar-1.g", "bar-1.g", force=true)
     cp("../examples/contact/dynamic/2_bars/bar-2.g", "bar-2.g", force=true)
     input_file = "bars.yaml"
-    params = YAML.load_file(input_file)
+    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
     params["initial time"] = -1.0e-06
     params["final time"] = 1.0e-06
     sim = Norma.run(params, input_file)

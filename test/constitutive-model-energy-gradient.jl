@@ -12,12 +12,12 @@ end
 @testset "constitutive-model-energy-gradient" begin
     Random.seed!(0)
 
-    base_params = Dict{Any, Any}(
+    base_params = Dict{String,Any}(
           "elastic modulus" => 1.0,
           "Poisson's ratio" => 0.3,
           "density" => 1.0,
     )
-    sh_params = merge(base_params, Dict{Any, Any}(
+    sh_params = merge(base_params, Dict{String,Any}(
           "m" => 2,
           "n" => 2,
          ))

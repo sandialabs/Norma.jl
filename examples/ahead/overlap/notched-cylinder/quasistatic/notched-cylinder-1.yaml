@@ -7,7 +7,7 @@ model:
     blocks:
       fine: hyperelastic
     hyperelastic:
-      model: neohookean
+      model: Saint-Venant Kirchhoff
       elastic modulus: 1440.0
       Poisson's ratio: 0.25
       density: 1000.0

@@ -479,7 +479,6 @@ function get_side_set_nodal_forces(
     return nodal_force_component
 end
 
-
 # Given 3 points p1, p2, p3 that define a plane
 # determine if point p is in the same side of the normal
 # to the plane as defined by the right hand rule.
@@ -626,8 +625,8 @@ function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, si
             closest_face_node_indices = face_node_indices
         end
         ss_node_index += num_nodes_side
-   end
-   return closest_face_nodes, closest_face_node_indices, minimum_nodal_distance
+    end
+    return closest_face_nodes, closest_face_node_indices, minimum_nodal_distance
 end
 
 # Find the minimum distance of a point to the nodes of each face on the side set
@@ -644,7 +643,7 @@ end
 
 function get_distance_to_centroid(nodes::Matrix{Float64}, point::Vector{Float64})
     num_nodes = size(nodes, 2)
-    centroid = sum(nodes, dims = 2) / num_nodes
+    centroid = sum(nodes, dims=2) / num_nodes
     distance = norm(centroid - point)
     return distance
 end
@@ -685,7 +684,11 @@ function get_square_projection_matrix(
     local_from_global_map, num_nodes_sides, side_set_node_indices =
         get_side_set_local_from_global_map(mesh, side_set_id)
     num_nodes = length(local_from_global_map)
-    coords = model.current
+    if model.kinematics == Finite
+        coords = model.reference
+    else
+        coords = model.current
+    end
     square_projection_matrix = zeros(num_nodes, num_nodes)
     side_set_node_index = 1
     for num_nodes_side ∈ num_nodes_sides
@@ -723,7 +726,11 @@ function get_rectangular_projection_matrix(
     dst_local_from_global_map, dst_num_nodes_sides, dst_side_set_node_indices =
         get_side_set_local_from_global_map(dst_mesh, dst_side_set_id)
     dst_num_nodes = length(dst_local_from_global_map)
-    dst_coords = dst_model.current
+    if dst_model.kinematics == Finite
+        dst_coords = dst_model.reference
+    else
+        dst_coords = dst_model.current
+    end
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
     for dst_num_nodes_side ∈ dst_num_nodes_sides
@@ -757,7 +764,11 @@ end
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
     local_from_global_map, num_nodes_sides, side_set_node_indices =
         get_side_set_local_from_global_map(mesh, side_set_id)
-    coords = model.current
+    if model.kinematics == Finite
+        coords = model.reference
+    else
+        coords = model.current
+    end
     num_nodes = length(local_from_global_map)
     space_dim, _ = size(coords)
     normals = zeros(space_dim, num_nodes)

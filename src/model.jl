@@ -43,7 +43,7 @@ end
 
 
 
-function SolidMechanics(params::Dict{Any,Any})
+function SolidMechanics(params::Dict{String,Any})
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -78,10 +78,19 @@ function SolidMechanics(params::Dict{Any,Any})
     end
     elem_blk_names = Exodus.read_names(input_mesh, Block)
     materials = Vector{Solid}(undef, 0)
+    kinematics = Undefined
     for elem_blk_name ∈ elem_blk_names
         material_name = material_blocks[elem_blk_name]
         material_props = material_params[material_name]
         material_model = create_material(material_props)
+        if kinematics == Undefined
+            kinematics = get_kinematics(material_model)
+        else
+            if kinematics ≠ get_kinematics(material_model)
+                error("Material ", typeof(material_model), " has inconsistent kinematics ",
+                    get_kinematics(material_model), " than previous materials of type ", kinematics)
+            end
+        end
         push!(materials, material_model)
     end
     time = 0.0
@@ -120,8 +129,8 @@ function SolidMechanics(params::Dict{Any,Any})
     end
 
     # BRP: define a global transform for inclined support
-    global_transform_t = Diagonal(ones(3 * num_nodes))
-    global_transform = sparse(global_transform_t)
+    inclined_support = false
+    global_transform = sparse(Diagonal(ones(3 * num_nodes)))
 
     SolidMechanics(
         input_mesh,
@@ -140,11 +149,13 @@ function SolidMechanics(params::Dict{Any,Any})
         failed,
         mesh_smoothing,
         smooth_reference,
-        global_transform
+        inclined_support,
+        global_transform,
+        kinematics
     )
 end
 
-function HeatConduction(params::Dict{Any,Any})
+function HeatConduction(params::Dict{String,Any})
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -227,97 +238,7 @@ function HeatConduction(params::Dict{Any,Any})
     )
 end
 
-#=
-function AdvectionDiffusion(params::Dict{Any,Any})
-    input_mesh = params["input_mesh"]
-    model_params = params["model"]
-    coords = read_coordinates(input_mesh)
-    num_nodes = Exodus.num_nodes(input_mesh.init)
-    # What does reference do?
-    reference = Matrix{Float64}(undef, 3, num_nodes)
-    state = Vector{Float64}(undef, num_nodes)
-    # Also unsure about rate
-    rate = Vector{Float64}(undef, num_nodes)
-    for node ∈ 1:num_nodes
-        reference[:, node] = coords[:, node]
-        state[node] = 0.0
-        rate[node] = 0.0
-    end
-    material_params = model_params["material"]
-    material_blocks = material_params["blocks"]
-    num_blks_params = length(material_blocks)
-    blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(elem_blk_ids)
-    if (num_blks_params ≠ num_blks)
-        error(
-            "number of blocks in mesh ",
-            model_params["mesh"],
-            " (",
-            num_blks,
-            ") must be equal to number of blocks in materials file ",
-            model_params["material"],
-            " (",
-            num_blks_params,
-            ")",
-        )
-    end
-    elem_blk_names = Exodus.read_names(input_mesh, Block)
-    materials = Vector{ConvectionDiffusion}(undef, 0)
-    for elem_blk_name ∈ elem_blk_names
-        material_name = material_blocks[elem_blk_name]
-        material_props = material_params[material_name]
-        # I think I'll need to add this
-        material_model = create_material(material_props)
-        push!(materials, material_model)
-    end
-    time = 0.0
-    failed = false
-    internal_heat_flux = zeros(num_nodes)
-    boundary_heat_flux = zeros(num_nodes)
-    boundary_conditions = Vector{BoundaryCondition}()
-    free_dofs = trues(num_nodes)
-    flux = Vector{Vector{Vector{Vector{Float64}}}}()
-    stored_energy = Vector{Vector{Float64}}()
-    for block ∈ blocks
-        blk_id = block.id
-        element_type, num_blk_elems, _, _, _, _ =
-            Exodus.read_block_parameters(input_mesh, blk_id)
-        num_points = default_num_int_pts(element_type)
-        block_flux = Vector{Vector{Vector{Float64}}}()
-        block_stored_energy = Vector{Float64}()
-        for _ ∈ 1:num_blk_elems
-            element_flux = Vector{Vector{Float64}}()
-            for _ ∈ 1:num_points
-                push!(element_flux, zeros(3))
-            end
-            push!(block_flux, element_flux)
-            element_stored_energy = 0.0
-            push!(block_stored_energy, element_stored_energy)
-        end
-        push!(flux, block_flux)
-        push!(stored_energy, block_stored_energy)
-    end
-    HeatConduction(
-        input_mesh,
-        materials,
-        reference,
-        temperature,
-        rate,
-        internal_heat_flux,
-        boundary_heat_flux,
-        boundary_conditions,
-        flux,
-        stored_energy,
-        free_dofs,
-        time,
-        failed,
-    )
-end
-=#
-
-
-
-function create_model(params::Dict{Any,Any})
+function create_model(params::Dict{String,Any})
     model_params = params["model"]
     model_name = model_params["type"]
     if model_name == "solid mechanics"
@@ -534,7 +455,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         lumped_mass = zeros(num_dof)
     end
 
-    if typeof(integrator) == QuasiStatic
+    if model.inclined_support == true
         # Data for inclined DBCs
         inclined_support_node_indices = Vector{Int64}()
         inclined_support_bc_indices = Vector{Int64}()
@@ -648,18 +569,20 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         end
     end
 
-    if typeof(integrator) == QuasiStatic
+    if model.inclined_support == true
         # For inclined DBCs
-        T_local = Matrix(Diagonal(ones(num_dof)))
+        local_rotation = Matrix{Float64}(I, num_dof, num_dof)
         for (corresponding_bc_idx, inc_support_node_idx) in zip(inclined_support_bc_indices, inclined_support_node_indices)
-            T_nodal = model.boundary_conditions[corresponding_bc_idx].rotation_matrix
-            base = 3*(inc_support_node_idx-1) # Block index in global stiffness
-            T_local[base+1:base+3, base+1:base+3] *= T_nodal
+            nodal_rotation = model.boundary_conditions[corresponding_bc_idx].rotation_matrix
+            base = 3 * (inc_support_node_idx - 1) # Block index in global stiffness
+            local_rotation[base+1:base+3, base+1:base+3] *= nodal_rotation
         end
-        model.global_transform = sparse(T_local)
+        model.global_transform = sparse(local_rotation)
     end
 
-    stiffness_matrix = sparse(rows, cols, stiffness)
+    if typeof(integrator) == QuasiStatic || typeof(integrator) == Newmark
+        stiffness_matrix = sparse(rows, cols, stiffness)
+    end
     if typeof(integrator) == Newmark
         mass_matrix = sparse(rows, cols, mass)
     end
