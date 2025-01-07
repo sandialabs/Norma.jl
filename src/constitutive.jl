@@ -345,15 +345,13 @@ function stress_update(
 end
 
 
-mutable struct Linear_Isotropic <: Thermal
+struct Linear_Isotropic <: Thermal
     κ::Float64
     function Linear_Isotropic(params::Dict{String,Any})
         κ = params["thermal conductivity"]
         new(κ)
     end
 end
-
-
 
 function odot(A::Matrix{Float64}, B::Matrix{Float64})
     n, _ = size(A)
@@ -452,9 +450,6 @@ function second_from_fourth(AA::Array{Float64})
         end
     end
     return A
-end
-
-function constitutive(material::Linear_Isotropic, F::Matrix{Float64})
 end
 
 

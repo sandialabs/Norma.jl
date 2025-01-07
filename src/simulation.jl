@@ -57,13 +57,9 @@ function SingleDomainSimulation(params::Dict{String,Any})
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
-
     model = create_model(params)
-
     integrator = create_time_integrator(params,model)
-
     solver = create_solver(params,model)
-
     failed = false
     return SingleDomainSimulation(name, params, integrator, solver, model, failed)
 end

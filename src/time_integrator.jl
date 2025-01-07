@@ -60,8 +60,6 @@ function QuasiStatic(params::Dict{String,Any})
     )
 end
 
-
-
 function Newmark(params::Dict{String,Any},model::Any)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
@@ -257,9 +255,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
 end
 
 function predict(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    # Copy model fields into integrator fields, set solver solution
     copy_solution_source_targets(model, integrator, solver)
-
     free = model.free_dofs
     fixed = .!free
     Δt = integrator.time_step
@@ -274,7 +270,6 @@ function predict(integrator::Newmark, solver::HessianMinimizer, model::SolidMech
     vᵖʳᵉ[free] = v[free] += (1.0 - γ) * Δt * a[free]
     uᵖʳᵉ[fixed] = u[fixed]
     vᵖʳᵉ[fixed] = v[fixed]
-    # Copy integrator fields into model fields, set solver solution
     copy_solution_source_targets(integrator, solver, model)
 end
 
@@ -350,7 +345,6 @@ function initialize_writing(
 )
     initialize_writing(params,integrator,model.fom_model)
 end
-
 
 function initialize_writing(params::Dict{String,Any}, integrator::TimeIntegrator, _::SolidMechanics)
     output_mesh = params["output_mesh"]
@@ -500,7 +494,6 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
         refe_filename = sim_id_string * "refe" * ".csv"
         writedlm_nodal_array(refe_filename, model.reference)
     end
-
     curr_filename = sim_id_string * "curr" * index_string * ".csv"
     writedlm_nodal_array(curr_filename, model.current)
     disp_filename = sim_id_string * "disp" * index_string * ".csv"

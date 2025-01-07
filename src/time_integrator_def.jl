@@ -2,8 +2,6 @@ abstract type TimeIntegrator end
 abstract type StaticTimeIntegrator <: TimeIntegrator end
 abstract type DynamicTimeIntegrator <: TimeIntegrator end
 
-
-
 mutable struct QuasiStatic <: StaticTimeIntegrator
     initial_time::Float64
     final_time::Float64
@@ -43,8 +41,6 @@ mutable struct Newmark <: DynamicTimeIntegrator
     stored_energy::Float64
     kinetic_energy::Float64
 end
-
-
 
 mutable struct CentralDifference <: DynamicTimeIntegrator
     initial_time::Float64

@@ -95,7 +95,6 @@ function SolidMechanics(params::Dict{String,Any})
     end
     time = 0.0
     failed = false
-    num_dofs = 3 * num_nodes
     internal_force = zeros(3 * num_nodes)
     boundary_force = zeros(3 * num_nodes)
     boundary_conditions = Vector{BoundaryCondition}()

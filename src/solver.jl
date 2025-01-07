@@ -15,56 +15,6 @@ end
 function HessianMinimizer(params::Dict{String,Any},model::Any)
     solver_params = params["solver"]
     num_dof, = size(model.free_dofs)
-    num_dof = 3 * num_nodes
-    minimum_iterations = solver_params["minimum iterations"]
-    maximum_iterations = solver_params["maximum iterations"]
-    absolute_tolerance = solver_params["absolute tolerance"]
-    relative_tolerance = solver_params["relative tolerance"]
-    absolute_error = 0.0
-    relative_error = 0.0
-    value = 0.0
-    gradient = zeros(num_dof)
-    hessian = spzeros(num_dof, num_dof)
-    solution = zeros(num_dof)
-    initial_norm = 0.0
-    converged = false
-    failed = false
-    step = create_step(solver_params)
-    ls_backtrack_factor = 0.5
-    ls_decrease_factor = 1.0e-04
-    ls_max_iters = 16
-    if haskey(solver_params, "line search backtrack factor")
-        ls_backtrack_factor = solver_params["line search backtrack factor"]
-    end
-    if haskey(solver_params, "line search decrease factor")
-        ls_decrease_factor = solver_params["line search decrease factor"]
-    end
-    if haskey(solver_params, "line search maximum iterations")
-        ls_max_iters = solver_params["line search maximum iterations"]
-    end
-    line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
-    HessianMinimizer(
-        minimum_iterations,
-        maximum_iterations,
-        absolute_tolerance,
-        relative_tolerance,
-        absolute_error,
-        relative_error,
-        value,
-        gradient,
-        hessian,
-        solution,
-        initial_norm,
-        converged,
-        failed,
-        step,
-        line_search
-    )
-end
-
-function HessianMinimizer(params::Dict{String,Any},model::Any)
-    solver_params = params["solver"]
-    num_dof, = size(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
     absolute_tolerance = solver_params["absolute tolerance"]
@@ -471,14 +421,11 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     #Ax - b = -Ae
     #Ae = r, r = b - Ax 
     ##M uddot + Ku = f
-     
 
     num_dof, = size(model.free_dofs)
     I = Matrix{Float64}(LinearAlgebra.I, num_dof,num_dof)
     LHS = I / (dt*dt*beta)  + Matrix{Float64}(model.opinf_rom["K"])
     RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
-    #dF = model.opinf_rom["f"] + model.reduced_boundary_forcing[:] - I*integrator.acceleration - model.opinf_rom["K"]*integrator.displacement
-    #dF =  model.opinf_rom["f"] + model.reduced_boundary_forcing[:] + I*integrator.acceleration - model.opinf_rom["K"]*integrator.displacement
 
     residual = RHS - LHS * solver.solution 
     solver.hessian[:,:] = LHS
@@ -618,9 +565,7 @@ function compute_step(
     solver::HessianMinimizer,
     _::NewtonStep,
 )
-    return -inv(Matrix(solver.hessian))* solver.gradient
-
-#    return -solver.hessian\ solver.gradient
+    return -solver.hessian\ solver.gradient
 end
 
 

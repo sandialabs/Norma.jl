@@ -25,7 +25,6 @@ include("evolve.jl")
 
 function run(input_file::String)
     sim = create_simulation(input_file)
-    print("Created simulation \n")
     evolve(sim)
     return sim
 end
