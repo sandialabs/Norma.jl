@@ -620,9 +620,6 @@ function update_solver_convergence_criterion(solver::ExplicitSolver, _::Float64)
     solver.converged = true
 end
 
-
-
-
 function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     if solver.failed == true
         return true
@@ -665,10 +662,8 @@ function stop_solve(_::ExplicitSolver, _::Int64)
     return true
 end
 
-
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     predict(integrator, solver, model)
-    # Evaluate residual and jacobian
     evaluate(integrator, solver, model)
     if model.failed == true
         return

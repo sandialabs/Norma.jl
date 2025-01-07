@@ -134,7 +134,6 @@ function save_stop_solutions(
     schwarz_controller::SolidSchwarzController,
     sims::Vector{SingleDomainSimulation},
 )
-
     for i ∈ 1:schwarz_controller.num_domains
         schwarz_controller.stop_disp[i] = deepcopy(sims[i].integrator.displacement)
         schwarz_controller.stop_velo[i] = deepcopy(sims[i].integrator.velocity)
@@ -146,7 +145,6 @@ function save_stop_solutions(
         end
     end
 end
-
 
 function restore_stop_solutions(sim::MultiDomainSimulation)
     restore_stop_solutions(sim.schwarz_controller, sim.subsims)

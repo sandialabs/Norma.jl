@@ -457,7 +457,6 @@ function finalize_writing(params::Dict{String,Any})
     Exodus.close(output_mesh)
 end
 
-
 function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     open(filename, "w") do io
         for col ∈ 1:size(nodal_array, 2)
@@ -512,9 +511,6 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
     end
 end
 
-
-
-
 function write_sideset_step_csv(params::Dict{Any,Any},integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
   stop = integrator.stop
   index_string = "-" * string(stop, pad = 4)
@@ -547,8 +543,6 @@ function write_sideset_step_csv(params::Dict{Any,Any},integrator::DynamicTimeInt
   end
 end
 
-
-
 function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, sim_id::Integer)
     stop = integrator.stop
     index_string = "-" * string(stop, pad = 4)
@@ -558,7 +552,6 @@ function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, si
     writedlm(reduced_states_filename, model.reduced_state)
     write_step_csv(integrator,model.fom_model,sim_id)
 end
-
 
 function write_step_exodus(
     params::Dict{String,Any},

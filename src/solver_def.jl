@@ -29,7 +29,6 @@ mutable struct HessianMinimizer <: Minimizer
     line_search::BackTrackLineSearch
 end
 
-
 mutable struct ExplicitSolver <: Solver
     value::Float64
     gradient::Vector{Float64}
