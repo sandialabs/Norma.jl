@@ -22,6 +22,8 @@ function LinearOpInfRom(params::Dict{String,Any})
 
     time = 0.0
     failed = false
+    null_vec = zeros(num_dofs)
+
     reduced_state = zeros(num_dofs)
     reduced_boundary_forcing = zeros(num_dofs)
     free_dofs = trues(num_dofs)
@@ -31,6 +33,7 @@ function LinearOpInfRom(params::Dict{String,Any})
         basis,
         reduced_state,
         reduced_boundary_forcing,
+        null_vec,
         free_dofs,
         boundary_conditions,
         time,
