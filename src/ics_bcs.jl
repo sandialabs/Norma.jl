@@ -128,7 +128,11 @@ function SMCouplingSchwarzBC(
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     _, _, side_set_node_indices = get_side_set_local_from_global_map(input_mesh, side_set_id)
     coupled_block_name = bc_params["source block"]
-    coupled_mesh = coupled_subsim.model.mesh
+    if typeof(coupled_subsim.model) == LinearOpInfRom
+      coupled_mesh = coupled_subsim.model.fom_model.mesh
+    else
+      coupled_mesh = coupled_subsim.model.mesh
+    end 
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
     coupled_side_set_name = bc_params["source side set"]
@@ -1016,7 +1020,7 @@ function apply_ics(params::Dict{Any,Any}, model::HeatConduction)
 end
 
 
-function apply_ics(params::Dict{Any,Any}, model::LinearOpInfRom)
+function apply_ics(params::Dict{String,Any}, model::LinearOpInfRom)
 
     apply_ics(params,model.fom_model)
 

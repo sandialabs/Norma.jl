@@ -59,4 +59,5 @@ mutable struct LinearOpInfRom <: OpInfModel
     failed::Bool
     fom_model::SolidMechanics
     reference::Matrix{Float64}
+    inclined_support::Bool
 end

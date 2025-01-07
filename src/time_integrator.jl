@@ -344,7 +344,7 @@ function correct(
 end
 
 function initialize_writing(
-    params::Dict{Any,Any},
+    params::Dict{String,Any},
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
@@ -494,12 +494,13 @@ end
 
 function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_id::Integer)
     stop = integrator.stop
+    index_string = "-" * string(stop, pad=4)
+    sim_id_string = string(sim_id, pad=2) * "-"
     if stop == 0
         refe_filename = sim_id_string * "refe" * ".csv"
         writedlm_nodal_array(refe_filename, model.reference)
     end
-    index_string = "-" * string(stop, pad=4)
-    sim_id_string = string(sim_id, pad=2) * "-"
+
     curr_filename = sim_id_string * "curr" * index_string * ".csv"
     writedlm_nodal_array(curr_filename, model.current)
     disp_filename = sim_id_string * "disp" * index_string * ".csv"
@@ -567,7 +568,7 @@ end
 
 
 function write_step_exodus(
-    params::Dict{Any,Any},
+    params::Dict{String,Any},
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )

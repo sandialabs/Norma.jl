@@ -3,8 +3,7 @@ include("interpolation.jl")
 include("ics_bcs.jl")
 import NPZ
 
-function LinearOpInfRom(params::Dict{Any,Any})
-
+function LinearOpInfRom(params::Dict{String,Any})
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
@@ -38,6 +37,7 @@ function LinearOpInfRom(params::Dict{Any,Any})
         failed,
         fom_model,
         reference,
+        false 
     )
 end
 
