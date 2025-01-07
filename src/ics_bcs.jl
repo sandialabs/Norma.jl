@@ -94,6 +94,7 @@ function SMContactSchwarzBC(
         transfer_operator,
     )
 end
+
 function SMNonOverlapSchwarzBC(side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
     coupled_nodes_indices::Vector{Vector{Int64}},
@@ -193,7 +194,6 @@ function apply_bc(model::LinearOpInfRom, bc::SMDirichletBC)
     # SM Dirichlet BC are only defined on a single x,y,z
     model.reduced_boundary_forcing[:] += bc_operator[1,:,:] * bc_vector
     end
-
 
 function apply_bc(model::SolidMechanics, bc::SMDirichletBC)
     for node_index ∈ bc.node_set_node_indices
@@ -487,101 +487,6 @@ end
 
 
 
-function apply_bcb(model::SolidMechanics, bc::SchwarzBoundaryCondition)
-    global_sim = bc.coupled_subsim.params["global_simulation"]
-    schwarz_controller = global_sim.schwarz_controller
-    if typeof(bc) == SMContactSchwarzBC && schwarz_controller.active_contact == false
-        return
-    end
-    empty_history = length(global_sim.schwarz_controller.time_hist) == 0
-    same_step = schwarz_controller.same_step == true
-    if empty_history == true
-        apply_bc_detail(model, bc)
-        return
-    end
-    # Save solution of coupled simulation
-    saved_disp = bc.coupled_subsim.integrator.displacement
-    saved_velo = bc.coupled_subsim.integrator.velocity
-    saved_acce = bc.coupled_subsim.integrator.acceleration
-    if typeof(bc.coupled_subsim.model) == SolidMechanics
-        saved_∂Ω_f = bc.coupled_subsim.model.internal_force
-    elseif typeof(bc.coupled_subsim.model) == LinearOpInfRom
-        saved_∂Ω_f = bc.coupled_subsim.model.fom_model.internal_force
-    end
-    time = model.time
-    coupled_name = bc.coupled_subsim.name
-    coupled_index = global_sim.subsim_name_index_map[coupled_name]
-    time_hist = global_sim.schwarz_controller.time_hist[coupled_index]
-    disp_hist = global_sim.schwarz_controller.disp_hist[coupled_index]
-    velo_hist = global_sim.schwarz_controller.velo_hist[coupled_index]
-    acce_hist = global_sim.schwarz_controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = global_sim.schwarz_controller.∂Ω_f_hist[coupled_index]
-    interp_disp =
-        same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
-    interp_velo =
-        same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
-    interp_acce =
-        same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
-    interp_∂Ω_f =
-        same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
-    if typeof(bc.coupled_subsim.model) == SolidMechanics
-      bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    elseif typeof(bc.coupled_subsim.model) == LinearOpInfRom
-      bc.coupled_subsim.model.fom_model.internal_force = interp_∂Ω_f
-    end
-
-    if typeof(bc) == SMContactSchwarzBC || typeof(bc) == SMNonOverlapSchwarzBC
-        relaxation_parameter = global_sim.schwarz_controller.relaxation_parameter
-        schwarz_iteration = global_sim.schwarz_controller.iteration_number
-        if schwarz_iteration == 1
-            lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
-            lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
-            lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
-        else
-            lambda_dispᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_acce[coupled_index]
-        end
-        bc.coupled_subsim.integrator.displacement =
-            global_sim.schwarz_controller.lambda_disp[coupled_index] =
-                relaxation_parameter * interp_disp +
-                (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.velocity =
-            global_sim.schwarz_controller.lambda_velo[coupled_index] =
-                relaxation_parameter * interp_velo +
-                (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.acceleration =
-            global_sim.schwarz_controller.lambda_acce[coupled_index] =
-                relaxation_parameter * interp_acce +
-                (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
-    else
-        bc.coupled_subsim.integrator.displacement = interp_disp
-        bc.coupled_subsim.integrator.velocity = interp_velo
-        bc.coupled_subsim.integrator.acceleration = interp_acce
-    end
-    # Copies from integrator to model
-    copy_solution_source_targets(
-        bc.coupled_subsim.integrator,
-        bc.coupled_subsim.solver,
-        bc.coupled_subsim.model,
-    )
-    apply_bc_detail(model, bc)
-    bc.coupled_subsim.integrator.displacement = saved_disp
-    bc.coupled_subsim.integrator.velocity = saved_velo
-    bc.coupled_subsim.integrator.acceleration = saved_acce
-    if typeof(bc.coupled_subsim.model) == SolidMechanics
-      bc.coupled_subsim.model.internal_force = saved_∂Ω_f
-    elseif typeof(bc.coupled_subsim.model) == LinearOpInfRom
-      bc.coupled_subsim.model.fom_model.internal_force = saved_∂Ω_f
-    end
-    # Copy from integrator to model
-    copy_solution_source_targets(
-        bc.coupled_subsim.integrator,
-        bc.coupled_subsim.solver,
-        bc.coupled_subsim.model,
-    )
-end
-
 
 function apply_bc(model::LinearOpInfRom, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
@@ -864,10 +769,7 @@ function create_bcs(params::Dict{String,Any})
     inclined_support_nodes = Vector{Int64}()
     for (bc_type, bc_type_params) ∈ bc_params
         for bc_setting_params ∈ bc_type_params
-            if bc_type == "Dirichlet" && params["model"]["type"] == "solid mechanics" 
-                boundary_condition = SMDirichletBC(input_mesh, bc_setting_params)
-                push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Dirichlet" && params["model"]["type"] == "linear opinf rom" 
+            if bc_type == "Dirichlet" 
                 boundary_condition = SMDirichletBC(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Neumann"
@@ -966,39 +868,6 @@ function apply_ics(params::Dict{String,Any}, model::SolidMechanics)
         end
     end
 end
-
-
-function apply_ics(params::Dict{Any,Any}, model::HeatConduction)
-    if haskey(params, "initial conditions") == false
-        return
-    end
-    input_mesh = params["input_mesh"]
-    ic_params = params["initial conditions"]
-    for (ic_type, ic_type_params) ∈ ic_params
-        for ic ∈ ic_type_params
-            node_set_name = ic["node set"]
-            expr_str = ic["function"]
-            component = ic["component"]
-            offset = component_offset_from_string(component)
-            node_set_id = node_set_id_from_name(node_set_name, input_mesh)
-            node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
-            # expr_str is an arbitrary function of x, y, z in the input file
-            ic_expr = Meta.parse(expr_str)
-            ic_eval = eval(ic_expr)
-            for node_index ∈ node_set_node_indices
-                values = Dict(
-                    x => model.reference[1, node_index],
-                    y => model.reference[2, node_index],
-                    z => model.reference[3, node_index],
-                )
-                ic_sym = substitute(ic_eval, values)
-                ic_val = extract_value(ic_sym)
-                model.temperature[offset, node_index] =  ic_val
-            end
-        end
-    end
-end
-
 
 function apply_ics(params::Dict{String,Any}, model::LinearOpInfRom)
 

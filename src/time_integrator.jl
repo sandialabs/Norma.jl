@@ -179,17 +179,9 @@ function get_analysis_type(integrator::TimeIntegrator)
     end
 end
 
-#OpInf
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
     integrator.displacement[:] = model.reduced_state[:]
     solver.solution[:] = model.reduced_state[:]
-    #integrator.velocity[:] .= 0.0
-    #integrator.acceleration[:] .= 0.0
-    #kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
-    #integrator.kinetic_energy = kinetic_energy
-    #integrator.stored_energy = stored_energy
-    #integrator.acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
-    #copy_solution_source_targets(integrator, solver, model)
 end
 
 function predict(integrator::Newmark, solver::Any, model::LinearOpInfRom)
@@ -201,8 +193,6 @@ function predict(integrator::Newmark, solver::Any, model::LinearOpInfRom)
     solver.solution[:] = integrator.displacement[:]
     model.reduced_state[:] = integrator.displacement[:]
 end
-
-
 
 function correct(integrator::Newmark, solver::Any, model::LinearOpInfRom)
 
@@ -217,8 +207,6 @@ function correct(integrator::Newmark, solver::Any, model::LinearOpInfRom)
     model.reduced_state[:] = solver.solution[:]
 
 end
-###
-
 
 function initialize(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
     if integrator.initial_equilibrium == true
