@@ -344,7 +344,6 @@ function stress_update(
     return Fᵉ, Fᵖ, εᵖ, σ
 end
 
-
 struct Linear_Isotropic <: Thermal
     κ::Float64
     function Linear_Isotropic(params::Dict{String,Any})
@@ -451,7 +450,6 @@ function second_from_fourth(AA::Array{Float64})
     end
     return A
 end
-
 
 function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})
     C = F' * F
