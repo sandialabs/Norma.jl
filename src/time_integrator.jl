@@ -27,6 +27,7 @@ function QuasiStatic(params::Dict{String,Any})
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = integrator_params["time step"]
+    runtime_step = 0.0
     minimum_time_step, decrease_factor, maximum_time_step, increase_factor = adaptive_stepping_parameters(integrator_params)
     time = prev_time = initial_time
     stop = 0
@@ -45,6 +46,7 @@ function QuasiStatic(params::Dict{String,Any})
         initial_time,
         final_time,
         time_step,
+        runtime_step,
         minimum_time_step,
         decrease_factor,
         maximum_time_step,
@@ -65,6 +67,7 @@ function Newmark(params::Dict{String,Any})
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = integrator_params["time step"]
+    runtime_step = 0.0
     minimum_time_step, decrease_factor, maximum_time_step, increase_factor = adaptive_stepping_parameters(integrator_params)
     time = prev_time = initial_time
     stop = 0
@@ -84,6 +87,7 @@ function Newmark(params::Dict{String,Any})
         initial_time,
         final_time,
         time_step,
+        runtime_step,
         minimum_time_step,
         decrease_factor,
         maximum_time_step,
@@ -108,6 +112,7 @@ function CentralDifference(params::Dict{String,Any})
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = 0.0
+    runtime_step = 0.0
     minimum_time_step, decrease_factor, maximum_time_step, increase_factor = adaptive_stepping_parameters(integrator_params)
     stable_time_step = 0.0
     user_time_step = integrator_params["time step"]
@@ -127,6 +132,7 @@ function CentralDifference(params::Dict{String,Any})
         initial_time,
         final_time,
         time_step,
+        runtime_step,
         minimum_time_step,
         decrease_factor,
         maximum_time_step,
@@ -301,6 +307,15 @@ end
 
 function initialize_writing(params::Dict{String,Any}, integrator::TimeIntegrator, _::SolidMechanics)
     output_mesh = params["output_mesh"]
+
+    # global variables
+    num_global_vars = Exodus.read_number_of_variables(output_mesh, GlobalVariable)
+    num_global_vars += 1  # adjust as necessary
+    Exodus.write_number_of_variables(output_mesh, GlobalVariable, num_global_vars)
+
+    runtime_step_index = 1
+    Exodus.write_name(output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step")
+
     num_node_vars = Exodus.read_number_of_variables(output_mesh, NodalVariable)
     disp_x_index = num_node_vars + 1
     disp_y_index = num_node_vars + 2
@@ -464,9 +479,14 @@ end
 function write_step_exodus(params::Dict{String,Any}, integrator::TimeIntegrator, model::SolidMechanics)
     time = integrator.time
     stop = integrator.stop
+    runtime_step = integrator.runtime_step
     time_index = stop + 1
     output_mesh = params["output_mesh"]
     Exodus.write_time(output_mesh, time_index, time)
+
+    # global variables
+    Exodus.write_values(output_mesh, GlobalVariable, time_index, [runtime_step])
+
     displacement = model.current - model.reference
     refe_x = model.current[1, :]
     refe_y = model.current[2, :]
@@ -494,7 +514,7 @@ function write_step_exodus(params::Dict{String,Any}, integrator::TimeIntegrator,
         acce_z = acceleration[3, :]
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_x", acce_x)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_y", acce_y)
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_z", acce_z)    
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_z", acce_z)
     end
     stress = model.stress
     stored_energy = model.stored_energy

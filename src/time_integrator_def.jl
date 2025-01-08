@@ -6,6 +6,7 @@ mutable struct QuasiStatic <: StaticTimeIntegrator
     initial_time::Float64
     final_time::Float64
     time_step::Float64
+    runtime_step::Float64
     minimum_time_step::Float64
     maximum_time_step::Float64
     decrease_factor::Float64
@@ -24,6 +25,7 @@ mutable struct Newmark <: DynamicTimeIntegrator
     initial_time::Float64
     final_time::Float64
     time_step::Float64
+    runtime_step::Float64
     minimum_time_step::Float64
     maximum_time_step::Float64
     decrease_factor::Float64
@@ -46,6 +48,7 @@ mutable struct CentralDifference <: DynamicTimeIntegrator
     initial_time::Float64
     final_time::Float64
     time_step::Float64
+    runtime_step::Float64
     minimum_time_step::Float64
     maximum_time_step::Float64
     decrease_factor::Float64
