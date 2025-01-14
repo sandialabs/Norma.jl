@@ -1,6 +1,50 @@
 include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
+import NPZ
+
+function LinearOpInfRom(params::Dict{String,Any})
+    params["mesh smoothing"] = false
+    fom_model = SolidMechanics(params)
+    reference = fom_model.reference
+    opinf_model_file = params["model"]["model-file"]
+    opinf_model = NPZ.npzread(opinf_model_file)
+    basis = opinf_model["basis"]
+    num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
+    num_dofs = reduced_dim
+    #=
+    coords = read_coordinates(fom_model.mesh)
+    num_nodes = Exodus.num_nodes(fom_model.mesh.init)
+    if (num_nodes_basis != num_nodes)
+      throw("Basis size incompatible with mesh")
+    end
+    =#
+
+    time = 0.0
+    failed = false
+    null_vec = zeros(num_dofs)
+
+    reduced_state = zeros(num_dofs)
+    reduced_boundary_forcing = zeros(num_dofs)
+    free_dofs = trues(num_dofs)
+    boundary_conditions = Vector{BoundaryCondition}()
+    LinearOpInfRom(
+        opinf_model,
+        basis,
+        reduced_state,
+        reduced_boundary_forcing,
+        null_vec,
+        free_dofs,
+        boundary_conditions,
+        time,
+        failed,
+        fom_model,
+        reference,
+        false 
+    )
+end
+
+
 
 function SolidMechanics(params::Dict{String,Any})
     input_mesh = params["input_mesh"]
@@ -207,6 +251,9 @@ function create_model(params::Dict{String,Any})
         return SolidMechanics(params)
     elseif model_name == "heat conduction"
         return HeatConduction(params)
+    elseif model_name == "linear opinf rom"
+        return LinearOpInfRom(params)
+
     else
         error("Unknown type of model : ", model_name)
     end

@@ -54,6 +54,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
+    side_set_name::String
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
@@ -73,4 +74,3 @@ mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     is_dirichlet::Bool
     transfer_operator::Matrix{Float64}
 end
-
