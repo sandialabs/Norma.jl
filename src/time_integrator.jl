@@ -287,6 +287,10 @@ function initialize(
     if model.failed == true
         error("The finite element model has failed to initialize")
     end
+    if model.inclined_support == true
+        external_force = model.global_transform * external_force
+        internal_force = model.global_transform * internal_force
+    end
     kinetic_energy = 0.5 * lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     integrator.stored_energy = stored_energy
