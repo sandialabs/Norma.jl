@@ -1,4 +1,5 @@
 abstract type Model end
+abstract type OpInfModel <: Model end
 using SparseArrays
 
 @enum Kinematics begin
@@ -32,7 +33,7 @@ end
 # TODO: Add potential energy as in the above
 mutable struct HeatConduction <: Model
     mesh::ExodusDatabase
-    materials::Vector{Vector}
+    materials::Vector{Thermal}
     reference::Matrix{Float64}
     temperature::Vector{Float64}
     rate::Vector{Float64}
@@ -44,4 +45,21 @@ mutable struct HeatConduction <: Model
     free_dofs::BitVector
     time::Float64
     failed::Bool
+end
+
+
+mutable struct LinearOpInfRom <: OpInfModel
+    opinf_rom::Dict{Any,Any}
+    basis::Array{Float64}
+    reduced_state::Vector{Float64}
+    reduced_boundary_forcing::Vector{Float64}
+    #internal_force not used, but include to ease interfacing in Schwarz
+    internal_force::Vector{Float64}
+    free_dofs::BitVector
+    boundary_conditions::Vector{BoundaryCondition}
+    time::Float64
+    failed::Bool
+    fom_model::SolidMechanics
+    reference::Matrix{Float64}
+    inclined_support::Bool
 end

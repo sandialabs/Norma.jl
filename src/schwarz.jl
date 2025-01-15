@@ -83,7 +83,7 @@ end
 
 function create_schwarz_controller(params::Dict{String,Any})
     type = params["subdomains type"]
-    if type == "static solid mechanics" || type == "dynamic solid mechanics"
+    if type == "static solid mechanics" || type == "dynamic solid mechanics" || type == "dynamic linear opinf rom"
         return SolidSchwarzController(params)
     else
         error("Unknown type of Schwarz controller : ", type)

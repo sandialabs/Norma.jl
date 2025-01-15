@@ -57,9 +57,9 @@ function SingleDomainSimulation(params::Dict{String,Any})
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
-    integrator = create_time_integrator(params)
-    solver = create_solver(params)
     model = create_model(params)
+    integrator = create_time_integrator(params,model)
+    solver = create_solver(params,model)
     failed = false
     return SingleDomainSimulation(name, params, integrator, solver, model, failed)
 end
@@ -94,7 +94,7 @@ function MultiDomainSimulation(params::Dict{String,Any})
             get_analysis_type(subsim.integrator) * " " * subparams["model"]["type"]
         if sim_type == "none"
             sim_type = subsim_type
-        elseif subsim_type ≠ sim_type
+        elseif subsim_type ≠ sim_type && subsim_type != "dynamic linear opinf rom"
             error("Multidomain subdomains must all have the same physics")
         end
         push!(subsims, subsim)
