@@ -1,5 +1,5 @@
 type: single
-input mesh file: cube.g
+input mesh file: cube-test4.g
 output mesh file: cube.e
 Exodus output interval: 1
 CSV output interval: 0
@@ -22,16 +22,16 @@ boundary conditions:
   Dirichlet:
     - node set: nsx-
       component: x
-      function: "0.866025403784439 * 0.1*t"
+      function: "0.38268343236508984 * 0.1*t"
     - node set: nsx-
       component: y
-      function: "0.5 * 0.1*t"
+      function: "0.9238795325112867 * 0.1*t"
     - node set: nsx-
       component: z
       function: "0"
   Inclined Dirichlet:
     - node set: nsx+
-      normal vector: [ 0.866025403784439, 0.5, 0 ]
+      normal vector: [ 0.38268343236508984, 0.9238795325112867, 0 ]
       function: "-0.1*t"
 solver:
   type: Hessian minimizer

@@ -243,11 +243,15 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
     e1 = [1.0, 0.0, 0.0]
     w = cross(axis, e1)
     s = norm(w)
-    θ = asin(s)
-    m = w / s
-    rv = θ * m
-    # Rotation is converted via the psuedo vector to rotation matrix
-    bc.rotation_matrix = MiniTensor.rt_from_rv(rv)
+    if (s ≈ 0.0)
+        bc.rotation_matrix = I(3)
+    else
+        θ = asin(s)
+        m = w / s
+        rv = θ * m
+        # Rotation is converted via the psuedo vector to rotation matrix
+        bc.rotation_matrix = MiniTensor.rt_from_rv(rv)
+    end
     for node_index ∈ bc.node_set_node_indices
         values = Dict(
             t => model.time,
