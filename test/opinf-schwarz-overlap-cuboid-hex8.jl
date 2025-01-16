@@ -1,3 +1,8 @@
+# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
 @testset "schwarz-overlap-static-cuboid-hex8-same-step" begin
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-1.yaml", "cuboid-1.yaml", force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-2.yaml", "cuboid-2.yaml", force=true)
