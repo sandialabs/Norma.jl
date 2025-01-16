@@ -1,0 +1,51 @@
+${side = 1.0}
+${length = 1.0}
+${separation = 1.0}
+${nel_fine = 2}
+${nel_coarse = 1}
+${h_fine = length / nel_fine}
+${h_coarse = length / nel_coarse}
+#{cos_th = 6.123233995736766e-17}
+#{sin_th = 1.0}
+${area = side * side}
+${offset_x = (length + separation)*cos_th / 2.0}
+${offset_y = (length + separation)*sin_th / 2.0}
+
+create brick x {length} y {side} z {side}
+move volume 1 x -0.5 include_merged
+move volume 1 y -0.5 include_merged
+#volume 1 scheme tetmesh
+volume 1 size {h_fine}
+mesh volume 1
+block 1 volume 1
+#block 1 element type tetra4
+block 1 name "fine"
+nodeset 1 surface 4
+nodeset 1 name "nsx-"
+nodeset 2 surface 6
+nodeset 2 name "nsx+"
+nodeset 3 surface 3
+nodeset 3 name "nsy-"
+nodeset 4 surface 5
+nodeset 4 name "nsy+"
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface 4
+sideset 1 name "ssx-"
+sideset 2 surface 6
+sideset 2 name "ssx+"
+sideset 3 surface 3
+sideset 3 name "ssy-"
+sideset 4 surface 5
+sideset 4 name "ssy+"
+sideset 5 surface 2
+sideset 5 name "ssz-"
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+rotate volume 1 about z angle 90
+export mesh "cube-test5.g" overwrite

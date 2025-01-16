@@ -5,8 +5,8 @@ ${nel_fine = 2}
 ${nel_coarse = 1}
 ${h_fine = length / nel_fine}
 ${h_coarse = length / nel_coarse}
-#{cos_th = 0.8660254037844387}
-#{sin_th = .5}
+#{cos_th = 0.9238795325112867}
+#{sin_th = 0.3826834323650898}
 ${area = side * side}
 ${offset_x = (length + separation)*cos_th / 2.0}
 ${offset_y = (length + separation)*sin_th / 2.0}
@@ -47,5 +47,5 @@ sideset 5 name "ssz-"
 sideset 6 surface 1
 sideset 6 name "ssz+"
 set large exodus file off
-rotate volume 1 about z angle 30
-export mesh "cube-1.g" overwrite
+rotate volume 1 about z angle 22.5
+export mesh "cube-test2.g" overwrite
