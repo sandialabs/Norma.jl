@@ -264,21 +264,31 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
         velo_val_loc = extract_value(velo_sym)
         acce_val_loc = extract_value(acce_sym)
 
-        # Rotate the local displacements to the global frame
+        # Inherit free values from model (required for explicit dynamics)
+        original_disp = model.current[:, node_index] - model.reference[:, node_index]
+        original_acceleration = model.acceleration[:, node_index]
+        original_velocity = model.velocity[:, node_index]
+        local_original_displacement = bc.rotation_matrix * original_disp
+        local_original_acceleration = bc.rotation_matrix * original_acceleration
+        local_original_velocity = bc.rotation_matrix * original_velocity
+        # Set local X direction to inclined support
+        local_original_displacement[1] = disp_val_loc
+        local_original_acceleration[1] = acce_val_loc
+        local_original_velocity[1] = velo_val_loc
+        original_velocity = bc.rotation_matrix' * local_original_velocity
+        original_acceleration = bc.rotation_matrix' * local_original_acceleration
+        disp_vector_glob = bc.rotation_matrix' * local_original_displacement
 
-        disp_vector_local = [disp_val_loc, 0, 0]
-        velo_vector_local = [velo_val_loc, 0, 0]
-        accel_vector_local = [acce_val_loc, 0, 0]
-        disp_vector_glob = bc.rotation_matrix' * disp_vector_local
-        velo_vector_glob = bc.rotation_matrix' * velo_vector_local
-        accel_vector_glob = bc.rotation_matrix' * accel_vector_local
-
-        dof_index = 3 * node_index - 2 # Inclined support is only applied in local X
         model.current[:, node_index] =
             model.reference[:, node_index] + disp_vector_glob
-        model.velocity[:, node_index] = velo_vector_glob
-        model.acceleration[:, node_index] = accel_vector_glob
-        model.free_dofs[dof_index] = false
+        model.velocity[:, node_index] = original_velocity
+        model.acceleration[:, node_index] = original_acceleration
+        # Inclined support is only applied in local X
+        model.free_dofs[3 * node_index - 2] = false
+
+        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] = bc.rotation_matrix
+
     end
 end
 

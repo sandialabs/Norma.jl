@@ -364,6 +364,14 @@ function copy_solution_source_targets(
         nodal_displacement = displacement[3*node-2:3*node]
         nodal_velocity = velocity[3*node-2:3*node]
         nodal_acceleration = acceleration[3*node-2:3*node]
+        if model.inclined_support == true
+            base = 3*(node-1) # Block index in global stiffness
+            # Local (integrator) to global (model), use transpose
+            local_transform = model.global_transform[base+1:base+3, base+1:base+3]'
+            nodal_displacement = local_transform * nodal_displacement
+            nodal_velocity  = local_transform * nodal_velocity
+            nodal_acceleration = local_transform * nodal_acceleration
+        end
         model.current[:, node] = model.reference[:, node] + nodal_displacement
         model.velocity[:, node] = nodal_velocity
         model.acceleration[:, node] = nodal_acceleration
@@ -384,6 +392,14 @@ function copy_solution_source_targets(
         nodal_displacement = displacement[3*node-2:3*node]
         nodal_velocity = velocity[3*node-2:3*node]
         nodal_acceleration = acceleration[3*node-2:3*node]
+        if model.inclined_support == true
+            base = 3*(node-1) # Block index in global stiffness
+            # Local (integrator) to global (model), use transpose
+            local_transform = model.global_transform[base+1:base+3, base+1:base+3]'
+            nodal_displacement = local_transform * nodal_displacement
+            nodal_velocity  = local_transform * nodal_velocity
+            nodal_acceleration = local_transform * nodal_acceleration
+        end
         model.current[:, node] = model.reference[:, node] + nodal_displacement
         model.velocity[:, node] = nodal_velocity
         model.acceleration[:, node] = nodal_acceleration
@@ -400,6 +416,14 @@ function copy_solution_source_targets(
         nodal_displacement = model.current[:, node] - model.reference[:, node]
         nodal_velocity = model.velocity[:, node]
         nodal_acceleration = model.acceleration[:, node]
+        if model.inclined_support == true
+            base = 3*(node-1) # Block index in global stiffness
+            # Global (model) to local (integrator)
+            local_transform = model.global_transform[base+1:base+3, base+1:base+3]
+            nodal_displacement = local_transform * nodal_displacement
+            nodal_velocity  = local_transform * nodal_velocity
+            nodal_acceleration = local_transform * nodal_acceleration
+        end
         integrator.displacement[3*node-2:3*node] = nodal_displacement
         integrator.velocity[3*node-2:3*node] = nodal_velocity
         integrator.acceleration[3*node-2:3*node] = nodal_acceleration
@@ -489,12 +513,22 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     if model.failed == true
         return
     end
+
     integrator.stored_energy = stored_energy
+    # Intertial force (local)
     inertial_force = lumped_mass .* integrator.acceleration
     kinetic_energy = 0.5 * lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
+    # Body force -> global
+    # Model boundary force -> global
     external_force = body_force + model.boundary_force
+    if model.inclined_support == true
+        external_force = model.global_transform * external_force
+        internal_force = model.global_transform * internal_force
+    end
+    # External and internal force in local
     solver.value = stored_energy - external_force ⋅ integrator.displacement + kinetic_energy
+    # Graident -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
     solver.lumped_hessian = lumped_mass
 end
