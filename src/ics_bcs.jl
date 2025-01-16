@@ -285,6 +285,10 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
         model.acceleration[:, node_index] = original_acceleration
         # Inclined support is only applied in local X
         model.free_dofs[3 * node_index - 2] = false
+
+        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] = bc.rotation_matrix
+
     end
 end
 
