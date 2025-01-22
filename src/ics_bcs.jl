@@ -86,6 +86,8 @@ function SMContactSchwarzBC(
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
     transfer_operator = Matrix{Float64}(undef, 0, 0)
+    rotation_matrix = I(3)
+    active_contact = false
     SMContactSchwarzBC(
         side_set_name,
         side_set_id,
@@ -97,6 +99,8 @@ function SMContactSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         transfer_operator,
+        rotation_matrix,
+        active_contact,
     )
 end
 
@@ -610,6 +614,23 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         point = model.current[:, node_index]
         new_point, ξ, _, closest_face_node_indices, closest_normal, _ =
             project_point_to_side_set(point, bc.coupled_subsim.model, bc.coupled_side_set_id)
+
+        # The local basis comes from the closest_normal:
+        axis = closest_normal
+        axis = axis / norm(axis)
+        e1 = [1.0, 0.0, 0.0]
+        w = cross(axis, e1)
+        s = norm(w)
+        if (s ≈ 0.0)
+            bc.rotation_matrix = I(3)
+        else
+            θ = asin(s)
+            m = w / s
+            rv = θ * m
+            # Rotation is converted via the psuedo vector to rotation matrix
+            bc.rotation_matrix = MiniTensor.rt_from_rv(rv)
+        end
+
         model.current[:, node_index] = new_point
         num_nodes = length(closest_face_node_indices)
         element_type = get_element_type(2, num_nodes)
@@ -693,6 +714,10 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     src_mesh = dst_bc.coupled_subsim.model.mesh
     src_side_set_id = dst_bc.coupled_side_set_id
     src_global_force = -dst_bc.coupled_subsim.model.internal_force
+    if typeof(dst_bc) == SMContactSchwarzBC
+        src_rotation = bc.coupled_subsim.model.global_transform
+    end
+    src_global_force = src_rotation * src_global_force
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
     num_dst_nodes = size(dst_bc.transfer_operator, 1)
     dst_traction = zeros(3, num_dst_nodes)
