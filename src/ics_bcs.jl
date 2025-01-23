@@ -745,10 +745,6 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     src_mesh = dst_bc.coupled_subsim.model.mesh
     src_side_set_id = dst_bc.coupled_side_set_id
     src_global_force = -dst_bc.coupled_subsim.model.internal_force
-    if typeof(dst_bc) == SMContactSchwarzBC
-        src_rotation = dst_bc.coupled_subsim.model.global_transform
-        src_global_force = src_rotation' * src_global_force
-    end
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
     num_dst_nodes = size(dst_bc.transfer_operator, 1)
     dst_traction = zeros(3, num_dst_nodes)
