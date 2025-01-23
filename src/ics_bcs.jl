@@ -186,7 +186,7 @@ function SMCouplingSchwarzBC(
             elseif default_bc_type == "Neumann"  
                 is_dirichlet = false
             else 
-                error("Invalid sting for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")  
+                error("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")  
             end 
         end 
         if haskey(bc_params, "swap BC types") == true
@@ -361,10 +361,8 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     if bc.is_dirichlet == true
-        #println("IKT DBC!")
         apply_sm_schwarz_contact_dirichlet(model, bc)
     else
-        #println("IKT NBC!")
         apply_sm_schwarz_contact_neumann(model, bc)
     end
     if (bc.swap_bcs == true) 
@@ -374,10 +372,8 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        #println("IKT DBC!")
         apply_sm_schwarz_coupling_dirichlet(model, bc)
     else
-        #println("IKT NBC!")
         apply_sm_schwarz_coupling_neumann(model, bc)
     end
     if (bc.swap_bcs == true) 
