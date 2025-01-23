@@ -645,8 +645,8 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
             project_point_to_side_set(point, bc.coupled_subsim.model, bc.coupled_side_set_id)
 
         # The local basis comes from the closest_normal:
-        axis = closest_normal
-        axis = axis / norm(axis)
+        axis = -closest_normal / norm(-closest_normal)
+
         e1 = [1.0, 0.0, 0.0]
         w = cross(axis, e1)
         s = norm(w)
@@ -678,6 +678,8 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         )
         dof_index = [3 * node_index - 2]
         model.free_dofs[dof_index] .= false
+        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] = bc.rotation_matrix
     end
 end
 
@@ -745,7 +747,7 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     src_global_force = -dst_bc.coupled_subsim.model.internal_force
     if typeof(dst_bc) == SMContactSchwarzBC
         src_rotation = dst_bc.coupled_subsim.model.global_transform
-        src_global_force = src_rotation * src_global_force
+        src_global_force = src_rotation' * src_global_force
     end
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
     num_dst_nodes = size(dst_bc.transfer_operator, 1)
@@ -988,6 +990,9 @@ function pair_bc(name::String, bc::ContactSchwarzBoundaryCondition)
     for coupled_bc ∈ coupled_bcs
         if is_coupled_to_current(name, coupled_bc) == true
             coupled_bc.is_dirichlet = !bc.is_dirichlet
+            if coupled_bc.is_dirichlet == false
+                coupled_model.inclined_support = false
+            end
         end
     end
 end
