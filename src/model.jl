@@ -1,6 +1,55 @@
+# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
 include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
+import NPZ
+
+function LinearOpInfRom(params::Dict{String,Any})
+    params["mesh smoothing"] = false
+    fom_model = SolidMechanics(params)
+    reference = fom_model.reference
+    opinf_model_file = params["model"]["model-file"]
+    opinf_model = NPZ.npzread(opinf_model_file)
+    basis = opinf_model["basis"]
+    num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
+    num_dofs = reduced_dim
+    #=
+    coords = read_coordinates(fom_model.mesh)
+    num_nodes = Exodus.num_nodes(fom_model.mesh.init)
+    if (num_nodes_basis != num_nodes)
+      throw("Basis size incompatible with mesh")
+    end
+    =#
+
+    time = 0.0
+    failed = false
+    null_vec = zeros(num_dofs)
+
+    reduced_state = zeros(num_dofs)
+    reduced_boundary_forcing = zeros(num_dofs)
+    free_dofs = trues(num_dofs)
+    boundary_conditions = Vector{BoundaryCondition}()
+    LinearOpInfRom(
+        opinf_model,
+        basis,
+        reduced_state,
+        reduced_boundary_forcing,
+        null_vec,
+        free_dofs,
+        boundary_conditions,
+        time,
+        failed,
+        fom_model,
+        reference,
+        false 
+    )
+end
+
+
 
 function SolidMechanics(params::Dict{String,Any})
     input_mesh = params["input_mesh"]
@@ -207,6 +256,9 @@ function create_model(params::Dict{String,Any})
         return SolidMechanics(params)
     elseif model_name == "heat conduction"
         return HeatConduction(params)
+    elseif model_name == "linear opinf rom"
+        return LinearOpInfRom(params)
+
     else
         error("Unknown type of model : ", model_name)
     end
@@ -522,17 +574,6 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 lumped_mass[elem_dofs] += element_lumped_mass
             end
         end
-    end
-
-    if model.inclined_support == true
-        # For inclined DBCs
-        local_rotation = Matrix{Float64}(I, num_dof, num_dof)
-        for (corresponding_bc_idx, inc_support_node_idx) in zip(inclined_support_bc_indices, inclined_support_node_indices)
-            nodal_rotation = model.boundary_conditions[corresponding_bc_idx].rotation_matrix
-            base = 3 * (inc_support_node_idx - 1) # Block index in global stiffness
-            local_rotation[base+1:base+3, base+1:base+3] *= nodal_rotation
-        end
-        model.global_transform = sparse(local_rotation)
     end
 
     if typeof(integrator) == QuasiStatic || typeof(integrator) == Newmark

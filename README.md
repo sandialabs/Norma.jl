@@ -1,7 +1,7 @@
 # Norma
 
-![Norma Contact Simulation 1](https://github.com/lxmota/Norma.jl/blob/main/doc/norma-contact-1.png)
-![Norma Contact Simulation 2](https://github.com/lxmota/Norma.jl/blob/main/doc/norma-contact-2.png)
+![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/norma-contact-1.png)
+![Norma Contact Simulation 2](https://github.com/sandialabs/Norma.jl/blob/main/doc/norma-contact-2.png)
 
 **Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
 
@@ -31,7 +31,7 @@
 ### Clone the Repository
 ```bash
 cd /some_path
-git clone git@github.com:lxmota/Norma.jl.git
+git clone git@github.com:sandialabs/Norma.jl.git
 cd Norma.jl
 julia
 ```

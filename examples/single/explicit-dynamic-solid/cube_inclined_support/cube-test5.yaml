@@ -1,0 +1,40 @@
+type: single
+input mesh file: cube-test5.g
+output mesh file: cube.e
+Exodus output interval: 1
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      fine: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+03
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: central difference
+  initial time: 0.0
+  final time: 1
+  time step: 0.01
+  CFL: 0.1
+  γ: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "6.123233995736766e-17 * 0.1*t"
+    - node set: nsx-
+      component: y
+      function: "1.0 * 0.1*t"
+    - node set: nsx-
+      component: z
+      function: "0"
+  Inclined Dirichlet:
+    - node set: nsx+
+      normal vector: [ 6.123233995736766e-17, 1.0, 0 ]
+      function: "-0.1*t"
+solver:
+  type: explicit solver
+  step: explicit

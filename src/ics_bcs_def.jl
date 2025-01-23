@@ -1,3 +1,8 @@
+# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
 abstract type BoundaryCondition end
 abstract type SchwarzBoundaryCondition <: BoundaryCondition end
 abstract type RegularBoundaryCondition <: BoundaryCondition end
@@ -54,6 +59,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
+    side_set_name::String
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
@@ -75,4 +81,3 @@ mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     swap_bcs::Bool
     transfer_operator::Matrix{Float64}
 end
-
