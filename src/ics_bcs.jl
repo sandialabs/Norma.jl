@@ -86,6 +86,10 @@ function SMContactSchwarzBC(
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
     transfer_operator = Matrix{Float64}(undef, 0, 0)
+    swap_bcs = false 
+    if haskey(bc_params, "swap BC types") == true
+      swap_bcs = bc_params["swap BC types"]
+    end
     SMContactSchwarzBC(
         side_set_name,
         side_set_id,
@@ -97,6 +101,7 @@ function SMContactSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         transfer_operator,
+        swap_bcs
     )
 end
 
@@ -107,7 +112,8 @@ function SMNonOverlapSchwarzBC(side_set_id::Int64,
     coupled_subsim::Simulation,
     subsim::Simulation,
     coupled_side_set_id::Int64,
-    is_dirichlet::Bool)
+    is_dirichlet::Bool,
+    swap_bcs::Bool)
     transfer_operator = Matrix{Float64}(undef, 0, 0)
     return SMNonOverlapSchwarzBC(side_set_id,
         side_set_node_indices,
@@ -117,6 +123,7 @@ function SMNonOverlapSchwarzBC(side_set_id::Int64,
         subsim,
         coupled_side_set_id,
         is_dirichlet,
+        swap_bcs,
         transfer_operator)
 end
 
@@ -159,6 +166,7 @@ function SMCouplingSchwarzBC(
         push!(interpolation_function_values, N)
     end
     is_dirichlet = true
+    swap_bcs = false 
     if bc_type == "Schwarz overlap"
         SMOverlapSchwarzBC(
             side_set_name,
@@ -167,9 +175,23 @@ function SMCouplingSchwarzBC(
             interpolation_function_values,
             coupled_subsim,
             subsim,
-            is_dirichlet
+            is_dirichlet,
+            swap_bcs
         )
     elseif bc_type == "Schwarz nonoverlap"
+        if haskey(bc_params, "default BC type") == true
+            default_bc_type = bc_params["default BC type"]
+            if default_bc_type == "Dirichlet"  
+                is_dirichlet = true
+            elseif default_bc_type == "Neumann"  
+                is_dirichlet = false
+            else 
+                error("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")  
+            end 
+        end 
+        if haskey(bc_params, "swap BC types") == true
+            swap_bcs = bc_params["swap BC types"]
+        end
         SMNonOverlapSchwarzBC(
             side_set_id,
             side_set_node_indices,
@@ -178,7 +200,8 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             subsim,
             coupled_side_set_id,
-            is_dirichlet
+            is_dirichlet, 
+            swap_bcs
         )
     else
         error("Unknown boundary condition type : ", bc_type)
@@ -342,6 +365,9 @@ function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     else
         apply_sm_schwarz_contact_neumann(model, bc)
     end
+    if (bc.swap_bcs == true) 
+        bc.is_dirichlet = !bc.is_dirichlet
+    end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
@@ -349,6 +375,9 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
         apply_sm_schwarz_coupling_dirichlet(model, bc)
     else
         apply_sm_schwarz_coupling_neumann(model, bc)
+    end
+    if (bc.swap_bcs == true) 
+        bc.is_dirichlet = !bc.is_dirichlet
     end
 end
 

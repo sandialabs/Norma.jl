@@ -56,6 +56,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     coupled_side_set_id::Int64
     is_dirichlet::Bool
     transfer_operator::Matrix{Float64}
+    swap_bcs::Bool
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
@@ -66,6 +67,7 @@ mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
     coupled_subsim::Simulation
     subsim::Simulation
     is_dirichlet::Bool
+    swap_bcs::Bool
 end
 
 mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
@@ -77,5 +79,6 @@ mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     subsim::Simulation
     coupled_side_set_id::Int64
     is_dirichlet::Bool
+    swap_bcs::Bool
     transfer_operator::Matrix{Float64}
 end

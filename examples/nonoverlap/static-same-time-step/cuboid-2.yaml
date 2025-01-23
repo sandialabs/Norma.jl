@@ -30,6 +30,8 @@ boundary conditions:
       source: cuboid-1.yaml
       source block: fine
       source side set: ssz+
+      default BC type: Neumann 
+      swap BC types: false 
 solver:
   type: Hessian minimizer
   step: full Newton
