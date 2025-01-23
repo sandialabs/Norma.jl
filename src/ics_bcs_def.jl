@@ -56,6 +56,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     coupled_side_set_id::Int64
     is_dirichlet::Bool
     transfer_operator::Matrix{Float64}
+    swap_bcs::Bool
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition

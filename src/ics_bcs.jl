@@ -86,6 +86,10 @@ function SMContactSchwarzBC(
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
     transfer_operator = Matrix{Float64}(undef, 0, 0)
+    swap_bcs = false 
+    if haskey(bc_params, "swap BC types") == true
+      swap_bcs = bc_params["swap BC types"]
+    end
     SMContactSchwarzBC(
         side_set_name,
         side_set_id,
@@ -97,6 +101,7 @@ function SMContactSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         transfer_operator,
+        swap_bcs
     )
 end
 
@@ -356,18 +361,23 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     if bc.is_dirichlet == true
+        #println("IKT DBC!")
         apply_sm_schwarz_contact_dirichlet(model, bc)
     else
+        #println("IKT NBC!")
         apply_sm_schwarz_contact_neumann(model, bc)
+    end
+    if (bc.swap_bcs == true) 
+        bc.is_dirichlet = !bc.is_dirichlet
     end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        println("IKT DBC!")
+        #println("IKT DBC!")
         apply_sm_schwarz_coupling_dirichlet(model, bc)
     else
-        println("IKT NBC!")
+        #println("IKT NBC!")
         apply_sm_schwarz_coupling_neumann(model, bc)
     end
     if (bc.swap_bcs == true) 
