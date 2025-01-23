@@ -366,15 +366,12 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
     if bc.is_dirichlet == true
         println("IKT DBC!")
         apply_sm_schwarz_coupling_dirichlet(model, bc)
-        if bc.swap_bcs == true
-            bc.is_dirichlet = false
-        end
     else
         println("IKT NBC!")
         apply_sm_schwarz_coupling_neumann(model, bc)
-        if bc.swap_bcs == true
-            bc.is_dirichlet = true
-        end
+    end
+    if (bc.swap_bcs == true) 
+        bc.is_dirichlet = !bc.is_dirichlet
     end
 end
 
