@@ -56,6 +56,8 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     coupled_side_set_id::Int64
     is_dirichlet::Bool
     transfer_operator::Matrix{Float64}
+    rotation_matrix::Matrix{Float64}
+    active_contact::Bool
     swap_bcs::Bool
 end
 

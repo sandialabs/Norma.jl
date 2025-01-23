@@ -86,6 +86,8 @@ function SMContactSchwarzBC(
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
     transfer_operator = Matrix{Float64}(undef, 0, 0)
+    rotation_matrix = I(3)
+    active_contact = false
     swap_bcs = false 
     if haskey(bc_params, "swap BC types") == true
       swap_bcs = bc_params["swap BC types"]
@@ -101,6 +103,8 @@ function SMContactSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         transfer_operator,
+        rotation_matrix,
+        active_contact,
         swap_bcs
     )
 end
@@ -639,6 +643,23 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         point = model.current[:, node_index]
         new_point, ξ, _, closest_face_node_indices, closest_normal, _ =
             project_point_to_side_set(point, bc.coupled_subsim.model, bc.coupled_side_set_id)
+
+        # The local basis comes from the closest_normal:
+        axis = -closest_normal / norm(-closest_normal)
+
+        e1 = [1.0, 0.0, 0.0]
+        w = cross(axis, e1)
+        s = norm(w)
+        if (s ≈ 0.0)
+            bc.rotation_matrix = I(3)
+        else
+            θ = asin(s)
+            m = w / s
+            rv = θ * m
+            # Rotation is converted via the psuedo vector to rotation matrix
+            bc.rotation_matrix = MiniTensor.rt_from_rv(rv)
+        end
+
         model.current[:, node_index] = new_point
         num_nodes = length(closest_face_node_indices)
         element_type = get_element_type(2, num_nodes)
@@ -657,6 +678,8 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         )
         dof_index = [3 * node_index - 2]
         model.free_dofs[dof_index] .= false
+        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] = bc.rotation_matrix
     end
 end
 
@@ -963,6 +986,9 @@ function pair_bc(name::String, bc::ContactSchwarzBoundaryCondition)
     for coupled_bc ∈ coupled_bcs
         if is_coupled_to_current(name, coupled_bc) == true
             coupled_bc.is_dirichlet = !bc.is_dirichlet
+            if coupled_bc.is_dirichlet == false
+                coupled_model.inclined_support = false
+            end
         end
     end
 end
