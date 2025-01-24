@@ -579,23 +579,25 @@ function backtrack_line_search(
 end
 
 function compute_step(
-    _::QuasiStatic,
+    integrator::QuasiStatic,
     model::SolidMechanics,
     solver::HessianMinimizer,
     _::NewtonStep,
 )
     free = model.free_dofs
-    return -solver.hessian[free, free] \ solver.gradient[free]
+    step = backtrack_line_search(integrator, solver, model, -solver.hessian \ solver.gradient)
+    return step[free]
 end
 
 function compute_step(
-    _::Newmark,
+    integrator::Newmark,
     model::SolidMechanics,
     solver::HessianMinimizer,
     _::NewtonStep,
 )
     free = model.free_dofs
-    return -solver.hessian[free, free] \ solver.gradient[free]
+    step = backtrack_line_search(integrator, solver, model, -solver.hessian \ solver.gradient)
+    return step[free]
 end
 
 function compute_step(
