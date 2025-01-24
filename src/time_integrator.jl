@@ -239,6 +239,10 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     if model.failed == true
         error("The finite element model has failed to initialize")
     end
+    if model.inclined_support == true
+        external_force = model.global_transform * external_force
+        internal_force = model.global_transform * internal_force
+    end
     inertial_force = external_force - internal_force
     kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy

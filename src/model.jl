@@ -462,20 +462,6 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         lumped_mass = zeros(num_dof)
     end
 
-    if model.inclined_support == true
-        # Data for inclined DBCs
-        inclined_support_node_indices = Vector{Int64}()
-        inclined_support_bc_indices = Vector{Int64}()
-        for (bc_idx, bc) in enumerate(model.boundary_conditions)
-            if isa(bc, SMDirichletInclined)
-                append!(inclined_support_node_indices, bc.node_set_node_indices)
-                for _ in bc.node_set_node_indices
-                    push!(inclined_support_bc_indices, bc_idx)
-                end
-            end
-        end
-    end
-
     for blk_index ∈ 1:num_blks
         material = materials[blk_index]
         if typeof(integrator) == Newmark || typeof(integrator) == CentralDifference
