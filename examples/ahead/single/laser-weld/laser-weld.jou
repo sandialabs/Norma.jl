@@ -246,7 +246,7 @@ block 10 volume 2 3 5 6 1 4 7
 #{ratioSizeCoarseFine = 2}
 #{sizeElementFine = (sizeElementCoarse) / (ratioSizeCoarseFine)}
 ##{ratioSizeCoarseMedium = 3} #IKT 11/5/2024: this was orig resolution
-#{ratioSizeCoarseMedium = 1 
+#{ratioSizeCoarseMedium = 1}
 #{sizeElementMedium = (sizeElementCoarse) / (ratioSizeCoarseMedium)}
 
 
@@ -262,9 +262,8 @@ refine surface 29 39 numsplit 1 depth 1
 
 mesh volume 4 6
 
-refine surface 23 26 numsplit 1 depth 1
-
 mesh volume 1 2 5
+
 
 nodeset 1 surface 30 37 26 8 20 41 47
 nodeset 1 name "surface_symmetry"
@@ -412,3 +411,4 @@ sideset 1 surface 2
 sideset 1 name "sideset_negative_y" 
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
+
