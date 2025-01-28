@@ -494,6 +494,8 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
         refe_filename = sim_id_string * "refe" * ".csv"
         writedlm_nodal_array(refe_filename, model.reference)
     end
+    free_dofs_filename = sim_id_string * "free_dofs" * index_string * ".csv"
+    writedlm(free_dofs_filename, model.free_dofs)
     curr_filename = sim_id_string * "curr" * index_string * ".csv"
     writedlm_nodal_array(curr_filename, model.current)
     disp_filename = sim_id_string * "disp" * index_string * ".csv"
@@ -512,7 +514,7 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
     end
 end
 
-function write_sideset_step_csv(params::Dict{Any,Any},integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
+function write_sideset_step_csv(params::Dict{String,Any},integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
   stop = integrator.stop
   index_string = "-" * string(stop, pad = 4)
   sim_id_string = string(sim_id, pad = 2) * "-"
@@ -522,20 +524,30 @@ function write_sideset_step_csv(params::Dict{Any,Any},integrator::DynamicTimeInt
   for bc ∈ model.boundary_conditions
       if (typeof(bc) == SMDirichletBC)
         node_set_name = bc.node_set_name 
-        curr_filename = sim_id_string * node_set_name * "curr" * index_string * ".csv"
-        disp_filename = sim_id_string * node_set_name * "disp" * index_string * ".csv"
-        velo_filename = sim_id_string * node_set_name * "velo" * index_string * ".csv"
-        acce_filename = sim_id_string * node_set_name * "acce" * index_string * ".csv"
+        offset = bc.offset
+        if offset == 1
+          offset_name = "x"
+        end
+        if offset == 2
+          offset_name = "y"
+        end
+        if offset == 3
+          offset_name = "z"
+        end
+        curr_filename = sim_id_string * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
+        disp_filename = sim_id_string * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
+        velo_filename = sim_id_string * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
+        acce_filename = sim_id_string * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
         writedlm(curr_filename, model.current[bc.offset,bc.node_set_node_indices])
         writedlm(velo_filename, model.velocity[bc.offset,bc.node_set_node_indices])
         writedlm(acce_filename, model.acceleration[bc.offset,bc.node_set_node_indices])
         writedlm(disp_filename, model.current[bc.offset,bc.node_set_node_indices] - model.reference[bc.offset,bc.node_set_node_indices])
       elseif (typeof(bc) == SMOverlapSchwarzBC)
         side_set_name = bc.side_set_name 
-        curr_filename = sim_id_string * side_set_name * "curr" * index_string * ".csv"
-        disp_filename = sim_id_string * side_set_name * "disp" * index_string * ".csv"
-        velo_filename = sim_id_string * side_set_name * "velo" * index_string * ".csv"
-        acce_filename = sim_id_string * side_set_name * "acce" * index_string * ".csv"
+        curr_filename = sim_id_string * side_set_name * "-curr" * index_string * ".csv"
+        disp_filename = sim_id_string * side_set_name * "-disp" * index_string * ".csv"
+        velo_filename = sim_id_string * side_set_name * "-velo" * index_string * ".csv"
+        acce_filename = sim_id_string * side_set_name * "-acce" * index_string * ".csv"
         writedlm_nodal_array(curr_filename, model.current[:,bc.side_set_node_indices])
         writedlm_nodal_array(velo_filename, model.velocity[:,bc.side_set_node_indices])
         writedlm_nodal_array(acce_filename, model.acceleration[:,bc.side_set_node_indices])
@@ -543,6 +555,7 @@ function write_sideset_step_csv(params::Dict{Any,Any},integrator::DynamicTimeInt
       end
   end
 end
+
 
 function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, sim_id::Integer)
     stop = integrator.stop
