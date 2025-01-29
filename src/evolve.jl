@@ -34,8 +34,13 @@ function evolve(sim::MultiDomainSimulation)
         if stop_evolve(sim) == true
             break
         end
+        start_runtimer(sim)
         watch_keep_time(sim)
         advance(sim)
+        end_runtimer(sim)
+        if sim.failed == true
+            break
+        end
         write_step(sim)
     end
     finalize_writing(sim)
@@ -235,4 +240,24 @@ end
 function regress_time(sim::SingleDomainSimulation)
     sim.integrator.time = sim.model.time = sim.integrator.prev_time
     sim.integrator.stop -= 1
+end
+
+function start_runtimer(sim::SingleDomainSimulation)
+    sim.integrator.runtime_step = time()
+end
+
+function start_runtimer(sim::MultiDomainSimulation)
+    for subsim ∈ sim.subsims
+        subsim.integrator.runtime_step = time()
+    end
+end
+
+function end_runtimer(sim::SingleDomainSimulation)
+    sim.integrator.runtime_step = time() - sim.integrator.runtime_step
+end
+
+function end_runtimer(sim::MultiDomainSimulation)
+    for subsim ∈ sim.subsims
+        subsim.integrator.runtime_step = time() - subsim.integrator.runtime_step
+    end
 end
