@@ -221,7 +221,19 @@ function apply_bc(model::LinearOpInfRom, bc::SMDirichletBC)
         disp_val = model.fom_model.current[bc.offset,node_index] - model.fom_model.reference[bc.offset, node_index]
         push!(bc_vector,disp_val)
     end
-    op_name = "B_"*bc.node_set_name 
+
+    offset = bc.offset
+    if offset == 1
+      offset_name = "x"
+    end
+    if offset == 2
+      offset_name = "y"
+    end
+    if offset == 3
+      offset_name = "z"
+    end
+
+    op_name = "B_"*bc.node_set_name  * "-" * offset_name
     bc_operator = model.opinf_rom[op_name] 
     # SM Dirichlet BC are only defined on a single x,y,z
     model.reduced_boundary_forcing[:] += bc_operator[1,:,:] * bc_vector

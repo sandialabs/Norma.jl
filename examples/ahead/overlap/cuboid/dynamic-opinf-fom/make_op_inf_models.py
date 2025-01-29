@@ -20,13 +20,13 @@ if __name__ == "__main__":
     displacement_snapshots[free_dofs[:,:]==False] = 0.
     
     #Get sideset snapshots
-    sidesets = ["nsx-","nsy-","ssz-","nsz+"]
+    sidesets = ["nsx--x","nsy--y","ssz-","nsz+-z"]
     sideset_snapshots = normaopinf.readers.load_sideset_displacement_csv_files(solution_directory=cur_dir,sidesets=sidesets,solution_id=solution_id,skip_files=1)
     
-    
+    tolerance = 1.e-5
     # Create bases for sidesets 
-    my_energy_truncater = romtools.vector_space.utils.EnergyBasedTruncater(1. - 1.e-5)
-    
+    my_energy_truncater = romtools.vector_space.utils.EnergyBasedTruncater(1. - tolerance)
+
     ss_tspace = {}
     reduced_sideset_snapshots = {}
     for sideset in sidesets:
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     uhat = romtools.rom.optimal_l2_projection(displacement_snapshots,trial_space)
     u_ddots = normaopinf.calculus.d2dx2(displacement_snapshots,times)
     uhat_ddots = romtools.rom.optimal_l2_projection(u_ddots*1.,trial_space)
-    l2solver = opinf.lstsq.L2Solver(regularizer=1e-8)
+    l2solver = opinf.lstsq.L2Solver(regularizer=5e-3)
     opinf_model = opinf.models.ContinuousModel("AB",solver=l2solver)
     
     opinf_model.fit(states=uhat, ddts=uhat_ddots,inputs=reduced_stacked_sideset_snapshots)
