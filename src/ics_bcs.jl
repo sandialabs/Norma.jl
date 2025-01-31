@@ -381,9 +381,6 @@ function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     else
         apply_sm_schwarz_contact_neumann(model, bc)
     end
-    if (bc.swap_bcs == true)
-        bc.is_dirichlet = !bc.is_dirichlet
-    end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
@@ -391,9 +388,6 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
         apply_sm_schwarz_coupling_dirichlet(model, bc)
     else
         apply_sm_schwarz_coupling_neumann(model, bc)
-    end
-    if (bc.swap_bcs == true)
-        bc.is_dirichlet = !bc.is_dirichlet
     end
 end
 
