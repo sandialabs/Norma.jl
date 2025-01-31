@@ -17,7 +17,7 @@ function create_step(solver_params::Dict{String,Any})
     end
 end
 
-function HessianMinimizer(params::Dict{String,Any},model::Any)
+function HessianMinimizer(params::Dict{String,Any}, model::Any)
     solver_params = params["solver"]
     num_dof, = size(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
@@ -167,11 +167,11 @@ function SteepestDescentStep(params::Dict{String,Any})
     SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Dict{String,Any},model::Any)
+function create_solver(params::Dict{String,Any}, model::Any)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
-        return HessianMinimizer(params,model)
+        return HessianMinimizer(params, model)
     elseif solver_name == "explicit solver"
         return ExplicitSolver(params)
     elseif solver_name == "steepest descent"
@@ -233,27 +233,27 @@ function copy_solution_source_targets(
     velocity = integrator.velocity
     acceleration = integrator.acceleration
     # Clean this up; maybe make a free dofs 2d array or move to a basis in matrix format
-    for i = 1 : size(model.fom_model.current)[2]
-      x_dof_index = 3 * (i - 1) + 1 
-      y_dof_index = 3 * (i - 1) + 2 
-      z_dof_index = 3 * (i - 1) + 3 
-      if model.fom_model.free_dofs[x_dof_index]
-        model.fom_model.current[1,i] = model.basis[1,i,:]'displacement + model.fom_model.reference[1,i]
-        model.fom_model.velocity[1,i] = model.basis[1,i,:]'velocity
-        model.fom_model.acceleration[1,i] = model.basis[1,i,:]'acceleration
-      end  
+    for i = 1:size(model.fom_model.current)[2]
+        x_dof_index = 3 * (i - 1) + 1
+        y_dof_index = 3 * (i - 1) + 2
+        z_dof_index = 3 * (i - 1) + 3
+        if model.fom_model.free_dofs[x_dof_index]
+            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
+            model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
+        end
 
-      if model.fom_model.free_dofs[y_dof_index]
-        model.fom_model.current[2,i] = model.basis[2,i,:]'displacement + model.fom_model.reference[2,i]
-        model.fom_model.velocity[2,i] = model.basis[2,i,:]'velocity
-        model.fom_model.acceleration[2,i] = model.basis[2,i,:]'acceleration
-      end
- 
-      if model.fom_model.free_dofs[z_dof_index]
-        model.fom_model.current[3,i] = model.basis[3,i,:]'displacement + model.fom_model.reference[3,i]
-        model.fom_model.velocity[3,i] = model.basis[3,i,:]'velocity
-        model.fom_model.acceleration[3,i] = model.basis[3,i,:]'acceleration
-      end
+        if model.fom_model.free_dofs[y_dof_index]
+            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
+            model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
+        end
+
+        if model.fom_model.free_dofs[z_dof_index]
+            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
+            model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
+        end
     end
 
 end
@@ -340,12 +340,12 @@ function copy_solution_source_targets(
         nodal_displacement = model.current[:, node] - model.reference[:, node]
         nodal_velocity = model.velocity[:, node]
         nodal_acceleration = model.acceleration[:, node]
-        
+
         if model.inclined_support == true
-            base = 3*(node-1) # Block index in global stiffness
+            base = 3 * (node - 1) # Block index in global stiffness
             local_transform = model.global_transform[base+1:base+3, base+1:base+3]
             nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity  = local_transform * nodal_velocity
+            nodal_velocity = local_transform * nodal_velocity
             nodal_acceleration = local_transform * nodal_acceleration
         end
         integrator.displacement[3*node-2:3*node] = nodal_displacement
@@ -370,11 +370,11 @@ function copy_solution_source_targets(
         nodal_velocity = velocity[3*node-2:3*node]
         nodal_acceleration = acceleration[3*node-2:3*node]
         if model.inclined_support == true
-            base = 3*(node-1) # Block index in global stiffness
+            base = 3 * (node - 1) # Block index in global stiffness
             # Local (integrator) to global (model), use transpose
             local_transform = model.global_transform[base+1:base+3, base+1:base+3]'
             nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity  = local_transform * nodal_velocity
+            nodal_velocity = local_transform * nodal_velocity
             nodal_acceleration = local_transform * nodal_acceleration
         end
         model.current[:, node] = model.reference[:, node] + nodal_displacement
@@ -398,11 +398,11 @@ function copy_solution_source_targets(
         nodal_velocity = velocity[3*node-2:3*node]
         nodal_acceleration = acceleration[3*node-2:3*node]
         if model.inclined_support == true
-            base = 3*(node-1) # Block index in global stiffness
+            base = 3 * (node - 1) # Block index in global stiffness
             # Local (integrator) to global (model), use transpose
             local_transform = model.global_transform[base+1:base+3, base+1:base+3]'
             nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity  = local_transform * nodal_velocity
+            nodal_velocity = local_transform * nodal_velocity
             nodal_acceleration = local_transform * nodal_acceleration
         end
         model.current[:, node] = model.reference[:, node] + nodal_displacement
@@ -422,11 +422,11 @@ function copy_solution_source_targets(
         nodal_velocity = model.velocity[:, node]
         nodal_acceleration = model.acceleration[:, node]
         if model.inclined_support == true
-            base = 3*(node-1) # Block index in global stiffness
+            base = 3 * (node - 1) # Block index in global stiffness
             # Global (model) to local (integrator)
             local_transform = model.global_transform[base+1:base+3, base+1:base+3]
             nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity  = local_transform * nodal_velocity
+            nodal_velocity = local_transform * nodal_velocity
             nodal_acceleration = local_transform * nodal_acceleration
         end
         integrator.displacement[3*node-2:3*node] = nodal_displacement
@@ -439,7 +439,7 @@ end
 
 ### Move to model?  
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
-    beta  = integrator.β
+    beta = integrator.β
     gamma = integrator.γ
     dt = integrator.time_step
 
@@ -452,13 +452,13 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     ##M uddot + Ku = f
 
     num_dof, = size(model.free_dofs)
-    I = Matrix{Float64}(LinearAlgebra.I, num_dof,num_dof)
-    LHS = I / (dt*dt*beta)  + Matrix{Float64}(model.opinf_rom["K"])
-    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
+    I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
+    LHS = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
+    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
 
-    residual = RHS - LHS * solver.solution 
-    solver.hessian[:,:] = LHS
-    solver.gradient[:] = -residual 
+    residual = RHS - LHS * solver.solution
+    solver.hessian[:, :] = LHS
+    solver.gradient[:] = -residual
 end
 
 
@@ -476,7 +476,7 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     else
         solver.gradient = internal_force - external_force
         solver.hessian = stiffness_matrix
-    end 
+    end
 end
 
 
@@ -604,7 +604,7 @@ function compute_step(
     solver::HessianMinimizer,
     _::NewtonStep,
 )
-    return -solver.hessian\ solver.gradient
+    return -solver.hessian \ solver.gradient
 end
 
 
