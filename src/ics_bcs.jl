@@ -893,17 +893,14 @@ function create_bcs(params::Dict{String,Any})
 end
 
 function apply_bcs(model::SolidMechanics)
-    _, num_nodes = size(model.reference)
-    model.boundary_force = zeros(3 * num_nodes)
-    model.free_dofs = trues(3 * num_nodes)
+    model.boundary_force .= 0.0
+    model.free_dofs .= true
     for boundary_condition ∈ model.boundary_conditions
         apply_bc(model, boundary_condition)
     end
 end
 
 function apply_bcs(model::LinearOpInfRom)
-
-    num_modes_ = size(model.reduced_state)
     model.reduced_boundary_forcing[:] .= 0.0
     for boundary_condition ∈ model.boundary_conditions
         apply_bc(model, boundary_condition)
