@@ -42,7 +42,7 @@ function create_bcs(sim::SingleDomainSimulation)
         end
     end
     sim.model.boundary_conditions = boundary_conditions
-    
+
 end
 
 function create_bcs(sim::MultiDomainSimulation)
@@ -63,8 +63,8 @@ function SingleDomainSimulation(params::Dict{String,Any})
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
     model = create_model(params)
-    integrator = create_time_integrator(params,model)
-    solver = create_solver(params,model)
+    integrator = create_time_integrator(params, model)
+    solver = create_solver(params, model)
     failed = false
     return SingleDomainSimulation(name, params, integrator, solver, model, failed)
 end
