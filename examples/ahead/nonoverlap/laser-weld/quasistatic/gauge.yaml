@@ -21,12 +21,10 @@ boundary conditions:
       source: holder-0.yaml
       source block: holder_0
       source side set: sideset_positive_y
-      search tolerance: 5.0e-02
     - side set: sideset_positive_y
       source: holder-1.yaml
       source block: holder_1
       source side set: sideset_negative_y
-      search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer
   step: full Newton
