@@ -217,7 +217,6 @@ function apply_bc(model::LinearOpInfRom, bc::SMDirichletBC)
     apply_bc(model.fom_model, bc)
     bc_vector = zeros(0)
     for node_index ∈ bc.node_set_node_indices
-        dof_index = 3 * (node_index - 1) + bc.offset
         disp_val = model.fom_model.current[bc.offset, node_index] - model.fom_model.reference[bc.offset, node_index]
         push!(bc_vector, disp_val)
     end
