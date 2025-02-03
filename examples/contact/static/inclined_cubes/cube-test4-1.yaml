@@ -19,18 +19,18 @@ initial conditions:
   displacement:
     - node set: nsall
       component: x
-      function: "0.38268343236508984 * 0.1 * (1.0 - abs(t))"
+      function: "6.123233995736766e-17 * 0.1 * (1.0 - abs(t))"
     - node set: nsall
       component: y
-      function: "0.9238795325112867 * 0.1 * (1.0 - abs(t))"
+      function: "1.0 * 0.1 * (1.0 - abs(t))"
 boundary conditions:
   Dirichlet:
     - node set: nsx-
       component: x
-      function: "0.38268343236508984 * 0.1 * (1.0 - abs(t))"
+      function: "6.123233995736766e-17 * 0.1 * (1.0 - abs(t))"
     - node set: nsx-
       component: y
-      function: "0.9238795325112867 * 0.1 * (1.0 - abs(t))"
+      function: "1.0 * 0.1 * (1.0 - abs(t))"
     - node set: nsz-
       component: z
       function: "0.0"
