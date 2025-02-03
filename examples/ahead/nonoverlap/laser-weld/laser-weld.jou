@@ -277,7 +277,11 @@ export mesh "holder-1.g" dimension 3 block 7 overwrite
 reset
 import mesh geometry "holder-0.g" 
 nodeset 1 surface 6
-nodeset 1 name "nodeset_negative_y" 
+nodeset 1 name "nodeset_negative_y"
+nodeset 2 surface 2 
+nodeset 2 name "nodeset_negative_x"
+nodeset 3 surface 4 
+nodeset 3 name "nodeset_negative_z" 
 sideset 1 surface 6
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 3
@@ -289,6 +293,10 @@ reset
 import mesh geometry "holder-1.g" 
 nodeset 1 surface 6
 nodeset 1 name "nodeset_positive_y" 
+nodeset 2 surface 3
+nodeset 2 name "nodeset_negative_x"
+nodeset 3 surface 4 
+nodeset 3 name "nodeset_negative_z" 
 sideset 1 surface 2 
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 6
@@ -297,12 +305,17 @@ block all element type HEX8
 export mesh "holder-1.g" block all overwrite
 
 reset
-import mesh geometry "gauge.g" 
+import mesh geometry "gauge.g"
+nodeset 1 surface 6 10 14 
+nodeset 1 name "nodeset_negative_x"
+nodeset 2 surface 2 9 13
+nodeset 2 name "nodeset_negative_z"  
 sideset 1 surface 17 
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 1 
 sideset 2 name "sideset_positive_y" 
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
+
 
 

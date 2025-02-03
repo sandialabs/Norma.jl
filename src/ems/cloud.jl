@@ -245,7 +245,7 @@ function compute_energy_force!(potential::SymmetricSethHill, points::Matrix{Floa
             γ = r / h
             κ = γ^m
             α = κ - 1.0
-            β = 1.0 / κ - 1.0                
+            β = 1.0 / κ - 1.0
             energy += (0.5 * k / m / m) * (α * α + β * β)
             f_ij = (-k / m) * (α * κ / γ - β / κ / γ) * (r_ij / r)
             force[:, i] .-= f_ij
@@ -382,9 +382,9 @@ function write_points_vtk(filename::String, points::Matrix{Float64})
     if size(points, 1) != 3
         error("The input matrix must have size 3xN, where N is the number of points.")
     end
-    
+
     N = size(points, 2)  # Number of points
-    
+
     # Open the file for writing
     open(filename, "w") do io
         # Write VTK header
@@ -393,7 +393,7 @@ function write_points_vtk(filename::String, points::Matrix{Float64})
         println(io, "ASCII")
         println(io, "DATASET POLYDATA")
         println(io, "POINTS $N float")
-        
+
         # Write point data
         for i in 1:N
             println(io, join(points[:, i], " "))

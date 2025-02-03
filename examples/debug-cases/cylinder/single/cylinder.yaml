@@ -1,0 +1,41 @@
+type: single
+input mesh file: cylinder.g
+output mesh file: cylinder.e
+Exodus output interval: 1
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      fine: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 0.1
+  time step: 0.01
+boundary conditions:
+  Dirichlet:
+    - node set: -X
+      component: x
+      function: "0.0"
+    - node set: -Y
+      component: y
+      function: "0.0"
+    - node set: -Z
+      component: z
+      function: "0.0"
+    - node set: +Z
+      component: z
+      function: "0.64 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
