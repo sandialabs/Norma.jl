@@ -56,7 +56,7 @@ using YAML
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-04
 end
 
-@testset "schwarz-contact-inclined-static-cubes-hex8" begin
+@testset "schwarz-contact-inclined-static-cubes" begin
     
     model_fine = nothing
     model_coarse = nothing

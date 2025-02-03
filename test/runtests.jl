@@ -24,7 +24,7 @@ include("tet10-static-solid-cube.jl")
 include("schwarz-overlap-static-cuboid-hex8.jl")
 include("schwarz-nonoverlap-static-cuboid-hex8.jl")
 include("transfer-operators.jl")
-include("schwarz-contact-static-cubes-hex8.jl")
+include("schwarz-contact-static-cubes.jl")
 include("solid-cube-inclined-support.jl")
 include("opinf-schwarz-overlap-cuboid-hex8.jl")
 
