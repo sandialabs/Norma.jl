@@ -15,16 +15,8 @@ function LinearOpInfRom(params::Dict{String,Any})
     opinf_model_file = params["model"]["model-file"]
     opinf_model = NPZ.npzread(opinf_model_file)
     basis = opinf_model["basis"]
-    num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
+    _, _, reduced_dim = size(basis)
     num_dofs = reduced_dim
-    #=
-    coords = read_coordinates(fom_model.mesh)
-    num_nodes = Exodus.num_nodes(fom_model.mesh.init)
-    if (num_nodes_basis != num_nodes)
-      throw("Basis size incompatible with mesh")
-    end
-    =#
-
     time = 0.0
     failed = false
     null_vec = zeros(num_dofs)
@@ -45,11 +37,9 @@ function LinearOpInfRom(params::Dict{String,Any})
         failed,
         fom_model,
         reference,
-        false 
+        false
     )
 end
-
-
 
 function SolidMechanics(params::Dict{String,Any})
     input_mesh = params["input_mesh"]
@@ -507,7 +497,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dxdξ = dNdξₚ * elem_cur_pos'
                 if det(dxdξ) ≤ 0.0
                     model.failed = true
-                    @warn "evaluation of model has failed with a non-positive Jacobian"
+                    error("Evaluation of model has failed with a non-positive Jacobian!")
                     if typeof(integrator) == QuasiStatic
                         return 0.0, zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof)
                     elseif typeof(integrator) == Newmark

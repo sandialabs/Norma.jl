@@ -110,6 +110,7 @@ function schwarz(sim::MultiDomainSimulation)
     save_schwarz_solutions(sim)
     resize_histories(sim)
     set_subcycle_times(sim)
+    swap_swappable_bcs(sim)
     is_schwarz = true
     while true
         println("Schwarz iteration=", iteration_number)
@@ -186,6 +187,22 @@ function set_subcycle_times(sim::MultiDomainSimulation)
         subsim.integrator.initial_time = initial_time
         subsim.integrator.time = initial_time
         subsim.integrator.final_time = final_time
+    end
+end
+
+function swap_swappable_bcs(sim::MultiDomainSimulation)
+    for subsim ∈ sim.subsims
+        swap_swappable_bcs(subsim)
+    end
+end
+
+function swap_swappable_bcs(sim::SingleDomainSimulation)
+    for bc ∈ sim.model.boundary_conditions
+        if typeof(bc) == ContactSchwarzBoundaryCondition || typeof(bc) == CouplingSchwarzBoundaryCondition
+            if (bc.swap_bcs == true)
+                bc.is_dirichlet = !bc.is_dirichlet
+            end
+        end
     end
 end
 
