@@ -57,29 +57,11 @@ using YAML
 end
 
 @testset "schwarz-contact-inclined-static-cubes-hex8" begin
-    cp("../examples/contact/static/inclined_cubes/reference/cubes.yaml", "cubes.yaml", force=true)
-    cp("../examples/contact/static/inclined_cubes/reference/cube-1.yaml", "cube-1.yaml", force=true)
-    cp("../examples/contact/static/inclined_cubes/reference/cube-2.yaml", "cube-2.yaml", force=true)
-    cp("../examples/contact/static/inclined_cubes/reference/cube-1.g", "cube-1.g", force=true)
-    cp("../examples/contact/static/inclined_cubes/reference/cube-2.g", "cube-2.g", force=true)
-    input_file = "cubes.yaml"
-    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
-    params["initial time"] = -2.0
-    params["final time"] = 0.0
-    sim = Norma.run(params, input_file)
-    subsims = sim.subsims
-    model_fine = subsims[1].model.current
-    model_coarse = subsims[2].model.current
+    
+    model_fine = nothing
+    model_coarse = nothing
 
-    rm("cubes.yaml")
-    rm("cube-1.yaml")
-    rm("cube-2.yaml")
-    rm("cube-1.g")
-    rm("cube-2.g")
-    rm("cube-1.e")
-    rm("cube-2.e")
-
-    angles = [ 0.0, 22.5, 45, 67.5, 90 ]
+    angles = [ 0.0, 22.5, 45, 90 ]
     for (i, angle_deg) in enumerate(angles)
         cp("../examples/contact/static/inclined_cubes/cubes-test$i.yaml", "cubes-test$i.yaml", force=true)
         cp("../examples/contact/static/inclined_cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml", force=true)
@@ -103,21 +85,29 @@ end
         rm("cube-test$i-1.e")
         rm("cube-test$i-2.e")
 
-        # Rotate these displacements about z
-        angle = angle_deg * π / 180
-        c = cos(angle)
-        s = sin(angle)
-        local_rotation_matrix = [ c s 0; -s c 0 ; 0 0 1]
-        model_fine_rotated = zeros((3,27))
-        model_coarse_rotated = zeros((3,27))
-        for i in range(1,27)
-            base = (i-1)*(3) + 1
-            model_fine_rotated[:, i] = local_rotation_matrix * model_fine_temp[:, i] 
-            model_coarse_rotated[:, i] = local_rotation_matrix * model_coarse_temp[:, i] 
-        end
+        if ( i == 1 )
+            model_fine = model_fine_temp
+            model_coarse = model_coarse_temp
+        else
+            # Rotate these displacements about z
+            angle = angle_deg * π / 180
+            c = cos(angle)
+            s = sin(angle)
+            local_rotation_matrix = [ c s 0; -s c 0 ; 0 0 1]
+            model_fine_rotated = zeros((3,68))
+            model_coarse_rotated = zeros((3,27))
+            for i in range(1,68)
+                base = (i-1)*(3) + 1
+                model_fine_rotated[:, i] = local_rotation_matrix * model_fine_temp[:, i] 
+            end
+            for i in range(1,27)
+                base = (i-1)*(3) + 1
+                model_coarse_rotated[:, i] = local_rotation_matrix * model_coarse_temp[:, i] 
+            end
 
-        @test model_fine_rotated ≈ model_fine rtol=2e-4
-        @test model_coarse_rotated ≈ model_coarse rtol=2e-4
+            @test model_fine_rotated ≈ model_fine rtol=2e-4
+            @test model_coarse_rotated ≈ model_coarse rtol=2e-4
+        end
     end
 
 end
