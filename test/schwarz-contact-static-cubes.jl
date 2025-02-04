@@ -56,18 +56,18 @@ using YAML
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-04
 end
 
-@testset "schwarz-contact-inclined-static-cubes-hex8" begin
+@testset "schwarz-contact-inclined-static-cubes" begin
     
     model_fine = nothing
     model_coarse = nothing
 
     angles = [ 0.0, 22.5, 45, 90 ]
     for (i, angle_deg) in enumerate(angles)
-        cp("../examples/contact/static/inclined_cubes/cubes-test$i.yaml", "cubes-test$i.yaml", force=true)
-        cp("../examples/contact/static/inclined_cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml", force=true)
-        cp("../examples/contact/static/inclined_cubes/cube-test$i-2.yaml", "cube-test$i-2.yaml", force=true)
-        cp("../examples/contact/static/inclined_cubes/cube-test$i-1.g", "cube-test$i-1.g", force=true)
-        cp("../examples/contact/static/inclined_cubes/cube-test$i-2.g", "cube-test$i-2.g", force=true)
+        cp("../examples/contact/static/inclined-cubes/cubes-test$i.yaml", "cubes-test$i.yaml", force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml", force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-2.yaml", "cube-test$i-2.yaml", force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-1.g", "cube-test$i-1.g", force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-2.g", "cube-test$i-2.g", force=true)
         input_file = "cubes-test$i.yaml"
         params = YAML.load_file(input_file; dicttype=Dict{String,Any})
         params["initial time"] = -2.0

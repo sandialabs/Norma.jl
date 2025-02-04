@@ -1,6 +1,6 @@
 type: single
-input mesh file: cube-2.g
-output mesh file: cube-2.e
+input mesh file: cube-test1-2.g
+output mesh file: cube-test1-2.e
 model:
   type: solid mechanics
   material:
@@ -12,31 +12,28 @@ model:
       Poisson's ratio: 0.25
       density: 1000.0
 time integrator:
-  type: quasi static
-  time step: 0.5
-  initial equilibrium: true
+  type: Newmark
+  β: 0.25
+  γ: 0.5
 initial conditions:
   displacement:
     - node set: nsall
       component: x
-      function: "0.8660254037844387 * 0.1 * (abs(t) - 1.0)"
+      function: "1.0e-04 * 1.0"
     - node set: nsall
       component: y
-      function: "0.5 * 0.1 * (abs(t) - 1.0)"      
-boundary conditions:
-  Dirichlet:
-    - node set: nsx+
+      function: "1.0e-04 * 0.0"
+  velocity:
+    - node set: nsall
       component: x
-      function: "0.8660254037844387 * 0.1 * (abs(t) - 1.0)"
-    - node set: nsy-
+      function: "-100.0 * 1.0"
+    - node set: nsall
       component: y
-      function: "0.5 * 0.1 * (abs(t) - 1.0)"
-    - node set: nsz-
-      component: z
-      function: "0.0"
+      function: "-100.0 * 0.0"
+boundary conditions:
   Schwarz contact:
     - side set: ssx-
-      source: "cube-1.yaml"
+      source: "cube-test1-1.yaml"
       source block: fine
       source side set: ssx+
 solver:
