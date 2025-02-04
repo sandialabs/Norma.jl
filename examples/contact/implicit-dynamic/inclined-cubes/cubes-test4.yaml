@@ -2,8 +2,8 @@ type: multi
 domains: ["cube-test4-1.yaml", "cube-test4-2.yaml"]
 Exodus output interval: 1
 CSV output interval: 0
-initial time: 0
-time step: 1e-4
+initial time: -1.e-4
+time step: 1.e-4
 final time: 3.0
 same time step for domains: true
 relaxation parameter: 1.0
