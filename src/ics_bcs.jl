@@ -678,8 +678,9 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
             model.acceleration[:, node_index],
             closest_normal,
         )
-        dof_index = [3 * node_index - 2]
-        model.free_dofs[dof_index] .= false
+        model.free_dofs[[3 * node_index - 2]] .= false
+        model.free_dofs[[3 * node_index - 1]] .= true
+        model.free_dofs[[3 * node_index]] .= true
         global_base = 3 * (node_index - 1) # Block index in global stiffness
         model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] = bc.rotation_matrix
     end
