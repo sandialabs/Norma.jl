@@ -93,7 +93,7 @@ function MultiDomainSimulation(params::Dict{String,Any})
         subparams["CSV output interval"] = csv_interval
         subsim = SingleDomainSimulation(subparams)
         if subsim.integrator.time_step ≠ time_step
-            same_step == false
+            same_step = false
         end
         params[domain_name] = subsim.params
         subsim_type =
