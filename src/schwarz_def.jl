@@ -19,6 +19,7 @@ mutable struct SolidSchwarzController <: SchwarzController
     time::Float64
     prev_time::Float64
     same_step::Bool
+    num_stops::Int64
     stop::Int64
     converged::Bool
     iteration_number::Int64

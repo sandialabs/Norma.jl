@@ -12,6 +12,10 @@ function SolidSchwarzController(params::Dict{String,Any})
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
+    println("Requested time step is ", time_step)
+    num_stops = ceil(Int64, (final_time - initial_time) / time_step) + 1
+    time_step = (final_time - initial_time) / (num_stops - 1)
+    println("Adjusted time step is ", time_step, " with ", num_stops, " stops")
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
     same_step = get(params, "same time step for domains", false)
@@ -60,6 +64,7 @@ function SolidSchwarzController(params::Dict{String,Any})
         time,
         prev_time,
         same_step,
+        num_stops,
         stop,
         converged,
         iteration_number,

@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "schwarz-overlap-static-cuboid-hex8-same-step" begin
+@testset "opinf-schwarz-overlap-static-cuboid-hex8-same-step" begin
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-1.yaml", "cuboid-1.yaml", force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-2.yaml", "cuboid-2.yaml", force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboids.yaml", "cuboids.yaml", force=true)
@@ -22,7 +22,6 @@
     rm("cuboid-1.e")
     rm("cuboid-2.e")
     rm("opinf-operator.npz")
-    print(model_coarse.reduced_state[1])
     @test model_coarse.reduced_state[1] ≈ 0.04508462384388636 rtol = 1.0e-06
     @test model_coarse.reduced_state[2] ≈ 0.0450846238438998 rtol = 1.0e-06
     @test model_coarse.reduced_state[3] ≈ 0.21766337487648266 rtol = 1.0e-06
