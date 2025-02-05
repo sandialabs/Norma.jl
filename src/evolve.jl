@@ -232,9 +232,13 @@ end
 
 function advance_time(sim::MultiDomainSimulation)
     sim.schwarz_controller.prev_time = sim.schwarz_controller.time
-    next_time = round(sim.schwarz_controller.time + sim.schwarz_controller.time_step, digits=12)
+    stop = sim.schwarz_controller.stop + 1
+    final_time = sim.schwarz_controller.final_time
+    initial_time = sim.schwarz_controller.initial_time
+    num_stops = sim.schwarz_controller.num_stops
+    next_time = (final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time
     sim.schwarz_controller.time = next_time
-    sim.schwarz_controller.stop += 1
+    sim.schwarz_controller.stop = stop
 end
 
 function regress_time(sim::SingleDomainSimulation)
