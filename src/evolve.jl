@@ -246,6 +246,17 @@ function regress_time(sim::SingleDomainSimulation)
     sim.integrator.stop -= 1
 end
 
+function regress_time(sim::MultiDomainSimulation)
+    sim.schwarz_controller.time = sim.schwarz_controller.prev_time
+    stop = sim.schwarz_controller.stop - 1
+    final_time = sim.schwarz_controller.final_time
+    initial_time = sim.schwarz_controller.initial_time
+    num_stops = sim.schwarz_controller.num_stops
+    prev_time = (final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time
+    sim.schwarz_controller.prev_time = prev_time
+    sim.schwarz_controller.stop = stop
+end
+
 function start_runtimer(sim::SingleDomainSimulation)
     sim.integrator.runtime_step = time()
 end
