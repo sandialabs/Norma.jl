@@ -4,7 +4,6 @@ Exodus output interval: 1
 initial time: 0.0
 final time: 0.1
 time step: 0.01
-same time step for domains: true
 minimum iterations: 1
 maximum iterations: 16
 relative tolerance: 1.0e-12
