@@ -76,7 +76,7 @@ function MultiDomainSimulation(params::Dict{String,Any})
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
-    same_step = get(params, "same time step for domains", false)
+    same_step = true
     exodus_interval = get(params, "Exodus output interval", 1)
     csv_interval = get(params, "CSV output interval", 0)
     sim_type = "none"
@@ -88,12 +88,13 @@ function MultiDomainSimulation(params::Dict{String,Any})
         subparams["name"] = domain_name
         subparams["time integrator"]["initial time"] = initial_time
         subparams["time integrator"]["final time"] = final_time
-        if same_step == true
-            subparams["time integrator"]["time step"] = time_step
-        end
+        subparams["time integrator"]["time step"] = time_step
         subparams["Exodus output interval"] = exodus_interval
         subparams["CSV output interval"] = csv_interval
         subsim = SingleDomainSimulation(subparams)
+        if subsim.integrator.time_step ≠ time_step
+            same_step == false
+        end
         params[domain_name] = subsim.params
         subsim_type =
             get_analysis_type(subsim.integrator) * " " * subparams["model"]["type"]
@@ -107,6 +108,7 @@ function MultiDomainSimulation(params::Dict{String,Any})
         subsim_index += 1
     end
     params["subdomains type"] = sim_type
+    params["same time step for domains"] = same_step
     schwarz_controller = create_schwarz_controller(params)
     failed = false
     sim = MultiDomainSimulation(

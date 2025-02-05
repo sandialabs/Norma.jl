@@ -5,7 +5,6 @@ CSV output interval: 0
 initial time: 0.0
 final time: 1.0
 time step: 0.1
-same time step for domains: true
 minimum iterations: 1
 maximum iterations: 16
 relative tolerance: 1.0e-12
