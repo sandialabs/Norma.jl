@@ -3,7 +3,80 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-import LinearAlgebra
+
+using LinearAlgebra
+using SparseArrays
+
+abstract type Solver end
+abstract type Minimizer <: Solver end
+abstract type Step end
+abstract type LineSearch end
+
+struct BackTrackLineSearch <: LineSearch
+    backtrack_factor::Float64
+    decrease_factor::Float64
+    max_iters::Int64
+end
+
+mutable struct HessianMinimizer <: Minimizer
+    minimum_iterations::Int64
+    maximum_iterations::Int64
+    absolute_tolerance::Float64
+    relative_tolerance::Float64
+    absolute_error::Float64
+    relative_error::Float64
+    value::Float64
+    gradient::Vector{Float64}
+    hessian::SparseMatrixCSC{Float64,Int64}
+    solution::Vector{Float64}
+    initial_norm::Float64
+    converged::Bool
+    failed::Bool
+    step::Step
+    line_search::BackTrackLineSearch
+end
+
+mutable struct ExplicitSolver <: Solver
+    value::Float64
+    gradient::Vector{Float64}
+    lumped_hessian::Vector{Float64}
+    solution::Vector{Float64}
+    initial_norm::Float64
+    converged::Bool
+    failed::Bool
+    step::Step
+end
+
+mutable struct SteepestDescent <: Solver
+    minimum_iterations::Int64
+    maximum_iterations::Int64
+    absolute_tolerance::Float64
+    relative_tolerance::Float64
+    absolute_error::Float64
+    relative_error::Float64
+    value::Float64
+    gradient::Vector{Float64}
+    solution::Vector{Float64}
+    initial_norm::Float64
+    converged::Bool
+    failed::Bool
+    step::Step
+    line_search::BackTrackLineSearch
+end
+
+struct NewtonStep <: Step
+    step_length::Float64
+end
+
+struct ExplicitStep <: Step
+    step_length::Float64
+end
+
+struct SteepestDescentStep <: Step
+    step_length::Float64
+end
+
+
 function create_step(solver_params::Dict{String,Any})
     step_name = solver_params["step"]
     if step_name == "full Newton"

@@ -13,7 +13,7 @@ include("constitutive.jl")
 include("ics_bcs_def.jl")
 include("model_def.jl")
 include("time_integrator_def.jl")
-include("solver_def.jl")
+include("solver.jl")
 
 mutable struct SingleDomainSimulation <: Simulation
     name::String

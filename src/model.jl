@@ -6,7 +6,8 @@
 include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
-import NPZ
+
+using NPZ
 
 function LinearOpInfRom(params::Dict{String,Any})
     params["mesh smoothing"] = false
