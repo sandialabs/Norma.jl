@@ -3,16 +3,17 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 using YAML
 
 abstract type Simulation end
+abstract type SchwarzController end
 
 include("constitutive.jl")
 include("ics_bcs_def.jl")
 include("model_def.jl")
 include("time_integrator_def.jl")
 include("solver_def.jl")
-include("schwarz_def.jl")
 
 mutable struct SingleDomainSimulation <: Simulation
     name::String
