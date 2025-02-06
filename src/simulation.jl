@@ -7,7 +7,7 @@ using YAML
 
 abstract type Simulation end
 
-include("constitutive_def.jl")
+include("constitutive.jl")
 include("ics_bcs_def.jl")
 include("model_def.jl")
 include("time_integrator_def.jl")

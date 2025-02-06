@@ -3,6 +3,15 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
+using LinearAlgebra
+
+using .MiniTensor
+
+abstract type Material end
+abstract type Solid <: Material end
+abstract type Thermal <: Material end
+
 function elastic_constants(params::Dict{String,Any})
     E = 0.0
     ν = 0.0
