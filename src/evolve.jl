@@ -4,31 +4,12 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-function evolve(sim::SingleDomainSimulation)
+function evolve(sim::Simulation)
     watch_keep_time(sim)
     apply_ics(sim)
-    apply_bcs(sim)
-    initialize(sim)
-    initialize_writing(sim)
-    write_step(sim)
-    while true
-        advance_time(sim)
-        if stop_evolve(sim) == true
-            break
-        end
-        start_runtimer(sim)
-        watch_keep_time(sim)
+    if typeof(sim) == SingleDomainSimulation
         apply_bcs(sim)
-        advance(sim)
-        end_runtimer(sim)
-        write_step(sim)
     end
-    finalize_writing(sim)
-end
-
-function evolve(sim::MultiDomainSimulation)
-    watch_keep_time(sim)
-    apply_ics(sim)
     initialize(sim)
     initialize_writing(sim)
     write_step(sim)
@@ -39,11 +20,11 @@ function evolve(sim::MultiDomainSimulation)
         end
         start_runtimer(sim)
         watch_keep_time(sim)
+        if typeof(sim) == SingleDomainSimulation
+            apply_bcs(sim)
+        end
         advance(sim)
         end_runtimer(sim)
-        if sim.failed == true
-            break
-        end
         write_step(sim)
     end
     finalize_writing(sim)
@@ -241,22 +222,6 @@ function advance_time(sim::MultiDomainSimulation)
     num_stops = sim.schwarz_controller.num_stops
     next_time = round((final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time, digits = 12)
     sim.schwarz_controller.time = next_time
-    sim.schwarz_controller.stop = stop
-end
-
-function regress_time(sim::SingleDomainSimulation)
-    sim.integrator.time = sim.model.time = sim.integrator.prev_time
-    sim.integrator.stop -= 1
-end
-
-function regress_time(sim::MultiDomainSimulation)
-    sim.schwarz_controller.time = sim.schwarz_controller.prev_time
-    stop = sim.schwarz_controller.stop - 1
-    final_time = sim.schwarz_controller.final_time
-    initial_time = sim.schwarz_controller.initial_time
-    num_stops = sim.schwarz_controller.num_stops
-    prev_time = (final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time
-    sim.schwarz_controller.prev_time = prev_time
     sim.schwarz_controller.stop = stop
 end
 
