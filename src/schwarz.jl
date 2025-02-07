@@ -156,26 +156,22 @@ function save_stop_solutions(sim::SingleDomainSimulation)
 end
 
 function save_stop_solutions(sim::MultiDomainSimulation)
-    save_stop_solutions(sim.schwarz_controller, sim.subsims)
-end
-
-function save_stop_solutions(
-    schwarz_controller::SolidSchwarzController,
-    sims::Vector{SingleDomainSimulation},
-)
+    schwarz_controller = sim.schwarz_controller
+    subsims = sim.subsims
     for i ∈ 1:schwarz_controller.num_domains
+        subsim = subsims[i]
         # If this model has inclined support on, we need to rotate the integrator values
-        if sims[i].model.inclined_support == true
-            global_transform_T = sims[i].model.global_transform'
-            schwarz_controller.stop_disp[i] = global_transform_T * sims[i].integrator.displacement
-            schwarz_controller.stop_velo[i] = global_transform_T * sims[i].integrator.velocity
-            schwarz_controller.stop_acce[i] = global_transform_T * sims[i].integrator.acceleration
+        if subsim.model.inclined_support == true
+            global_transform_T = subsim.model.global_transform'
+            schwarz_controller.stop_disp[i] = global_transform_T * subsim.integrator.displacement
+            schwarz_controller.stop_velo[i] = global_transform_T * subsim.integrator.velocity
+            schwarz_controller.stop_acce[i] = global_transform_T * subsim.integrator.acceleration
         else
-            schwarz_controller.stop_disp[i] = deepcopy(sims[i].integrator.displacement)
-            schwarz_controller.stop_velo[i] = deepcopy(sims[i].integrator.velocity)
-            schwarz_controller.stop_acce[i] = deepcopy(sims[i].integrator.acceleration)
+            schwarz_controller.stop_disp[i] = deepcopy(subsim.integrator.displacement)
+            schwarz_controller.stop_velo[i] = deepcopy(subsim.integrator.velocity)
+            schwarz_controller.stop_acce[i] = deepcopy(subsim.integrator.acceleration)
         end
-        schwarz_controller.stop_∂Ω_f[i] = deepcopy(sims[i].model.internal_force)
+        schwarz_controller.stop_∂Ω_f[i] = deepcopy(subsim.model.internal_force)
     end
 end
 
@@ -198,45 +194,37 @@ function restore_stop_solutions(sim::SingleDomainSimulation)
 end
 
 function restore_stop_solutions(sim::MultiDomainSimulation)
-    restore_stop_solutions(sim.schwarz_controller, sim.subsims)
-end
-
-function restore_stop_solutions(
-    schwarz_controller::SolidSchwarzController,
-    sims::Vector{SingleDomainSimulation},
-)
+    schwarz_controller = sim.schwarz_controller
+    subsims = sim.subsims
     for i ∈ 1:schwarz_controller.num_domains
+        subsim = subsims[i]
         # If this model has inclined support on, we need to rotate the integrator values
-        if sims[i].model.inclined_support == true
-            global_transform = sims[i].model.global_transform
-            sims[i].integrator.displacement = global_transform * schwarz_controller.stop_disp[i]
-            sims[i].integrator.velocity = global_transform * schwarz_controller.stop_velo[i]
-            sims[i].integrator.acceleration = global_transform * schwarz_controller.stop_acce[i]
+        if subsim.model.inclined_support == true
+            global_transform = subsim.model.global_transform
+            subsim.integrator.displacement = global_transform * schwarz_controller.stop_disp[i]
+            subsim.integrator.velocity = global_transform * schwarz_controller.stop_velo[i]
+            subsim.integrator.acceleration = global_transform * schwarz_controller.stop_acce[i]
         else
-            sims[i].integrator.displacement = deepcopy(schwarz_controller.stop_disp[i])
-            sims[i].integrator.velocity = deepcopy(schwarz_controller.stop_velo[i])
-            sims[i].integrator.acceleration = deepcopy(schwarz_controller.stop_acce[i])
+            subsim.integrator.displacement = deepcopy(schwarz_controller.stop_disp[i])
+            subsim.integrator.velocity = deepcopy(schwarz_controller.stop_velo[i])
+            subsim.integrator.acceleration = deepcopy(schwarz_controller.stop_acce[i])
         end
-        sims[i].model.internal_force = deepcopy(schwarz_controller.stop_∂Ω_f[i])
-        copy_solution_source_targets(sims[i].integrator, sims[i].solver, sims[i].model)
+        subsim.model.internal_force = deepcopy(schwarz_controller.stop_∂Ω_f[i])
+        copy_solution_source_targets(subsim.integrator, subsim.solver, subsim.model)
     end
 end
 
 function save_schwarz_solutions(sim::MultiDomainSimulation)
-    save_schwarz_solutions(sim.schwarz_controller, sim.subsims)
-end
-
-function save_schwarz_solutions(
-    schwarz_controller::SolidSchwarzController,
-    sims::Vector{SingleDomainSimulation},
-)
+    schwarz_controller = sim.schwarz_controller
+    subsims = sim.subsims
     for i ∈ 1:schwarz_controller.num_domains
+        subsim = subsims[i]
         # Note: Integrator values are not rotated due to inclined support as the 
         # schwarz variables are only used for Schwarz convergence which are compared
         # to simulation integrator values.
-        schwarz_controller.schwarz_disp[i] = deepcopy(sims[i].integrator.displacement)
-        schwarz_controller.schwarz_velo[i] = deepcopy(sims[i].integrator.velocity)
-        schwarz_controller.schwarz_acce[i] = deepcopy(sims[i].integrator.acceleration)
+        schwarz_controller.schwarz_disp[i] = deepcopy(subsim.integrator.displacement)
+        schwarz_controller.schwarz_velo[i] = deepcopy(subsim.integrator.velocity)
+        schwarz_controller.schwarz_acce[i] = deepcopy(subsim.integrator.acceleration)
     end
 end
 

@@ -46,7 +46,8 @@ function solve_contact(sim::MultiDomainSimulation)
     end
 end
 
-function adapt_time_step(sim::SingleDomainSimulation, failed::Bool)
+function adapt_time_step(sim::SingleDomainSimulation)
+    failed = sim.failed
     time_step = sim.integrator.time_step
     minimum_time_step = sim.integrator.minimum_time_step
     maximum_time_step = sim.integrator.maximum_time_step
@@ -76,7 +77,14 @@ end
 
 function advance(sim::SingleDomainSimulation)
     save_stop_solutions(sim)
-    solve(sim)
+    while true
+        solve(sim)
+        if sim.failed == false
+            break
+        end
+        restore_stop_solutions(sim)
+        adapt_time_step(sim)
+    end
 end
 
 function advance(sim::MultiDomainSimulation)
