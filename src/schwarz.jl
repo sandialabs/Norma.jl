@@ -294,41 +294,30 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
 end
 
 function resize_histories(sim::MultiDomainSimulation)
-    resize_histories(sim.schwarz_controller, sim.subsims)
-end
-
-function resize_histories(
-    schwarz_controller::SolidSchwarzController,
-    sims::Vector{SingleDomainSimulation},
-)
+    schwarz_controller = sim.schwarz_controller
+    subsims = sim.subsims
     num_domains = schwarz_controller.num_domains
     resize!(schwarz_controller.time_hist, num_domains)
     resize!(schwarz_controller.disp_hist, num_domains)
     resize!(schwarz_controller.velo_hist, num_domains)
     resize!(schwarz_controller.acce_hist, num_domains)
     resize!(schwarz_controller.∂Ω_f_hist, num_domains)
-    for subsim ∈ 1:num_domains
-        num_steps =
-            round(Int64, schwarz_controller.time_step / sims[subsim].integrator.time_step)
+    for i ∈ 1:num_domains
+        num_steps = round(Int64, schwarz_controller.time_step / subsims[i].integrator.time_step)
         Δt = schwarz_controller.time_step / num_steps
         num_stops = num_steps + 1
-        sims[subsim].integrator.time_step = Δt
-        schwarz_controller.time_hist[subsim] = Vector{Float64}(undef, num_stops)
-        schwarz_controller.disp_hist[subsim] = Vector{Vector{Float64}}(undef, num_stops)
-        schwarz_controller.velo_hist[subsim] = Vector{Vector{Float64}}(undef, num_stops)
-        schwarz_controller.acce_hist[subsim] = Vector{Vector{Float64}}(undef, num_stops)
-        schwarz_controller.∂Ω_f_hist[subsim] = Vector{Vector{Float64}}(undef, num_stops)
+        subsims[i].integrator.time_step = Δt
+        schwarz_controller.time_hist[i] = Vector{Float64}(undef, num_stops)
+        schwarz_controller.disp_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
+        schwarz_controller.velo_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
+        schwarz_controller.acce_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
+        schwarz_controller.∂Ω_f_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
         for stop ∈ 1:num_stops
-            schwarz_controller.time_hist[subsim][stop] =
-                schwarz_controller.prev_time + (stop - 1) * Δt
-            schwarz_controller.disp_hist[subsim][stop] =
-                deepcopy(schwarz_controller.stop_disp[subsim])
-            schwarz_controller.velo_hist[subsim][stop] =
-                deepcopy(schwarz_controller.stop_velo[subsim])
-            schwarz_controller.acce_hist[subsim][stop] =
-                deepcopy(schwarz_controller.stop_acce[subsim])
-            schwarz_controller.∂Ω_f_hist[subsim][stop] =
-                deepcopy(schwarz_controller.stop_∂Ω_f[subsim])
+            schwarz_controller.time_hist[i][stop] = schwarz_controller.prev_time + (stop - 1) * Δt
+            schwarz_controller.disp_hist[i][stop] = deepcopy(schwarz_controller.stop_disp[i])
+            schwarz_controller.velo_hist[i][stop] = deepcopy(schwarz_controller.stop_velo[i])
+            schwarz_controller.acce_hist[i][stop] = deepcopy(schwarz_controller.stop_acce[i])
+            schwarz_controller.∂Ω_f_hist[i][stop] = deepcopy(schwarz_controller.stop_∂Ω_f[i])
         end
     end
 end
