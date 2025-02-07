@@ -16,6 +16,7 @@ include("schwarz_types.jl")
 mutable struct SingleDomainSimulation <: Simulation
     name::String
     params::Dict{String, Any}
+    controller::SolidSingleController
     integrator::TimeIntegrator
     solver::Solver
     model::Model

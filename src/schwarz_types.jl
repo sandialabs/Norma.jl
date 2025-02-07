@@ -4,6 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+abstract type SingleController end
 abstract type SchwarzController end
 
 mutable struct SolidSchwarzController <: SchwarzController
@@ -44,4 +45,15 @@ mutable struct SolidSchwarzController <: SchwarzController
     schwarz_contact::Bool
     active_contact::Bool
     contact_hist::Vector{Bool}
+end
+
+mutable struct SolidSingleController <: SingleController
+    time_step::Float64
+    time::Float64
+    prev_time::Float64
+    stop::Int64
+    stop_disp::Vector{Float64}
+    stop_velo::Vector{Float64}
+    stop_acce::Vector{Float64}
+    stop_∂Ω_f::Vector{Float64}
 end
