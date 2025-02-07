@@ -38,16 +38,45 @@ function stop_evolve(sim::MultiDomainSimulation)
     return sim.schwarz_controller.time > sim.schwarz_controller.final_time
 end
 
-function advance(sim::SingleDomainSimulation)
-    solve(sim)
-end
-
 function solve_contact(sim::MultiDomainSimulation)
     if sim.schwarz_controller.active_contact == true
         schwarz(sim)
     else
         advance_independent(sim)
     end
+end
+
+function adapt_time_step(sim::SingleDomainSimulation, failed::Bool)
+    time_step = sim.integrator.time_step
+    minimum_time_step = sim.integrator.minimum_time_step
+    maximum_time_step = sim.integrator.maximum_time_step
+    decrease_factor = sim.integrator.decrease_factor
+    increase_factor = sim.integrator.increase_factor
+    if failed == true
+        if decrease_factor == 1.0
+            error("Cannot adapt time step ", time_step, " because decrease factor is ", decrease_factor,
+                ". Enable adaptive time stepping.")
+        end
+        new_time_step = decrease_factor * time_step
+        if new_time_step < time_step
+            error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
+        end
+        sim.integrator.time_step = new_time_step
+        println("Time step failure. Decreasing time step from ", time_step, " to ", new_time_step)
+    else
+        if increase_factor > 1.0
+            new_time_step = min(increase_factor * time_step, maximum_time_step)
+            if new_time_step > time_step
+                sim.integrator.time_step = new_time_step
+                println("Time step success. Increasing time step from ", time_step, " to ", new_time_step)
+            end
+        end
+    end
+end
+
+function advance(sim::SingleDomainSimulation)
+    save_stop_solutions(sim)
+    solve(sim)
 end
 
 function advance(sim::MultiDomainSimulation)

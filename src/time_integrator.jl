@@ -25,6 +25,15 @@ function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
         minimum_time_step = maximum_time_step = integrator_params["time step"]
         decrease_factor = increase_factor = 1.0
     end
+    if minimum_time_step > maximum_time_step
+        error("Minimum time step ", minimum_time_step, " must be greater or equal than maximum ", maximum_time_step)
+    end
+    if decrease_factor > 1.0
+        error("Decrease factor ", decrease_factor, " must be less or equal to one.")
+    end
+    if increase_factor < 1.0
+        error("Increase factor ", increase_factor, " must be greater or equal to one.")
+    end
     return minimum_time_step, decrease_factor, maximum_time_step, increase_factor
 end
 
