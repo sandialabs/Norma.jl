@@ -3,6 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 function evolve(sim::SingleDomainSimulation)
     watch_keep_time(sim)
     apply_ics(sim)
@@ -15,9 +16,11 @@ function evolve(sim::SingleDomainSimulation)
         if stop_evolve(sim) == true
             break
         end
+        start_runtimer(sim)
         watch_keep_time(sim)
         apply_bcs(sim)
         advance(sim)
+        end_runtimer(sim)
         write_step(sim)
     end
     finalize_writing(sim)
