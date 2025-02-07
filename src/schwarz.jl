@@ -265,12 +265,8 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
                 break
             end
             subsim.model.time = subsim.integrator.time
-            @debug "Subdomain : $(subsim.name), Time : $(subsim.model.time)"
-            @debug "Before applying BCs"
             apply_bcs(subsim)
-            @debug "After applying BCs and before advance"
             advance(subsim)
-            @debug "After advance"
             if subsim.failed == true
                 sim.failed = true
                 return
@@ -281,12 +277,7 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
             end
             stop_index += 1
             if is_schwarz == true
-                save_history_snapshot(
-                    sim.schwarz_controller,
-                    sim.subsims,
-                    subsim_index,
-                    stop_index,
-                )
+                save_history_snapshot(sim.schwarz_controller, sim.subsims, subsim_index, stop_index)
             end
         end
         subsim_index += 1
@@ -328,31 +319,22 @@ function save_history_snapshot(
     subsim_index::Int64,
     stop_index::Int64,
 )
-    schwarz_controller.disp_hist[subsim_index][stop_index] =
-        deepcopy(sims[subsim_index].integrator.displacement)
-    schwarz_controller.velo_hist[subsim_index][stop_index] =
-        deepcopy(sims[subsim_index].integrator.velocity)
-    schwarz_controller.acce_hist[subsim_index][stop_index] =
-        deepcopy(sims[subsim_index].integrator.acceleration)
-    schwarz_controller.∂Ω_f_hist[subsim_index][stop_index] =
-        deepcopy(sims[subsim_index].model.internal_force)
+    schwarz_controller.disp_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.displacement)
+    schwarz_controller.velo_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.velocity)
+    schwarz_controller.acce_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.acceleration)
+    schwarz_controller.∂Ω_f_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].model.internal_force)
 end
 
 function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
-    return update_schwarz_convergence_criterion(sim.schwarz_controller, sim.subsims)
-end
-
-function update_schwarz_convergence_criterion(
-    schwarz_controller::SolidSchwarzController,
-    sims::Vector{SingleDomainSimulation},
-)
+    schwarz_controller = sim.schwarz_controller
+    subsims = sim.subsims
     num_domains = schwarz_controller.num_domains
     norms_disp = zeros(num_domains)
     norms_diff = zeros(num_domains)
     for i ∈ 1:num_domains
         Δt = schwarz_controller.time_step
         xᵖʳᵉᵛ = schwarz_controller.schwarz_disp[i] + Δt * schwarz_controller.schwarz_velo[i]
-        xᶜᵘʳʳ = sims[i].integrator.displacement + Δt * sims[i].integrator.velocity
+        xᶜᵘʳʳ = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
         norms_disp[i] = norm(xᶜᵘʳʳ)
         norms_diff[i] = norm(xᶜᵘʳʳ - xᵖʳᵉᵛ)
     end
@@ -375,13 +357,11 @@ function stop_schwarz(sim::MultiDomainSimulation, iteration_number::Int64)
     if sim.schwarz_controller.absolute_error == 0.0
         return true
     end
-    exceeds_minimum_iterations =
-        iteration_number > sim.schwarz_controller.minimum_iterations
+    exceeds_minimum_iterations = iteration_number > sim.schwarz_controller.minimum_iterations
     if exceeds_minimum_iterations == false
         return false
     end
-    exceeds_maximum_iterations =
-        iteration_number > sim.schwarz_controller.maximum_iterations
+    exceeds_maximum_iterations = iteration_number > sim.schwarz_controller.maximum_iterations
     if exceeds_maximum_iterations == true
         return true
     end
@@ -433,7 +413,6 @@ function check_compression(
 end
 
 function initialize_transfer_operators(sim::MultiDomainSimulation)
-    is_contact = sim.schwarz_controller.schwarz_contact
     for subsim ∈ sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc ∈ bcs
