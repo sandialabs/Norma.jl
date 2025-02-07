@@ -5,11 +5,7 @@
 # top-level Norma.jl directory.
 
 function evolve(sim::Simulation)
-    watch_keep_time(sim)
-    apply_ics(sim)
-    if typeof(sim) == SingleDomainSimulation
-        apply_bcs(sim)
-    end
+    sync_time(sim)
     initialize(sim)
     initialize_writing(sim)
     write_step(sim)
@@ -19,7 +15,7 @@ function evolve(sim::Simulation)
             break
         end
         start_runtimer(sim)
-        watch_keep_time(sim)
+        sync_time(sim)
         if typeof(sim) == SingleDomainSimulation
             apply_bcs(sim)
         end
@@ -84,6 +80,7 @@ function advance(sim::SingleDomainSimulation)
         end
         restore_stop_solutions(sim)
         adapt_time_step(sim)
+        sim.failed = false
     end
 end
 
@@ -95,9 +92,6 @@ function advance(sim::MultiDomainSimulation)
     end
     save_stop_solutions(sim)
     solve_contact(sim)
-    if sim.failed == true
-        return
-    end
     was_in_contact = sim.schwarz_controller.active_contact
     detect_contact(sim)
     if sim.schwarz_controller.active_contact ≠ was_in_contact
@@ -132,13 +126,14 @@ function apply_bcs(sim::MultiDomainSimulation)
 end
 
 function initialize(sim::SingleDomainSimulation)
+    apply_ics(sim)
+    apply_bcs(sim)
     initialize(sim.integrator, sim.solver, sim.model)
 end
 
 function initialize(sim::MultiDomainSimulation)
     initialize_transfer_operators(sim)
     for subsim ∈ sim.subsims
-        apply_bcs(subsim)
         initialize(subsim)
     end
     detect_contact(sim)
@@ -195,7 +190,7 @@ end
 
 using Printf
 
-function watch_keep_time(sim::SingleDomainSimulation)
+function sync_time(sim::SingleDomainSimulation)
     synchronize(sim)
     stop = sim.integrator.stop
     initial_time = sim.integrator.prev_time
@@ -213,7 +208,7 @@ function watch_keep_time(sim::SingleDomainSimulation)
     end
 end
 
-function watch_keep_time(sim::MultiDomainSimulation)
+function sync_time(sim::MultiDomainSimulation)
     synchronize(sim)
     stop = sim.schwarz_controller.stop
     initial_time = sim.schwarz_controller.prev_time
