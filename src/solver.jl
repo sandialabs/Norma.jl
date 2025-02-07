@@ -90,9 +90,9 @@ function create_step(solver_params::Dict{String,Any})
     end
 end
 
-function HessianMinimizer(params::Dict{String,Any}, model::Any)
+function HessianMinimizer(params::Dict{String,Any}, model::Model)
     solver_params = params["solver"]
-    num_dof, = size(model.free_dofs)
+    num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
     absolute_tolerance = solver_params["absolute tolerance"]
@@ -139,11 +139,10 @@ function HessianMinimizer(params::Dict{String,Any}, model::Any)
     )
 end
 
-function ExplicitSolver(params::Dict{String,Any})
+function ExplicitSolver(params::Dict{String,Any}, model::Model)
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
-    num_nodes = Exodus.num_nodes(input_mesh.init)
-    num_dof = 3 * num_nodes
+    num_dof = length(model.free_dofs)
     value = 0.0
     gradient = zeros(num_dof)
     solution = zeros(num_dof)
@@ -164,11 +163,10 @@ function ExplicitSolver(params::Dict{String,Any})
     )
 end
 
-function SteepestDescent(params::Dict{String,Any})
+function SteepestDescent(params::Dict{String,Any}, model::Model)
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
-    num_nodes = Exodus.num_nodes(input_mesh.init)
-    num_dof = 3 * num_nodes
+    num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
     absolute_tolerance = solver_params["absolute tolerance"]
@@ -240,15 +238,15 @@ function SteepestDescentStep(params::Dict{String,Any})
     SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Dict{String,Any}, model::Any)
+function create_solver(params::Dict{String,Any}, model::Model)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
         return HessianMinimizer(params, model)
     elseif solver_name == "explicit solver"
-        return ExplicitSolver(params)
+        return ExplicitSolver(params, model)
     elseif solver_name == "steepest descent"
-        return SteepestDescent(params)
+        return SteepestDescent(params, model)
     else
         error("Unknown type of solver : ", solver_name)
     end
@@ -294,12 +292,9 @@ function copy_solution_source_targets(
     end
 end
 
-
-
-#*************OP INF**********************
 function copy_solution_source_targets(
     integrator::Newmark,
-    solver::HessianMinimizer,
+    _::HessianMinimizer,
     model::LinearOpInfRom,
 )
     displacement = integrator.displacement
@@ -330,7 +325,6 @@ function copy_solution_source_targets(
     end
 
 end
-
 
 function copy_solution_source_targets(
     model::SolidMechanics,
@@ -509,8 +503,6 @@ function copy_solution_source_targets(
     solver.solution = integrator.acceleration
 end
 
-
-### Move to model?  
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
@@ -524,7 +516,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     #Ae = r, r = b - Ax 
     ##M uddot + Ku = f
 
-    num_dof, = size(model.free_dofs)
+    num_dof = length(model.free_dofs)
     I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
     LHS = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
     RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
@@ -533,7 +525,6 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     solver.hessian[:, :] = LHS
     solver.gradient[:] = -residual
 end
-
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
     stored_energy, internal_force, body_force, stiffness_matrix = evaluate(integrator, model)
@@ -551,7 +542,6 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
         solver.hessian = stiffness_matrix
     end
 end
-
 
 function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::SolidMechanics)
     stored_energy, internal_force, body_force, _ = evaluate(integrator, model)
@@ -680,8 +670,6 @@ function compute_step(
     return -solver.hessian \ solver.gradient
 end
 
-
-
 function compute_step(
     _::CentralDifference,
     model::SolidMechanics,
@@ -714,7 +702,6 @@ function update_solver_convergence_criterion(
     converged_relative = solver.relative_error ≤ solver.relative_tolerance
     solver.converged = converged_absolute || converged_relative
 end
-
 
 function update_solver_convergence_criterion(
     solver::SteepestDescent,
