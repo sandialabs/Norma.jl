@@ -3,6 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 function barycentricD2N3(ξ::Vector{Float64})
     N = [1.0 - ξ[1] - ξ[2], ξ[1], ξ[2]]
     dN = [
@@ -461,7 +462,7 @@ using Symbolics
 function get_side_set_nodal_forces(
     nodal_coord::Matrix{Float64},
     traction_num::Num,
-    time::Float64
+    time::Float64,
 )
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
@@ -539,7 +540,7 @@ end
 function map_to_parametric(
     element_type::String,
     nodes::Matrix{Float64},
-    point::Vector{Float64}
+    point::Vector{Float64},
 )
     tol = 1.0e-08
     max_iters = 1024
@@ -579,7 +580,7 @@ function interpolate(element_type::String, ξ::Vector{Float64})
     end
 end
 
-function is_inside_parametric(element_type::String, ξ::Vector{Float64}, tol::Float64=1.0e-06)
+function is_inside_parametric(element_type::String, ξ::Vector{Float64}, tol::Float64 = 1.0e-06)
     factor = 1.0 + tol
     if element_type == "BAR2"
         return -factor ≤ ξ ≤ factor
@@ -594,7 +595,7 @@ function is_inside_parametric(element_type::String, ξ::Vector{Float64}, tol::Fl
     end
 end
 
-function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
+function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)
     ξ = zeros(length(point))
     if is_inside_guess(element_type, nodes, point, 0.1) == false
         return ξ, false
@@ -603,7 +604,7 @@ function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{F
     return ξ, is_inside_parametric(element_type, ξ, tol)
 end
 
-function is_inside_guess(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
+function is_inside_guess(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)
     if element_type == "TETRA4" || element_type == "TETRA10"
         return in_tetrahedron(point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], tol)
     elseif element_type == "HEX8"
@@ -648,7 +649,7 @@ end
 
 function get_distance_to_centroid(nodes::Matrix{Float64}, point::Vector{Float64})
     num_nodes = size(nodes, 2)
-    centroid = sum(nodes, dims=2) / num_nodes
+    centroid = sum(nodes, dims = 2) / num_nodes
     distance = norm(centroid - point)
     return distance
 end
@@ -663,7 +664,7 @@ function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::I
         Exodus.read_side_set_node_list(mesh, side_set_id)
     unique_node_indices = unique(side_set_node_indices)
     num_nodes = length(unique_node_indices)
-    local_from_global_map = Dict{Int64,Int64}()
+    local_from_global_map = Dict{Int64, Int64}()
     for i ∈ 1:num_nodes
         local_from_global_map[Int64(unique_node_indices[i])] = i
     end

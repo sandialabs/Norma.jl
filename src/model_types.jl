@@ -3,6 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 abstract type Model end
 abstract type OpInfModel <: Model end
 using SparseArrays
@@ -54,7 +55,7 @@ end
 
 
 mutable struct LinearOpInfRom <: OpInfModel
-    opinf_rom::Dict{Any,Any}
+    opinf_rom::Dict{Any, Any}
     basis::Array{Float64}
     reduced_state::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}

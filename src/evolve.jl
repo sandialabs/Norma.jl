@@ -225,7 +225,7 @@ end
 
 function advance_time(sim::SingleDomainSimulation)
     sim.integrator.prev_time = sim.integrator.time
-    next_time = round(sim.integrator.time + sim.integrator.time_step; digits=12)
+    next_time = round(sim.integrator.time + sim.integrator.time_step; digits = 12)
     sim.integrator.time = sim.model.time = next_time
     sim.integrator.stop += 1
 end
@@ -236,7 +236,7 @@ function advance_time(sim::MultiDomainSimulation)
     final_time = sim.schwarz_controller.final_time
     initial_time = sim.schwarz_controller.initial_time
     num_stops = sim.schwarz_controller.num_stops
-    next_time = round((final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time, digits=12)
+    next_time = round((final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time, digits = 12)
     sim.schwarz_controller.time = next_time
     sim.schwarz_controller.stop = stop
 end

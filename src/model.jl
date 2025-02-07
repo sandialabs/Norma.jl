@@ -3,13 +3,14 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
 using NPZ
 
-function LinearOpInfRom(params::Dict{String,Any})
+function LinearOpInfRom(params::Dict{String, Any})
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
@@ -38,11 +39,11 @@ function LinearOpInfRom(params::Dict{String,Any})
         failed,
         fom_model,
         reference,
-        false
+        false,
     )
 end
 
-function SolidMechanics(params::Dict{String,Any})
+function SolidMechanics(params::Dict{String, Any})
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -149,11 +150,11 @@ function SolidMechanics(params::Dict{String,Any})
         smooth_reference,
         inclined_support,
         global_transform,
-        kinematics
+        kinematics,
     )
 end
 
-function HeatConduction(params::Dict{String,Any})
+function HeatConduction(params::Dict{String, Any})
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -236,7 +237,7 @@ function HeatConduction(params::Dict{String,Any})
     )
 end
 
-function create_model(params::Dict{String,Any})
+function create_model(params::Dict{String, Any})
     model_params = params["model"]
     model_name = model_params["type"]
     if model_name == "solid mechanics"
@@ -295,7 +296,7 @@ end
 
 function get_minimum_edge_length(
     nodal_coordinates::Matrix{Float64},
-    edges::Vector{Tuple{Int64,Int64}},
+    edges::Vector{Tuple{Int64, Int64}},
 )
     minimum_edge_length = Inf
     for edge ∈ edges
@@ -530,7 +531,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 end
                 if typeof(integrator) == CentralDifference
                     reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
-                    reduced_lumped_mass = sum(reduced_mass, dims=2)
+                    reduced_lumped_mass = sum(reduced_mass, dims = 2)
                     element_lumped_mass[index_x] += reduced_lumped_mass
                     element_lumped_mass[index_y] += reduced_lumped_mass
                     element_lumped_mass[index_z] += reduced_lumped_mass

@@ -3,6 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 module MiniTensor
 using LinearAlgebra: norm
 
@@ -354,7 +355,7 @@ function q_from_rt(R::AbstractMatrix{Float64})
     maxm = trR
     maxi = 4
     q = zeros(4)
-    for i = 1:3
+    for i ∈ 1:3
         if R[i, i] > maxm
             maxm = R[i, i]
             maxi = i

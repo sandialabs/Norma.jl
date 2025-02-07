@@ -5,79 +5,8 @@
 # top-level Norma.jl directory.
 
 using LinearAlgebra
-using SparseArrays
 
-abstract type Solver end
-abstract type Minimizer <: Solver end
-abstract type Step end
-abstract type LineSearch end
-
-struct BackTrackLineSearch <: LineSearch
-    backtrack_factor::Float64
-    decrease_factor::Float64
-    max_iters::Int64
-end
-
-mutable struct HessianMinimizer <: Minimizer
-    minimum_iterations::Int64
-    maximum_iterations::Int64
-    absolute_tolerance::Float64
-    relative_tolerance::Float64
-    absolute_error::Float64
-    relative_error::Float64
-    value::Float64
-    gradient::Vector{Float64}
-    hessian::SparseMatrixCSC{Float64,Int64}
-    solution::Vector{Float64}
-    initial_norm::Float64
-    converged::Bool
-    failed::Bool
-    step::Step
-    line_search::BackTrackLineSearch
-end
-
-mutable struct ExplicitSolver <: Solver
-    value::Float64
-    gradient::Vector{Float64}
-    lumped_hessian::Vector{Float64}
-    solution::Vector{Float64}
-    initial_norm::Float64
-    converged::Bool
-    failed::Bool
-    step::Step
-end
-
-mutable struct SteepestDescent <: Solver
-    minimum_iterations::Int64
-    maximum_iterations::Int64
-    absolute_tolerance::Float64
-    relative_tolerance::Float64
-    absolute_error::Float64
-    relative_error::Float64
-    value::Float64
-    gradient::Vector{Float64}
-    solution::Vector{Float64}
-    initial_norm::Float64
-    converged::Bool
-    failed::Bool
-    step::Step
-    line_search::BackTrackLineSearch
-end
-
-struct NewtonStep <: Step
-    step_length::Float64
-end
-
-struct ExplicitStep <: Step
-    step_length::Float64
-end
-
-struct SteepestDescentStep <: Step
-    step_length::Float64
-end
-
-
-function create_step(solver_params::Dict{String,Any})
+function create_step(solver_params::Dict{String, Any})
     step_name = solver_params["step"]
     if step_name == "full Newton"
         return NewtonStep(solver_params)
@@ -90,7 +19,7 @@ function create_step(solver_params::Dict{String,Any})
     end
 end
 
-function HessianMinimizer(params::Dict{String,Any}, model::Model)
+function HessianMinimizer(params::Dict{String, Any}, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
@@ -135,11 +64,11 @@ function HessianMinimizer(params::Dict{String,Any}, model::Model)
         converged,
         failed,
         step,
-        line_search
+        line_search,
     )
 end
 
-function ExplicitSolver(params::Dict{String,Any}, model::Model)
+function ExplicitSolver(params::Dict{String, Any}, model::Model)
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
@@ -159,11 +88,11 @@ function ExplicitSolver(params::Dict{String,Any}, model::Model)
         initial_norm,
         converged,
         failed,
-        step
+        step,
     )
 end
 
-function SteepestDescent(params::Dict{String,Any}, model::Model)
+function SteepestDescent(params::Dict{String, Any}, model::Model)
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
@@ -207,11 +136,11 @@ function SteepestDescent(params::Dict{String,Any}, model::Model)
         converged,
         failed,
         step,
-        line_search
+        line_search,
     )
 end
 
-function NewtonStep(params::Dict{String,Any})
+function NewtonStep(params::Dict{String, Any})
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -220,7 +149,7 @@ function NewtonStep(params::Dict{String,Any})
     NewtonStep(step_length)
 end
 
-function ExplicitStep(params::Dict{String,Any})
+function ExplicitStep(params::Dict{String, Any})
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -229,7 +158,7 @@ function ExplicitStep(params::Dict{String,Any})
     ExplicitStep(step_length)
 end
 
-function SteepestDescentStep(params::Dict{String,Any})
+function SteepestDescentStep(params::Dict{String, Any})
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -238,7 +167,7 @@ function SteepestDescentStep(params::Dict{String,Any})
     SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Dict{String,Any}, model::Model)
+function create_solver(params::Dict{String, Any}, model::Model)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
@@ -301,7 +230,7 @@ function copy_solution_source_targets(
     velocity = integrator.velocity
     acceleration = integrator.acceleration
     # Clean this up; maybe make a free dofs 2d array or move to a basis in matrix format
-    for i = 1:size(model.fom_model.current)[2]
+    for i ∈ 1:size(model.fom_model.current)[2]
         x_dof_index = 3 * (i - 1) + 1
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3

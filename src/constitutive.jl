@@ -4,15 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-using LinearAlgebra
-
-using .MiniTensor
-
-abstract type Material end
-abstract type Solid <: Material end
-abstract type Thermal <: Material end
-
-function elastic_constants(params::Dict{String,Any})
+function elastic_constants(params::Dict{String, Any})
     E = 0.0
     ν = 0.0
     κ = 0.0
@@ -104,7 +96,7 @@ mutable struct SaintVenant_Kirchhoff <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function SaintVenant_Kirchhoff(params::Dict{String,Any})
+    function SaintVenant_Kirchhoff(params::Dict{String, Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ)
@@ -118,7 +110,7 @@ mutable struct Linear_Elastic <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function Linear_Elastic(params::Dict{String,Any})
+    function Linear_Elastic(params::Dict{String, Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ)
@@ -132,7 +124,7 @@ mutable struct Neohookean <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function Neohookean(params::Dict{String,Any})
+    function Neohookean(params::Dict{String, Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ)
@@ -148,7 +140,7 @@ mutable struct SethHill <: Solid
     ρ::Float64
     m::Int
     n::Int
-    function SethHill(params::Dict{String,Any})
+    function SethHill(params::Dict{String, Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
@@ -173,7 +165,7 @@ mutable struct J2 <: Solid
     T₀::Float64
     Tₘ::Float64
     M::Float64
-    function J2(params::Dict{String,Any})
+    function J2(params::Dict{String, Any})
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
         Y₀ = params["yield stress"]
@@ -360,7 +352,7 @@ end
 
 struct Linear_Isotropic <: Thermal
     κ::Float64
-    function Linear_Isotropic(params::Dict{String,Any})
+    function Linear_Isotropic(params::Dict{String, Any})
         κ = params["thermal conductivity"]
         new(κ)
     end
@@ -474,13 +466,13 @@ function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})
     W = 0.5 * λ * trE * trE + μ * tr(E * E)
     S = λ * trE * I + 2.0 * μ * E
     CC = zeros(3, 3, 3, 3)
-    for i = 1:3
-        for j = 1:3
+    for i ∈ 1:3
+        for j ∈ 1:3
             δᵢⱼ = I[i, j]
-            for k = 1:3
+            for k ∈ 1:3
                 δᵢₖ = I[i, k]
                 δⱼₖ = I[j, k]
-                for l = 1:3
+                for l ∈ 1:3
                     δᵢₗ = I[i, l]
                     δⱼₗ = I[j, l]
                     δₖₗ = I[k, l]
@@ -503,13 +495,13 @@ function constitutive(material::Linear_Elastic, F::Matrix{Float64})
     W = 0.5 * λ * trϵ * trϵ + μ * tr(ϵ * ϵ)
     σ = λ * trϵ * I + 2.0 * μ * ϵ
     CC = zeros(3, 3, 3, 3)
-    for i = 1:3
-        for j = 1:3
+    for i ∈ 1:3
+        for j ∈ 1:3
             δᵢⱼ = I[i, j]
-            for k = 1:3
+            for k ∈ 1:3
                 δᵢₖ = I[i, k]
                 δⱼₖ = I[j, k]
-                for l = 1:3
+                for l ∈ 1:3
                     δᵢₗ = I[i, l]
                     δⱼₗ = I[j, l]
                     δₖₗ = I[k, l]
@@ -573,7 +565,7 @@ function constitutive(material::SethHill, F::Matrix{Float64})
     return W, P, AA
 end
 
-function create_material(params::Dict{String,Any})
+function create_material(params::Dict{String, Any})
     model_name = params["model"]
     if model_name == "linear elastic"
         return Linear_Elastic(params)

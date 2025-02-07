@@ -3,6 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 module Norma
 
 using Logging
@@ -34,7 +35,7 @@ function run(input_file::String)
     return sim
 end
 
-function run(params::Dict{String,Any}, name::String)
+function run(params::Dict{String, Any}, name::String)
     sim = create_simulation(params, name)
     evolve(sim)
     return sim

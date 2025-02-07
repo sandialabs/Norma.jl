@@ -3,10 +3,11 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 @variables t, x, y, z
 D = Differential(t)
 
-function SMDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
+function SMDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String, Any})
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
@@ -27,7 +28,7 @@ function SMDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
     )
 end
 
-function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
+function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Dict{String, Any})
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
     node_set_id = node_set_id_from_name(node_set_name, input_mesh)
@@ -47,11 +48,11 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Dict{String,
         velo_num,
         acce_num,
         rotation_matrix,
-        reference_normal
+        reference_normal,
     )
 end
 
-function SMNeumannBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
+function SMNeumannBC(input_mesh::ExodusDatabase, bc_params::Dict{String, Any})
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
@@ -73,7 +74,7 @@ end
 function SMContactSchwarzBC(
     coupled_subsim::SingleDomainSimulation,
     input_mesh::ExodusDatabase,
-    bc_params::Dict{String,Any},
+    bc_params::Dict{String, Any},
 )
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
@@ -105,7 +106,7 @@ function SMContactSchwarzBC(
         transfer_operator,
         rotation_matrix,
         active_contact,
-        swap_bcs
+        swap_bcs,
     )
 end
 
@@ -136,7 +137,7 @@ function SMCouplingSchwarzBC(
     coupled_subsim::SingleDomainSimulation,
     input_mesh::ExodusDatabase,
     bc_type::String,
-    bc_params::Dict{String,Any},
+    bc_params::Dict{String, Any},
 )
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
@@ -180,7 +181,7 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             subsim,
             is_dirichlet,
-            swap_bcs
+            swap_bcs,
         )
     elseif bc_type == "Schwarz nonoverlap"
         if haskey(bc_params, "default BC type") == true
@@ -205,7 +206,7 @@ function SMCouplingSchwarzBC(
             subsim,
             coupled_side_set_id,
             is_dirichlet,
-            swap_bcs
+            swap_bcs,
         )
     else
         error("Unknown boundary condition type : ", bc_type)
@@ -345,7 +346,7 @@ function find_point_in_mesh(
     point::Vector{Float64},
     model::SolidMechanics,
     blk_id::Int,
-    tol::Float64
+    tol::Float64,
 )
     mesh = model.mesh
     element_type = Exodus.read_block_parameters(mesh, Int32(blk_id))[1]
@@ -370,7 +371,7 @@ function find_point_in_mesh(
     point::Vector{Float64},
     model::LinearOpInfRom,
     blk_id::Int,
-    tol::Float64
+    tol::Float64,
 )
     node_indices, ξ, found = find_point_in_mesh(point, model.fom_model, blk_id, tol)
     return node_indices, ξ, found
@@ -713,7 +714,7 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
         model.boundary_force[3*global_node-2:3*global_node] += transfer_normal_component(
             node_tractions,
             model.boundary_force[3*global_node-2:3*global_node],
-            normal
+            normal,
         )
     end
 end
@@ -835,7 +836,7 @@ function extract_value(symbol::Num)
     return symbol.val
 end
 
-function create_bcs(params::Dict{String,Any})
+function create_bcs(params::Dict{String, Any})
     boundary_conditions = Vector{BoundaryCondition}()
     if haskey(params, "boundary conditions") == false
         return boundary_conditions
@@ -904,7 +905,7 @@ function apply_bcs(model::LinearOpInfRom)
 
 end
 
-function apply_ics(params::Dict{String,Any}, model::SolidMechanics)
+function apply_ics(params::Dict{String, Any}, model::SolidMechanics)
     if haskey(params, "initial conditions") == false
         return
     end
@@ -941,7 +942,7 @@ function apply_ics(params::Dict{String,Any}, model::SolidMechanics)
     end
 end
 
-function apply_ics(params::Dict{String,Any}, model::LinearOpInfRom)
+function apply_ics(params::Dict{String, Any}, model::LinearOpInfRom)
 
     apply_ics(params, model.fom_model)
 

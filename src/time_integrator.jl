@@ -3,10 +3,11 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
 using DelimitedFiles
 using Format
 
-function adaptive_stepping_parameters(integrator_params::Dict{String,Any})
+function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
     has_minimum = haskey(integrator_params, "minimum time step")
     has_decrease = haskey(integrator_params, "decrease factor")
     has_maximum = haskey(integrator_params, "maximum time step")
@@ -27,7 +28,7 @@ function adaptive_stepping_parameters(integrator_params::Dict{String,Any})
     return minimum_time_step, decrease_factor, maximum_time_step, increase_factor
 end
 
-function QuasiStatic(params::Dict{String,Any}, model::Model)
+function QuasiStatic(params::Dict{String, Any}, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
@@ -61,11 +62,11 @@ function QuasiStatic(params::Dict{String,Any}, model::Model)
         velocity,
         acceleration,
         stored_energy,
-        initial_equilibrium
+        initial_equilibrium,
     )
 end
 
-function Newmark(params::Dict{String,Any}, model::Model)
+function Newmark(params::Dict{String, Any}, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
@@ -108,7 +109,7 @@ function Newmark(params::Dict{String,Any}, model::Model)
     )
 end
 
-function CentralDifference(params::Dict{String,Any}, model::Model)
+function CentralDifference(params::Dict{String, Any}, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
@@ -151,7 +152,7 @@ function CentralDifference(params::Dict{String,Any}, model::Model)
     )
 end
 
-function create_time_integrator(params::Dict{String,Any}, model::Model)
+function create_time_integrator(params::Dict{String, Any}, model::Model)
     integrator_params = params["time integrator"]
     integrator_name = integrator_params["type"]
     if integrator_name == "quasi static"
@@ -338,14 +339,14 @@ function correct(
 end
 
 function initialize_writing(
-    params::Dict{String,Any},
+    params::Dict{String, Any},
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
     initialize_writing(params, integrator, model.fom_model)
 end
 
-function initialize_writing(params::Dict{String,Any}, integrator::TimeIntegrator, _::SolidMechanics)
+function initialize_writing(params::Dict{String, Any}, integrator::TimeIntegrator, _::SolidMechanics)
     output_mesh = params["output_mesh"]
 
     # global variables
@@ -458,7 +459,7 @@ function initialize_writing(params::Dict{String,Any}, integrator::TimeIntegrator
     )
 end
 
-function finalize_writing(params::Dict{String,Any})
+function finalize_writing(params::Dict{String, Any})
     input_mesh = params["input_mesh"]
     Exodus.close(input_mesh)
     output_mesh = params["output_mesh"]
@@ -474,7 +475,7 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     end
 end
 
-function write_step(params::Dict{String,Any}, integrator::Any, model::Any)
+function write_step(params::Dict{String, Any}, integrator::Any, model::Any)
     stop = integrator.stop
     exodus_interval = get(params, "Exodus output interval", 1)
     if exodus_interval > 0 && stop % exodus_interval == 0
@@ -495,8 +496,8 @@ end
 
 function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_id::Integer)
     stop = integrator.stop
-    index_string = "-" * string(stop, pad=4)
-    sim_id_string = string(sim_id, pad=2) * "-"
+    index_string = "-" * string(stop, pad = 4)
+    sim_id_string = string(sim_id, pad = 2) * "-"
     if stop == 0
         refe_filename = sim_id_string * "refe" * ".csv"
         writedlm_nodal_array(refe_filename, model.reference)
@@ -523,8 +524,8 @@ end
 
 function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
     stop = integrator.stop
-    index_string = "-" * string(stop, pad=4)
-    sim_id_string = string(sim_id, pad=2) * "-"
+    index_string = "-" * string(stop, pad = 4)
+    sim_id_string = string(sim_id, pad = 2) * "-"
     for bc ∈ model.boundary_conditions
         if (typeof(bc) == SMDirichletBC)
             node_set_name = bc.node_set_name
@@ -563,21 +564,21 @@ end
 
 function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, sim_id::Integer)
     stop = integrator.stop
-    index_string = "-" * string(stop, pad=4)
-    sim_id_string = string(sim_id, pad=2) * "-"
+    index_string = "-" * string(stop, pad = 4)
+    sim_id_string = string(sim_id, pad = 2) * "-"
     reduced_states_filename = sim_id_string * "reduced_states" * index_string * ".csv"
     writedlm(reduced_states_filename, model.reduced_state)
     write_step_csv(integrator, model.fom_model, sim_id)
 end
 
 function write_step_exodus(
-    params::Dict{String,Any},
+    params::Dict{String, Any},
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
     #Re-construct full state
     reduced_state = model.reduced_state[:]
-    for i = 1:size(model.fom_model.current)[2]
+    for i ∈ 1:size(model.fom_model.current)[2]
         x_dof_index = 3 * (i - 1) + 1
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3
@@ -596,7 +597,7 @@ function write_step_exodus(
     write_step_exodus(params, integrator, model.fom_model)
 end
 
-function write_step_exodus(params::Dict{String,Any}, integrator::TimeIntegrator, model::SolidMechanics)
+function write_step_exodus(params::Dict{String, Any}, integrator::TimeIntegrator, model::SolidMechanics)
     time = integrator.time
     stop = integrator.stop
     runtime_step = integrator.runtime_step
