@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-include("../src/constitutive_def.jl")
+include("../src/constitutive_types.jl")
 include("../src/constitutive.jl")
 
 using LinearAlgebra

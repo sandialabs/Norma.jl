@@ -50,7 +50,7 @@ function adapt_time_step(sim::SingleDomainSimulation)
                 ". Enable adaptive time stepping.")
         end
         new_time_step = decrease_factor * time_step
-        if new_time_step < time_step
+        if new_time_step < minimum_time_step
             error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
         end
         sim.integrator.time_step = new_time_step
@@ -67,15 +67,16 @@ function adapt_time_step(sim::SingleDomainSimulation)
 end
 
 function advance(sim::SingleDomainSimulation)
-    apply_bcs(sim)
-    save_stop_solutions(sim)
     while true
+        apply_bcs(sim)
         solve(sim)
         if sim.failed == false
             break
         end
         restore_stop_solutions(sim)
         adapt_time_step(sim)
+        advance_time(sim)
+        sync_time(sim)
         sim.failed = false
     end
 end
@@ -216,6 +217,7 @@ function synchronize(sim::MultiDomainSimulation)
 end
 
 function advance_time(sim::SingleDomainSimulation)
+    save_stop_solutions(sim)
     sim.integrator.prev_time = sim.integrator.time
     next_time = round(sim.integrator.time + sim.integrator.time_step; digits = 12)
     sim.integrator.time = sim.model.time = next_time

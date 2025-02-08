@@ -48,7 +48,6 @@ mutable struct SolidSchwarzController <: SchwarzController
 end
 
 mutable struct SolidSingleController <: SingleController
-    time_step::Float64
     time::Float64
     prev_time::Float64
     stop::Int64

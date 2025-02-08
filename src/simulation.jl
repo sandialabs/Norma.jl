@@ -63,8 +63,7 @@ function SingleDomainSimulation(params::Dict{String, Any})
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
-    controller = SolidSingleController(0.0, 0.0, 0.0, 0,
-        Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}())
+    controller = SolidSingleController(0.0, 0.0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}())
     model = create_model(params)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)

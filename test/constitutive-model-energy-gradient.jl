@@ -6,7 +6,7 @@
 using Random
 
 include("../src/minitensor.jl")
-include("../src/constitutive_def.jl")
+include("../src/constitutive_types.jl")
 include("../src/constitutive.jl")
 
 function finite_difference(material::Solid, F::Matrix{Float64}, dF::Matrix{Float64}, h::Float64)
