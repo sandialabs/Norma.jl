@@ -107,20 +107,8 @@ function apply_ics(sim::SingleDomainSimulation)
     apply_ics(sim.params, sim.model)
 end
 
-function apply_ics(sim::MultiDomainSimulation)
-    for subsim ∈ sim.subsims
-        apply_ics(subsim)
-    end
-end
-
 function apply_bcs(sim::SingleDomainSimulation)
     apply_bcs(sim.model)
-end
-
-function apply_bcs(sim::MultiDomainSimulation)
-    for subsim ∈ sim.subsims
-        apply_bcs(subsim)
-    end
 end
 
 function initialize(sim::SingleDomainSimulation)
@@ -140,16 +128,6 @@ end
 function solve(sim::SingleDomainSimulation)
     solve(sim.integrator, sim.solver, sim.model)
     sim.failed = sim.model.failed
-end
-
-function solve(sim::MultiDomainSimulation)
-    for subsim ∈ sim.subsims
-        solve(subsim)
-        if subsim.failed == true
-            sim.failed = true
-            return
-        end
-    end
 end
 
 function initialize_writing(sim::SingleDomainSimulation)
