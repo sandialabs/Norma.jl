@@ -54,13 +54,13 @@ function adapt_time_step(sim::SingleDomainSimulation)
             error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
         end
         sim.integrator.time_step = new_time_step
-        println("Time step failure. Decreasing time step from ", time_step, " to ", new_time_step)
+        @warn "Time step failure. Decreasing time step." time_step new_time_step
     else
         if increase_factor > 1.0
             new_time_step = min(increase_factor * time_step, maximum_time_step)
             if new_time_step > time_step
                 sim.integrator.time_step = new_time_step
-                println("Time step success. Increasing time step from ", time_step, " to ", new_time_step)
+                @info "Time step success. Increasing time step." time_step new_time_step
             end
         end
     end
