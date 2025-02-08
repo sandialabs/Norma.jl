@@ -37,31 +37,31 @@ function solve_contact(sim::MultiDomainSimulation)
     end
 end
 
-function adapt_time_step(sim::SingleDomainSimulation)
-    failed = sim.failed
+function decrease_time_step(sim::SingleDomainSimulation)
     time_step = sim.integrator.time_step
     minimum_time_step = sim.integrator.minimum_time_step
-    maximum_time_step = sim.integrator.maximum_time_step
     decrease_factor = sim.integrator.decrease_factor
+    if decrease_factor == 1.0
+        error("Cannot adapt time step ", time_step, " because decrease factor is ", decrease_factor,
+            ". Enable adaptive time stepping.")
+    end
+    new_time_step = decrease_factor * time_step
+    if new_time_step < minimum_time_step
+        error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
+    end
+    sim.integrator.time_step = new_time_step
+    @warn "Time step failure. Decreasing time step." time_step new_time_step
+end
+
+function increase_time_step(sim::SingleDomainSimulation)
+    time_step = sim.integrator.time_step
+    maximum_time_step = sim.integrator.maximum_time_step
     increase_factor = sim.integrator.increase_factor
-    if failed == true
-        if decrease_factor == 1.0
-            error("Cannot adapt time step ", time_step, " because decrease factor is ", decrease_factor,
-                ". Enable adaptive time stepping.")
-        end
-        new_time_step = decrease_factor * time_step
-        if new_time_step < minimum_time_step
-            error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
-        end
-        sim.integrator.time_step = new_time_step
-        @warn "Time step failure. Decreasing time step." time_step new_time_step
-    else
-        if increase_factor > 1.0
-            new_time_step = min(increase_factor * time_step, maximum_time_step)
-            if new_time_step > time_step
-                sim.integrator.time_step = new_time_step
-                @info "Time step success. Increasing time step." time_step new_time_step
-            end
+    if increase_factor > 1.0
+        new_time_step = min(increase_factor * time_step, maximum_time_step)
+        if new_time_step > time_step
+            sim.integrator.time_step = new_time_step
+            @info "Time step success. Increasing time step." time_step new_time_step
         end
     end
 end
@@ -71,13 +71,14 @@ function advance(sim::SingleDomainSimulation)
         apply_bcs(sim)
         solve(sim)
         if sim.failed == false
+            increase_time_step(sim)
             break
         end
         restore_stop_solutions(sim)
-        adapt_time_step(sim)
+        decrease_time_step(sim)
         advance_time(sim)
         sync_time(sim)
-        sim.failed = false
+        sim.failed = sim.model.failed = sim.solver.failed = false
     end
 end
 
@@ -217,7 +218,9 @@ function synchronize(sim::MultiDomainSimulation)
 end
 
 function advance_time(sim::SingleDomainSimulation)
-    save_stop_solutions(sim)
+    if sim.failed == false
+        save_stop_solutions(sim)
+    end
     sim.integrator.prev_time = sim.integrator.time
     next_time = round(sim.integrator.time + sim.integrator.time_step; digits = 12)
     sim.integrator.time = sim.model.time = next_time

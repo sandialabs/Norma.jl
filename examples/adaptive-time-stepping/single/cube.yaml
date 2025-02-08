@@ -20,7 +20,7 @@ time integrator:
   time step: 1.0
   maximum time step: 1.0
   minimum time step: 0.01
-  increase factor: 1.1
+  increase factor: 1.0
   decrease factor: 0.5
 boundary conditions:
   Dirichlet:

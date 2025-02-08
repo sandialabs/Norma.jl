@@ -499,7 +499,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dxdξ = dNdξₚ * elem_cur_pos'
                 if det(dxdξ) ≤ 0.0
                     model.failed = true
-                    @error "Evaluation of model has failed with a non-positive Jacobian"
+                    @error "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
                     if typeof(integrator) == QuasiStatic
                         return 0.0, zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof)
                     elseif typeof(integrator) == Newmark
