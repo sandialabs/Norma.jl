@@ -265,7 +265,6 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
                 break
             end
             subsim.model.time = subsim.integrator.time
-            apply_bcs(subsim)
             advance(subsim)
             if subsim.failed == true
                 sim.failed = true

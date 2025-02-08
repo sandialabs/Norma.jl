@@ -15,9 +15,6 @@ function evolve(sim::Simulation)
             break
         end
         sync_time(sim)
-        if typeof(sim) == SingleDomainSimulation
-            apply_bcs(sim)
-        end
         advance(sim)
         write_step(sim)
     end
@@ -70,6 +67,7 @@ function adapt_time_step(sim::SingleDomainSimulation)
 end
 
 function advance(sim::SingleDomainSimulation)
+    apply_bcs(sim)
     save_stop_solutions(sim)
     while true
         solve(sim)
