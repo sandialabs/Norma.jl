@@ -14,13 +14,11 @@ function evolve(sim::Simulation)
         if stop_evolve(sim) == true
             break
         end
-        start_runtimer(sim)
         sync_time(sim)
         if typeof(sim) == SingleDomainSimulation
             apply_bcs(sim)
         end
         advance(sim)
-        end_runtimer(sim)
         write_step(sim)
     end
     finalize_writing(sim)
@@ -85,6 +83,7 @@ function advance(sim::SingleDomainSimulation)
 end
 
 function advance(sim::MultiDomainSimulation)
+    start_runtimer(sim)
     update_transfer_operators(sim)
     if sim.schwarz_controller.schwarz_contact == false
         schwarz(sim)
@@ -103,6 +102,7 @@ function advance(sim::MultiDomainSimulation)
         restore_stop_solutions(sim)
         solve_contact(sim)
     end
+    end_runtimer(sim)
 end
 
 function apply_ics(sim::SingleDomainSimulation)
