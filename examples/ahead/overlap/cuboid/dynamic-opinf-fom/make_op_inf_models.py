@@ -20,7 +20,7 @@ if __name__ == "__main__":
     displacement_snapshots[free_dofs[:,:]==False] = 0.
     
     #Get sideset snapshots
-    sidesets = ["nsx--x","nsy--y","ssz-","nsz+-z"]
+    sidesets = ["ssz-","nsz+-z"]
     sideset_snapshots = normaopinf.readers.load_sideset_displacement_csv_files(solution_directory=cur_dir,sidesets=sidesets,solution_id=solution_id,skip_files=1)
     
     # Create an energy-based truncater 
