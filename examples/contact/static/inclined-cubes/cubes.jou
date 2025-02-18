@@ -11,11 +11,11 @@ ${offset = (length + separation) / 2.0}
 
 create brick x {length} y {side} z {side}
 move volume 1 x {-offset} include_merged
-volume 1 scheme tetmesh
+#volume 1 scheme tetmesh
 volume 1 size {h_fine}
 mesh volume 1
 block 1 volume 1
-block 1 element type tetra4
+#block 1 element type tetra4
 block 1 name "fine"
 nodeset 1 surface 4
 nodeset 1 name "nsx-"
@@ -75,13 +75,13 @@ move volume 1 x {offset*cosangle} y {offset*sinangle} include_merged
 rotate volume 1 about z angle -{rot_angle}
 
 delete mesh
-
+move volume 1 x {-offset} include_merged
 move volume 1 x {2 * offset}  include_merged
-volume 1 scheme map
+volume 1 scheme tetmesh
 volume 1 size {h_coarse}
 mesh volume 1
 block 1 volume 1
-block 1 element type hex8
+block 1 element type tetra4
 block 1 name "coarse"
 nodeset 1 surface 4
 nodeset 1 name "nsx-"

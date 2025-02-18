@@ -94,9 +94,9 @@ end
             c = cos(angle)
             s = sin(angle)
             local_rotation_matrix = [ c s 0; -s c 0 ; 0 0 1]
-            model_fine_rotated = zeros((3,68))
+            model_fine_rotated = zeros((3,64))
             model_coarse_rotated = zeros((3,27))
-            for i in range(1,68)
+            for i in range(1,64)
                 base = (i-1)*(3) + 1
                 model_fine_rotated[:, i] = local_rotation_matrix * model_fine_temp[:, i] 
             end
