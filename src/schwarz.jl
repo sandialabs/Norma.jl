@@ -14,7 +14,7 @@ function SolidSchwarzController(params::Dict{String, Any})
     final_time = params["final time"]
     time_step = params["time step"]
     println("Requested time step is ", time_step)
-    num_stops = ceil(Int64, (final_time - initial_time) / time_step) + 1
+    num_stops = round(Int64, (final_time - initial_time) / time_step) + 1
     time_step = (final_time - initial_time) / (num_stops - 1)
     println("Adjusted time step is ", time_step, " with ", num_stops, " stops")
     absolute_error = relative_error = 0.0
