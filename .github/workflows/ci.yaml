@@ -28,12 +28,17 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
 
-      # Step 3: Install dependencies
+      # Step 3: Remove existing Manifest.toml
+      - name: Remove existing Manifest.toml
+        run: rm -f Manifest.toml
+
+      # Step 4: Install dependencies
       - name: Install dependencies
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
-      # Step 4: Run the tests
+      # Step 5: Run the tests
       - name: Run tests
         run: |
           julia --project=. -e 'using Pkg; Pkg.test()'
+
