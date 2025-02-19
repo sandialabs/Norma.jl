@@ -77,7 +77,8 @@ end
         input_file = "cubes-test$i.yaml"
         params = YAML.load_file(input_file; dicttype=Dict{String,Any})
         params["initial time"] = -1.0e-06
-        params["final time"] = 1.0e-3
+        params["time step"] = 1e-6
+        params["final time"] = 4e-6
         sim = Norma.run(params, input_file)
         subsim_temp = sim.subsims
         model_fine_temp = subsim_temp[1].model.current
@@ -111,8 +112,8 @@ end
                 model_coarse_rotated[:, i] = local_rotation_matrix * model_coarse_temp[:, i] 
             end
 
-            @test model_fine_rotated ≈ model_fine rtol=2e-4
-            @test model_coarse_rotated ≈ model_coarse rtol=2e-4
+            @test model_fine_rotated ≈ model_fine rtol=1e-5
+            @test model_coarse_rotated ≈ model_coarse rtol=1e-5
         end
     end
 
