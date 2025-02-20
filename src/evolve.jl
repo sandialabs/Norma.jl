@@ -50,7 +50,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
         error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
-    @warn "Time step failure. Decreasing time step." time_step new_time_step
+    @info "Time step failure. Decreasing time step." time_step new_time_step
 end
 
 function increase_time_step(sim::SingleDomainSimulation)
