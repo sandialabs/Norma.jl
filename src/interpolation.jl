@@ -597,11 +597,25 @@ end
 
 function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)
     ξ = zeros(length(point))
-    if is_inside_guess(element_type, nodes, point, 0.1) == false
+    if in_bounding_box(nodes, point, 0.1) == false
         return ξ, false
     end
     ξ = map_to_parametric(element_type, nodes, point)
     return ξ, is_inside_parametric(element_type, ξ, tol)
+end
+
+function in_bounding_box(nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)::Bool
+    for i ∈ 1:3
+        coord_min = minimum(nodes[i, :])
+        coord_max = maximum(nodes[i, :])
+        range_d = coord_max - coord_min
+        lower_bound = coord_min - tol * range_d
+        upper_bound = coord_max + tol * range_d
+        if point[i] < lower_bound || point[i] > upper_bound
+            return false
+        end
+    end
+    return true
 end
 
 function is_inside_guess(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)

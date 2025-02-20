@@ -426,7 +426,6 @@ function apply_sm_schwarz_coupling_dirichlet(model::SolidMechanics, bc::Coupling
             point_posn = elem_posn * N
             point_velo = elem_velo * N
             point_acce = elem_acce * N
-            @debug "Applying Schwarz DBC as $point_posn"
             model.current[:, node_index] = point_posn
             model.velocity[:, node_index] = point_velo
             model.acceleration[:, node_index] = point_acce
@@ -460,7 +459,6 @@ function apply_sm_schwarz_coupling_neumann(model::SolidMechanics, bc::CouplingSc
     for local_node ∈ 1:num_local_nodes
         global_node = global_from_local_map[local_node]
         node_tractions = schwarz_tractions[:, local_node]
-        @debug "Applying Schwarz NBC as $node_tractions"
         model.boundary_force[3*global_node-2:3*global_node] += node_tractions
     end
 end
