@@ -109,8 +109,20 @@ function apply_ics(sim::SingleDomainSimulation)
     apply_ics(sim.params, sim.model)
 end
 
+function apply_ics(sim::MultiDomainSimulation)
+    for subsim ∈ sim.subsims
+        apply_ics(subsim)
+    end
+end
+
 function apply_bcs(sim::SingleDomainSimulation)
     apply_bcs(sim.model)
+end
+
+function apply_bcs(sim::MultiDomainSimulation)
+    for subsim ∈ sim.subsims
+        apply_bcs(subsim)
+    end
 end
 
 function initialize(sim::SingleDomainSimulation)
@@ -121,8 +133,10 @@ end
 
 function initialize(sim::MultiDomainSimulation)
     initialize_transfer_operators(sim)
+    apply_ics(sim)
+    apply_bcs(sim)
     for subsim ∈ sim.subsims
-        initialize(subsim)
+        initialize(subsim.integrator, subsim.solver, subsim.model)
     end
     detect_contact(sim)
 end
