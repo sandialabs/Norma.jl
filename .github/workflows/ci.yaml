@@ -10,6 +10,38 @@ on:
     - cron: '0 8 * * *'  # Midnight PST (8:00 UTC)
 
 jobs:
+  format:
+    name: Auto-format Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v1
+        with:
+          version: '1.11'  # Adjust as needed
+
+      - name: Install JuliaFormatter
+        run: julia -e 'using Pkg; Pkg.add("JuliaFormatter"); Pkg.update()'
+
+      - name: Run JuliaFormatter with Spaces
+        run: julia -e 'using JuliaFormatter; format(".")'
+
+      - name: Commit formatted files (if needed)
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add -A
+          if git diff --cached --exit-code; then
+            echo "No formatting changes needed."
+          else
+            git commit -m "Auto-format code using JuliaFormatter (spaces only)"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test:
     name: Run Tests
     strategy:

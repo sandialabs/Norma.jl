@@ -2,7 +2,7 @@ using Pkg
 
 # Ensure required packages are installed
 function ensure_installed(pkgs)
-    for pkg in pkgs
+    for pkg ∈ pkgs
         if !haskey(Pkg.project().dependencies, pkg)
             println("Installing missing package: $pkg")
             Pkg.add(pkg)
@@ -74,7 +74,7 @@ function plot_solns_overlap()
     num_files = length(matching_files)
 
     # -- Main loop --
-    for i in 0:num_files-1
+    for i ∈ 0:num_files-1
         # Read data for subdomain #1
         d1 = readdlm(@sprintf("01-disp-%04d.csv", i), ',')
         v1 = readdlm(@sprintf("01-velo-%04d.csv", i), ',')
@@ -271,7 +271,7 @@ function plot_solns_overlap()
     numerator_acce = 0.0
     denominator_acce = 0.0
 
-    for i in 1:sz[2]
+    for i ∈ 1:sz[2]
         numerator_disp += norm(disp_computed[:, i] .- disp_exact[:, i])^2
         denominator_disp += norm(disp_exact[:, i])^2
 
