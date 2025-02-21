@@ -23,10 +23,10 @@ jobs:
           version: '1.11'  # Adjust as needed
 
       - name: Install JuliaFormatter
-        run: julia -e 'using Pkg; Pkg.add("JuliaFormatter")'
+        run: julia -e 'using Pkg; Pkg.add("JuliaFormatter"); Pkg.update()'
 
       - name: Run JuliaFormatter with Spaces
-        run: julia -e 'using JuliaFormatter; format(".", indent=4, indent_style=IndentStyle.Space)'
+        run: julia -e 'using JuliaFormatter; format(".", indent=4, indent_style=JuliaFormatter.IndentStyle.Space)'
 
       - name: Commit formatted files (if needed)
         run: |
@@ -36,7 +36,7 @@ jobs:
           if git diff --cached --exit-code; then
             echo "No formatting changes needed."
           else
-            git commit -m "Auto-format code using JuliaFormatter"
+            git commit -m "Auto-format code using JuliaFormatter (spaces only)"
             git push
           fi
         env:
