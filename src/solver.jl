@@ -182,7 +182,7 @@ end
 
 function copy_solution_source_targets(
     integrator::QuasiStatic,
-    solver::Any,
+    solver::Solver,
     model::SolidMechanics,
 )
     displacement_local = integrator.displacement
@@ -202,7 +202,7 @@ function copy_solution_source_targets(
 end
 
 function copy_solution_source_targets(
-    solver::Any,
+    solver::Solver,
     model::SolidMechanics,
     integrator::QuasiStatic,
 )
@@ -257,7 +257,7 @@ end
 function copy_solution_source_targets(
     model::SolidMechanics,
     integrator::QuasiStatic,
-    solver::Any,
+    solver::Solver,
 )
     _, num_nodes = size(model.reference)
     for node ∈ 1:num_nodes
@@ -532,7 +532,7 @@ end
 # Taken from ELASTOPLASITICITY—PART II: GLOBALLY CONVERGENT SCHEMES, Perez-Foguet & Armero, 2002
 function backtrack_line_search(
     integrator::TimeIntegrator,
-    solver::Any,
+    solver::Solver,
     model::SolidMechanics,
     direction::Vector{Float64},
 )

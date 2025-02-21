@@ -201,7 +201,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::Linear
     solver.solution[:] = model.reduced_state[:]
 end
 
-function predict(integrator::Newmark, solver::Any, model::LinearOpInfRom)
+function predict(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
     dt = integrator.time_step
     beta = integrator.β
     gamma = integrator.γ
@@ -211,7 +211,7 @@ function predict(integrator::Newmark, solver::Any, model::LinearOpInfRom)
     model.reduced_state[:] = integrator.displacement[:]
 end
 
-function correct(integrator::Newmark, solver::Any, model::LinearOpInfRom)
+function correct(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
     dt = integrator.time_step
     beta = integrator.β
     gamma = integrator.γ
@@ -221,7 +221,7 @@ function correct(integrator::Newmark, solver::Any, model::LinearOpInfRom)
     model.reduced_state[:] = solver.solution[:]
 end
 
-function initialize(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
+function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
         println("Establishing initial equilibrium")
         solve(integrator, solver, model)
@@ -231,11 +231,11 @@ function initialize(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
     end
 end
 
-function predict(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
+function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(model, integrator, solver)
 end
 
-function correct(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
+function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(solver, model, integrator)
 end
 
@@ -484,7 +484,7 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     end
 end
 
-function write_step(params::Parameters, integrator::TimeIntegrator, model::Any)
+function write_step(params::Parameters, integrator::TimeIntegrator, model::Model)
     stop = integrator.stop
     exodus_interval = get(params, "Exodus output interval", 1)
     if exodus_interval > 0 && stop % exodus_interval == 0
