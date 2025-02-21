@@ -3,42 +3,67 @@ name: Norma CI
 on:
   push:
     branches:
-      - main  # Run on pushes to the main branch
-  pull_request:  # Run on pull requests
+      - main
+  pull_request:
   workflow_dispatch:
   schedule:
     - cron: '0 8 * * *'  # Midnight PST (8:00 UTC)
 
 jobs:
+  format:
+    name: Auto-format Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v1
+        with:
+          version: '1.11'  # Adjust as needed
+
+      - name: Install JuliaFormatter
+        run: julia -e 'using Pkg; Pkg.add("JuliaFormatter")'
+
+      - name: Run JuliaFormatter with Spaces
+        run: julia -e 'using JuliaFormatter; format(".", indent=4, indent_style=IndentStyle.Space)'
+
+      - name: Commit formatted files (if needed)
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add -A
+          if git diff --cached --exit-code; then
+            echo "No formatting changes needed."
+          else
+            git commit -m "Auto-format code using JuliaFormatter"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test:
+    name: Run Tests
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]  # Platforms to test
-        julia-version: ["1.10", "1.11"]  # Julia versions to test
+        os: [ubuntu-latest, macos-latest]
+        julia-version: ["1.10", "1.11"]
     runs-on: ${{ matrix.os }}
 
     steps:
-      # Step 1: Check out the code
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2: Set up Julia
       - name: Set up Julia
         uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.julia-version }}
 
-      # Step 3: Remove existing Manifest.toml
       - name: Remove existing Manifest.toml
         run: rm -f Manifest.toml
 
-      # Step 4: Install dependencies
       - name: Install dependencies
-        run: |
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
-      # Step 5: Run the tests
       - name: Run tests
-        run: |
-          julia --project=. -e 'using Pkg; Pkg.test()'
-
+        run: julia --project=. -e 'using Pkg; Pkg.test()'
