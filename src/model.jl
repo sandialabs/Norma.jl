@@ -171,7 +171,7 @@ function HeatConduction(params::Parameters)
     material_blocks = material_params["blocks"]
     num_blks_params = length(material_blocks)
     blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(elem_blk_ids)
+    num_blks = length(blocks)
     if num_blks_params ≠ num_blks
         error(
             "number of blocks in mesh ",

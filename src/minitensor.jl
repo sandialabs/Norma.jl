@@ -351,7 +351,7 @@ end
 # should be bounded as far from zero as possible.
 #
 function q_from_rt(R::AbstractMatrix{Float64})
-    trR = tr(R)
+    trR = LinearAlgebra.tr(R)
     maxm = trR
     maxi = 4
     q = zeros(4)
@@ -431,7 +431,7 @@ end
 # whenever qs is close to 1.
 #
 function rv_from_q(qq::AbstractVector{Float64})
-    if qq[1] >= 0
+    if qq[1] >= 0.0
         q = qq
     else
         q = -qq
@@ -525,6 +525,15 @@ function rt_from_rv(w::AbstractVector{Float64})
     q = q_from_rv(w)
     R = rt_from_q(q)
     return R
+end
+
+function normalize(v::AbstractVector{Float64})
+    n = norm(v)
+    if n > 0.0
+        return v / n
+    else
+        error("Cannot normalize a zero vector")
+    end
 end
 
 #

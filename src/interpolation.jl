@@ -213,6 +213,7 @@ function gauss_legendreD2(n::Integer)
             ω[1] * ω[2],
             ω[2] * ω[2],
         ]
+        return ξ, w
     end
 end
 
