@@ -24,7 +24,7 @@ initial conditions:
   displacement:
     - node set: nsall
       component: z
-      function: "a=0.001; s=0.02; a/2*exp(-z*z/s/s/2)"
+      function: "a=0.001; s=0.02; a*exp(-z*z/s/s/2)"
 boundary conditions:
   Dirichlet:
     - node set: nsx-
