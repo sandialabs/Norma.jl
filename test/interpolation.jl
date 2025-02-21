@@ -5,8 +5,8 @@
 # top-level Norma.jl directory.
 @testset "interpolation tet" begin
     vertices = [0 1 0 0
-                0 0 1 0
-                0 0 0 1] * 1.0
+        0 0 1 0
+        0 0 0 1] * 1.0
     element_type = "TETRA4"
     x1 = zeros(3)
     ξ1 = Norma.map_to_parametric(element_type, vertices, x1)

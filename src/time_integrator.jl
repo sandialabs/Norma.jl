@@ -7,7 +7,7 @@
 using DelimitedFiles
 using Format
 
-function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
+function adaptive_stepping_parameters(integrator_params::Parameters)
     has_minimum = haskey(integrator_params, "minimum time step")
     has_decrease = haskey(integrator_params, "decrease factor")
     has_maximum = haskey(integrator_params, "maximum time step")
@@ -37,7 +37,7 @@ function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
     return minimum_time_step, decrease_factor, maximum_time_step, increase_factor
 end
 
-function QuasiStatic(params::Dict{String, Any}, model::Model)
+function QuasiStatic(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
@@ -75,7 +75,7 @@ function QuasiStatic(params::Dict{String, Any}, model::Model)
     )
 end
 
-function Newmark(params::Dict{String, Any}, model::Model)
+function Newmark(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
@@ -118,7 +118,7 @@ function Newmark(params::Dict{String, Any}, model::Model)
     )
 end
 
-function CentralDifference(params::Dict{String, Any}, model::Model)
+function CentralDifference(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
@@ -161,7 +161,7 @@ function CentralDifference(params::Dict{String, Any}, model::Model)
     )
 end
 
-function create_time_integrator(params::Dict{String, Any}, model::Model)
+function create_time_integrator(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     integrator_name = integrator_params["type"]
     if integrator_name == "quasi static"
@@ -348,14 +348,14 @@ function correct(
 end
 
 function initialize_writing(
-    params::Dict{String, Any},
+    params::Parameters,
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
     initialize_writing(params, integrator, model.fom_model)
 end
 
-function initialize_writing(params::Dict{String, Any}, integrator::TimeIntegrator, _::SolidMechanics)
+function initialize_writing(params::Parameters, integrator::TimeIntegrator, _::SolidMechanics)
     output_mesh = params["output_mesh"]
 
     # global variables
@@ -468,7 +468,7 @@ function initialize_writing(params::Dict{String, Any}, integrator::TimeIntegrato
     )
 end
 
-function finalize_writing(params::Dict{String, Any})
+function finalize_writing(params::Parameters)
     input_mesh = params["input_mesh"]
     Exodus.close(input_mesh)
     output_mesh = params["output_mesh"]
@@ -484,7 +484,7 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     end
 end
 
-function write_step(params::Dict{String, Any}, integrator::Any, model::Any)
+function write_step(params::Parameters, integrator::TimeIntegrator, model::Any)
     stop = integrator.stop
     exodus_interval = get(params, "Exodus output interval", 1)
     if exodus_interval > 0 && stop % exodus_interval == 0
@@ -581,7 +581,7 @@ function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, si
 end
 
 function write_step_exodus(
-    params::Dict{String, Any},
+    params::Parameters,
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
@@ -606,7 +606,7 @@ function write_step_exodus(
     write_step_exodus(params, integrator, model.fom_model)
 end
 
-function write_step_exodus(params::Dict{String, Any}, integrator::TimeIntegrator, model::SolidMechanics)
+function write_step_exodus(params::Parameters, integrator::TimeIntegrator, model::SolidMechanics)
     time = integrator.time
     stop = integrator.stop
     runtime_step = integrator.runtime_step

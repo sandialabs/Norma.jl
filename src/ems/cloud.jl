@@ -66,11 +66,11 @@ end
 
 function create_params(input_file::String)
     println("Reading simulation file: ", input_file)
-    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
+    params = YAML.load_file(input_file; dicttype = Parameters)
     return params
 end
 
-function create_geometry(params::Dict{String,Any})
+function create_geometry(params::Parameters)
     geometry_params = params["geometry"]
     type = geometry_params["type"]
     if type == "cube"
@@ -84,7 +84,7 @@ function create_geometry(params::Dict{String,Any})
     end
 end
 
-function create_potential(params::Dict{String,Any})
+function create_potential(params::Parameters)
     potential_params = params["potential"]
     type = potential_params["type"]
     if type == "Lennard-Jones"
@@ -113,7 +113,7 @@ function create_potential(params::Dict{String,Any})
     end
 end
 
-function create_solver(params::Dict{String,Any})
+function create_solver(params::Parameters)
     solver_params = params["solver"]
     type = solver_params["type"]
     if type == "steepest descent"
@@ -163,7 +163,7 @@ function return_map!(geometry::Geometry, points::Matrix{Float64})
     end
 end
 
-function create_point_cloud(params::Dict{String,Any})
+function create_point_cloud(params::Parameters)
     geometry = create_geometry(params)
     number_points = params["number points"]
     points = zeros(3, number_points)
@@ -315,7 +315,7 @@ function backtrack_line_search!(
     geometry::Geometry,
     potential::Potential,
     points::Matrix{Float64},
-    force::Matrix{Float64}
+    force::Matrix{Float64},
 )
     backtrack_factor = solver.backtrack_factor
     decrease_factor = solver.decrease_factor
@@ -349,7 +349,7 @@ function backtrack_line_search_orig!(
     geometry::Geometry,
     potential::Potential,
     points::Matrix{Float64},
-    force::Matrix{Float64}
+    force::Matrix{Float64},
 )
     backtrack_factor = solver.backtrack_factor
     decrease_factor = solver.decrease_factor

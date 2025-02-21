@@ -6,7 +6,7 @@
 
 using LinearAlgebra
 
-function create_step(solver_params::Dict{String, Any})
+function create_step(solver_params::Parameters)
     step_name = solver_params["step"]
     if step_name == "full Newton"
         return NewtonStep(solver_params)
@@ -19,7 +19,7 @@ function create_step(solver_params::Dict{String, Any})
     end
 end
 
-function HessianMinimizer(params::Dict{String, Any}, model::Model)
+function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
@@ -68,7 +68,7 @@ function HessianMinimizer(params::Dict{String, Any}, model::Model)
     )
 end
 
-function ExplicitSolver(params::Dict{String, Any}, model::Model)
+function ExplicitSolver(params::Parameters, model::Model)
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
@@ -92,9 +92,8 @@ function ExplicitSolver(params::Dict{String, Any}, model::Model)
     )
 end
 
-function SteepestDescent(params::Dict{String, Any}, model::Model)
+function SteepestDescent(params::Parameters, model::Model)
     solver_params = params["solver"]
-    input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
@@ -140,7 +139,7 @@ function SteepestDescent(params::Dict{String, Any}, model::Model)
     )
 end
 
-function NewtonStep(params::Dict{String, Any})
+function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -149,7 +148,7 @@ function NewtonStep(params::Dict{String, Any})
     NewtonStep(step_length)
 end
 
-function ExplicitStep(params::Dict{String, Any})
+function ExplicitStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -158,7 +157,7 @@ function ExplicitStep(params::Dict{String, Any})
     ExplicitStep(step_length)
 end
 
-function SteepestDescentStep(params::Dict{String, Any})
+function SteepestDescentStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -167,7 +166,7 @@ function SteepestDescentStep(params::Dict{String, Any})
     SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Dict{String, Any}, model::Model)
+function create_solver(params::Parameters, model::Model)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"

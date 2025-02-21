@@ -10,7 +10,7 @@ include("ics_bcs.jl")
 
 using NPZ
 
-function LinearOpInfRom(params::Dict{String, Any})
+function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
@@ -43,7 +43,7 @@ function LinearOpInfRom(params::Dict{String, Any})
     )
 end
 
-function SolidMechanics(params::Dict{String, Any})
+function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -154,7 +154,7 @@ function SolidMechanics(params::Dict{String, Any})
     )
 end
 
-function HeatConduction(params::Dict{String, Any})
+function HeatConduction(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -237,7 +237,7 @@ function HeatConduction(params::Dict{String, Any})
     )
 end
 
-function create_model(params::Dict{String, Any})
+function create_model(params::Parameters)
     model_params = params["model"]
     model_name = model_params["type"]
     if model_name == "solid mechanics"

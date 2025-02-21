@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "single-explicit-dynamic-solid-cube" begin
-    cp("../examples/single/explicit-dynamic-solid/cube/cube.yaml", "cube.yaml", force=true)
-    cp("../examples/single/explicit-dynamic-solid/cube/cube.g", "cube.g", force=true)
+    cp("../examples/single/explicit-dynamic-solid/cube/cube.yaml", "cube.yaml", force = true)
+    cp("../examples/single/explicit-dynamic-solid/cube/cube.g", "cube.g", force = true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model

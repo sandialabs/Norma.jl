@@ -4,7 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-function SolidSchwarzController(params::Dict{String, Any})
+function SolidSchwarzController(params::Parameters)
     num_domains = length(params["domains"])
     minimum_iterations = params["minimum iterations"]
     maximum_iterations = params["maximum iterations"]
@@ -92,7 +92,7 @@ function SolidSchwarzController(params::Dict{String, Any})
     )
 end
 
-function create_schwarz_controller(params::Dict{String, Any})
+function create_schwarz_controller(params::Parameters)
     type = params["subdomains type"]
     if type == "static solid mechanics" || type == "dynamic solid mechanics" || type == "dynamic linear opinf rom"
         return SolidSchwarzController(params)
