@@ -234,19 +234,22 @@ function copy_solution_source_targets(
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3
         if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.current[1, i] =
+                model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
             model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
             model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.current[2, i] =
+                model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
             model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
             model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.current[3, i] =
+                model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
             model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
@@ -447,7 +450,10 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     num_dof = length(model.free_dofs)
     I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
     LHS = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
-    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
+    RHS =
+        model.opinf_rom["f"] +
+        model.reduced_boundary_forcing +
+        1.0 / (dt * dt * beta) .* integrator.disp_pre
 
     residual = RHS - LHS * solver.solution
     solver.hessian[:, :] = LHS
@@ -455,7 +461,8 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix = evaluate(integrator, model)
+    stored_energy, internal_force, body_force, stiffness_matrix =
+        evaluate(integrator, model)
     if model.failed == true
         return
     end
@@ -483,7 +490,8 @@ function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::Solid
 end
 
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix = evaluate(integrator, model)
+    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix =
+        evaluate(integrator, model)
     if model.failed == true
         return
     end
@@ -495,7 +503,8 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     integrator.kinetic_energy = kinetic_energy
     external_force = body_force + model.boundary_force
     if model.inclined_support == true
-        stiffness_matrix = model.global_transform * stiffness_matrix * model.global_transform'
+        stiffness_matrix =
+            model.global_transform * stiffness_matrix * model.global_transform'
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
@@ -504,7 +513,11 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     solver.gradient = internal_force - external_force + inertial_force
 end
 
-function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
+function evaluate(
+    integrator::CentralDifference,
+    solver::ExplicitSolver,
+    model::SolidMechanics,
+)
     stored_energy, internal_force, body_force, lumped_mass = evaluate(integrator, model)
     if model.failed == true
         return

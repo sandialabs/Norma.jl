@@ -62,11 +62,31 @@ end
 
     angles = [0.0, 22.5, 45, 90]
     for (i, angle_deg) in enumerate(angles)
-        cp("../examples/contact/static/inclined-cubes/cubes-test$i.yaml", "cubes-test$i.yaml", force = true)
-        cp("../examples/contact/static/inclined-cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml", force = true)
-        cp("../examples/contact/static/inclined-cubes/cube-test$i-2.yaml", "cube-test$i-2.yaml", force = true)
-        cp("../examples/contact/static/inclined-cubes/cube-test$i-1.g", "cube-test$i-1.g", force = true)
-        cp("../examples/contact/static/inclined-cubes/cube-test$i-2.g", "cube-test$i-2.g", force = true)
+        cp(
+            "../examples/contact/static/inclined-cubes/cubes-test$i.yaml",
+            "cubes-test$i.yaml",
+            force = true,
+        )
+        cp(
+            "../examples/contact/static/inclined-cubes/cube-test$i-1.yaml",
+            "cube-test$i-1.yaml",
+            force = true,
+        )
+        cp(
+            "../examples/contact/static/inclined-cubes/cube-test$i-2.yaml",
+            "cube-test$i-2.yaml",
+            force = true,
+        )
+        cp(
+            "../examples/contact/static/inclined-cubes/cube-test$i-1.g",
+            "cube-test$i-1.g",
+            force = true,
+        )
+        cp(
+            "../examples/contact/static/inclined-cubes/cube-test$i-2.g",
+            "cube-test$i-2.g",
+            force = true,
+        )
         input_file = "cubes-test$i.yaml"
         params = YAML.load_file(input_file; dicttype = Norma.Parameters)
         params["initial time"] = -2.0

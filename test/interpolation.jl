@@ -4,9 +4,11 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "interpolation tet" begin
-    vertices = [0 1 0 0
+    vertices = [
+        0 1 0 0
         0 0 1 0
-        0 0 0 1] * 1.0
+        0 0 0 1
+    ] * 1.0
     element_type = "TETRA4"
     x1 = zeros(3)
     ξ1 = Norma.map_to_parametric(element_type, vertices, x1)
@@ -32,9 +34,11 @@
 end
 
 @testset "interpolation hex" begin
-    vertices = [-1 1 1 -1 -1 1 1 -1
+    vertices = [
+        -1 1 1 -1 -1 1 1 -1
         -1 -1 1 1 -1 -1 1 1
-        -1 -1 -1 -1 1 1 1 1] * 0.5
+        -1 -1 -1 -1 1 1 1 1
+    ] * 0.5
     element_type = "HEX8"
     x1 = zeros(3)
     ξ1 = Norma.map_to_parametric(element_type, vertices, x1)

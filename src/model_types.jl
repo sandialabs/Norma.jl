@@ -55,7 +55,7 @@ end
 
 
 mutable struct LinearOpInfRom <: OpInfModel
-    opinf_rom::Dict{Any, Any}
+    opinf_rom::Dict{Any,Any}
     basis::Array{Float64}
     reduced_state::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}

@@ -108,8 +108,11 @@ function create_potential(params::Parameters)
         c = potential_params["cutoff"]
         return Polynomial(k, h, m, c)
     else
-        error("Unrecognized potential type: ", type,
-            ", options are Lennard-Jones, repulsive, or symmetric Seth-Hill")
+        error(
+            "Unrecognized potential type: ",
+            type,
+            ", options are Lennard-Jones, repulsive, or symmetric Seth-Hill",
+        )
     end
 end
 
@@ -126,8 +129,17 @@ function create_solver(params::Parameters)
         decrease_factor = solver_params["decrease factor"]
         output_file_root = solver_params["output file root"]
         output_interval = solver_params["output interval"]
-        return SteepestDescent(step_length, maximum_iterations, absolute_tolerance, relative_tolerance,
-            line_search_iterations, backtrack_factor, decrease_factor, output_file_root, output_interval)
+        return SteepestDescent(
+            step_length,
+            maximum_iterations,
+            absolute_tolerance,
+            relative_tolerance,
+            line_search_iterations,
+            backtrack_factor,
+            decrease_factor,
+            output_file_root,
+            output_interval,
+        )
     else
         error("Unrecognized solver type: ", type, ", options are steepest descent")
     end
@@ -185,7 +197,11 @@ function create_point_cloud(params::Parameters)
     return geometry, points
 end
 
-function compute_energy_force!(potential::Lennard_Jones, points::Matrix{Float64}, force::Matrix{Float64})
+function compute_energy_force!(
+    potential::Lennard_Jones,
+    points::Matrix{Float64},
+    force::Matrix{Float64},
+)
     ε = potential.ε
     σ = potential.σ
     number_points = size(points, 2)
@@ -205,7 +221,11 @@ function compute_energy_force!(potential::Lennard_Jones, points::Matrix{Float64}
     return energy
 end
 
-function compute_energy_force!(potential::Repulsive, points::Matrix{Float64}, force::Matrix{Float64})
+function compute_energy_force!(
+    potential::Repulsive,
+    points::Matrix{Float64},
+    force::Matrix{Float64},
+)
     k = potential.k
     c = potential.c
     number_points = size(points, 2)
@@ -227,7 +247,11 @@ function compute_energy_force!(potential::Repulsive, points::Matrix{Float64}, fo
     return energy
 end
 
-function compute_energy_force!(potential::SymmetricSethHill, points::Matrix{Float64}, force::Matrix{Float64})
+function compute_energy_force!(
+    potential::SymmetricSethHill,
+    points::Matrix{Float64},
+    force::Matrix{Float64},
+)
     k = potential.k
     h = potential.h
     m = potential.m
@@ -255,7 +279,11 @@ function compute_energy_force!(potential::SymmetricSethHill, points::Matrix{Floa
     return energy
 end
 
-function compute_energy_force!(potential::Polynomial, points::Matrix{Float64}, force::Matrix{Float64})
+function compute_energy_force!(
+    potential::Polynomial,
+    points::Matrix{Float64},
+    force::Matrix{Float64},
+)
     k = potential.k
     h = potential.h
     m = potential.m
@@ -282,7 +310,12 @@ function compute_energy_force!(potential::Polynomial, points::Matrix{Float64}, f
     return energy
 end
 
-function solve(solver::SteepestDescent, geometry::Geometry, potential::Potential, points::Matrix{Float64})
+function solve(
+    solver::SteepestDescent,
+    geometry::Geometry,
+    potential::Potential,
+    points::Matrix{Float64},
+)
     maximum_iterations = solver.maximum_iterations
     absolute_tolerance = solver.absolute_tolerance
     relative_tolerance = solver.relative_tolerance
@@ -296,10 +329,24 @@ function solve(solver::SteepestDescent, geometry::Geometry, potential::Potential
     for iter ∈ 1:maximum_iterations
         absolute_error = norm(force)
         relative_error = initial_norm > 0.0 ? absolute_error / initial_norm : absolute_error
-        println("Iteration : ", iter, ", energy : ", energy, ", absolute error : ", absolute_error, ", relative error : ", relative_error)
+        println(
+            "Iteration : ",
+            iter,
+            ", energy : ",
+            energy,
+            ", absolute error : ",
+            absolute_error,
+            ", relative error : ",
+            relative_error,
+        )
         if absolute_error < absolute_tolerance || relative_error < relative_tolerance
             println("Converged")
-            println("Absolute tolerance : ", absolute_tolerance, ", relative tolerance : ", relative_tolerance)
+            println(
+                "Absolute tolerance : ",
+                absolute_tolerance,
+                ", relative tolerance : ",
+                relative_tolerance,
+            )
             break
         end
         points, energy = backtrack_line_search!(solver, geometry, potential, points, force)
@@ -371,8 +418,10 @@ function backtrack_line_search_orig!(
             break
         end
         step_length =
-            max(backtrack_factor * step_length, -0.5 * step_length * step_length * merit_prime) /
-            (merit - merit_old - step_length * merit_prime)
+            max(
+                backtrack_factor * step_length,
+                -0.5 * step_length * step_length * merit_prime,
+            ) / (merit - merit_old - step_length * merit_prime)
     end
     return points, energy
 end
@@ -395,7 +444,7 @@ function write_points_vtk(filename::String, points::Matrix{Float64})
         println(io, "POINTS $N float")
 
         # Write point data
-        for i in 1:N
+        for i = 1:N
             println(io, join(points[:, i], " "))
         end
     end
