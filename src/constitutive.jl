@@ -575,15 +575,17 @@ end
 
 function constitutive(material::SethHill, F::Matrix{Float64})
     C = F' * F
-    F⁻ᵀ = inv(F)'
+    F⁻¹ = inv(F)
+    F⁻ᵀ = F⁻¹'
     J = det(F)
     Jᵐ = J^material.m
     J⁻ᵐ = 1.0 / Jᵐ
     J²ᵐ = Jᵐ * Jᵐ
     J⁻²ᵐ = 1.0 / J²ᵐ
     Cbar = J^(-2/3) * C
+    Cbar⁻¹ = J^(2/3) * F⁻¹ * F⁻ᵀ
     Cbarⁿ = Cbar^material.n
-    Cbar⁻ⁿ = inv(Cbarⁿ)
+    Cbar⁻ⁿ = Cbar⁻¹^material.n
     Cbar²ⁿ = Cbarⁿ * Cbarⁿ
     Cbar⁻²ⁿ = Cbar⁻ⁿ * Cbar⁻ⁿ
     trCbarⁿ = tr(Cbarⁿ)
