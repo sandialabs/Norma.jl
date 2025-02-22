@@ -3,10 +3,10 @@ ${mm = 0.001 * m}
 ${side = 1.0 * mm}
 ${length = 1.0 * m}
 ${h_size_face = 1.0 * mm}
-${intervals_coarse = 515}
-${intervals_fine = 515} 
+${intervals_coarse = 750}
+${intervals_fine = 750} 
 
-${overlap_length = side * 30}
+${overlap_length = side * 500}
 ${domain_length = (length + overlap_length) / 2.0}
 ${offset = abs(domain_length - overlap_length) / 2.0}
 
