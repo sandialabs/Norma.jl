@@ -39,6 +39,7 @@ boundary conditions:
       source: "cube-test4-1.yaml"
       source block: fine
       source side set: ssx+
+      friction type: frictionless
 solver:
   type: explicit solver
   step: explicit

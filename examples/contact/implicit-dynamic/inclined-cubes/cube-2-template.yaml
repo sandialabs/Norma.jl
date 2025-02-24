@@ -36,6 +36,7 @@ boundary conditions:
       source: "{input_mesh_file}-1.yaml"
       source block: fine
       source side set: ssx+
+      friction type: frictionless
 solver:
   type: Hessian minimizer
   step: full Newton

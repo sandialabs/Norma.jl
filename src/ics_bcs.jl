@@ -94,6 +94,16 @@ function SMContactSchwarzBC(
     if haskey(bc_params, "swap BC types") == true
         swap_bcs = bc_params["swap BC types"]
     end
+
+    friction_type_string = bc_params["friction type"]
+    if friction_type_string == "frictionless"
+        friction_type = 0
+    elseif friction_type_string == "tied"
+        friction_type = 1
+    else
+        error("Unknown or not implemented friction type : ", friction_type_string)
+    end
+
     SMContactSchwarzBC(
         side_set_name,
         side_set_id,
@@ -108,6 +118,7 @@ function SMContactSchwarzBC(
         rotation_matrix,
         active_contact,
         swap_bcs,
+        friction_type
     )
 end
 
@@ -699,19 +710,26 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         N, _, _ = interpolate(element_type, ξ)
         source_velo = bc.coupled_subsim.model.velocity[:, closest_face_node_indices] * N
         source_acce = bc.coupled_subsim.model.acceleration[:, closest_face_node_indices] * N
-        model.velocity[:, node_index] = transfer_normal_component(
-            source_velo,
-            model.velocity[:, node_index],
-            closest_normal,
-        )
-        model.acceleration[:, node_index] = transfer_normal_component(
-            source_acce,
-            model.acceleration[:, node_index],
-            closest_normal,
-        )
         model.free_dofs[[3 * node_index - 2]] .= false
         model.free_dofs[[3 * node_index - 1]] .= true
         model.free_dofs[[3 * node_index]] .= true
+        if bc.friction_type == 0
+            model.velocity[:, node_index] = transfer_normal_component(
+                source_velo,
+                model.velocity[:, node_index],
+                closest_normal,
+            )
+            model.acceleration[:, node_index] = transfer_normal_component(
+                source_acce,
+                model.acceleration[:, node_index],
+                closest_normal,
+            )
+        elseif bc.friction_type == 1
+            model.velocity[:, node_index] = source_velo
+            model.acceleration[:, node_index] = source_acce
+        else
+            error("Unknown or not implemented friction type.")
+        end
         global_base = 3 * (node_index - 1) # Block index in global stiffness
         model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] =
             bc.rotation_matrix
@@ -740,11 +758,17 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
         global_node = global_from_local_map[local_node]
         node_tractions = schwarz_tractions[:, local_node]
         normal = normals[:, local_node]
-        model.boundary_force[3*global_node-2:3*global_node] += transfer_normal_component(
-            node_tractions,
-            model.boundary_force[3*global_node-2:3*global_node],
-            normal,
-        )
+        if bc.friction_type == 0
+            model.boundary_force[3*global_node-2:3*global_node] += transfer_normal_component(
+                node_tractions,
+                model.boundary_force[3*global_node-2:3*global_node],
+                normal,
+            )
+        elseif bc.friction_type == 1
+            model.boundary_force[3*global_node-2:3*global_node] += node_tractions
+        else
+            error("Unknown or not implemented friction type.")
+        end
     end
 end
 
