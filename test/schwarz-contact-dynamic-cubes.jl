@@ -7,11 +7,31 @@
 using YAML
 
 @testset "schwarz-contact-implicit-cubes-tied" begin
-    cp("../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml", force = true)
-    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml", force = true)
-    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml", force = true)
-    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-1.g", "cube-1.g", force = true)
-    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-2.g", "cube-2.g", force = true)
+    cp(
+        "../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml",
+        "cubes.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml",
+        "cube-1.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml",
+        "cube-2.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/contact/implicit-dynamic/friction-cubes/cube-1.g",
+        "cube-1.g",
+        force = true,
+    )
+    cp(
+        "../examples/contact/implicit-dynamic/friction-cubes/cube-2.g",
+        "cube-2.g",
+        force = true,
+    )
     input_file = "cubes.yaml"
     params = YAML.load_file(input_file; dicttype = Norma.Parameters)
     params["initial time"] = -1.0e-06
@@ -38,7 +58,8 @@ using YAML
     y2 = model_2.current[2, :]
     z2 = model_2.current[3, :]
 
-    face_pairs = Dict(19 => 1,
+    face_pairs = Dict(
+        19 => 1,
         20 => 2,
         21 => 3,
         22 => 4,
@@ -46,21 +67,42 @@ using YAML
         24 => 10,
         25 => 13,
         26 => 14,
-        27 => 17 )
+        27 => 17,
+    )
 
     for (idx1, idx2) in face_pairs
-        coordinate_1 = [ x1[idx1], y1[idx1], z1[idx1] ]
-        coordinate_2 = [ x2[idx2], y2[idx2], z2[idx2] ]
+        coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
+        coordinate_2 = [x2[idx2], y2[idx2], z2[idx2]]
         @test coordinate_1 ≈ coordinate_2 atol = 5e-3
     end
 end
 
 @testset "schwarz-contact-explicit-cubes-tied" begin
-    cp("../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml", force = true)
-    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml", force = true)
-    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml", force = true)
-    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.g", "cube-1.g", force = true)
-    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-2.g", "cube-2.g", force = true)
+    cp(
+        "../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml",
+        "cubes.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml",
+        "cube-1.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml",
+        "cube-2.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/contact/explicit-dynamic/friction-cubes/cube-1.g",
+        "cube-1.g",
+        force = true,
+    )
+    cp(
+        "../examples/contact/explicit-dynamic/friction-cubes/cube-2.g",
+        "cube-2.g",
+        force = true,
+    )
     input_file = "cubes.yaml"
     params = YAML.load_file(input_file; dicttype = Norma.Parameters)
     params["initial time"] = -1.0e-06
@@ -87,7 +129,8 @@ end
     y2 = model_2.current[2, :]
     z2 = model_2.current[3, :]
 
-    face_pairs = Dict(19 => 1,
+    face_pairs = Dict(
+        19 => 1,
         20 => 2,
         21 => 3,
         22 => 4,
@@ -95,11 +138,12 @@ end
         24 => 10,
         25 => 13,
         26 => 14,
-        27 => 17 )
+        27 => 17,
+    )
 
     for (idx1, idx2) in face_pairs
-        coordinate_1 = [ x1[idx1], y1[idx1], z1[idx1] ]
-        coordinate_2 = [ x2[idx2], y2[idx2], z2[idx2] ]
+        coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
+        coordinate_2 = [x2[idx2], y2[idx2], z2[idx2]]
         @test coordinate_1 ≈ coordinate_2 atol = 5e-3
     end
 
