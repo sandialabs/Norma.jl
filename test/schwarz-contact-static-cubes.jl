@@ -55,6 +55,55 @@ using YAML
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-04
 end
 
+@testset "schwarz-contact-static-cubes-tied" begin
+    cp("../examples/contact/static/friction-cubes/cubes.yaml", "cubes.yaml", force = true)
+    cp("../examples/contact/static/friction-cubes/cube-1.yaml", "cube-1.yaml", force = true)
+    cp("../examples/contact/static/friction-cubes/cube-2.yaml", "cube-2.yaml", force = true)
+    cp("../examples/contact/static/friction-cubes/cube-1.g", "cube-1.g", force = true)
+    cp("../examples/contact/static/friction-cubes/cube-2.g", "cube-2.g", force = true)
+    input_file = "cubes.yaml"
+    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+    params["initial time"] = -2.0
+    params["final time"] = 0.0
+    sim = Norma.run(params, input_file)
+    subsims = sim.subsims
+    model_1 = subsims[1].model
+    model_2 = subsims[2].model
+
+    rm("cubes.yaml")
+    rm("cube-1.yaml")
+    rm("cube-2.yaml")
+    rm("cube-1.g")
+    rm("cube-2.g")
+    rm("cube-1.e")
+    rm("cube-2.e")
+
+    # Enforce that the side set displacements are the same between the two blocks
+    x1 = model_1.current[1, :]
+    y1 = model_1.current[2, :]
+    z1 = model_1.current[3, :]
+    x2 = model_2.current[1, :]
+    y2 = model_2.current[2, :]
+    z2 = model_2.current[3, :]
+
+    face_pairs = Dict(19 => 1,
+        20 => 2,
+        21 => 3,
+        22 => 4,
+        23 => 9,
+        24 => 10,
+        25 => 13,
+        26 => 14,
+        27 => 17 )
+
+    for (idx1, idx2) in face_pairs
+        coordinate_1 = [ x1[idx1], y1[idx1], z1[idx1] ]
+        coordinate_2 = [ x2[idx2], y2[idx2], z2[idx2] ]
+        @test coordinate_1 ≈ coordinate_2 atol = 5e-3
+    end
+
+end
+
 @testset "schwarz-contact-inclined-static-cubes" begin
 
     model_fine = nothing

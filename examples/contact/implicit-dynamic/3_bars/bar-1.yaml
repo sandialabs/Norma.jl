@@ -30,6 +30,7 @@ boundary conditions:
       source: "bar-2.yaml"
       source block: block2
       source side set: ssx-
+      friction type: frictionless
 solver:
   type: Hessian minimizer
   step: full Newton

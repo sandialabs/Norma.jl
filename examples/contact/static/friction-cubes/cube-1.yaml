@@ -1,11 +1,11 @@
 type: single
-input mesh file: src.g
-output mesh file: src.e
+input mesh file: cube-1.g
+output mesh file: cube-1.e
 model:
   type: solid mechanics
   material:
     blocks:
-      src: elastic
+      fine: elastic
     elastic:
       model: linear elastic
       elastic modulus: 1.0e+09
@@ -13,30 +13,33 @@ model:
       density: 1000.0
 time integrator:
   type: quasi static
-  time step: 1.0
+  time step: 0.5
   initial equilibrium: true
 initial conditions:
   displacement:
     - node set: nsall
       component: x
-      function: "0.0"
+      function: "1.0 * 0.1 * (1.0 - abs(t))"
+    - node set: nsall
+      component: y
+      function: "0.0 * 0.1 * (1.0 - abs(t))"
 boundary conditions:
   Dirichlet:
     - node set: nsx-
       component: x
-      function: "0.0"
-    - node set: nsy-
+      function: "1.0 * 0.1 * (1.0 - abs(t))"
+    - node set: nsx-
       component: y
-      function: "0.0"
+      function: "0.0 * 0.1 * (1.0 - abs(t))"
     - node set: nsz-
       component: z
       function: "0.0"
   Schwarz contact:
     - side set: ssx+
-      source: "dst.yaml"
-      source block: dst
+      source: "cube-2.yaml"
+      source block: coarse
       source side set: ssx-
-      friction type: frictionless
+      friction type: tied
 solver:
   type: Hessian minimizer
   step: full Newton

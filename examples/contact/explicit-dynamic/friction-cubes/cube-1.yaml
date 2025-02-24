@@ -1,6 +1,6 @@
 type: single
-input mesh file: cube-test1-1.g
-output mesh file: cube-test1-1.e
+input mesh file: cube-1.g
+output mesh file: cube-1.e
 model:
   type: solid mechanics
   material:
@@ -36,10 +36,10 @@ initial conditions:
 boundary conditions:
   Schwarz contact:
     - side set: ssx+
-      source: "cube-test1-2.yaml"
+      source: "cube-2.yaml"
       source block: coarse
       source side set: ssx-
-      friction type: frictionless
+      friction type: tied
 solver:
   type: explicit solver
   step: explicit

@@ -60,6 +60,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     rotation_matrix::Matrix{Float64}
     active_contact::Bool
     swap_bcs::Bool
+    friction_type::Int64
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
