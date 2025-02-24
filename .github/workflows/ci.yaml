@@ -30,14 +30,19 @@ jobs:
 
       - name: Commit formatted files (if needed)
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
+
           if git diff --cached --exit-code; then
             echo "No formatting changes needed."
           else
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            echo "Detected branch: $BRANCH_NAME"
+
+            git switch "$BRANCH_NAME" 2>/dev/null || git checkout -B "$BRANCH_NAME"
             git commit -m "Auto-format code using JuliaFormatter (spaces only)"
-            git push
+            git push origin "$BRANCH_NAME"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
