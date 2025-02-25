@@ -51,6 +51,14 @@ function SolidSchwarzController(params::Parameters)
     schwarz_contact = false
     active_contact = false
     contact_hist = Vector{Bool}()
+    
+    csv_interval = get(params, "CSV output interval", 0)
+    if csv_interval > 0
+        iterations = params["maximum iterations"]
+        convergence_hist = zeros(Float64, iterations, 2)
+    else
+        convergence_hist = Array{Float64}(undef, 0, 0)
+    end
     SolidSchwarzController(
         num_domains,
         minimum_iterations,
@@ -89,6 +97,7 @@ function SolidSchwarzController(params::Parameters)
         schwarz_contact,
         active_contact,
         contact_hist,
+        convergence_hist,
     )
 end
 
@@ -120,6 +129,12 @@ function schwarz(sim::MultiDomainSimulation)
     set_subcycle_times(sim)
     swap_swappable_bcs(sim)
     is_schwarz = true
+
+    csv_interval = get(sim.params, "CSV output interval", 0)
+    if csv_interval > 0
+        sim.schwarz_controller.convergence_hist .= 0.
+    end
+
     while true
         println("Schwarz iteration=", iteration_number)
         sim.schwarz_controller.iteration_number = iteration_number
@@ -127,6 +142,10 @@ function schwarz(sim::MultiDomainSimulation)
         subcycle(sim, is_schwarz)
         iteration_number += 1
         ΔX, Δx = update_schwarz_convergence_criterion(sim)
+        if csv_interval > 0
+            sim.schwarz_controller.convergence_hist[iteration_number-1, 1] = ΔX
+            sim.schwarz_controller.convergence_hist[iteration_number-1, 2] = Δx
+        end
         println("Schwarz criterion |ΔX|=", ΔX, " |ΔX|/|X|=", Δx)
         if stop_schwarz(sim, iteration_number) == true
             println("Performed ", iteration_number - 1, " Schwarz iterations")
@@ -504,5 +523,7 @@ function write_scharz_params_csv(sim::MultiDomainSimulation)
         writedlm(contact_filename, sim.schwarz_controller.active_contact, '\n')
         iters_filename = "iterations" * index_string * ".csv"
         writedlm(iters_filename, sim.schwarz_controller.iteration_number, '\n')
+        conv_filename = "convergence_values" * index_string * ".csv"
+        writedlm(conv_filename, sim.schwarz_controller.convergence_hist, '\n')
     end
 end
