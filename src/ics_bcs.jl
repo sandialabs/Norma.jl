@@ -118,7 +118,7 @@ function SMContactSchwarzBC(
         rotation_matrix,
         active_contact,
         swap_bcs,
-        friction_type
+        friction_type,
     )
 end
 
@@ -759,11 +759,12 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
         node_tractions = schwarz_tractions[:, local_node]
         normal = normals[:, local_node]
         if bc.friction_type == 0
-            model.boundary_force[3*global_node-2:3*global_node] += transfer_normal_component(
-                node_tractions,
-                model.boundary_force[3*global_node-2:3*global_node],
-                normal,
-            )
+            model.boundary_force[3*global_node-2:3*global_node] +=
+                transfer_normal_component(
+                    node_tractions,
+                    model.boundary_force[3*global_node-2:3*global_node],
+                    normal,
+                )
         elseif bc.friction_type == 1
             model.boundary_force[3*global_node-2:3*global_node] += node_tractions
         else

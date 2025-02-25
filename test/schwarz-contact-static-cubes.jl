@@ -86,7 +86,8 @@ end
     y2 = model_2.current[2, :]
     z2 = model_2.current[3, :]
 
-    face_pairs = Dict(19 => 1,
+    face_pairs = Dict(
+        19 => 1,
         20 => 2,
         21 => 3,
         22 => 4,
@@ -94,11 +95,12 @@ end
         24 => 10,
         25 => 13,
         26 => 14,
-        27 => 17 )
+        27 => 17,
+    )
 
     for (idx1, idx2) in face_pairs
-        coordinate_1 = [ x1[idx1], y1[idx1], z1[idx1] ]
-        coordinate_2 = [ x2[idx2], y2[idx2], z2[idx2] ]
+        coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
+        coordinate_2 = [x2[idx2], y2[idx2], z2[idx2]]
         @test coordinate_1 ≈ coordinate_2 atol = 5e-3
     end
 
