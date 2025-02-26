@@ -197,8 +197,34 @@ function get_analysis_type(integrator::TimeIntegrator)
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
+    # Compute initial accelerations
+    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(integrator, model.fom_model)
+    free = model.fom_model.free_dofs
+
+    if model.fom_model.inclined_support == true
+        external_force = model.fom_model.global_transform * external_force
+        internal_force = model.fom_model.global_transform * internal_force
+    end
+    inertial_force = external_force - internal_force
+
+    _, num_nodes = size(model.fom_model.reference)
+    acceleration = zeros(3*num_nodes)
+
+    acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
+ 
     integrator.displacement[:] = model.reduced_state[:]
     solver.solution[:] = model.reduced_state[:]
+
+    # project onto basis
+    n_var,n_node,n_mode = model.basis.size
+    for k in 1:n_mode
+      integrator.acceleration[k] = 0.0
+      for j in 1:n_node
+        for n in 1:n_var
+          integrator.acceleration[k] += model.basis[n,j,k]*acceleration[3*(j-1) + n]
+        end
+      end
+    end
 end
 
 function predict(integrator::Newmark, solver::Any, model::LinearOpInfRom)
