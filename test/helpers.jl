@@ -7,21 +7,21 @@ function average_components(V::Vector{Float64})
     x = mean(V[1:3:end])
     y = mean(V[2:3:end])
     z = mean(V[3:3:end])
-    return [x y z]    
+    return [x y z]
 end
 
 function maximum_components(V::Vector{Float64})
     x = maximum(V[1:3:end])
     y = maximum(V[2:3:end])
     z = maximum(V[3:3:end])
-    return [x y z]    
+    return [x y z]
 end
 
 function minimum_components(V::Vector{Float64})
     x = minimum(V[1:3:end])
     y = minimum(V[2:3:end])
     z = minimum(V[3:3:end])
-    return [x y z]    
+    return [x y z]
 end
 
 function average_components(stress::Vector{Vector{Vector{Vector{Float64}}}})
@@ -53,19 +53,21 @@ using Symbolics
 @variables t
 
 function get_boundary_traction_force(mesh::ExodusDatabase, side_set_id::Int64)
-    expression = "1.0 * t" 
+    expression = "1.0 * t"
     t = 1.0
     traction_num = eval(Meta.parse(expression))
     coords = read_coordinates(mesh)
     num_nodes = size(coords)[2]
-    local_from_global_map, num_nodes_sides, side_set_node_indices = Norma.get_side_set_local_from_global_map(mesh, side_set_id)
+    local_from_global_map, num_nodes_sides, side_set_node_indices =
+        Norma.get_side_set_local_from_global_map(mesh, side_set_id)
     num_nodes = length(local_from_global_map)
     boundary_tractions_force = zeros(num_nodes)
     ss_node_index = 1
     for side ∈ num_nodes_sides
         side_nodes = side_set_node_indices[ss_node_index:ss_node_index+side-1]
-        side_coordinates = coords[:,side_nodes]
-        nodal_force_component = Norma.get_side_set_nodal_forces(side_coordinates, traction_num, t)
+        side_coordinates = coords[:, side_nodes]
+        nodal_force_component =
+            Norma.get_side_set_nodal_forces(side_coordinates, traction_num, t)
         local_indices = get.(Ref(local_from_global_map), side_nodes, 0)
         boundary_tractions_force[local_indices] += nodal_force_component
         ss_node_index += side

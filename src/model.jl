@@ -10,7 +10,7 @@ include("ics_bcs.jl")
 
 using NPZ
 
-function LinearOpInfRom(params::Dict{String, Any})
+function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
@@ -43,7 +43,7 @@ function LinearOpInfRom(params::Dict{String, Any})
     )
 end
 
-function SolidMechanics(params::Dict{String, Any})
+function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -87,8 +87,14 @@ function SolidMechanics(params::Dict{String, Any})
             kinematics = get_kinematics(material_model)
         else
             if kinematics ≠ get_kinematics(material_model)
-                error("Material ", typeof(material_model), " has inconsistent kinematics ",
-                    get_kinematics(material_model), " than previous materials of type ", kinematics)
+                error(
+                    "Material ",
+                    typeof(material_model),
+                    " has inconsistent kinematics ",
+                    get_kinematics(material_model),
+                    " than previous materials of type ",
+                    kinematics,
+                )
             end
         end
         push!(materials, material_model)
@@ -154,7 +160,7 @@ function SolidMechanics(params::Dict{String, Any})
     )
 end
 
-function HeatConduction(params::Dict{String, Any})
+function HeatConduction(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
@@ -171,7 +177,7 @@ function HeatConduction(params::Dict{String, Any})
     material_blocks = material_params["blocks"]
     num_blks_params = length(material_blocks)
     blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(elem_blk_ids)
+    num_blks = length(blocks)
     if num_blks_params ≠ num_blks
         error(
             "number of blocks in mesh ",
@@ -237,7 +243,7 @@ function HeatConduction(params::Dict{String, Any})
     )
 end
 
-function create_model(params::Dict{String, Any})
+function create_model(params::Parameters)
     model_params = params["model"]
     model_name = model_params["type"]
     if model_name == "solid mechanics"
@@ -256,7 +262,11 @@ function create_model(params::Dict{String, Any})
     end
 end
 
-function create_smooth_reference(smooth_reference::String, element_type::String, elem_ref_pos::Matrix{Float64})
+function create_smooth_reference(
+    smooth_reference::String,
+    element_type::String,
+    elem_ref_pos::Matrix{Float64},
+)
     if element_type == "TETRA4"
         u = elem_ref_pos[:, 2] - elem_ref_pos[:, 1]
         v = elem_ref_pos[:, 3] - elem_ref_pos[:, 1]
@@ -296,7 +306,7 @@ end
 
 function get_minimum_edge_length(
     nodal_coordinates::Matrix{Float64},
-    edges::Vector{Tuple{Int64, Int64}},
+    edges::Vector{Tuple{Int64,Int64}},
 )
     minimum_edge_length = Inf
     for edge ∈ edges
@@ -472,8 +482,11 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             conn_indices = (blk_elem_index-1)*num_elem_nodes+1:blk_elem_index*num_elem_nodes
             node_indices = elem_blk_conn[conn_indices]
             if mesh_smoothing == true
-                elem_ref_pos =
-                    create_smooth_reference(model.smooth_reference, element_type, model.reference[:, node_indices])
+                elem_ref_pos = create_smooth_reference(
+                    model.smooth_reference,
+                    element_type,
+                    model.reference[:, node_indices],
+                )
             else
                 elem_ref_pos = model.reference[:, node_indices]
             end
@@ -499,11 +512,18 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dxdξ = dNdξₚ * elem_cur_pos'
                 if det(dxdξ) ≤ 0.0
                     model.failed = true
-                    @error "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
+                    @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
                     if typeof(integrator) == QuasiStatic
-                        return 0.0, zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof)
+                        return 0.0,
+                        zeros(num_dof),
+                        zeros(num_dof),
+                        spzeros(num_dof, num_dof)
                     elseif typeof(integrator) == Newmark
-                        return 0.0, zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof), spzeros(num_dof, num_dof)
+                        return 0.0,
+                        zeros(num_dof),
+                        zeros(num_dof),
+                        spzeros(num_dof, num_dof),
+                        spzeros(num_dof, num_dof)
                     elseif typeof(integrator) == CentralDifference
                         return 0.0, zeros(num_dof), zeros(num_dof), zeros(num_dof)
                     else
@@ -546,7 +566,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 assemble(rows, cols, stiffness, element_stiffness, elem_dofs)
             end
             if typeof(integrator) == Newmark
-                assemble(rows, cols, stiffness, mass, element_stiffness, element_mass, elem_dofs)
+                assemble(
+                    rows,
+                    cols,
+                    stiffness,
+                    mass,
+                    element_stiffness,
+                    element_mass,
+                    elem_dofs,
+                )
             end
             if typeof(integrator) == CentralDifference
                 lumped_mass[elem_dofs] += element_lumped_mass

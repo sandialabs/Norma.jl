@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "adaptive-time-stepping" begin
-    cp("../examples/adaptive-time-stepping/single/cube.yaml", "cube.yaml", force=true)
-    cp("../examples/adaptive-time-stepping/single/cube.g", "cube.g", force=true)
+    cp("../examples/adaptive-time-stepping/single/cube.yaml", "cube.yaml", force = true)
+    cp("../examples/adaptive-time-stepping/single/cube.g", "cube.g", force = true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model

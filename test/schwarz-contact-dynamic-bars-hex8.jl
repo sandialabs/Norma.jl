@@ -6,13 +6,13 @@
 using YAML
 
 @testset "schwarz-contact-dynamic-bars-hex8" begin
-    cp("../examples/contact/implicit-dynamic/2_bars/bars.yaml", "bars.yaml", force=true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.yaml", "bar-1.yaml", force=true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.yaml", "bar-2.yaml", force=true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.g", "bar-1.g", force=true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.g", "bar-2.g", force=true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bars.yaml", "bars.yaml", force = true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.yaml", "bar-1.yaml", force = true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.yaml", "bar-2.yaml", force = true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.g", "bar-1.g", force = true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.g", "bar-2.g", force = true)
     input_file = "bars.yaml"
-    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
+    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
     params["initial time"] = -1.0e-06
     params["final time"] = 1.0e-06
     sim = Norma.run(params, input_file)
@@ -28,12 +28,12 @@ using YAML
     rm("bar-2.g")
     rm("bar-1.e")
     rm("bar-2.e")
-    min_disp_x_fine = minimum(model_fine.current[1,:] - model_fine.reference[1,:])
-    max_disp_y_fine = maximum(model_fine.current[2,:] - model_fine.reference[2,:])
-    max_disp_z_fine = maximum(model_fine.current[3,:] - model_fine.reference[3,:])
-    max_disp_x_coarse = maximum(model_coarse.current[1,:] - model_coarse.reference[1,:])
-    max_disp_y_coarse = maximum(model_coarse.current[2,:] - model_coarse.reference[2,:])
-    max_disp_z_coarse = maximum(model_coarse.current[3,:] - model_coarse.reference[3,:])
+    min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
+    max_disp_y_fine = maximum(model_fine.current[2, :] - model_fine.reference[2, :])
+    max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])
+    max_disp_x_coarse = maximum(model_coarse.current[1, :] - model_coarse.reference[1, :])
+    max_disp_y_coarse = maximum(model_coarse.current[2, :] - model_coarse.reference[2, :])
+    max_disp_z_coarse = maximum(model_coarse.current[3, :] - model_coarse.reference[3, :])
     potential_energy_fine = integrator_fine.stored_energy
     potential_energy_coarse = integrator_coarse.stored_energy
     kinetic_energy_fine = integrator_fine.kinetic_energy

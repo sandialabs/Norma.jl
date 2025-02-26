@@ -26,7 +26,7 @@ mutable struct HessianMinimizer <: Minimizer
     relative_error::Float64
     value::Float64
     gradient::Vector{Float64}
-    hessian::SparseMatrixCSC{Float64, Int64}
+    hessian::SparseMatrixCSC{Float64,Int64}
     solution::Vector{Float64}
     initial_norm::Float64
     converged::Bool

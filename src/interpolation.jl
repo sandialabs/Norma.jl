@@ -213,6 +213,7 @@ function gauss_legendreD2(n::Integer)
             ω[1] * ω[2],
             ω[2] * ω[2],
         ]
+        return ξ, w
     end
 end
 
@@ -488,7 +489,13 @@ end
 # Given 3 points p1, p2, p3 that define a plane
 # determine if point p is in the same side of the normal
 # to the plane as defined by the right hand rule.
-function in_normal_side(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, tol::Float64)
+function in_normal_side(
+    p::Vector{Float64},
+    p1::Vector{Float64},
+    p2::Vector{Float64},
+    p3::Vector{Float64},
+    tol::Float64,
+)
     v1 = p2 - p1
     v2 = p3 - p1
     h = min(norm(v1), norm(v2))
@@ -498,7 +505,14 @@ function in_normal_side(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Floa
     return s ≥ -tol * h
 end
 
-function in_tetrahedron(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, p4::Vector{Float64}, tol::Float64)
+function in_tetrahedron(
+    p::Vector{Float64},
+    p1::Vector{Float64},
+    p2::Vector{Float64},
+    p3::Vector{Float64},
+    p4::Vector{Float64},
+    tol::Float64,
+)
     if in_normal_side(p, p1, p2, p3, tol) == false
         return false
     end
@@ -515,7 +529,18 @@ function in_tetrahedron(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Floa
 end
 
 # The assumtion is that the faces are planar, which is ok since this function is used a a rough approximation.
-function in_hexahedron(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, p4::Vector{Float64}, p5::Vector{Float64}, p6::Vector{Float64}, p7::Vector{Float64}, p8::Vector{Float64}, tol::Float64)
+function in_hexahedron(
+    p::Vector{Float64},
+    p1::Vector{Float64},
+    p2::Vector{Float64},
+    p3::Vector{Float64},
+    p4::Vector{Float64},
+    p5::Vector{Float64},
+    p6::Vector{Float64},
+    p7::Vector{Float64},
+    p8::Vector{Float64},
+    tol::Float64,
+)
     if in_normal_side(p, p1, p2, p3, tol) == false
         return false
     end
@@ -580,7 +605,11 @@ function interpolate(element_type::String, ξ::Vector{Float64})
     end
 end
 
-function is_inside_parametric(element_type::String, ξ::Vector{Float64}, tol::Float64 = 1.0e-06)
+function is_inside_parametric(
+    element_type::String,
+    ξ::Vector{Float64},
+    tol::Float64 = 1.0e-06,
+)
     factor = 1.0 + tol
     if element_type == "BAR2"
         return -factor ≤ ξ ≤ factor
@@ -595,34 +624,86 @@ function is_inside_parametric(element_type::String, ξ::Vector{Float64}, tol::Fl
     end
 end
 
-function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)
+function is_inside(
+    element_type::String,
+    nodes::Matrix{Float64},
+    point::Vector{Float64},
+    tol::Float64 = 1.0e-06,
+)
     ξ = zeros(length(point))
-    if is_inside_guess(element_type, nodes, point, 0.1) == false
+    if in_bounding_box(nodes, point, 0.1) == false
         return ξ, false
     end
     ξ = map_to_parametric(element_type, nodes, point)
     return ξ, is_inside_parametric(element_type, ξ, tol)
 end
 
-function is_inside_guess(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)
+function in_bounding_box(
+    nodes::Matrix{Float64},
+    point::Vector{Float64},
+    tol::Float64 = 1.0e-06,
+)::Bool
+    for i ∈ 1:3
+        coord_min = minimum(nodes[i, :])
+        coord_max = maximum(nodes[i, :])
+        range_d = coord_max - coord_min
+        lower_bound = coord_min - tol * range_d
+        upper_bound = coord_max + tol * range_d
+        if point[i] < lower_bound || point[i] > upper_bound
+            return false
+        end
+    end
+    return true
+end
+
+function is_inside_guess(
+    element_type::String,
+    nodes::Matrix{Float64},
+    point::Vector{Float64},
+    tol::Float64 = 1.0e-06,
+)
     if element_type == "TETRA4" || element_type == "TETRA10"
-        return in_tetrahedron(point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], tol)
+        return in_tetrahedron(
+            point,
+            nodes[:, 1],
+            nodes[:, 2],
+            nodes[:, 3],
+            nodes[:, 4],
+            tol,
+        )
     elseif element_type == "HEX8"
-        return in_hexahedron(point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], nodes[:, 5], nodes[:, 6], nodes[:, 7], nodes[:, 8], tol)
+        return in_hexahedron(
+            point,
+            nodes[:, 1],
+            nodes[:, 2],
+            nodes[:, 3],
+            nodes[:, 4],
+            nodes[:, 5],
+            nodes[:, 6],
+            nodes[:, 7],
+            nodes[:, 8],
+            tol,
+        )
     else
         error("Invalid element type: ", element_type)
     end
 end
 
-function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
+function closest_face_to_point(
+    point::Vector{Float64},
+    model::SolidMechanics,
+    side_set_id::Integer,
+)
     mesh = model.mesh
-    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    num_nodes_per_sides, side_set_node_indices =
+        Exodus.read_side_set_node_list(mesh, side_set_id)
     ss_node_index = 1
     closest_face_nodes = Array{Float64}(undef, 0)
     closest_face_node_indices = Array{Int64}(undef, 0)
     minimum_nodal_distance = Inf
     for num_nodes_side ∈ num_nodes_per_sides
-        face_node_indices = side_set_node_indices[ss_node_index:ss_node_index+num_nodes_side-1]
+        face_node_indices =
+            side_set_node_indices[ss_node_index:ss_node_index+num_nodes_side-1]
         face_nodes = model.current[:, face_node_indices]
         nodal_distance = get_minimum_distance_to_nodes(face_nodes, point)
         if nodal_distance < minimum_nodal_distance
@@ -639,11 +720,16 @@ end
 # and then project the point that closest face in the side set.
 # This is done in place of a strict search because the contact surfaces may be deformed
 # and not match each other exactly. We assume that we know the contact surfaces in advance
-function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
+function project_point_to_side_set(
+    point::Vector{Float64},
+    model::SolidMechanics,
+    side_set_id::Integer,
+)
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
     space_dim = length(point)
     parametric_dim = space_dim - 1
-    new_point, ξ, surface_distance, normal = closest_point_projection(parametric_dim, face_nodes, point)
+    new_point, ξ, surface_distance, normal =
+        closest_point_projection(parametric_dim, face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end
 
@@ -664,7 +750,7 @@ function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::I
         Exodus.read_side_set_node_list(mesh, side_set_id)
     unique_node_indices = unique(side_set_node_indices)
     num_nodes = length(unique_node_indices)
-    local_from_global_map = Dict{Int64, Int64}()
+    local_from_global_map = Dict{Int64,Int64}()
     for i ∈ 1:num_nodes
         local_from_global_map[Int64(unique_node_indices[i])] = i
     end
@@ -682,10 +768,7 @@ function get_side_set_global_from_local_map(mesh::ExodusDatabase, side_set_id::I
     return global_from_local_map
 end
 
-function get_square_projection_matrix(
-    model::SolidMechanics,
-    side_set_id::Integer,
-)
+function get_square_projection_matrix(model::SolidMechanics, side_set_id::Integer)
     mesh = model.mesh
     local_from_global_map, num_nodes_sides, side_set_node_indices =
         get_side_set_local_from_global_map(mesh, side_set_id)
@@ -698,7 +781,8 @@ function get_square_projection_matrix(
     square_projection_matrix = zeros(num_nodes, num_nodes)
     side_set_node_index = 1
     for num_nodes_side ∈ num_nodes_sides
-        side_nodes = side_set_node_indices[side_set_node_index:side_set_node_index+num_nodes_side-1]
+        side_nodes =
+            side_set_node_indices[side_set_node_index:side_set_node_index+num_nodes_side-1]
         side_coordinates = coords[:, side_nodes]
         element_type = get_element_type(2, Int64(num_nodes_side))
         num_int_points = default_num_int_pts(element_type)
@@ -726,7 +810,8 @@ function get_rectangular_projection_matrix(
     dst_side_set_id::Integer,
 )
     src_mesh = src_model.mesh
-    src_local_from_global_map, _, _ = get_side_set_local_from_global_map(src_mesh, src_side_set_id)
+    src_local_from_global_map, _, _ =
+        get_side_set_local_from_global_map(src_mesh, src_side_set_id)
     src_num_nodes = length(src_local_from_global_map)
     dst_mesh = dst_model.mesh
     dst_local_from_global_map, dst_num_nodes_sides, dst_side_set_node_indices =

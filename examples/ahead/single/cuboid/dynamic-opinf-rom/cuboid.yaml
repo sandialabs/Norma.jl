@@ -21,6 +21,10 @@ time integrator:
   initial time: 0.0
   final time: 1.0
   time step: 0.005
+  #maximum time step: 1.0
+  #minimum time step: 0.0005
+  #increase factor: 1.0
+  #decrease factor: 0.5
 boundary conditions:
   Dirichlet:
     - node set: nsx-
