@@ -45,6 +45,7 @@ mutable struct SolidSchwarzController <: SchwarzController
     schwarz_contact::Bool
     active_contact::Bool
     contact_hist::Vector{Bool}
+    convergence_hist::Array{Float64}
 end
 
 mutable struct SolidSingleController <: SingleController
