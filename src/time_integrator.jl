@@ -207,8 +207,35 @@ function get_analysis_type(integrator::TimeIntegrator)
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
+    # Compute initial accelerations
+    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(integrator, model.fom_model)
+    free = model.fom_model.free_dofs
+
+    if model.fom_model.inclined_support == true
+        external_force = model.fom_model.global_transform * external_force
+        internal_force = model.fom_model.global_transform * internal_force
+    end
+    inertial_force = external_force - internal_force
+
+    # project onto basis
+    n_var,n_node,n_mode = size(model.basis)
+    num_nodes = n_node
+    #_, num_nodes = size(model.fom_model.reference)
+    acceleration = zeros(3*num_nodes)
+
+    acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
+ 
     integrator.displacement[:] = model.reduced_state[:]
     solver.solution[:] = model.reduced_state[:]
+
+    for k in 1:n_mode
+      integrator.acceleration[k] = 0.0
+      for j in 1:n_node
+        for n in 1:n_var
+          integrator.acceleration[k] += model.basis[n,j,k]*acceleration[3*(j-1) + n]
+        end
+      end
+    end
 end
 
 function predict(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
@@ -658,24 +685,30 @@ function write_step_exodus(
     model::LinearOpInfRom,
 )
     #Re-construct full state
-    reduced_state = model.reduced_state[:]
+    displacement = integrator.displacement
+    velocity = integrator.velocity
+    acceleration = integrator.acceleration
+
     for i ∈ 1:size(model.fom_model.current)[2]
         x_dof_index = 3 * (i - 1) + 1
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3
         if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] =
-                model.basis[1, i, :]'reduced_state + model.fom_model.reference[1, i]
+            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
+            model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] =
-                model.basis[2, i, :]'reduced_state + model.fom_model.reference[2, i]
+            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
+            model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] =
-                model.basis[3, i, :]'reduced_state + model.fom_model.reference[3, i]
+            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
+            model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
     end
     write_step_exodus(params, integrator, model.fom_model)
