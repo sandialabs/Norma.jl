@@ -3,9 +3,9 @@ input mesh file: ../clamped.g
 output mesh file: clamped.e
 Exodus output interval: 10
 CSV output interval: 10
-CSV write sidesets: true
 model:
-  type: solid mechanics
+  type: linear opinf rom
+  model-file: opinf-operator.npz
   material:
     blocks:
       clamped: hyperelastic
@@ -19,7 +19,6 @@ time integrator:
   β: 0.25
   γ: 0.5
   initial time: 0.0
-  #final time: 5.0e-05
   final time: 1.0e-03
   time step: 1.0e-07
 initial conditions:
@@ -27,26 +26,6 @@ initial conditions:
     - node set: nsall
       component: z
       function: "a=0.001; s=0.02; a/2*exp(-z*z/s/s/2)"
-boundary conditions:
-  Dirichlet:
-    - node set: nsx-
-      component: x
-      function: "0.0"
-    - node set: nsx+
-      component: x
-      function: "0.0"
-    - node set: nsy-
-      component: y
-      function: "0.0"
-    - node set: nsy+
-      component: y
-      function: "0.0"
-    - node set: nsz-
-      component: z
-      function: "0.0"
-    - node set: nsz+
-      component: z
-      function: "0.0"
 solver:
   type: Hessian minimizer
   step: full Newton

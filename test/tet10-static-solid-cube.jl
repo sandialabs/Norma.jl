@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "tet10-static-solid-cube" begin
-    cp("../examples/element-types/tet10/cube/cube.yaml", "cube.yaml", force=true)
-    cp("../examples/element-types/tet10/cube/cube.g", "cube.g", force=true)
+    cp("../examples/element-types/tet10/cube/cube.yaml", "cube.yaml", force = true)
+    cp("../examples/element-types/tet10/cube/cube.g", "cube.g", force = true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model
@@ -18,7 +18,7 @@
     avg_stress = average_components(model.stress)
     @test min_disp_x ≈ -0.25 rtol = 1.0e-06
     @test min_disp_y ≈ -0.25 rtol = 1.0e-06
-    @test max_disp_z ≈  1.00 rtol = 1.0e-06
+    @test max_disp_z ≈ 1.00 rtol = 1.0e-06
     @test avg_stress[1] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[2] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[3] ≈ 1.0e+09 rtol = 1.0e-06

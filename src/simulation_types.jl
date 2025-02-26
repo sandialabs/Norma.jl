@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 
 abstract type Simulation end
+const Parameters = Dict{String,Any}
 
 include("constitutive_types.jl")
 include("ics_bcs_types.jl")
@@ -15,7 +16,7 @@ include("schwarz_types.jl")
 
 mutable struct SingleDomainSimulation <: Simulation
     name::String
-    params::Dict{String, Any}
+    params::Parameters
     controller::SolidSingleController
     integrator::TimeIntegrator
     solver::Solver
@@ -25,9 +26,9 @@ end
 
 mutable struct MultiDomainSimulation <: Simulation
     name::String
-    params::Dict{String, Any}
+    params::Parameters
     schwarz_controller::SchwarzController
     subsims::Vector{SingleDomainSimulation}
-    subsim_name_index_map::Dict{String, Int64}
+    subsim_name_index_map::Dict{String,Int64}
     failed::Bool
 end

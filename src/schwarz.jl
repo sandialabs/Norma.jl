@@ -4,7 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-function SolidSchwarzController(params::Dict{String, Any})
+function SolidSchwarzController(params::Parameters)
     num_domains = length(params["domains"])
     minimum_iterations = params["minimum iterations"]
     maximum_iterations = params["maximum iterations"]
@@ -92,9 +92,11 @@ function SolidSchwarzController(params::Dict{String, Any})
     )
 end
 
-function create_schwarz_controller(params::Dict{String, Any})
+function create_schwarz_controller(params::Parameters)
     type = params["subdomains type"]
-    if type == "static solid mechanics" || type == "dynamic solid mechanics" || type == "dynamic linear opinf rom"
+    if type == "static solid mechanics" ||
+       type == "dynamic solid mechanics" ||
+       type == "dynamic linear opinf rom"
         return SolidSchwarzController(params)
     else
         error("Unknown type of Schwarz controller : ", type)
@@ -160,9 +162,12 @@ function save_stop_solutions(sim::MultiDomainSimulation)
         # If this model has inclined support on, we need to rotate the integrator values
         if subsim.model.inclined_support == true
             global_transform_T = subsim.model.global_transform'
-            schwarz_controller.stop_disp[i] = global_transform_T * subsim.integrator.displacement
-            schwarz_controller.stop_velo[i] = global_transform_T * subsim.integrator.velocity
-            schwarz_controller.stop_acce[i] = global_transform_T * subsim.integrator.acceleration
+            schwarz_controller.stop_disp[i] =
+                global_transform_T * subsim.integrator.displacement
+            schwarz_controller.stop_velo[i] =
+                global_transform_T * subsim.integrator.velocity
+            schwarz_controller.stop_acce[i] =
+                global_transform_T * subsim.integrator.acceleration
         else
             schwarz_controller.stop_disp[i] = deepcopy(subsim.integrator.displacement)
             schwarz_controller.stop_velo[i] = deepcopy(subsim.integrator.velocity)
@@ -198,9 +203,11 @@ function restore_stop_solutions(sim::MultiDomainSimulation)
         # If this model has inclined support on, we need to rotate the integrator values
         if subsim.model.inclined_support == true
             global_transform = subsim.model.global_transform
-            subsim.integrator.displacement = global_transform * schwarz_controller.stop_disp[i]
+            subsim.integrator.displacement =
+                global_transform * schwarz_controller.stop_disp[i]
             subsim.integrator.velocity = global_transform * schwarz_controller.stop_velo[i]
-            subsim.integrator.acceleration = global_transform * schwarz_controller.stop_acce[i]
+            subsim.integrator.acceleration =
+                global_transform * schwarz_controller.stop_acce[i]
         else
             subsim.integrator.displacement = deepcopy(schwarz_controller.stop_disp[i])
             subsim.integrator.velocity = deepcopy(schwarz_controller.stop_velo[i])
@@ -243,7 +250,8 @@ end
 
 function swap_swappable_bcs(sim::SingleDomainSimulation)
     for bc ∈ sim.model.boundary_conditions
-        if typeof(bc) == ContactSchwarzBoundaryCondition || typeof(bc) == CouplingSchwarzBoundaryCondition
+        if typeof(bc) == ContactSchwarzBoundaryCondition ||
+           typeof(bc) == CouplingSchwarzBoundaryCondition
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
@@ -269,7 +277,12 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
             end
             stop_index += 1
             if is_schwarz == true
-                save_history_snapshot(sim.schwarz_controller, sim.subsims, subsim_index, stop_index)
+                save_history_snapshot(
+                    sim.schwarz_controller,
+                    sim.subsims,
+                    subsim_index,
+                    stop_index,
+                )
             end
         end
         subsim_index += 1
@@ -286,7 +299,8 @@ function resize_histories(sim::MultiDomainSimulation)
     resize!(schwarz_controller.acce_hist, num_domains)
     resize!(schwarz_controller.∂Ω_f_hist, num_domains)
     for i ∈ 1:num_domains
-        num_steps = round(Int64, schwarz_controller.time_step / subsims[i].integrator.time_step)
+        num_steps =
+            round(Int64, schwarz_controller.time_step / subsims[i].integrator.time_step)
         Δt = schwarz_controller.time_step / num_steps
         num_stops = num_steps + 1
         subsims[i].integrator.time_step = Δt
@@ -296,11 +310,16 @@ function resize_histories(sim::MultiDomainSimulation)
         schwarz_controller.acce_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
         schwarz_controller.∂Ω_f_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
         for stop ∈ 1:num_stops
-            schwarz_controller.time_hist[i][stop] = schwarz_controller.prev_time + (stop - 1) * Δt
-            schwarz_controller.disp_hist[i][stop] = deepcopy(schwarz_controller.stop_disp[i])
-            schwarz_controller.velo_hist[i][stop] = deepcopy(schwarz_controller.stop_velo[i])
-            schwarz_controller.acce_hist[i][stop] = deepcopy(schwarz_controller.stop_acce[i])
-            schwarz_controller.∂Ω_f_hist[i][stop] = deepcopy(schwarz_controller.stop_∂Ω_f[i])
+            schwarz_controller.time_hist[i][stop] =
+                schwarz_controller.prev_time + (stop - 1) * Δt
+            schwarz_controller.disp_hist[i][stop] =
+                deepcopy(schwarz_controller.stop_disp[i])
+            schwarz_controller.velo_hist[i][stop] =
+                deepcopy(schwarz_controller.stop_velo[i])
+            schwarz_controller.acce_hist[i][stop] =
+                deepcopy(schwarz_controller.stop_acce[i])
+            schwarz_controller.∂Ω_f_hist[i][stop] =
+                deepcopy(schwarz_controller.stop_∂Ω_f[i])
         end
     end
 end
@@ -311,10 +330,14 @@ function save_history_snapshot(
     subsim_index::Int64,
     stop_index::Int64,
 )
-    schwarz_controller.disp_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.displacement)
-    schwarz_controller.velo_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.velocity)
-    schwarz_controller.acce_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.acceleration)
-    schwarz_controller.∂Ω_f_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].model.internal_force)
+    schwarz_controller.disp_hist[subsim_index][stop_index] =
+        deepcopy(sims[subsim_index].integrator.displacement)
+    schwarz_controller.velo_hist[subsim_index][stop_index] =
+        deepcopy(sims[subsim_index].integrator.velocity)
+    schwarz_controller.acce_hist[subsim_index][stop_index] =
+        deepcopy(sims[subsim_index].integrator.acceleration)
+    schwarz_controller.∂Ω_f_hist[subsim_index][stop_index] =
+        deepcopy(sims[subsim_index].model.internal_force)
 end
 
 function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
@@ -344,11 +367,13 @@ function stop_schwarz(sim::MultiDomainSimulation, iteration_number::Int64)
     if sim.schwarz_controller.absolute_error == 0.0
         return true
     end
-    exceeds_minimum_iterations = iteration_number > sim.schwarz_controller.minimum_iterations
+    exceeds_minimum_iterations =
+        iteration_number > sim.schwarz_controller.minimum_iterations
     if exceeds_minimum_iterations == false
         return false
     end
-    exceeds_maximum_iterations = iteration_number > sim.schwarz_controller.maximum_iterations
+    exceeds_maximum_iterations =
+        iteration_number > sim.schwarz_controller.maximum_iterations
     if exceeds_maximum_iterations == true
         return true
     end
@@ -361,8 +386,11 @@ function check_overlap(model::SolidMechanics, bc::SMContactSchwarzBC)
     overlap = false
     for node_index ∈ bc.side_set_node_indices
         point = model.current[:, node_index]
-        _, ξ, _, coupled_face_node_indices, _, distance =
-            project_point_to_side_set(point, bc.coupled_subsim.model, bc.coupled_side_set_id)
+        _, ξ, _, coupled_face_node_indices, _, distance = project_point_to_side_set(
+            point,
+            bc.coupled_subsim.model,
+            bc.coupled_side_set_id,
+        )
         num_nodes_coupled_side = length(coupled_face_node_indices)
         parametric_dim = length(ξ)
         element_type = get_element_type(parametric_dim, num_nodes_coupled_side)

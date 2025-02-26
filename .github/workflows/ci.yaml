@@ -3,42 +3,89 @@ name: Norma CI
 on:
   push:
     branches:
-      - main  # Run on pushes to the main branch
-  pull_request:  # Run on pull requests
+      - main
+  pull_request:
   workflow_dispatch:
   schedule:
     - cron: '0 8 * * *'  # Midnight PST (8:00 UTC)
 
 jobs:
+  format:
+    name: Auto-format Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensures full commit history for branch creation
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v1
+        with:
+          version: '1.11'
+
+      - name: Install JuliaFormatter
+        run: julia -e 'using Pkg; Pkg.add("JuliaFormatter"); Pkg.update()'
+
+      - name: Run JuliaFormatter with Spaces
+        run: julia -e 'using JuliaFormatter; format(".")'
+
+      - name: Debug Secrets
+        run: echo "GH_PAT is set"
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+
+      - name: Commit formatted files (if needed)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --exit-code; then
+            echo "No formatting changes needed."
+          else
+            BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+            echo "Detected branch: $BRANCH_NAME"
+
+            git branch -D format/${BRANCH_NAME} 2>/dev/null || true
+            git switch -c format/${BRANCH_NAME}
+            git commit -m "Auto-format code using JuliaFormatter (spaces only)"
+            git push https://x-access-token:${GH_PAT}@github.com/sandialabs/Norma.jl.git HEAD:format/${BRANCH_NAME}
+          fi
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GH_PAT }}
+          branch: format/${BRANCH_NAME}
+          title: "Auto-format code using JuliaFormatter"
+          body: "This PR applies auto-formatting to the codebase."
+          base: main
+
   test:
+    name: Run Tests
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]  # Platforms to test
-        julia-version: ["1.10", "1.11"]  # Julia versions to test
+        os: [ubuntu-latest, macos-latest]
+        julia-version: ["1.10", "1.11"]
     runs-on: ${{ matrix.os }}
 
     steps:
-      # Step 1: Check out the code
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2: Set up Julia
       - name: Set up Julia
         uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.julia-version }}
 
-      # Step 3: Remove existing Manifest.toml
       - name: Remove existing Manifest.toml
         run: rm -f Manifest.toml
 
-      # Step 4: Install dependencies
       - name: Install dependencies
-        run: |
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
-      # Step 5: Run the tests
       - name: Run tests
-        run: |
-          julia --project=. -e 'using Pkg; Pkg.test()'
-
+        run: julia --project=. -e 'using Pkg; Pkg.test()'

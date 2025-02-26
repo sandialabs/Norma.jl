@@ -7,7 +7,7 @@
 using DelimitedFiles
 using Format
 
-function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
+function adaptive_stepping_parameters(integrator_params::Parameters)
     has_minimum = haskey(integrator_params, "minimum time step")
     has_decrease = haskey(integrator_params, "decrease factor")
     has_maximum = haskey(integrator_params, "maximum time step")
@@ -15,7 +15,9 @@ function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
     has_any = has_minimum || has_decrease || has_maximum || has_increase
     has_all = has_minimum && has_decrease && has_maximum && has_increase
     if has_any == true && has_all == false
-        error("Adaptive time stepping requires 4 parameters: minimum and maximum time steps and decrease and increase factors")
+        error(
+            "Adaptive time stepping requires 4 parameters: minimum and maximum time steps and decrease and increase factors",
+        )
     elseif has_any == true && has_all == true
         minimum_time_step = integrator_params["minimum time step"]
         decrease_factor = integrator_params["decrease factor"]
@@ -26,7 +28,12 @@ function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
         decrease_factor = increase_factor = 1.0
     end
     if minimum_time_step > maximum_time_step
-        error("Minimum time step ", minimum_time_step, " must be greater or equal than maximum ", maximum_time_step)
+        error(
+            "Minimum time step ",
+            minimum_time_step,
+            " must be greater or equal than maximum ",
+            maximum_time_step,
+        )
     end
     if decrease_factor > 1.0
         error("Decrease factor ", decrease_factor, " must be less or equal to one.")
@@ -37,13 +44,14 @@ function adaptive_stepping_parameters(integrator_params::Dict{String, Any})
     return minimum_time_step, decrease_factor, maximum_time_step, increase_factor
 end
 
-function QuasiStatic(params::Dict{String, Any}, model::Model)
+function QuasiStatic(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = integrator_params["time step"]
     runtime_step = 0.0
-    minimum_time_step, decrease_factor, maximum_time_step, increase_factor = adaptive_stepping_parameters(integrator_params)
+    minimum_time_step, decrease_factor, maximum_time_step, increase_factor =
+        adaptive_stepping_parameters(integrator_params)
     time = prev_time = initial_time
     stop = 0
     num_dof = length(model.free_dofs)
@@ -75,13 +83,14 @@ function QuasiStatic(params::Dict{String, Any}, model::Model)
     )
 end
 
-function Newmark(params::Dict{String, Any}, model::Model)
+function Newmark(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = integrator_params["time step"]
     runtime_step = 0.0
-    minimum_time_step, decrease_factor, maximum_time_step, increase_factor = adaptive_stepping_parameters(integrator_params)
+    minimum_time_step, decrease_factor, maximum_time_step, increase_factor =
+        adaptive_stepping_parameters(integrator_params)
     time = prev_time = initial_time
     stop = 0
     β = integrator_params["β"]
@@ -118,13 +127,14 @@ function Newmark(params::Dict{String, Any}, model::Model)
     )
 end
 
-function CentralDifference(params::Dict{String, Any}, model::Model)
+function CentralDifference(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = 0.0
     runtime_step = 0.0
-    minimum_time_step, decrease_factor, maximum_time_step, increase_factor = adaptive_stepping_parameters(integrator_params)
+    minimum_time_step, decrease_factor, maximum_time_step, increase_factor =
+        adaptive_stepping_parameters(integrator_params)
     stable_time_step = 0.0
     user_time_step = integrator_params["time step"]
     time = prev_time = initial_time
@@ -161,7 +171,7 @@ function CentralDifference(params::Dict{String, Any}, model::Model)
     )
 end
 
-function create_time_integrator(params::Dict{String, Any}, model::Model)
+function create_time_integrator(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     integrator_name = integrator_params["type"]
     if integrator_name == "quasi static"
@@ -227,17 +237,22 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::Linear
     end
 end
 
-function predict(integrator::Newmark, solver::Any, model::LinearOpInfRom)
+function predict(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
     dt = integrator.time_step
     beta = integrator.β
     gamma = integrator.γ
-    integrator.disp_pre[:] = integrator.displacement[:] = integrator.displacement[:] + dt * integrator.velocity + 1.0 / 2.0 * dt * dt * (1.0 - 2.0 * beta) * integrator.acceleration
-    integrator.velo_pre[:] = integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
+    integrator.disp_pre[:] =
+        integrator.displacement[:] =
+            integrator.displacement[:] +
+            dt * integrator.velocity +
+            1.0 / 2.0 * dt * dt * (1.0 - 2.0 * beta) * integrator.acceleration
+    integrator.velo_pre[:] =
+        integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
     solver.solution[:] = integrator.displacement[:]
     model.reduced_state[:] = integrator.displacement[:]
 end
 
-function correct(integrator::Newmark, solver::Any, model::LinearOpInfRom)
+function correct(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
     dt = integrator.time_step
     beta = integrator.β
     gamma = integrator.γ
@@ -247,7 +262,7 @@ function correct(integrator::Newmark, solver::Any, model::LinearOpInfRom)
     model.reduced_state[:] = solver.solution[:]
 end
 
-function initialize(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
+function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
         println("Establishing initial equilibrium")
         solve(integrator, solver, model)
@@ -257,11 +272,11 @@ function initialize(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
     end
 end
 
-function predict(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
+function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(model, integrator, solver)
 end
 
-function correct(integrator::QuasiStatic, solver::Any, model::SolidMechanics)
+function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(solver, model, integrator)
 end
 
@@ -269,7 +284,8 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     println("Computing initial acceleration")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
-    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(integrator, model)
+    stored_energy, internal_force, external_force, _, mass_matrix =
+        evaluate(integrator, model)
     if model.failed == true
         error("The finite element model has failed to initialize")
     end
@@ -374,14 +390,18 @@ function correct(
 end
 
 function initialize_writing(
-    params::Dict{String, Any},
+    params::Parameters,
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
     initialize_writing(params, integrator, model.fom_model)
 end
 
-function initialize_writing(params::Dict{String, Any}, integrator::TimeIntegrator, _::SolidMechanics)
+function initialize_writing(
+    params::Parameters,
+    integrator::TimeIntegrator,
+    _::SolidMechanics,
+)
     output_mesh = params["output_mesh"]
 
     # global variables
@@ -390,7 +410,12 @@ function initialize_writing(params::Dict{String, Any}, integrator::TimeIntegrato
     Exodus.write_number_of_variables(output_mesh, GlobalVariable, num_global_vars)
 
     runtime_step_index = 1
-    Exodus.write_name(output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step")
+    Exodus.write_name(
+        output_mesh,
+        GlobalVariable,
+        Int32(runtime_step_index),
+        "runtime_step",
+    )
 
     num_node_vars = Exodus.read_number_of_variables(output_mesh, NodalVariable)
     disp_x_index = num_node_vars + 1
@@ -494,7 +519,7 @@ function initialize_writing(params::Dict{String, Any}, integrator::TimeIntegrato
     )
 end
 
-function finalize_writing(params::Dict{String, Any})
+function finalize_writing(params::Parameters)
     input_mesh = params["input_mesh"]
     Exodus.close(input_mesh)
     output_mesh = params["output_mesh"]
@@ -510,7 +535,7 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     end
 end
 
-function write_step(params::Dict{String, Any}, integrator::Any, model::Any)
+function write_step(params::Parameters, integrator::TimeIntegrator, model::Model)
     stop = integrator.stop
     exodus_interval = get(params, "Exodus output interval", 1)
     if exodus_interval > 0 && stop % exodus_interval == 0
@@ -557,7 +582,11 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
     end
 end
 
-function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
+function write_sideset_step_csv(
+    integrator::DynamicTimeIntegrator,
+    model::SolidMechanics,
+    sim_id::Integer,
+)
     stop = integrator.stop
     index_string = "-" * string(stop, pad = 4)
     sim_id_string = string(sim_id, pad = 2) * "-"
@@ -574,14 +603,46 @@ function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidM
             if offset == 3
                 offset_name = "z"
             end
-            curr_filename = sim_id_string * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
-            disp_filename = sim_id_string * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
-            velo_filename = sim_id_string * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
-            acce_filename = sim_id_string * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
+            curr_filename =
+                sim_id_string *
+                node_set_name *
+                "-" *
+                offset_name *
+                "-curr" *
+                index_string *
+                ".csv"
+            disp_filename =
+                sim_id_string *
+                node_set_name *
+                "-" *
+                offset_name *
+                "-disp" *
+                index_string *
+                ".csv"
+            velo_filename =
+                sim_id_string *
+                node_set_name *
+                "-" *
+                offset_name *
+                "-velo" *
+                index_string *
+                ".csv"
+            acce_filename =
+                sim_id_string *
+                node_set_name *
+                "-" *
+                offset_name *
+                "-acce" *
+                index_string *
+                ".csv"
             writedlm(curr_filename, model.current[bc.offset, bc.node_set_node_indices])
             writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
             writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
-            writedlm(disp_filename, model.current[bc.offset, bc.node_set_node_indices] - model.reference[bc.offset, bc.node_set_node_indices])
+            writedlm(
+                disp_filename,
+                model.current[bc.offset, bc.node_set_node_indices] -
+                model.reference[bc.offset, bc.node_set_node_indices],
+            )
         elseif (typeof(bc) == SMOverlapSchwarzBC)
             side_set_name = bc.side_set_name
             curr_filename = sim_id_string * side_set_name * "-curr" * index_string * ".csv"
@@ -590,14 +651,25 @@ function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidM
             acce_filename = sim_id_string * side_set_name * "-acce" * index_string * ".csv"
             writedlm_nodal_array(curr_filename, model.current[:, bc.side_set_node_indices])
             writedlm_nodal_array(velo_filename, model.velocity[:, bc.side_set_node_indices])
-            writedlm_nodal_array(acce_filename, model.acceleration[:, bc.side_set_node_indices])
-            writedlm_nodal_array(disp_filename, model.current[:, bc.side_set_node_indices] - model.reference[:, bc.side_set_node_indices])
+            writedlm_nodal_array(
+                acce_filename,
+                model.acceleration[:, bc.side_set_node_indices],
+            )
+            writedlm_nodal_array(
+                disp_filename,
+                model.current[:, bc.side_set_node_indices] -
+                model.reference[:, bc.side_set_node_indices],
+            )
         end
     end
 end
 
 
-function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, sim_id::Integer)
+function write_step_csv(
+    integrator::DynamicTimeIntegrator,
+    model::OpInfModel,
+    sim_id::Integer,
+)
     stop = integrator.stop
     index_string = "-" * string(stop, pad = 4)
     sim_id_string = string(sim_id, pad = 2) * "-"
@@ -607,7 +679,7 @@ function write_step_csv(integrator::DynamicTimeIntegrator, model::OpInfModel, si
 end
 
 function write_step_exodus(
-    params::Dict{String, Any},
+    params::Parameters,
     integrator::DynamicTimeIntegrator,
     model::LinearOpInfRom,
 )
@@ -641,7 +713,11 @@ function write_step_exodus(
     write_step_exodus(params, integrator, model.fom_model)
 end
 
-function write_step_exodus(params::Dict{String, Any}, integrator::TimeIntegrator, model::SolidMechanics)
+function write_step_exodus(
+    params::Parameters,
+    integrator::TimeIntegrator,
+    model::SolidMechanics,
+)
     time = integrator.time
     stop = integrator.stop
     runtime_step = integrator.runtime_step

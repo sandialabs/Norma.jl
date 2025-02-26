@@ -4,11 +4,31 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "schwarz-nonoverlap-static-cuboid-hex8-same-step" begin
-    cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboids.yaml", "cuboids.yaml", force=true)
-    cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml", force=true)
-    cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml", force=true)
-    cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.g", "cuboid-1.g", force=true)
-    cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.g", "cuboid-2.g", force=true)
+    cp(
+        "../examples/nonoverlap/static-same-time-step/cuboids/cuboids.yaml",
+        "cuboids.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.yaml",
+        "cuboid-1.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.yaml",
+        "cuboid-2.yaml",
+        force = true,
+    )
+    cp(
+        "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.g",
+        "cuboid-1.g",
+        force = true,
+    )
+    cp(
+        "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.g",
+        "cuboid-2.g",
+        force = true,
+    )
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
     model_fine = subsims[1].model
@@ -20,12 +40,12 @@
     rm("cuboid-2.g")
     rm("cuboid-1.e")
     rm("cuboid-2.e")
-    min_disp_x_fine = minimum(model_fine.current[1,:] - model_fine.reference[1,:])
-    min_disp_y_fine = minimum(model_fine.current[2,:] - model_fine.reference[2,:])
-    max_disp_z_fine = maximum(model_fine.current[3,:] - model_fine.reference[3,:])
-    min_disp_x_coarse = minimum(model_coarse.current[1,:] - model_coarse.reference[1,:])
-    min_disp_y_coarse = minimum(model_coarse.current[2,:] - model_coarse.reference[2,:])
-    min_disp_z_coarse = minimum(model_coarse.current[3,:] - model_coarse.reference[3,:])
+    min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
+    min_disp_y_fine = minimum(model_fine.current[2, :] - model_fine.reference[2, :])
+    max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])
+    min_disp_x_coarse = minimum(model_coarse.current[1, :] - model_coarse.reference[1, :])
+    min_disp_y_coarse = minimum(model_coarse.current[2, :] - model_coarse.reference[2, :])
+    min_disp_z_coarse = minimum(model_coarse.current[3, :] - model_coarse.reference[3, :])
     avg_stress_fine = average_components(model_fine.stress)
     avg_stress_coarse = average_components(model_coarse.stress)
     @test min_disp_x_fine ≈ -0.125 rtol = 1.0e-06

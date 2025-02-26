@@ -35,7 +35,7 @@ function run(input_file::String)
     return sim
 end
 
-function run(params::Dict{String, Any}, name::String)
+function run(params::Parameters, name::String)
     sim = create_simulation(params, name)
     evolve(sim)
     return sim

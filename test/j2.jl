@@ -8,7 +8,7 @@ include("../src/constitutive.jl")
 
 using LinearAlgebra
 
-params = Dict{String,Any}()
+params = Parameters()
 params["elastic modulus"] = 200.0e+09
 params["Poisson's ratio"] = 0.25
 params["density"] = 7800.0

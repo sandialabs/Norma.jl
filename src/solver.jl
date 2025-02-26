@@ -6,7 +6,7 @@
 
 using LinearAlgebra
 
-function create_step(solver_params::Dict{String, Any})
+function create_step(solver_params::Parameters)
     step_name = solver_params["step"]
     if step_name == "full Newton"
         return NewtonStep(solver_params)
@@ -19,7 +19,7 @@ function create_step(solver_params::Dict{String, Any})
     end
 end
 
-function HessianMinimizer(params::Dict{String, Any}, model::Model)
+function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
@@ -68,7 +68,7 @@ function HessianMinimizer(params::Dict{String, Any}, model::Model)
     )
 end
 
-function ExplicitSolver(params::Dict{String, Any}, model::Model)
+function ExplicitSolver(params::Parameters, model::Model)
     solver_params = params["solver"]
     input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
@@ -92,9 +92,8 @@ function ExplicitSolver(params::Dict{String, Any}, model::Model)
     )
 end
 
-function SteepestDescent(params::Dict{String, Any}, model::Model)
+function SteepestDescent(params::Parameters, model::Model)
     solver_params = params["solver"]
-    input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
     minimum_iterations = solver_params["minimum iterations"]
     maximum_iterations = solver_params["maximum iterations"]
@@ -140,7 +139,7 @@ function SteepestDescent(params::Dict{String, Any}, model::Model)
     )
 end
 
-function NewtonStep(params::Dict{String, Any})
+function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -149,7 +148,7 @@ function NewtonStep(params::Dict{String, Any})
     NewtonStep(step_length)
 end
 
-function ExplicitStep(params::Dict{String, Any})
+function ExplicitStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -158,7 +157,7 @@ function ExplicitStep(params::Dict{String, Any})
     ExplicitStep(step_length)
 end
 
-function SteepestDescentStep(params::Dict{String, Any})
+function SteepestDescentStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
     else
@@ -167,7 +166,7 @@ function SteepestDescentStep(params::Dict{String, Any})
     SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Dict{String, Any}, model::Model)
+function create_solver(params::Parameters, model::Model)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
@@ -183,7 +182,7 @@ end
 
 function copy_solution_source_targets(
     integrator::QuasiStatic,
-    solver::Any,
+    solver::Solver,
     model::SolidMechanics,
 )
     displacement_local = integrator.displacement
@@ -203,7 +202,7 @@ function copy_solution_source_targets(
 end
 
 function copy_solution_source_targets(
-    solver::Any,
+    solver::Solver,
     model::SolidMechanics,
     integrator::QuasiStatic,
 )
@@ -235,19 +234,22 @@ function copy_solution_source_targets(
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3
         if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.current[1, i] =
+                model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
             model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
             model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.current[2, i] =
+                model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
             model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
             model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.current[3, i] =
+                model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
             model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
@@ -258,7 +260,7 @@ end
 function copy_solution_source_targets(
     model::SolidMechanics,
     integrator::QuasiStatic,
-    solver::Any,
+    solver::Solver,
 )
     _, num_nodes = size(model.reference)
     for node ∈ 1:num_nodes
@@ -448,7 +450,10 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     num_dof = length(model.free_dofs)
     I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
     LHS = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
-    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
+    RHS =
+        model.opinf_rom["f"] +
+        model.reduced_boundary_forcing +
+        1.0 / (dt * dt * beta) .* integrator.disp_pre
 
     residual = RHS - LHS * solver.solution
     solver.hessian[:, :] = LHS
@@ -456,7 +461,8 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix = evaluate(integrator, model)
+    stored_energy, internal_force, body_force, stiffness_matrix =
+        evaluate(integrator, model)
     if model.failed == true
         return
     end
@@ -484,7 +490,8 @@ function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::Solid
 end
 
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix = evaluate(integrator, model)
+    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix =
+        evaluate(integrator, model)
     if model.failed == true
         return
     end
@@ -496,7 +503,8 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     integrator.kinetic_energy = kinetic_energy
     external_force = body_force + model.boundary_force
     if model.inclined_support == true
-        stiffness_matrix = model.global_transform * stiffness_matrix * model.global_transform'
+        stiffness_matrix =
+            model.global_transform * stiffness_matrix * model.global_transform'
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
@@ -505,7 +513,11 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     solver.gradient = internal_force - external_force + inertial_force
 end
 
-function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
+function evaluate(
+    integrator::CentralDifference,
+    solver::ExplicitSolver,
+    model::SolidMechanics,
+)
     stored_energy, internal_force, body_force, lumped_mass = evaluate(integrator, model)
     if model.failed == true
         return
@@ -533,7 +545,7 @@ end
 # Taken from ELASTOPLASITICITY—PART II: GLOBALLY CONVERGENT SCHEMES, Perez-Foguet & Armero, 2002
 function backtrack_line_search(
     integrator::TimeIntegrator,
-    solver::Any,
+    solver::Solver,
     model::SolidMechanics,
     direction::Vector{Float64},
 )

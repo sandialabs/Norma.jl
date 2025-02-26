@@ -12,7 +12,7 @@ include("time_integrator.jl")
 include("solver.jl")
 include("schwarz.jl")
 
-function create_simulation(params::Dict{String, Any}, name::String)
+function create_simulation(params::Parameters, name::String)
     params["name"] = name
     sim_type = params["type"]
     if sim_type == "single"
@@ -30,7 +30,7 @@ end
 
 function create_simulation(input_file::String)
     println("Reading simulation file: ", input_file)
-    params = YAML.load_file(input_file; dicttype = Dict{String, Any})
+    params = YAML.load_file(input_file; dicttype = Parameters)
     return create_simulation(params, input_file)
 end
 
@@ -53,7 +53,7 @@ function create_bcs(sim::MultiDomainSimulation)
     pair_schwarz_bcs(sim)
 end
 
-function SingleDomainSimulation(params::Dict{String, Any})
+function SingleDomainSimulation(params::Parameters)
     name = params["name"]
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
@@ -63,15 +63,31 @@ function SingleDomainSimulation(params::Dict{String, Any})
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
-    controller = SolidSingleController(0.0, 0.0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}())
+    controller = SolidSingleController(
+        0.0,
+        0.0,
+        0,
+        Vector{Float64}(),
+        Vector{Float64}(),
+        Vector{Float64}(),
+        Vector{Float64}(),
+    )
     model = create_model(params)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
     failed = false
-    return SingleDomainSimulation(name, params, controller, integrator, solver, model, failed)
+    return SingleDomainSimulation(
+        name,
+        params,
+        controller,
+        integrator,
+        solver,
+        model,
+        failed,
+    )
 end
 
-function MultiDomainSimulation(params::Dict{String, Any})
+function MultiDomainSimulation(params::Parameters)
     name = params["name"]
     domain_names = params["domains"]
     subsims = Vector{SingleDomainSimulation}()
@@ -82,11 +98,11 @@ function MultiDomainSimulation(params::Dict{String, Any})
     exodus_interval = get(params, "Exodus output interval", 1)
     csv_interval = get(params, "CSV output interval", 0)
     sim_type = "none"
-    subsim_name_index_map = Dict{String, Int64}()
+    subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
     for domain_name ∈ domain_names
         println("Reading subsimulation file: ", domain_name)
-        subparams = YAML.load_file(domain_name; dicttype = Dict{String, Any})
+        subparams = YAML.load_file(domain_name; dicttype = Parameters)
         subparams["name"] = domain_name
         subparams["time integrator"]["initial time"] = initial_time
         subparams["time integrator"]["final time"] = final_time
