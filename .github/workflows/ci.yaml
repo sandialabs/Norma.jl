@@ -30,6 +30,11 @@ jobs:
       - name: Run JuliaFormatter with Spaces
         run: julia -e 'using JuliaFormatter; format(".")'
 
+      - name: Debug Secrets
+        run: echo "GH_PAT is set"
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+
       - name: Commit formatted files (if needed)
         run: |
           git config --global user.name "github-actions[bot]"
