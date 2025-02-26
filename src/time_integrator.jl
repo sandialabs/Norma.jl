@@ -207,7 +207,10 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::Linear
     end
     inertial_force = external_force - internal_force
 
-    _, num_nodes = size(model.fom_model.reference)
+    # project onto basis
+    n_var,n_node,n_mode = model.basis.size
+    num_nodes = n_node
+    #_, num_nodes = size(model.fom_model.reference)
     acceleration = zeros(3*num_nodes)
 
     acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
@@ -215,8 +218,6 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::Linear
     integrator.displacement[:] = model.reduced_state[:]
     solver.solution[:] = model.reduced_state[:]
 
-    # project onto basis
-    n_var,n_node,n_mode = model.basis.size
     for k in 1:n_mode
       integrator.acceleration[k] = 0.0
       for j in 1:n_node
