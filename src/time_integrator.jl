@@ -218,7 +218,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::Linear
     inertial_force = external_force - internal_force
 
     # project onto basis
-    n_var,n_node,n_mode = model.basis.size
+    n_var,n_node,n_mode = size(model.basis)
     num_nodes = n_node
     #_, num_nodes = size(model.fom_model.reference)
     acceleration = zeros(3*num_nodes)
