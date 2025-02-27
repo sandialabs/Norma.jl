@@ -35,25 +35,5 @@ jobs:
       - name: Install dependencies
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
-      - name: Format code (scheduled runs only)
-        if: github.event_name == 'schedule'
-        run: |
-          julia --project=. -e '
-            using Pkg
-            Pkg.add("JuliaFormatter")
-            using JuliaFormatter
-            format(".")'
-
-      - name: Commit and push changes (scheduled runs only)
-        if: github.event_name == 'schedule'
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git add .
-          if ! git diff --cached --quiet; then
-            git commit -m "Apply automatic formatting via JuliaFormatter"
-            git push origin main
-          fi
-
       - name: Run tests
         run: julia --project=. -e 'using Pkg; Pkg.test()'
