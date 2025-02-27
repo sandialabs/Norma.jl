@@ -51,7 +51,7 @@ function SolidSchwarzController(params::Parameters)
     schwarz_contact = false
     active_contact = false
     contact_hist = Vector{Bool}()
-    
+
     csv_interval = get(params, "CSV output interval", 0)
     if csv_interval > 0
         iterations = params["maximum iterations"]
@@ -132,7 +132,7 @@ function schwarz(sim::MultiDomainSimulation)
 
     csv_interval = get(sim.params, "CSV output interval", 0)
     if csv_interval > 0
-        sim.schwarz_controller.convergence_hist .= 0.
+        sim.schwarz_controller.convergence_hist .= 0.0
     end
 
     while true
