@@ -26,6 +26,7 @@ initial conditions:
     - node set: nsall
       component: z
       function: "a=0.001; s=0.02; a/2*exp(-z*z/s/s/2)"
+      #function: "a=0.0005; b=100; s=0.6; a * (tanh(-b*(z+0.5-s)) + tanh(b*(z-1+0.5+s)))"
 solver:
   type: Hessian minimizer
   step: full Newton
