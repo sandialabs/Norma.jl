@@ -1,8 +1,6 @@
 type: single
 input mesh file: ../clamped-2.g
 output mesh file: clamped-2.e
-CSV output interval: 10
-CSV write sidesets: true
 model:
   type: solid mechanics
   material:

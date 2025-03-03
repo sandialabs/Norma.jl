@@ -1,7 +1,6 @@
 type: single
 input mesh file: ../cuboid-1.g
 output mesh file: cuboid-1.e
-CSV write sidesets: true
 model:
   type: solid mechanics
   material:
