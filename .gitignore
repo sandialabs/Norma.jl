@@ -10,5 +10,18 @@
 .vscode
 *.e
 *.exo
+
+# CSV Output Interval Outputs
 **/*-potential-*.csv
 **/*-disp-*.csv
+**/*-curr-*.csv
+**/*-free_dofs-*.csv
+**/*-velo-*.csv
+**/*-time-*.csv
+**/*-acce-*.csv
+**/*-kinetic-*.csv
+**/*-refe.csv
+**/contact-*.csv
+**/convergence-*.csv
+**/iterations-*.csv
+**/convergence_values-*.csv
