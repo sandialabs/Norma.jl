@@ -17,12 +17,15 @@ time integrator:
   γ: 0.5
 boundary conditions:
   Dirichlet:
-    - node set: nodeset_symmetry
+    - node set: nodeset_positive_y
       component: x
       function: "0.0"
     - node set: nodeset_positive_y
       component: y
       function: "0.1 * t"
+    - node set: nodeset_positive_y
+      component: z
+      function: "0.0"
   Schwarz overlap:
     - side set: sideset_negative_y
       source: gauge.yaml
