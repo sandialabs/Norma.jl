@@ -43,6 +43,44 @@ function LinearOpInfRom(params::Parameters)
     )
 end
 
+
+function QuadraticOpInfRom(params::Parameters)
+    params["mesh smoothing"] = false
+    fom_model = SolidMechanics(params)
+    reference = fom_model.reference
+    opinf_model_file = params["model"]["model-file"]
+    opinf_model = NPZ.npzread(opinf_model_file)
+    basis = opinf_model["basis"]
+    _, _, reduced_dim = size(basis)
+    num_dofs = reduced_dim
+    time = 0.0
+    failed = false
+    null_vec = zeros(num_dofs)
+
+    reduced_state = zeros(num_dofs)
+    reduced_boundary_forcing = zeros(num_dofs)
+    free_dofs = trues(num_dofs)
+    boundary_conditions = Vector{BoundaryCondition}()
+    QuadraticOpInfRom(
+        opinf_model,
+        basis,
+        reduced_state,
+        reduced_boundary_forcing,
+        null_vec,
+        free_dofs,
+        boundary_conditions,
+        time,
+        failed,
+        fom_model,
+        reference,
+        false,
+    )
+end
+
+
+
+
+
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
@@ -256,6 +294,8 @@ function create_model(params::Parameters)
         return HeatConduction(params)
     elseif model_name == "linear opinf rom"
         return LinearOpInfRom(params)
+    elseif model_name == "quadratic opinf rom"
+        return QuadraticOpInfRom(params)
 
     else
         error("Unknown type of model : ", model_name)

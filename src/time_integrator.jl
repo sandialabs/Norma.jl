@@ -206,7 +206,7 @@ function get_analysis_type(integrator::TimeIntegrator)
     end
 end
 
-function initialize(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
+function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
     # Compute initial accelerations
     stored_energy, internal_force, external_force, _, mass_matrix = evaluate(integrator, model.fom_model)
     free = model.fom_model.free_dofs
@@ -238,7 +238,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::Linear
     end
 end
 
-function predict(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
+function predict(integrator::Newmark, solver::Solver, model::RomModel)
     dt = integrator.time_step
     beta = integrator.β
     gamma = integrator.γ
@@ -253,7 +253,7 @@ function predict(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
     model.reduced_state[:] = integrator.displacement[:]
 end
 
-function correct(integrator::Newmark, solver::Solver, model::LinearOpInfRom)
+function correct(integrator::Newmark, solver::Solver, model::RomModel)
     dt = integrator.time_step
     beta = integrator.β
     gamma = integrator.γ
@@ -393,7 +393,7 @@ end
 function initialize_writing(
     params::Parameters,
     integrator::DynamicTimeIntegrator,
-    model::LinearOpInfRom,
+    model::RomModel,
 )
     initialize_writing(params, integrator, model.fom_model)
 end
@@ -668,7 +668,7 @@ end
 
 function write_step_csv(
     integrator::DynamicTimeIntegrator,
-    model::OpInfModel,
+    model::RomModel,
     sim_id::Integer,
 )
     stop = integrator.stop
@@ -682,7 +682,7 @@ end
 function write_step_exodus(
     params::Parameters,
     integrator::DynamicTimeIntegrator,
-    model::LinearOpInfRom,
+    model::RomModel,
 )
     #Re-construct full state
     displacement = integrator.displacement

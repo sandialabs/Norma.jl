@@ -118,8 +118,8 @@ function MultiDomainSimulation(params::Parameters)
             get_analysis_type(subsim.integrator) * " " * subparams["model"]["type"]
         if sim_type == "none"
             sim_type = subsim_type
-        elseif subsim_type ≠ sim_type && subsim_type != "dynamic linear opinf rom"
-            error("Multidomain subdomains must all have the same physics")
+#        elseif subsim_type ≠ sim_type && (subsim_type != "dynamic linear opinf rom" || subsim_type != "dynamic quadratic opinf rom")
+#            error("Multidomain subdomains must all have the same physics")
         end
         push!(subsims, subsim)
         subsim_name_index_map[domain_name] = subsim_index
