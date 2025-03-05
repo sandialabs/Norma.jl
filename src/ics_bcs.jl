@@ -33,7 +33,7 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     expression = bc_params["function"]
     if isa(expression, AbstractVector)
         @assert length(expression) == 3 "Vectorized function must have 3 elements."
-        @assert all(isa, v) == String "All functions must be strings (including zeros)."
+        @assert all(x -> x isa String, expression) "All functions must be strings (including zeros)."
         disp_expression = [ eval(Meta.parse(expression[1])), 
             eval(Meta.parse(expression[2])), 
             eval(Meta.parse(expression[3])) ]
@@ -350,21 +350,25 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
         # The local basis is determined from a normal vector
         axis = bc.reference_normal
         axis = [ extract_value(substitute(av, values)) for av in axis]
-        # axis = [ substitute(axis[1], values),
-        #         substitute(axis[2], values),
-        #         substitute(axis[3], values) ]
-        # axis = [
-        #     extract_value(axis[0]),
-        #     extract_value(axis[1]),
-        #     extract_value(axis[2])
-        #  ]
+
         axis = axis / norm(axis)
         w = cross(axis, e1)
         s = norm(w)
-        if (s ≈ 0.0)
-            rotation_matrix = I(3)
+        angle_btwn = acos(dot(axis,e1))
+
+        if (angle_btwn ≈ 0.0)
+            rotation_matrix = I(3)*1.0
+        elseif (angle_btwn ≈ π)
+            rotation_matrix = I(3)*1.0
+            rotation_matrix[1,1] = -1.0
+            rotation_matrix[2,2] = -1.0
         else
-            θ = asin(s)
+            if angle_btwn > π/2
+                θ = π - asin(s)
+            else
+                θ = asin(s)
+            end
+
             m = w / s
             rv = θ * m
             # Rotation is converted via the psuedo vector to rotation matrix
@@ -736,14 +740,23 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
 
         # The local basis comes from the closest_normal:
         axis = -closest_normal / norm(-closest_normal)
-
+        
         e1 = [1.0, 0.0, 0.0]
+        angle_btwn = acos(dot(axis,e1))
         w = cross(axis, e1)
         s = norm(w)
-        if (s ≈ 0.0)
-            bc.rotation_matrix = I(3)
+        if (angle_btwn ≈ 0.0)
+            rotation_matrix = I(3)*1.0
+        elseif (angle_btwn ≈ π)
+            rotation_matrix = I(3)*1.0
+            rotation_matrix[1,1] = -1.0
+            rotation_matrix[2,2] = -1.0
         else
-            θ = asin(s)
+            if angle_btwn > π/2
+                θ = π - asin(s)
+            else
+                θ = asin(s)
+            end
             m = w / s
             rv = θ * m
             # Rotation is converted via the pseudo vector to rotation matrix
