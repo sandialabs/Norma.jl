@@ -223,7 +223,7 @@ end
 function copy_solution_source_targets(
     integrator::Newmark,
     _::HessianMinimizer,
-    model::LinearOpInfRom,
+    model::RomModel,
 )
     displacement = integrator.displacement
     velocity = integrator.velocity
@@ -434,6 +434,35 @@ function copy_solution_source_targets(
     solver.solution = integrator.acceleration
 end
 
+
+function evaluate(integrator::Newmark, solver::HessianMinimizer, model::QuadraticOpInfRom)
+    beta = integrator.β
+    gamma = integrator.γ
+    dt = integrator.time_step
+
+    ##Quadratic OpInf
+    num_dof = length(model.free_dofs)
+    I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
+    # Create tangent stiffness for quadratic operator
+    H = model.opinf_rom["H"]
+    x1 = kron(I,solver.solution)
+    x2 = kron(solver.solution,I) 
+    Hprime = H * x1 + H * x2
+    xsqr = kron(solver.solution,solver.solution)
+    LHS_linear = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"]) 
+    LHS_nonlinear = Hprime
+
+    RHS =
+        model.opinf_rom["f"] +
+        model.reduced_boundary_forcing +
+        1.0 / (dt * dt * beta) .* integrator.disp_pre
+
+    residual = RHS - LHS_linear * solver.solution - H * xsqr
+    solver.hessian[:, :] = LHS_linear + LHS_nonlinear
+    solver.gradient[:] = -residual
+end
+
+
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
@@ -604,7 +633,7 @@ end
 
 function compute_step(
     _::DynamicTimeIntegrator,
-    model::LinearOpInfRom,
+    model::RomModel,
     solver::HessianMinimizer,
     _::NewtonStep,
 )
