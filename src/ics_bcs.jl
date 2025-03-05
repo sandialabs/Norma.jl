@@ -160,7 +160,7 @@ function SMCouplingSchwarzBC(
     _, _, side_set_node_indices =
         get_side_set_local_from_global_map(input_mesh, side_set_id)
     coupled_block_name = bc_params["source block"]
-    if typeof(coupled_subsim.model) == LinearOpInfRom
+    if typeof(coupled_subsim.model) <: RomModel 
         coupled_mesh = coupled_subsim.model.fom_model.mesh
     else
         coupled_mesh = coupled_subsim.model.mesh
@@ -239,7 +239,7 @@ function SMCouplingSchwarzBC(
     end
 end
 
-function apply_bc(model::LinearOpInfRom, bc::SMDirichletBC)
+function apply_bc(model::OpInfModel, bc::SMDirichletBC)
     model.fom_model.time = model.time
     apply_bc(model.fom_model, bc)
     bc_vector = zeros(0)
@@ -397,7 +397,7 @@ end
 
 function find_point_in_mesh(
     point::Vector{Float64},
-    model::LinearOpInfRom,
+    model::RomModel,
     blk_id::Int,
     tol::Float64,
 )
@@ -421,7 +421,7 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
     end
 end
 
-function apply_bc_detail(model::LinearOpInfRom, bc::CouplingSchwarzBoundaryCondition)
+function apply_bc_detail(model::OpInfModel,bc::CouplingSchwarzBoundaryCondition)
     if (typeof(bc.coupled_subsim.model) == SolidMechanics)
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
@@ -465,7 +465,7 @@ function apply_sm_schwarz_coupling_dirichlet(
             dof_index = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
             model.free_dofs[dof_index] .= false
         end
-    elseif (typeof(bc.coupled_subsim.model) == LinearOpInfRom)
+    elseif (typeof(bc.coupled_subsim.model) <: RomModel)
         for i ∈ 1:length(bc.side_set_node_indices)
             node_index = bc.side_set_node_indices[i]
             coupled_node_indices = bc.coupled_nodes_indices[i]
@@ -580,7 +580,7 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     )
 end
 
-function apply_bc(model::LinearOpInfRom, bc::SchwarzBoundaryCondition)
+function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
     schwarz_controller = global_sim.schwarz_controller
     if typeof(bc) == SMContactSchwarzBC && schwarz_controller.active_contact == false
@@ -615,7 +615,7 @@ function apply_bc(model::LinearOpInfRom, bc::SchwarzBoundaryCondition)
         same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
     if typeof(bc.coupled_subsim.model) == SolidMechanics
         bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    elseif typeof(bc.coupled_subsim.model) == LinearOpInfRom
+    elseif typeof(bc.coupled_subsim.model) <: RomModel 
         bc.coupled_subsim.model.fom_model.internal_force = interp_∂Ω_f
     end
 
@@ -964,7 +964,7 @@ function apply_bcs(model::SolidMechanics)
     end
 end
 
-function apply_bcs(model::LinearOpInfRom)
+function apply_bcs(model::RomModel)
     model.reduced_boundary_forcing[:] .= 0.0
     for boundary_condition ∈ model.boundary_conditions
         apply_bc(model, boundary_condition)
@@ -1009,7 +1009,7 @@ function apply_ics(params::Parameters, model::SolidMechanics)
     end
 end
 
-function apply_ics(params::Parameters, model::LinearOpInfRom)
+function apply_ics(params::Parameters, model::RomModel)
 
     apply_ics(params, model.fom_model)
 
