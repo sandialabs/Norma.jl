@@ -32,8 +32,12 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
     if isa(expression, AbstractVector)
-        @assert length(expression) == 3 "Vectorized function must have 3 elements."
-        @assert all(x -> x isa String, expression) "All functions must be strings (including zeros)."
+        if (length(expression) != 3)
+            error("Vectorized function must have 3 elements.")
+        end
+        if all(x -> x isa String, expression) == false
+            error("All functions must be strings (including zeros).")
+        end
         disp_expression = [ eval(Meta.parse(expression[1])), 
             eval(Meta.parse(expression[2])), 
             eval(Meta.parse(expression[3])) ]

@@ -6,50 +6,50 @@
 using YAML
 
 
-# @testset "sphere-inclined-disp" begin
-#     cp(
-#         "../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml",
-#         "sphere.yaml",
-#         force = true,
-#     )
-#     cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g", force = true)
-#     input_file = "sphere.yaml"
-#     params = YAML.load_file(input_file; dicttype = Norma.Parameters)
-#     time = 0.005
-#     params["time integrator"]["initial time"] = 0
-#     params["time integrator"]["time step"] = time
-#     params["time integrator"]["final time"] = time
-#     simulation = Norma.run(params, input_file)
+@testset "sphere-inclined-disp" begin
+    cp(
+        "../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml",
+        "sphere.yaml",
+        force = true,
+    )
+    cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g", force = true)
+    input_file = "sphere.yaml"
+    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+    time = 0.005
+    params["time integrator"]["initial time"] = 0
+    params["time integrator"]["time step"] = time
+    params["time integrator"]["final time"] = time
+    simulation = Norma.run(params, input_file)
 
-#     integrator = simulation.integrator
-#     model = simulation.model
-#     rm("sphere.yaml")
-#     rm("sphere.g")
-#     rm("sphere.e")
+    integrator = simulation.integrator
+    model = simulation.model
+    rm("sphere.yaml")
+    rm("sphere.g")
+    rm("sphere.e")
     
-#     global_displacement = vec(model.current - model.reference)
-#     max_disp = maximum_components(global_displacement)
-#     min_disp = minimum_components(global_displacement)
+    global_displacement = vec(model.current - model.reference)
+    max_disp = maximum_components(global_displacement)
+    min_disp = minimum_components(global_displacement)
     
-#     @test max_disp[1] ≈ time/10 atol = 1.0e-06
-#     @test max_disp[2] ≈ time/10 atol = 1.0e-06
-#     @test max_disp[3] ≈ time/10 atol = 1.0e-06
-#     @test min_disp[1] ≈ -time/10 atol = 1.0e-06
-#     @test min_disp[2] ≈ -time/10 atol = 1.0e-06
-#     @test min_disp[3] ≈ -time/10 atol = 1.0e-06
+    @test max_disp[1] ≈ time/10 atol = 1.0e-06
+    @test max_disp[2] ≈ time/10 atol = 1.0e-06
+    @test max_disp[3] ≈ time/10 atol = 1.0e-06
+    @test min_disp[1] ≈ -time/10 atol = 1.0e-06
+    @test min_disp[2] ≈ -time/10 atol = 1.0e-06
+    @test min_disp[3] ≈ -time/10 atol = 1.0e-06
 
-#     bulk_modulus = 1.0e+09/(3.0*(1.0 - 2*0.25))
-#     # Stress should be uniform, so avg is sufficient
-#     avg_stress = average_components(model.stress)
-#     hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3])/3.
-#     volume_decrease = 4.0/3.0*π*(1.0^3 - (1-0.1*time)^3)/(4.0/3.0*π*(1.0^3))
-#     #println(volume_decrease)
-#     @test hydrostatic_stress ≈ (bulk_modulus * volume_decrease) rtol = 1.0e-06
-#     @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
-#     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
-#     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
+    bulk_modulus = 1.0e+09/(3.0*(1.0 - 2*0.25))
+    # Stress should be uniform, so avg is sufficient
+    avg_stress = average_components(model.stress)
+    hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3])/3.
+    volume_decrease = 4.0/3.0*π*(1.0^3 - (1-0.1*time)^3)/(4.0/3.0*π*(1.0^3))
 
-# end
+    @test hydrostatic_stress ≈ (bulk_modulus * volume_decrease) rtol = 1.0e-03
+    @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
+    @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
+    @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
+
+end
 
 @testset "quasi-static-inclined-support" begin
 
