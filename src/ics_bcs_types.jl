@@ -30,11 +30,11 @@ mutable struct SMDirichletInclined <: RegularBoundaryCondition
     node_set_name::String
     node_set_id::Int64
     node_set_node_indices::Vector{Int64}
-    disp_num::Num
-    velo_num::Num
-    acce_num::Num
-    rotation_matrix::Matrix{Float64}
-    reference_normal::Vector{Float64}
+    disp_expression::Vector{Num}
+    velo_expression::Vector{Num}
+    acce_expression::Vector{Num}
+    reference_normal::Vector{Num}
+    off_axis_free::Bool
 end
 
 mutable struct SMNeumannBC <: RegularBoundaryCondition

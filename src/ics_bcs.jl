@@ -31,24 +31,56 @@ end
 function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
+    if isa(expression, AbstractVector)
+        if (length(expression) != 3)
+            error("Vectorized function must have 3 elements.")
+        end
+        if all(x -> x isa String, expression) == false
+            error("All functions must be strings (including zeros).")
+        end
+        disp_expression = [ eval(Meta.parse(expression[1])), 
+            eval(Meta.parse(expression[2])), 
+            eval(Meta.parse(expression[3])) ]
+        off_axis_free = false
+    else
+        disp_expression = [ eval(Meta.parse(expression)),
+            eval(Meta.parse("0.0")), 
+            eval(Meta.parse("0.0")) ]
+        off_axis_free = true
+    end
+
+    velo_expression = [ expand_derivatives(D(disp_expression[1])), 
+                        expand_derivatives(D(disp_expression[2])),
+                        expand_derivatives(D(disp_expression[3])) ]
+    acce_expression = [ expand_derivatives(D(velo_expression[1])), 
+                        expand_derivatives(D(velo_expression[2])),
+                        expand_derivatives(D(velo_expression[3])) ]
+
     node_set_id = node_set_id_from_name(node_set_name, input_mesh)
     node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
     # expression is an arbitrary function of t, x, y, z in the input file
-    disp_num = eval(Meta.parse(expression))
-    velo_num = expand_derivatives(D(disp_num))
-    acce_num = expand_derivatives(D(velo_num))
-    # For inclined support, the function is applied along the x direction
-    rotation_matrix = I(3)
+
     reference_normal = bc_params["normal vector"]
+
+    if all(x -> x isa String, reference_normal) == false
+        # We'll cast the normal into a string expression
+        reference_normal = [ string(vc) for vc in reference_normal ]
+    end
+
+    reference_normal = [
+        eval(Meta.parse(reference_normal[1])), 
+        eval(Meta.parse(reference_normal[2])), 
+        eval(Meta.parse(reference_normal[3]))
+            ]
     SMDirichletInclined(
         node_set_name,
         node_set_id,
         node_set_node_indices,
-        disp_num,
-        velo_num,
-        acce_num,
-        rotation_matrix,
+        disp_expression,
+        velo_expression,
+        acce_expression,
         reference_normal,
+        off_axis_free
     )
 end
 
@@ -309,21 +341,9 @@ function apply_bc(model::SolidMechanics, bc::SMNeumannBC)
 end
 
 function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
-    # The local basis is determined from a normal vector
-    axis = bc.reference_normal
-    axis = axis / norm(axis)
+
     e1 = [1.0, 0.0, 0.0]
-    w = cross(axis, e1)
-    s = norm(w)
-    if (s ≈ 0.0)
-        bc.rotation_matrix = I(3)
-    else
-        θ = asin(s)
-        m = w / s
-        rv = θ * m
-        # Rotation is converted via the psuedo vector to rotation matrix
-        bc.rotation_matrix = MiniTensor.rt_from_rv(rv)
-    end
+
     for node_index ∈ bc.node_set_node_indices
         values = Dict(
             t => model.time,
@@ -331,41 +351,75 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
             y => model.reference[2, node_index],
             z => model.reference[3, node_index],
         )
-        disp_sym = substitute(bc.disp_num, values)
-        velo_sym = substitute(bc.velo_num, values)
-        acce_sym = substitute(bc.acce_num, values)
+        # The local basis is determined from a normal vector
+        axis = bc.reference_normal
+        axis = [ extract_value(substitute(av, values)) for av in axis]
 
-        # For inclined support, these values are in the local direction
-        disp_val_loc = extract_value(disp_sym)
-        velo_val_loc = extract_value(velo_sym)
-        acce_val_loc = extract_value(acce_sym)
+        axis = axis / norm(axis)
+        w = cross(axis, e1)
+        s = norm(w)
+        angle_btwn = acos(dot(axis,e1))
+
+        if (angle_btwn ≈ 0.0)
+            rotation_matrix = I(3)*1.0
+        elseif (angle_btwn ≈ π)
+            rotation_matrix = I(3)*1.0
+            rotation_matrix[1,1] = -1.0
+            rotation_matrix[2,2] = -1.0
+        else
+            if angle_btwn > π/2
+                θ = π - asin(s)
+            else
+                θ = asin(s)
+            end
+
+            m = w / s
+            rv = θ * m
+            # Rotation is converted via the psuedo vector to rotation matrix
+            rotation_matrix = MiniTensor.rt_from_rv(rv)
+        end
+
+        disp_val_loc = [ extract_value(substitute(exp, values)) for exp in bc.disp_expression ]
+        velo_val_loc = [ extract_value(substitute(exp, values)) for exp in bc.velo_expression ]
+        acce_val_loc = [ extract_value(substitute(exp, values)) for exp in bc.acce_expression ]
 
         # Inherit free values from model (required for explicit dynamics)
         original_disp = model.current[:, node_index] - model.reference[:, node_index]
         original_acceleration = model.acceleration[:, node_index]
         original_velocity = model.velocity[:, node_index]
-        local_original_displacement = bc.rotation_matrix * original_disp
-        local_original_acceleration = bc.rotation_matrix * original_acceleration
-        local_original_velocity = bc.rotation_matrix * original_velocity
-        # Set local X direction to inclined support
-        local_original_displacement[1] = disp_val_loc
-        local_original_acceleration[1] = acce_val_loc
-        local_original_velocity[1] = velo_val_loc
-        original_velocity = bc.rotation_matrix' * local_original_velocity
-        original_acceleration = bc.rotation_matrix' * local_original_acceleration
-        disp_vector_glob = bc.rotation_matrix' * local_original_displacement
+        local_original_displacement = rotation_matrix * original_disp
+        local_original_acceleration = rotation_matrix * original_acceleration
+        local_original_velocity = rotation_matrix * original_velocity
+
+        # Inclined support is only applied in local X
+        if bc.off_axis_free == true
+            model.free_dofs[3*node_index-2] = false
+            model.free_dofs[3*node_index-1] = true
+            model.free_dofs[3*node_index] = true
+            # Set local X direction to inclined support
+            local_original_displacement[1] = disp_val_loc[1]
+            local_original_acceleration[1] = acce_val_loc[1]
+            local_original_velocity[1] = velo_val_loc[1]
+        else
+            model.free_dofs[3*node_index-2] = false
+            model.free_dofs[3*node_index-1] = false
+            model.free_dofs[3*node_index] = false
+            # Set local X direction to inclined support
+            local_original_displacement = disp_val_loc
+            local_original_acceleration = acce_val_loc
+            local_original_velocity = velo_val_loc
+        end
+
+        original_velocity = rotation_matrix' * local_original_velocity
+        original_acceleration = rotation_matrix' * local_original_acceleration
+        disp_vector_glob = rotation_matrix' * local_original_displacement
 
         model.current[:, node_index] = model.reference[:, node_index] + disp_vector_glob
         model.velocity[:, node_index] = original_velocity
         model.acceleration[:, node_index] = original_acceleration
-        # Inclined support is only applied in local X
-        model.free_dofs[3*node_index-2] = false
-        model.free_dofs[3*node_index-1] = true
-        model.free_dofs[3*node_index] = true
-
         global_base = 3 * (node_index - 1) # Block index in global stiffness
         model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] =
-            bc.rotation_matrix
+            rotation_matrix
 
     end
 end
@@ -690,14 +744,23 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
 
         # The local basis comes from the closest_normal:
         axis = -closest_normal / norm(-closest_normal)
-
+        
         e1 = [1.0, 0.0, 0.0]
+        angle_btwn = acos(dot(axis,e1))
         w = cross(axis, e1)
         s = norm(w)
-        if (s ≈ 0.0)
-            bc.rotation_matrix = I(3)
+        if (angle_btwn ≈ 0.0)
+            rotation_matrix = I(3)*1.0
+        elseif (angle_btwn ≈ π)
+            rotation_matrix = I(3)*1.0
+            rotation_matrix[1,1] = -1.0
+            rotation_matrix[2,2] = -1.0
         else
-            θ = asin(s)
+            if angle_btwn > π/2
+                θ = π - asin(s)
+            else
+                θ = asin(s)
+            end
             m = w / s
             rv = θ * m
             # Rotation is converted via the pseudo vector to rotation matrix
