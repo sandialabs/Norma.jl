@@ -101,7 +101,6 @@ end
 # COMMUNICATIONS, 2009, 180:9,1558-1565.
 #
 function bch(x::AbstractMatrix{Float64}, y::AbstractMatrix{Float64})
-
     z1 = x + y
 
     z2 = 0.5 * (x * y - y * x)
@@ -356,7 +355,7 @@ function q_from_rt(R::AbstractMatrix{Float64})
     maxm = trR
     maxi = 4
     q = zeros(4)
-    for i ∈ 1:3
+    for i in 1:3
         if R[i, i] > maxm
             maxm = R[i, i]
             maxi = i

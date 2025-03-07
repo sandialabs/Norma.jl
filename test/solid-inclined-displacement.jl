@@ -5,16 +5,19 @@
 # top-level Norma.jl directory.
 using YAML
 
-
 @testset "sphere-inclined-disp" begin
     cp(
         "../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml",
-        "sphere.yaml",
-        force = true,
+        "sphere.yaml";
+        force=true,
     )
-    cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g", force = true)
+    cp(
+        "../examples/single/static-solid/sphere-inclined-displacement/sphere.g",
+        "sphere.g";
+        force=true,
+    )
     input_file = "sphere.yaml"
-    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+    params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     time = 0.005
     params["time integrator"]["initial time"] = 0
     params["time integrator"]["time step"] = time
@@ -26,44 +29,43 @@ using YAML
     rm("sphere.yaml")
     rm("sphere.g")
     rm("sphere.e")
-    
+
     global_displacement = vec(model.current - model.reference)
     max_disp = maximum_components(global_displacement)
     min_disp = minimum_components(global_displacement)
-    
-    @test max_disp[1] ≈ time/10 atol = 1.0e-06
-    @test max_disp[2] ≈ time/10 atol = 1.0e-06
-    @test max_disp[3] ≈ time/10 atol = 1.0e-06
-    @test min_disp[1] ≈ -time/10 atol = 1.0e-06
-    @test min_disp[2] ≈ -time/10 atol = 1.0e-06
-    @test min_disp[3] ≈ -time/10 atol = 1.0e-06
 
-    bulk_modulus = 1.0e+09/(3.0*(1.0 - 2*0.25))
+    @test max_disp[1] ≈ time / 10 atol = 1.0e-06
+    @test max_disp[2] ≈ time / 10 atol = 1.0e-06
+    @test max_disp[3] ≈ time / 10 atol = 1.0e-06
+    @test min_disp[1] ≈ -time / 10 atol = 1.0e-06
+    @test min_disp[2] ≈ -time / 10 atol = 1.0e-06
+    @test min_disp[3] ≈ -time / 10 atol = 1.0e-06
+
+    bulk_modulus = 1.0e+09 / (3.0 * (1.0 - 2 * 0.25))
     # Stress should be uniform, so avg is sufficient
     avg_stress = average_components(model.stress)
-    hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3])/3.
-    volume_decrease = 4.0/3.0*π*(1.0^3 - (1-0.1*time)^3)/(4.0/3.0*π*(1.0^3))
+    hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3]) / 3.0
+    volume_decrease =
+        4.0 / 3.0 * π * (1.0^3 - (1 - 0.1 * time)^3) / (4.0 / 3.0 * π * (1.0^3))
 
     @test hydrostatic_stress ≈ (bulk_modulus * volume_decrease) rtol = 1.0e-03
     @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
-
 end
 
 @testset "quasi-static-inclined-support" begin
-
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(
             "../examples/single/static-solid/cube_inclined_support/cube-test$i.yaml",
-            "cube-test$i.yaml",
-            force = true,
+            "cube-test$i.yaml";
+            force=true,
         )
         cp(
             "../examples/single/static-solid/cube_inclined_support/cube-test$i.g",
-            "cube-test$i.g",
-            force = true,
+            "cube-test$i.g";
+            force=true,
         )
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
@@ -167,7 +169,7 @@ end
         global_rotation = zeros((81, 81))
         for i in range(1, 27)
             base = (i - 1) * (3) + 1
-            global_rotation[base:(base+2), base:(base+2)] = local_rotation_matrix
+            global_rotation[base:(base + 2), base:(base + 2)] = local_rotation_matrix
         end
 
         correct_displacements = global_rotation' * reference_displacements
@@ -181,7 +183,6 @@ end
         # Assert the displacement array matches the reference displacements
         @test displacements ≈ correct_displacements atol = 1e-6
     end
-
 end
 
 @testset "newark-inclined-support" begin
@@ -189,13 +190,13 @@ end
     for (i, angle_deg) in enumerate(angles)
         cp(
             "../examples/single/implicit-dynamic-solid/cube_inclined_support/cube-test$i.yaml",
-            "cube-test$i.yaml",
-            force = true,
+            "cube-test$i.yaml";
+            force=true,
         )
         cp(
             "../examples/single/implicit-dynamic-solid/cube_inclined_support/cube-test$i.g",
-            "cube-test$i.g",
-            force = true,
+            "cube-test$i.g";
+            force=true,
         )
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
@@ -299,7 +300,7 @@ end
         global_rotation = zeros((81, 81))
         for i in range(1, 27)
             base = (i - 1) * (3) + 1
-            global_rotation[base:(base+2), base:(base+2)] = local_rotation_matrix
+            global_rotation[base:(base + 2), base:(base + 2)] = local_rotation_matrix
         end
 
         correct_displacements = global_rotation' * reference_displacements
@@ -320,13 +321,13 @@ end
     for (i, angle_deg) in enumerate(angles)
         cp(
             "../examples/single/explicit-dynamic-solid/cube_inclined_support/cube-test$i.yaml",
-            "cube-test$i.yaml",
-            force = true,
+            "cube-test$i.yaml";
+            force=true,
         )
         cp(
             "../examples/single/explicit-dynamic-solid/cube_inclined_support/cube-test$i.g",
-            "cube-test$i.g",
-            force = true,
+            "cube-test$i.g";
+            force=true,
         )
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
@@ -422,7 +423,6 @@ end
                 -0.028135723132685704,
             ]
 
-
         # Rotate these displacements
         angle = angle_deg * π / 180
         c = cos(angle)
@@ -432,7 +432,7 @@ end
         global_rotation = zeros((81, 81))
         for i in range(1, 27)
             base = (i - 1) * (3) + 1
-            global_rotation[base:(base+2), base:(base+2)] = local_rotation_matrix
+            global_rotation[base:(base + 2), base:(base + 2)] = local_rotation_matrix
         end
 
         correct_displacements = global_rotation' * reference_displacements
@@ -447,4 +447,3 @@ end
         @test displacements ≈ correct_displacements atol = 1e-6
     end
 end
-

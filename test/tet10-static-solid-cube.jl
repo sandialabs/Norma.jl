@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "tet10-static-solid-cube" begin
-    cp("../examples/element-types/tet10/cube/cube.yaml", "cube.yaml", force = true)
-    cp("../examples/element-types/tet10/cube/cube.g", "cube.g", force = true)
+    cp("../examples/element-types/tet10/cube/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/element-types/tet10/cube/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model

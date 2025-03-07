@@ -4,15 +4,11 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "transfer-operators" begin
-    cp(
-        "../examples/contact/transfer_operators/transfer.yaml",
-        "transfer.yaml",
-        force = true,
-    )
-    cp("../examples/contact/transfer_operators/src.yaml", "src.yaml", force = true)
-    cp("../examples/contact/transfer_operators/dst.yaml", "dst.yaml", force = true)
-    cp("../examples/contact/transfer_operators/src.g", "src.g", force = true)
-    cp("../examples/contact/transfer_operators/dst.g", "dst.g", force = true)
+    cp("../examples/contact/transfer_operators/transfer.yaml", "transfer.yaml"; force=true)
+    cp("../examples/contact/transfer_operators/src.yaml", "src.yaml"; force=true)
+    cp("../examples/contact/transfer_operators/dst.yaml", "dst.yaml"; force=true)
+    cp("../examples/contact/transfer_operators/src.g", "src.g"; force=true)
+    cp("../examples/contact/transfer_operators/dst.g", "dst.g"; force=true)
     input_file = "transfer.yaml"
     sim = Norma.create_simulation(input_file)
     src_sim = sim.subsims[1]
@@ -32,10 +28,7 @@
     println("Number of nodes of the destination side set ", length(dst_T_real))
     H = Norma.get_square_projection_matrix(src_model, src_side_set_id)
     L = Norma.get_rectangular_projection_matrix(
-        src_model,
-        src_side_set_id,
-        dst_model,
-        dst_side_set_id,
+        src_model, src_side_set_id, dst_model, dst_side_set_id
     )
     dst_T = L * inv(H) * src_T
     rel_er_tr = norm(dst_T - dst_T_real) / norm(dst_T_real)

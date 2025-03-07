@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "single-implicit-dynamic-solid-sho" begin
-    cp("../examples/single/implicit-dynamic-solid/sho/sho.yaml", "sho.yaml", force = true)
-    cp("../examples/single/implicit-dynamic-solid/sho/sho.g", "sho.g", force = true)
+    cp("../examples/single/implicit-dynamic-solid/sho/sho.yaml", "sho.yaml"; force=true)
+    cp("../examples/single/implicit-dynamic-solid/sho/sho.g", "sho.g"; force=true)
     simulation = Norma.run("sho.yaml")
     integrator = simulation.integrator
     rm("sho.yaml")

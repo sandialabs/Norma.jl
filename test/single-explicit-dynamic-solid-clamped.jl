@@ -6,13 +6,13 @@
 @testset "single-explicit-dynamic-solid-clamped" begin
     cp(
         "../examples/single/explicit-dynamic-solid/clamped/clamped.yaml",
-        "clamped.yaml",
-        force = true,
+        "clamped.yaml";
+        force=true,
     )
     cp(
         "../examples/single/explicit-dynamic-solid/clamped/clamped.g",
-        "clamped.g",
-        force = true,
+        "clamped.g";
+        force=true,
     )
     simulation = Norma.run("clamped.yaml")
     integrator = simulation.integrator

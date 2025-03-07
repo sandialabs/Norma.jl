@@ -99,7 +99,7 @@ mutable struct SaintVenant_Kirchhoff <: Solid
     function SaintVenant_Kirchhoff(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
+        return new(E, ν, κ, λ, μ, ρ)
     end
 end
 
@@ -113,7 +113,7 @@ mutable struct Linear_Elastic <: Solid
     function Linear_Elastic(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
+        return new(E, ν, κ, λ, μ, ρ)
     end
 end
 
@@ -127,7 +127,7 @@ mutable struct Neohookean <: Solid
     function Neohookean(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
+        return new(E, ν, κ, λ, μ, ρ)
     end
 end
 
@@ -143,7 +143,7 @@ mutable struct SethHill <: Solid
     function SethHill(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
+        return new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
     end
 end
 
@@ -181,7 +181,7 @@ mutable struct J2 <: Solid
         M = get(params, "thermal softening exponent", 0.0)
         κ = E / (1.0 - 2.0 * ν) / 3.0
         μ = E / (1.0 + ν) / 2.0
-        new(E, ν, κ, λ, μ, ρ, Y₀, n, ε₀, Sᵥᵢₛ₀, m, ∂ε∂t₀, Cₚ, β, T₀, Tₘ, M)
+        return new(E, ν, κ, λ, μ, ρ, Y₀, n, ε₀, Sᵥᵢₛ₀, m, ∂ε∂t₀, Cₚ, β, T₀, Tₘ, M)
     end
 end
 
@@ -189,7 +189,7 @@ function temperature_multiplier(material::J2, T::Float64)
     T₀ = material.T₀
     Tₘ = material.Tₘ
     M = material.M
-    M > 0.0 ? 1.0 - ((T - T₀) / (Tₘ - T₀))^M : 1.0
+    return M > 0.0 ? 1.0 - ((T - T₀) / (Tₘ - T₀))^M : 1.0
 end
 
 function hardening_potential(material::J2, ε::Float64)
@@ -197,7 +197,7 @@ function hardening_potential(material::J2, ε::Float64)
     n = material.n
     ε₀ = material.ε₀
     exponent = (1.0 + n) / n
-    n > 0.0 ? Y₀ * ε₀ / exponent * ((1.0 + ε / ε₀)^exponent - 1.0) : Y₀ * ε
+    return n > 0.0 ? Y₀ * ε₀ / exponent * ((1.0 + ε / ε₀)^exponent - 1.0) : Y₀ * ε
 end
 
 function hardening_rate(material::J2, ε::Float64)
@@ -205,14 +205,14 @@ function hardening_rate(material::J2, ε::Float64)
     n = material.n
     ε₀ = material.ε₀
     exponent = (1.0 - n) / n
-    n > 0.0 ? Y₀ / ε₀ / n * (1.0 + ε / ε₀)^exponent : 0.0
+    return n > 0.0 ? Y₀ / ε₀ / n * (1.0 + ε / ε₀)^exponent : 0.0
 end
 
 function flow_strength(material::J2, ε::Float64)
     Y₀ = material.Y₀
     n = material.n
     ε₀ = material.ε₀
-    n > 0.0 ? Y₀ * (1.0 + ε / ε₀)^(1.0 / n) : Y₀
+    return n > 0.0 ? Y₀ * (1.0 + ε / ε₀)^(1.0 / n) : Y₀
 end
 
 function viscoplastic_dual_kinetic_potential(material::J2, Δε::Float64, Δt::Float64)
@@ -220,23 +220,29 @@ function viscoplastic_dual_kinetic_potential(material::J2, Δε::Float64, Δt::F
     m = material.m
     ∂ε∂t₀ = material.∂ε∂t₀
     exponent = (1.0 + m) / m
-    Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ?
-    Δt * Sᵥᵢₛ₀ * ∂ε∂t₀ / exponent * (Δε / Δt / ∂ε∂t₀)^exponent : 0.0
+    return if Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0
+        Δt * Sᵥᵢₛ₀ * ∂ε∂t₀ / exponent * (Δε / Δt / ∂ε∂t₀)^exponent
+    else
+        0.0
+    end
 end
 
 function viscoplastic_stress(material::J2, Δε::Float64, Δt::Float64)
     Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
     m = material.m
     ∂ε∂t₀ = material.∂ε∂t₀
-    Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ?
-    Sᵥᵢₛ₀ / ∂ε∂t₀ / Δt / m * (Δε / Δt / ∂ε∂t₀)^((1.0 - m) / m) : 0.0
+    return if Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0
+        Sᵥᵢₛ₀ / ∂ε∂t₀ / Δt / m * (Δε / Δt / ∂ε∂t₀)^((1.0 - m) / m)
+    else
+        0.0
+    end
 end
 
 function viscoplastic_hardening_rate(material::J2, Δε::Float64, Δt::Float64)
     Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
     m = material.m
     ∂ε∂t₀ = material.∂ε∂t₀
-    Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ? Sᵥᵢₛ₀ * (Δε / Δt / ∂ε∂t₀)^(1.0 / m) : 0.0
+    return Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ? Sᵥᵢₛ₀ * (Δε / Δt / ∂ε∂t₀)^(1.0 / m) : 0.0
 end
 
 function vol(A::Matrix{Float64})
@@ -248,11 +254,7 @@ function dev(A::Matrix{Float64})
 end
 
 function stress_update(
-    material::J2,
-    F::Matrix{Float64},
-    Fᵖ::Matrix{Float64},
-    εᵖ::Float64,
-    Δt::Float64,
+    material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64
 )
     max_rma_iter = 64
     max_ls_iter = 64
@@ -354,17 +356,17 @@ struct Linear_Isotropic <: Thermal
     κ::Float64
     function Linear_Isotropic(params::Parameters)
         κ = params["thermal conductivity"]
-        new(κ)
+        return new(κ)
     end
 end
 
 function odot(A::Matrix{Float64}, B::Matrix{Float64})
     n, _ = size(A)
     C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
+    for a in 1:n
+        for b in 1:n
+            for c in 1:n
+                for d in 1:n
                     C[a, b, c, d] = A[a, c] * B[b, d] + A[a, d] * B[b, c]
                 end
             end
@@ -377,10 +379,10 @@ end
 function ox(A::Matrix{Float64}, B::Matrix{Float64})
     n, _ = size(A)
     C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
+    for a in 1:n
+        for b in 1:n
+            for c in 1:n
+                for d in 1:n
                     C[a, b, c, d] = A[a, b] * B[c, d]
                 end
             end
@@ -392,10 +394,10 @@ end
 function oxI(A::Matrix{Float64})
     n, _ = size(A)
     C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
+    for a in 1:n
+        for b in 1:n
+            for c in 1:n
+                for d in 1:n
                     C[a, b, c, d] = A[a, b] * I[c, d]
                 end
             end
@@ -407,10 +409,10 @@ end
 function Iox(B::Matrix{Float64})
     n, _ = size(B)
     C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
+    for a in 1:n
+        for b in 1:n
+            for c in 1:n
+                for d in 1:n
                     C[a, b, c, d] = I[a, b] * B[c, d]
                 end
             end
@@ -422,13 +424,13 @@ end
 function convect_tangent(CC::Array{Float64}, S::Matrix{Float64}, F::Matrix{Float64})
     n, _ = size(F)
     AA = zeros(n, n, n, n)
-    for i ∈ 1:n
-        for j ∈ 1:n
-            for k ∈ 1:n
-                for l ∈ 1:n
+    for i in 1:n
+        for j in 1:n
+            for k in 1:n
+                for l in 1:n
                     s = 0.0
-                    for p ∈ 1:n
-                        for q ∈ 1:n
+                    for p in 1:n
+                        for q in 1:n
                             s = s + F[i, p] * CC[p, j, l, q] * F[k, q]
                         end
                     end
@@ -443,11 +445,11 @@ end
 function second_from_fourth(AA::Array{Float64})
     n, _, _, _ = size(AA)
     A = zeros(n * n, n * n)
-    for i ∈ 1:n
-        for j ∈ 1:n
+    for i in 1:n
+        for j in 1:n
             p = n * (i - 1) + j
-            for k ∈ 1:n
-                for l ∈ 1:n
+            for k in 1:n
+                for l in 1:n
                     q = n * (k - 1) + l
                     A[p, q] = AA[i, j, k, l]
                 end
@@ -466,13 +468,13 @@ function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})
     W = 0.5 * λ * trE * trE + μ * tr(E * E)
     S = λ * trE * I + 2.0 * μ * E
     CC = zeros(3, 3, 3, 3)
-    for i ∈ 1:3
-        for j ∈ 1:3
+    for i in 1:3
+        for j in 1:3
             δᵢⱼ = I[i, j]
-            for k ∈ 1:3
+            for k in 1:3
                 δᵢₖ = I[i, k]
                 δⱼₖ = I[j, k]
-                for l ∈ 1:3
+                for l in 1:3
                     δᵢₗ = I[i, l]
                     δⱼₗ = I[j, l]
                     δₖₗ = I[k, l]
@@ -495,13 +497,13 @@ function constitutive(material::Linear_Elastic, F::Matrix{Float64})
     W = 0.5 * λ * trϵ * trϵ + μ * tr(ϵ * ϵ)
     σ = λ * trϵ * I + 2.0 * μ * ϵ
     CC = zeros(3, 3, 3, 3)
-    for i ∈ 1:3
-        for j ∈ 1:3
+    for i in 1:3
+        for j in 1:3
             δᵢⱼ = I[i, j]
-            for k ∈ 1:3
+            for k in 1:3
                 δᵢₖ = I[i, k]
                 δⱼₖ = I[j, k]
-                for l ∈ 1:3
+                for l in 1:3
                     δᵢₗ = I[i, l]
                     δⱼₗ = I[j, l]
                     δₖₗ = I[k, l]
@@ -596,7 +598,7 @@ function get_kinematics(material::Solid)
     elseif typeof(material) == SethHill
         return Finite
     end
-    error("Unknown material model : ", typeof(material))
+    return error("Unknown material model : ", typeof(material))
 end
 
 function get_p_wave_modulus(material::Solid)

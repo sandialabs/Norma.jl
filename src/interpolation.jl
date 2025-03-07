@@ -31,7 +31,7 @@ function barycentricD2N3G3()
         1 4 1
         1 1 4
     ] / 6
-    for p ∈ 1:3
+    for p in 1:3
         N[:, p], dN[:, :, p], _ = barycentricD2N3(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -66,9 +66,9 @@ function barycentricD3N10(ξ::Vector{Float64})
         4 * t2 * t3,
     ]
     dN = [
-        1-4*t0 4*t1-1 0 0 4*(t0-t1) 4*t2 -4*t2 -4*t3 4*t3 0
-        1-4*t0 0 4*t2-1 0 -4*t1 4*t1 4*(t0-t2) -4*t3 0 4*t3
-        1-4*t0 0 0 4*t3-1 -4*t1 0 -4*t2 4*(t0-t3) 4*t1 4*t2
+        1-4 * t0 4 * t1-1 0 0 4*(t0 - t1) 4*t2 -4*t2 -4*t3 4*t3 0
+        1-4 * t0 0 4 * t2-1 0 -4*t1 4*t1 4*(t0 - t2) -4*t3 0 4*t3
+        1-4 * t0 0 0 4 * t3-1 -4*t1 0 -4*t2 4*(t0 - t3) 4*t1 4*t2
     ]
     ddN = zeros(3, 3, 10)
     ddN[1, 1, :] = [4 4 0 0 -8 0 0 0 0 0] * 1.0
@@ -104,7 +104,7 @@ function barycentricD3N4G4()
         b b a b
         b b b a
     ] / 20.0
-    for p ∈ 1:4
+    for p in 1:4
         N[:, p], dN[:, :, p], _ = barycentricD3N4(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -122,7 +122,7 @@ function barycentricD3N10G4()
         b b a b
         b b b a
     ] / 20.0
-    for p ∈ 1:4
+    for p in 1:4
         N[:, p], dN[:, :, p], _ = barycentricD3N10(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -139,7 +139,7 @@ function barycentricD3N10G5()
         1/4 1/6 1/6 1/2 1/6
         1/4 1/6 1/2 1/6 1/6
     ]
-    for p ∈ 1:5
+    for p in 1:5
         N[:, p], dN[:, :, p], _ = barycentricD3N4(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -170,7 +170,7 @@ function gauss_legendre(n::Integer)
         ξ = [-a, -b, b, a]
         return ξ, w
     end
-    i = 1:n-1
+    i = 1:(n - 1)
     v = i ./ sqrt.(4.0 .* i .* i .- 1.0)
     vv = eigen(diagm(1 => v, -1 => v))
     ξ = vv.values
@@ -236,7 +236,7 @@ function lagrangianD1N2G2()
     N = zeros(2, 2)
     dN = zeros(1, 2, 2)
     ξ, w = gauss_legendreD1(2)
-    for p ∈ 1:2
+    for p in 1:2
         N[:, p], dN[:, :, p], _ = lagrangianD1N2(ξ[p])
     end
     return N, dN, w, ξ
@@ -246,7 +246,7 @@ function lagrangianD1N2G3()
     N = zeros(2, 3)
     dN = zeros(1, 2, 3)
     ξ, w = gauss_legendreD1(3)
-    for p ∈ 1:3
+    for p in 1:3
         N[:, p], dN[:, :, p], _ = lagrangianD1N2(ξ[p])
     end
     return N, dN, w, ξ
@@ -256,7 +256,7 @@ function lagrangianD1N2G4()
     N = zeros(2, 4)
     dN = zeros(1, 2, 4)
     ξ, w = gauss_legendreD1(4)
-    for p ∈ 1:4
+    for p in 1:4
         N[:, p], dN[:, :, p], _ = lagrangianD1N2(ξ[p])
     end
     return N, dN, w, ξ
@@ -270,7 +270,7 @@ function lagrangianD2N4(ξ::Vector{Float64})
     N = zeros(4)
     dN = zeros(2, 4)
     ddN = zeros(2, 2, 4)
-    for p ∈ 1:4
+    for p in 1:4
         N[p] = 0.25 * (1.0 + ra[p] * r) * (1.0 + sa[p] * s)
         dN[1, p] = 0.25 * ra[p] * (1 + sa[p] * s)
         dN[2, p] = 0.25 * (1 + ra[p] * r) * sa[p]
@@ -286,7 +286,7 @@ function lagrangianD2N4G4()
     N = zeros(4, 4)
     dN = zeros(2, 4, 4)
     ξ, w = gauss_legendreD2(4)
-    for p ∈ 1:4
+    for p in 1:4
         N[:, p], dN[:, :, p], _ = lagrangianD2N4(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -296,7 +296,7 @@ function lagrangianD2N4G9()
     N = zeros(4, 9)
     dN = zeros(2, 4, 9)
     ξ, w = gauss_legendreD2(9)
-    for p ∈ 1:4
+    for p in 1:4
         N[:, p], dN[:, :, p], _ = lagrangianD2N4(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -312,7 +312,7 @@ function lagrangianD3N8(ξ::Vector{Float64})
     N = zeros(8)
     dN = zeros(3, 8)
     ddN = zeros(3, 3, 8)
-    for p ∈ 1:8
+    for p in 1:8
         N[p] = 0.125 * (1.0 + ra[p] * r) * (1.0 + sa[p] * s) * (1.0 + ta[p] * t)
         dN[1, p] = 0.125 * ra[p] * (1.0 + sa[p] * s) * (1.0 + ta[p] * t)
         dN[2, p] = 0.125 * (1.0 + ra[p] * r) * sa[p] * (1.0 + ta[p] * t)
@@ -340,7 +340,7 @@ function lagrangianD3N8G8()
         -1 -1 1 1 -1 -1 1 1
         -1 -1 -1 -1 1 1 1 1
     ]
-    for p ∈ 1:8
+    for p in 1:8
         N[:, p], dN[:, :, p], _ = lagrangianD3N8(ξ[:, p])
     end
     return N, dN, w, ξ
@@ -443,11 +443,11 @@ end
 function gradient_operator(dNdX::Matrix{Float64})
     dim, nen = size(dNdX)
     B = zeros(dim * dim, nen * dim)
-    for i ∈ 1:dim
-        for j ∈ 1:dim
+    for i in 1:dim
+        for j in 1:dim
             p = dim * (i - 1) + j
-            for a ∈ 1:nen
-                for k ∈ 1:dim
+            for a in 1:nen
+                for k in 1:dim
                     q = dim * (a - 1) + k
                     B[p, q] = I[i, k] * dNdX[j, a]
                 end
@@ -461,24 +461,23 @@ using Symbolics
 @variables t, x, y, z
 
 function get_side_set_nodal_forces(
-    nodal_coord::Matrix{Float64},
-    traction_num::Num,
-    time::Float64,
+    nodal_coord::Matrix{Float64}, traction_num::Num, time::Float64
 )
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
     num_int_points = default_num_int_pts(element_type)
     N, dNdξ, w, _ = isoparametric(element_type, num_int_points)
     nodal_force_component = zeros(num_side_nodes)
-    for point ∈ 1:num_int_points
+    for point in 1:num_int_points
         Nₚ = N[:, point]
         dNdξₚ = dNdξ[:, :, point]
         dXdξ = dNdξₚ * nodal_coord'
         j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
         wₚ = w[point]
         point_coord = nodal_coord * Nₚ
-        values =
-            Dict(t => time, x => point_coord[1], y => point_coord[2], z => point_coord[3])
+        values = Dict(
+            t => time, x => point_coord[1], y => point_coord[2], z => point_coord[3]
+        )
         traction_sym = substitute(traction_num, values)
         traction_val = extract_value(traction_sym)
         nodal_force_component += traction_val * Nₚ * j * wₚ
@@ -563,16 +562,14 @@ function in_hexahedron(
 end
 
 function map_to_parametric(
-    element_type::String,
-    nodes::Matrix{Float64},
-    point::Vector{Float64},
+    element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}
 )
     tol = 1.0e-08
     max_iters = 1024
     dim = length(point)
     ξ = zeros(dim)
     hessian = zeros(dim, dim)
-    for _ ∈ 1:max_iters
+    for _ in 1:max_iters
         N, dN, _ = interpolate(element_type, ξ)
         trial_point = nodes * N
         residual = trial_point - point
@@ -606,9 +603,7 @@ function interpolate(element_type::String, ξ::Vector{Float64})
 end
 
 function is_inside_parametric(
-    element_type::String,
-    ξ::Vector{Float64},
-    tol::Float64 = 1.0e-06,
+    element_type::String, ξ::Vector{Float64}, tol::Float64=1.0e-06
 )
     factor = 1.0 + tol
     if element_type == "BAR2"
@@ -628,7 +623,7 @@ function is_inside(
     element_type::String,
     nodes::Matrix{Float64},
     point::Vector{Float64},
-    tol::Float64 = 1.0e-06,
+    tol::Float64=1.0e-06,
 )
     ξ = zeros(length(point))
     if in_bounding_box(nodes, point, 0.1) == false
@@ -639,11 +634,9 @@ function is_inside(
 end
 
 function in_bounding_box(
-    nodes::Matrix{Float64},
-    point::Vector{Float64},
-    tol::Float64 = 1.0e-06,
+    nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06
 )::Bool
-    for i ∈ 1:3
+    for i in 1:3
         coord_min = minimum(nodes[i, :])
         coord_max = maximum(nodes[i, :])
         range_d = coord_max - coord_min
@@ -660,16 +653,11 @@ function is_inside_guess(
     element_type::String,
     nodes::Matrix{Float64},
     point::Vector{Float64},
-    tol::Float64 = 1.0e-06,
+    tol::Float64=1.0e-06,
 )
     if element_type == "TETRA4" || element_type == "TETRA10"
         return in_tetrahedron(
-            point,
-            nodes[:, 1],
-            nodes[:, 2],
-            nodes[:, 3],
-            nodes[:, 4],
-            tol,
+            point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], tol
         )
     elseif element_type == "HEX8"
         return in_hexahedron(
@@ -690,20 +678,18 @@ function is_inside_guess(
 end
 
 function closest_face_to_point(
-    point::Vector{Float64},
-    model::SolidMechanics,
-    side_set_id::Integer,
+    point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer
 )
     mesh = model.mesh
-    num_nodes_per_sides, side_set_node_indices =
-        Exodus.read_side_set_node_list(mesh, side_set_id)
+    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(
+        mesh, side_set_id
+    )
     ss_node_index = 1
     closest_face_nodes = Array{Float64}(undef, 0)
     closest_face_node_indices = Array{Int64}(undef, 0)
     minimum_nodal_distance = Inf
-    for num_nodes_side ∈ num_nodes_per_sides
-        face_node_indices =
-            side_set_node_indices[ss_node_index:ss_node_index+num_nodes_side-1]
+    for num_nodes_side in num_nodes_per_sides
+        face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
         face_nodes = model.current[:, face_node_indices]
         nodal_distance = get_minimum_distance_to_nodes(face_nodes, point)
         if nodal_distance < minimum_nodal_distance
@@ -721,21 +707,20 @@ end
 # This is done in place of a strict search because the contact surfaces may be deformed
 # and not match each other exactly. We assume that we know the contact surfaces in advance
 function project_point_to_side_set(
-    point::Vector{Float64},
-    model::SolidMechanics,
-    side_set_id::Integer,
+    point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer
 )
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
     space_dim = length(point)
     parametric_dim = space_dim - 1
-    new_point, ξ, surface_distance, normal =
-        closest_point_projection(parametric_dim, face_nodes, point)
+    new_point, ξ, surface_distance, normal = closest_point_projection(
+        parametric_dim, face_nodes, point
+    )
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end
 
 function get_distance_to_centroid(nodes::Matrix{Float64}, point::Vector{Float64})
     num_nodes = size(nodes, 2)
-    centroid = sum(nodes, dims = 2) / num_nodes
+    centroid = sum(nodes; dims=2) / num_nodes
     distance = norm(centroid - point)
     return distance
 end
@@ -746,12 +731,13 @@ function get_minimum_distance_to_nodes(nodes::Matrix{Float64}, point::Vector{Flo
 end
 
 function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::Integer)
-    num_nodes_per_sides, side_set_node_indices =
-        Exodus.read_side_set_node_list(mesh, side_set_id)
+    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(
+        mesh, side_set_id
+    )
     unique_node_indices = unique(side_set_node_indices)
     num_nodes = length(unique_node_indices)
     local_from_global_map = Dict{Int64,Int64}()
-    for i ∈ 1:num_nodes
+    for i in 1:num_nodes
         local_from_global_map[Int64(unique_node_indices[i])] = i
     end
     return local_from_global_map, num_nodes_per_sides, Int64.(side_set_node_indices)
@@ -762,7 +748,7 @@ function get_side_set_global_from_local_map(mesh::ExodusDatabase, side_set_id::I
     unique_node_indices = unique(side_set_node_indices)
     num_nodes = length(unique_node_indices)
     global_from_local_map = zeros(Int64, num_nodes)
-    for i ∈ 1:num_nodes
+    for i in 1:num_nodes
         global_from_local_map[i] = Int64(unique_node_indices[i])
     end
     return global_from_local_map
@@ -770,8 +756,9 @@ end
 
 function get_square_projection_matrix(model::SolidMechanics, side_set_id::Integer)
     mesh = model.mesh
-    local_from_global_map, num_nodes_sides, side_set_node_indices =
-        get_side_set_local_from_global_map(mesh, side_set_id)
+    local_from_global_map, num_nodes_sides, side_set_node_indices = get_side_set_local_from_global_map(
+        mesh, side_set_id
+    )
     num_nodes = length(local_from_global_map)
     if model.kinematics == Finite
         coords = model.reference
@@ -780,15 +767,14 @@ function get_square_projection_matrix(model::SolidMechanics, side_set_id::Intege
     end
     square_projection_matrix = zeros(num_nodes, num_nodes)
     side_set_node_index = 1
-    for num_nodes_side ∈ num_nodes_sides
-        side_nodes =
-            side_set_node_indices[side_set_node_index:side_set_node_index+num_nodes_side-1]
+    for num_nodes_side in num_nodes_sides
+        side_nodes = side_set_node_indices[side_set_node_index:(side_set_node_index + num_nodes_side - 1)]
         side_coordinates = coords[:, side_nodes]
         element_type = get_element_type(2, Int64(num_nodes_side))
         num_int_points = default_num_int_pts(element_type)
         N, dNdξ, w, _ = isoparametric(element_type, num_int_points)
         side_matrix = zeros(num_nodes_side, num_nodes_side)
-        for point ∈ 1:num_int_points
+        for point in 1:num_int_points
             Nₚ = N[:, point]
             dNdξₚ = dNdξ[:, :, point]
             dXdξ = dNdξₚ * side_coordinates'
@@ -810,12 +796,14 @@ function get_rectangular_projection_matrix(
     dst_side_set_id::Integer,
 )
     src_mesh = src_model.mesh
-    src_local_from_global_map, _, _ =
-        get_side_set_local_from_global_map(src_mesh, src_side_set_id)
+    src_local_from_global_map, _, _ = get_side_set_local_from_global_map(
+        src_mesh, src_side_set_id
+    )
     src_num_nodes = length(src_local_from_global_map)
     dst_mesh = dst_model.mesh
-    dst_local_from_global_map, dst_num_nodes_sides, dst_side_set_node_indices =
-        get_side_set_local_from_global_map(dst_mesh, dst_side_set_id)
+    dst_local_from_global_map, dst_num_nodes_sides, dst_side_set_node_indices = get_side_set_local_from_global_map(
+        dst_mesh, dst_side_set_id
+    )
     dst_num_nodes = length(dst_local_from_global_map)
     if dst_model.kinematics == Finite
         dst_coords = dst_model.reference
@@ -824,23 +812,23 @@ function get_rectangular_projection_matrix(
     end
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
-    for dst_num_nodes_side ∈ dst_num_nodes_sides
-        dst_side_nodes =
-            dst_side_set_node_indices[dst_side_set_node_index:dst_side_set_node_index+dst_num_nodes_side-1]
+    for dst_num_nodes_side in dst_num_nodes_sides
+        dst_side_nodes = dst_side_set_node_indices[dst_side_set_node_index:(dst_side_set_node_index + dst_num_nodes_side - 1)]
         dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
         dst_side_coordinates = dst_coords[:, dst_side_nodes]
         dst_element_type = get_element_type(2, Int64(dst_num_nodes_side))
         dst_num_int_points = default_num_int_pts(dst_element_type)
         dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
-        for dst_point ∈ 1:dst_num_int_points
+        for dst_point in 1:dst_num_int_points
             dst_Nₚ = dst_N[:, dst_point]
             dst_dNdξₚ = dst_dNdξ[:, :, dst_point]
             dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
             dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
             dst_wₚ = dst_w[dst_point]
             dst_int_point_coord = dst_side_coordinates * dst_Nₚ
-            _, ξ, src_side_coordinates, src_side_nodes, _, _ =
-                project_point_to_side_set(dst_int_point_coord, src_model, src_side_set_id)
+            _, ξ, src_side_coordinates, src_side_nodes, _, _ = project_point_to_side_set(
+                dst_int_point_coord, src_model, src_side_set_id
+            )
             src_side_element_type = get_element_type(2, size(src_side_coordinates)[2])
             src_Nₚ, _, _ = interpolate(src_side_element_type, ξ)
             src_local_indices = get.(Ref(src_local_from_global_map), src_side_nodes, 0)
@@ -853,8 +841,9 @@ function get_rectangular_projection_matrix(
 end
 
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
-    local_from_global_map, num_nodes_sides, side_set_node_indices =
-        get_side_set_local_from_global_map(mesh, side_set_id)
+    local_from_global_map, num_nodes_sides, side_set_node_indices = get_side_set_local_from_global_map(
+        mesh, side_set_id
+    )
     if model.kinematics == Finite
         coords = model.reference
     else
@@ -865,9 +854,8 @@ function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMe
     normals = zeros(space_dim, num_nodes)
     local_indices = Array{Int64}(undef, 0)
     side_set_node_index = 1
-    for num_nodes_side ∈ num_nodes_sides
-        side_nodes =
-            side_set_node_indices[side_set_node_index:side_set_node_index+num_nodes_side-1]
+    for num_nodes_side in num_nodes_sides
+        side_nodes = side_set_node_indices[side_set_node_index:(side_set_node_index + num_nodes_side - 1)]
         local_indices = get.(Ref(local_from_global_map), side_nodes, 0)
         coordinates = coords[:, side_nodes]
         point_A = coordinates[:, 1]
@@ -883,11 +871,7 @@ function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMe
 end
 
 function interpolate(
-    tᵃ::Float64,
-    tᵇ::Float64,
-    xᵃ::Vector{Float64},
-    xᵇ::Vector{Float64},
-    t::Float64,
+    tᵃ::Float64, tᵇ::Float64, xᵃ::Vector{Float64}, xᵇ::Vector{Float64}, t::Float64
 )
     Δt = tᵇ - tᵃ
     if Δt == 0.0
@@ -899,9 +883,7 @@ function interpolate(
 end
 
 function interpolate(
-    param_hist::Vector{Float64},
-    value_hist::Vector{Vector{Float64}},
-    param::Float64,
+    param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, param::Float64
 )
     if param < param_hist[1]
         param = param_hist[1]
@@ -924,9 +906,9 @@ function interpolate(
     else
         return interpolate(
             param_hist[index],
-            param_hist[index+1],
+            param_hist[index + 1],
             value_hist[index],
-            value_hist[index+1],
+            value_hist[index + 1],
             param,
         )
     end
@@ -935,9 +917,7 @@ end
 using Einsum
 
 function closest_point_projection(
-    parametric_dim::Integer,
-    nodes::Matrix{Float64},
-    x::Vector{Float64},
+    parametric_dim::Integer, nodes::Matrix{Float64}, x::Vector{Float64}
 )
     space_dim, num_nodes = size(nodes)
     element_type = get_element_type(parametric_dim, num_nodes)

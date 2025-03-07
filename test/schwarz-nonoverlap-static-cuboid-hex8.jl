@@ -6,28 +6,28 @@
 @testset "schwarz-nonoverlap-static-cuboid-hex8-same-step" begin
     cp(
         "../examples/nonoverlap/static-same-time-step/cuboids/cuboids.yaml",
-        "cuboids.yaml",
-        force = true,
+        "cuboids.yaml";
+        force=true,
     )
     cp(
         "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.yaml",
-        "cuboid-1.yaml",
-        force = true,
+        "cuboid-1.yaml";
+        force=true,
     )
     cp(
         "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.yaml",
-        "cuboid-2.yaml",
-        force = true,
+        "cuboid-2.yaml";
+        force=true,
     )
     cp(
         "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.g",
-        "cuboid-1.g",
-        force = true,
+        "cuboid-1.g";
+        force=true,
     )
     cp(
         "../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.g",
-        "cuboid-2.g",
-        force = true,
+        "cuboid-2.g";
+        force=true,
     )
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims

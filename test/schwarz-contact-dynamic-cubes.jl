@@ -9,31 +9,31 @@ using YAML
 @testset "schwarz-contact-implicit-cubes-tied" begin
     cp(
         "../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml",
-        "cubes.yaml",
-        force = true,
+        "cubes.yaml";
+        force=true,
     )
     cp(
         "../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml",
-        "cube-1.yaml",
-        force = true,
+        "cube-1.yaml";
+        force=true,
     )
     cp(
         "../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml",
-        "cube-2.yaml",
-        force = true,
+        "cube-2.yaml";
+        force=true,
     )
     cp(
         "../examples/contact/implicit-dynamic/friction-cubes/cube-1.g",
-        "cube-1.g",
-        force = true,
+        "cube-1.g";
+        force=true,
     )
     cp(
         "../examples/contact/implicit-dynamic/friction-cubes/cube-2.g",
-        "cube-2.g",
-        force = true,
+        "cube-2.g";
+        force=true,
     )
     input_file = "cubes.yaml"
-    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+    params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = -1.0e-06
     params["time step"] = 1e-6
     params["final time"] = 4e-6
@@ -59,15 +59,7 @@ using YAML
     z2 = model_2.current[3, :]
 
     face_pairs = Dict(
-        19 => 1,
-        20 => 2,
-        21 => 3,
-        22 => 4,
-        23 => 9,
-        24 => 10,
-        25 => 13,
-        26 => 14,
-        27 => 17,
+        19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17
     )
 
     for (idx1, idx2) in face_pairs
@@ -80,31 +72,31 @@ end
 @testset "schwarz-contact-explicit-cubes-tied" begin
     cp(
         "../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml",
-        "cubes.yaml",
-        force = true,
+        "cubes.yaml";
+        force=true,
     )
     cp(
         "../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml",
-        "cube-1.yaml",
-        force = true,
+        "cube-1.yaml";
+        force=true,
     )
     cp(
         "../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml",
-        "cube-2.yaml",
-        force = true,
+        "cube-2.yaml";
+        force=true,
     )
     cp(
         "../examples/contact/explicit-dynamic/friction-cubes/cube-1.g",
-        "cube-1.g",
-        force = true,
+        "cube-1.g";
+        force=true,
     )
     cp(
         "../examples/contact/explicit-dynamic/friction-cubes/cube-2.g",
-        "cube-2.g",
-        force = true,
+        "cube-2.g";
+        force=true,
     )
     input_file = "cubes.yaml"
-    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+    params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = -1.0e-06
     params["time step"] = 1e-6
     params["final time"] = 4e-6
@@ -130,15 +122,7 @@ end
     z2 = model_2.current[3, :]
 
     face_pairs = Dict(
-        19 => 1,
-        20 => 2,
-        21 => 3,
-        22 => 4,
-        23 => 9,
-        24 => 10,
-        25 => 13,
-        26 => 14,
-        27 => 17,
+        19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17
     )
 
     for (idx1, idx2) in face_pairs
@@ -146,11 +130,9 @@ end
         coordinate_2 = [x2[idx2], y2[idx2], z2[idx2]]
         @test coordinate_1 ≈ coordinate_2 atol = 5e-3
     end
-
 end
 
 @testset "schwarz-contact-inclined-explicit-cubes" begin
-
     model_fine = nothing
     model_coarse = nothing
 
@@ -158,31 +140,31 @@ end
     for (i, angle_deg) in enumerate(angles)
         cp(
             "../examples/contact/explicit-dynamic/inclined-cubes/cubes-test$i.yaml",
-            "cubes-test$i.yaml",
-            force = true,
+            "cubes-test$i.yaml";
+            force=true,
         )
         cp(
             "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-1.yaml",
-            "cube-test$i-1.yaml",
-            force = true,
+            "cube-test$i-1.yaml";
+            force=true,
         )
         cp(
             "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-2.yaml",
-            "cube-test$i-2.yaml",
-            force = true,
+            "cube-test$i-2.yaml";
+            force=true,
         )
         cp(
             "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-1.g",
-            "cube-test$i-1.g",
-            force = true,
+            "cube-test$i-1.g";
+            force=true,
         )
         cp(
             "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-2.g",
-            "cube-test$i-2.g",
-            force = true,
+            "cube-test$i-2.g";
+            force=true,
         )
         input_file = "cubes-test$i.yaml"
-        params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+        params = YAML.load_file(input_file; dicttype=Norma.Parameters)
         params["initial time"] = -1.0e-06
         params["final time"] = 1.0e-5
         sim = Norma.run(params, input_file)
@@ -222,11 +204,9 @@ end
             @test model_coarse_rotated ≈ model_coarse rtol = 1e-5
         end
     end
-
 end
 
 @testset "schwarz-contact-inclined-implicit-cubes" begin
-
     model_fine = nothing
     model_coarse = nothing
 
@@ -234,31 +214,31 @@ end
     for (i, angle_deg) in enumerate(angles)
         cp(
             "../examples/contact/implicit-dynamic/inclined-cubes/cubes-test$i.yaml",
-            "cubes-test$i.yaml",
-            force = true,
+            "cubes-test$i.yaml";
+            force=true,
         )
         cp(
             "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-1.yaml",
-            "cube-test$i-1.yaml",
-            force = true,
+            "cube-test$i-1.yaml";
+            force=true,
         )
         cp(
             "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-2.yaml",
-            "cube-test$i-2.yaml",
-            force = true,
+            "cube-test$i-2.yaml";
+            force=true,
         )
         cp(
             "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-1.g",
-            "cube-test$i-1.g",
-            force = true,
+            "cube-test$i-1.g";
+            force=true,
         )
         cp(
             "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-2.g",
-            "cube-test$i-2.g",
-            force = true,
+            "cube-test$i-2.g";
+            force=true,
         )
         input_file = "cubes-test$i.yaml"
-        params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+        params = YAML.load_file(input_file; dicttype=Norma.Parameters)
         params["initial time"] = -1.0e-06
         params["time step"] = 1e-6
         params["final time"] = 4e-6
@@ -299,5 +279,4 @@ end
             @test model_coarse_rotated ≈ model_coarse rtol = 1e-5
         end
     end
-
 end

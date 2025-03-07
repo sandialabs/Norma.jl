@@ -17,7 +17,7 @@ function SMDirichletBC(input_mesh::ExodusDatabase, bc_params::Parameters)
     disp_num = eval(Meta.parse(expression))
     velo_num = expand_derivatives(D(disp_num))
     acce_num = expand_derivatives(D(velo_num))
-    SMDirichletBC(
+    return SMDirichletBC(
         node_set_name,
         offset,
         node_set_id,
@@ -38,23 +38,29 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
         if all(x -> x isa String, expression) == false
             error("All functions must be strings (including zeros).")
         end
-        disp_expression = [ eval(Meta.parse(expression[1])), 
-            eval(Meta.parse(expression[2])), 
-            eval(Meta.parse(expression[3])) ]
+        disp_expression = [
+            eval(Meta.parse(expression[1])),
+            eval(Meta.parse(expression[2])),
+            eval(Meta.parse(expression[3])),
+        ]
         off_axis_free = false
     else
-        disp_expression = [ eval(Meta.parse(expression)),
-            eval(Meta.parse("0.0")), 
-            eval(Meta.parse("0.0")) ]
+        disp_expression = [
+            eval(Meta.parse(expression)), eval(Meta.parse("0.0")), eval(Meta.parse("0.0"))
+        ]
         off_axis_free = true
     end
 
-    velo_expression = [ expand_derivatives(D(disp_expression[1])), 
-                        expand_derivatives(D(disp_expression[2])),
-                        expand_derivatives(D(disp_expression[3])) ]
-    acce_expression = [ expand_derivatives(D(velo_expression[1])), 
-                        expand_derivatives(D(velo_expression[2])),
-                        expand_derivatives(D(velo_expression[3])) ]
+    velo_expression = [
+        expand_derivatives(D(disp_expression[1])),
+        expand_derivatives(D(disp_expression[2])),
+        expand_derivatives(D(disp_expression[3])),
+    ]
+    acce_expression = [
+        expand_derivatives(D(velo_expression[1])),
+        expand_derivatives(D(velo_expression[2])),
+        expand_derivatives(D(velo_expression[3])),
+    ]
 
     node_set_id = node_set_id_from_name(node_set_name, input_mesh)
     node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
@@ -64,15 +70,15 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
 
     if all(x -> x isa String, reference_normal) == false
         # We'll cast the normal into a string expression
-        reference_normal = [ string(vc) for vc in reference_normal ]
+        reference_normal = [string(vc) for vc in reference_normal]
     end
 
     reference_normal = [
-        eval(Meta.parse(reference_normal[1])), 
-        eval(Meta.parse(reference_normal[2])), 
-        eval(Meta.parse(reference_normal[3]))
-            ]
-    SMDirichletInclined(
+        eval(Meta.parse(reference_normal[1])),
+        eval(Meta.parse(reference_normal[2])),
+        eval(Meta.parse(reference_normal[3])),
+    ]
+    return SMDirichletInclined(
         node_set_name,
         node_set_id,
         node_set_node_indices,
@@ -80,7 +86,7 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
         velo_expression,
         acce_expression,
         reference_normal,
-        off_axis_free
+        off_axis_free,
     )
 end
 
@@ -89,11 +95,12 @@ function SMNeumannBC(input_mesh::ExodusDatabase, bc_params::Parameters)
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    num_nodes_per_side, side_set_node_indices =
-        Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(
+        input_mesh, side_set_id
+    )
     # expression is an arbitrary function of t, x, y, z in the input file
     traction_num = eval(Meta.parse(expression))
-    SMNeumannBC(
+    return SMNeumannBC(
         side_set_name,
         offset,
         side_set_id,
@@ -110,8 +117,9 @@ function SMContactSchwarzBC(
 )
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    _, num_nodes_per_side, side_set_node_indices =
-        get_side_set_local_from_global_map(input_mesh, side_set_id)
+    _, num_nodes_per_side, side_set_node_indices = get_side_set_local_from_global_map(
+        input_mesh, side_set_id
+    )
     coupled_block_name = bc_params["source block"]
     coupled_bc_index = 0
     coupled_mesh = coupled_subsim.model.mesh
@@ -136,7 +144,7 @@ function SMContactSchwarzBC(
         error("Unknown or not implemented friction type : ", friction_type_string)
     end
 
-    SMContactSchwarzBC(
+    return SMContactSchwarzBC(
         side_set_name,
         side_set_id,
         num_nodes_per_side,
@@ -189,10 +197,11 @@ function SMCouplingSchwarzBC(
 )
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    _, _, side_set_node_indices =
-        get_side_set_local_from_global_map(input_mesh, side_set_id)
+    _, _, side_set_node_indices = get_side_set_local_from_global_map(
+        input_mesh, side_set_id
+    )
     coupled_block_name = bc_params["source block"]
-    if typeof(coupled_subsim.model) <: RomModel 
+    if typeof(coupled_subsim.model) <: RomModel
         coupled_mesh = coupled_subsim.model.fom_model.mesh
     else
         coupled_mesh = coupled_subsim.model.mesh
@@ -208,10 +217,11 @@ function SMCouplingSchwarzBC(
         tol = bc_params["search tolerance"]
     end
     side_set_node_indices = unique(side_set_node_indices)
-    for node_index ∈ side_set_node_indices
+    for node_index in side_set_node_indices
         point = subsim.model.reference[:, node_index]
-        node_indices, ξ, found =
-            find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
+        node_indices, ξ, found = find_point_in_mesh(
+            point, coupled_subsim.model, coupled_block_id, tol
+        )
         if found == false
             error(
                 "Could not find subdomain ",
@@ -275,7 +285,7 @@ function apply_bc(model::OpInfModel, bc::SMDirichletBC)
     model.fom_model.time = model.time
     apply_bc(model.fom_model, bc)
     bc_vector = zeros(0)
-    for node_index ∈ bc.node_set_node_indices
+    for node_index in bc.node_set_node_indices
         disp_val =
             model.fom_model.current[bc.offset, node_index] -
             model.fom_model.reference[bc.offset, node_index]
@@ -296,11 +306,11 @@ function apply_bc(model::OpInfModel, bc::SMDirichletBC)
     op_name = "B_" * bc.node_set_name * "-" * offset_name
     bc_operator = model.opinf_rom[op_name]
     # SM Dirichlet BC are only defined on a single x,y,z
-    model.reduced_boundary_forcing[:] += bc_operator[1, :, :] * bc_vector
+    return model.reduced_boundary_forcing[:] += bc_operator[1, :, :] * bc_vector
 end
 
 function apply_bc(model::SolidMechanics, bc::SMDirichletBC)
-    for node_index ∈ bc.node_set_node_indices
+    for node_index in bc.node_set_node_indices
         values = Dict(
             t => model.time,
             x => model.reference[1, node_index],
@@ -324,14 +334,15 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SMNeumannBC)
     ss_node_index = 1
-    for side ∈ bc.num_nodes_per_side
-        side_nodes = bc.side_set_node_indices[ss_node_index:ss_node_index+side-1]
+    for side in bc.num_nodes_per_side
+        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
-        nodal_force_component =
-            get_side_set_nodal_forces(side_coordinates, bc.traction_num, model.time)
+        nodal_force_component = get_side_set_nodal_forces(
+            side_coordinates, bc.traction_num, model.time
+        )
         ss_node_index += side
         side_node_index = 1
-        for node_index ∈ side_nodes
+        for node_index in side_nodes
             bc_val = nodal_force_component[side_node_index]
             side_node_index += 1
             dof_index = 3 * (node_index - 1) + bc.offset
@@ -341,10 +352,9 @@ function apply_bc(model::SolidMechanics, bc::SMNeumannBC)
 end
 
 function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
-
     e1 = [1.0, 0.0, 0.0]
 
-    for node_index ∈ bc.node_set_node_indices
+    for node_index in bc.node_set_node_indices
         values = Dict(
             t => model.time,
             x => model.reference[1, node_index],
@@ -353,21 +363,21 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
         )
         # The local basis is determined from a normal vector
         axis = bc.reference_normal
-        axis = [ extract_value(substitute(av, values)) for av in axis]
+        axis = [extract_value(substitute(av, values)) for av in axis]
 
         axis = axis / norm(axis)
         w = cross(axis, e1)
         s = norm(w)
-        angle_btwn = acos(dot(axis,e1))
+        angle_btwn = acos(dot(axis, e1))
 
         if (angle_btwn ≈ 0.0)
-            rotation_matrix = I(3)*1.0
+            rotation_matrix = I(3) * 1.0
         elseif (angle_btwn ≈ π)
-            rotation_matrix = I(3)*1.0
-            rotation_matrix[1,1] = -1.0
-            rotation_matrix[2,2] = -1.0
+            rotation_matrix = I(3) * 1.0
+            rotation_matrix[1, 1] = -1.0
+            rotation_matrix[2, 2] = -1.0
         else
-            if angle_btwn > π/2
+            if angle_btwn > π / 2
                 θ = π - asin(s)
             else
                 θ = asin(s)
@@ -379,9 +389,15 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
             rotation_matrix = MiniTensor.rt_from_rv(rv)
         end
 
-        disp_val_loc = [ extract_value(substitute(exp, values)) for exp in bc.disp_expression ]
-        velo_val_loc = [ extract_value(substitute(exp, values)) for exp in bc.velo_expression ]
-        acce_val_loc = [ extract_value(substitute(exp, values)) for exp in bc.acce_expression ]
+        disp_val_loc = [
+            extract_value(substitute(exp, values)) for exp in bc.disp_expression
+        ]
+        velo_val_loc = [
+            extract_value(substitute(exp, values)) for exp in bc.velo_expression
+        ]
+        acce_val_loc = [
+            extract_value(substitute(exp, values)) for exp in bc.acce_expression
+        ]
 
         # Inherit free values from model (required for explicit dynamics)
         original_disp = model.current[:, node_index] - model.reference[:, node_index]
@@ -393,17 +409,17 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
 
         # Inclined support is only applied in local X
         if bc.off_axis_free == true
-            model.free_dofs[3*node_index-2] = false
-            model.free_dofs[3*node_index-1] = true
-            model.free_dofs[3*node_index] = true
+            model.free_dofs[3 * node_index - 2] = false
+            model.free_dofs[3 * node_index - 1] = true
+            model.free_dofs[3 * node_index] = true
             # Set local X direction to inclined support
             local_original_displacement[1] = disp_val_loc[1]
             local_original_acceleration[1] = acce_val_loc[1]
             local_original_velocity[1] = velo_val_loc[1]
         else
-            model.free_dofs[3*node_index-2] = false
-            model.free_dofs[3*node_index-1] = false
-            model.free_dofs[3*node_index] = false
+            model.free_dofs[3 * node_index - 2] = false
+            model.free_dofs[3 * node_index - 1] = false
+            model.free_dofs[3 * node_index] = false
             # Set local X direction to inclined support
             local_original_displacement = disp_val_loc
             local_original_acceleration = acce_val_loc
@@ -418,17 +434,14 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
         model.velocity[:, node_index] = original_velocity
         model.acceleration[:, node_index] = original_acceleration
         global_base = 3 * (node_index - 1) # Block index in global stiffness
-        model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] =
-            rotation_matrix
-
+        model.global_transform[
+            (global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)
+        ] = rotation_matrix
     end
 end
 
 function find_point_in_mesh(
-    point::Vector{Float64},
-    model::SolidMechanics,
-    blk_id::Int,
-    tol::Float64,
+    point::Vector{Float64}, model::SolidMechanics, blk_id::Int, tol::Float64
 )
     mesh = model.mesh
     element_type = Exodus.read_block_parameters(mesh, Int32(blk_id))[1]
@@ -437,8 +450,9 @@ function find_point_in_mesh(
     node_indices = Vector{Int64}()
     found = false
     ξ = zeros(length(point))
-    for blk_elem_index ∈ 1:num_blk_elems
-        conn_indices = (blk_elem_index-1)*num_elem_nodes+1:blk_elem_index*num_elem_nodes
+    for blk_elem_index in 1:num_blk_elems
+        conn_indices =
+            ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
         node_indices = elem_blk_conn[conn_indices]
         elem_ref_pos = model.reference[:, node_indices]
         ξ, found = is_inside(element_type, elem_ref_pos, point, tol)
@@ -450,10 +464,7 @@ function find_point_in_mesh(
 end
 
 function find_point_in_mesh(
-    point::Vector{Float64},
-    model::RomModel,
-    blk_id::Int,
-    tol::Float64,
+    point::Vector{Float64}, model::RomModel, blk_id::Int, tol::Float64
 )
     node_indices, ξ, found = find_point_in_mesh(point, model.fom_model, blk_id, tol)
     return node_indices, ξ, found
@@ -475,14 +486,14 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
     end
 end
 
-function apply_bc_detail(model::OpInfModel,bc::CouplingSchwarzBoundaryCondition)
+function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition)
     if (typeof(bc.coupled_subsim.model) == SolidMechanics)
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
         # populate our own BC vector
         bc_vector = zeros(3, length(bc.side_set_node_indices))
-        for i ∈ 1:length(bc.side_set_node_indices)
+        for i in 1:length(bc.side_set_node_indices)
             node_index = bc.side_set_node_indices[i]
             bc_vector[:, i] =
                 model.fom_model.current[:, node_index] -
@@ -490,7 +501,7 @@ function apply_bc_detail(model::OpInfModel,bc::CouplingSchwarzBoundaryCondition)
         end
         op_name = "B_" * bc.side_set_name
         bc_operator = model.opinf_rom[op_name]
-        for i = 1:3
+        for i in 1:3
             model.reduced_boundary_forcing[:] += bc_operator[i, :, :] * bc_vector[i, :]
         end
     else
@@ -499,11 +510,10 @@ function apply_bc_detail(model::OpInfModel,bc::CouplingSchwarzBoundaryCondition)
 end
 
 function apply_sm_schwarz_coupling_dirichlet(
-    model::SolidMechanics,
-    bc::CouplingSchwarzBoundaryCondition,
+    model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition
 )
     if (typeof(bc.coupled_subsim.model) == SolidMechanics)
-        for i ∈ 1:length(bc.side_set_node_indices)
+        for i in 1:length(bc.side_set_node_indices)
             node_index = bc.side_set_node_indices[i]
             coupled_node_indices = bc.coupled_nodes_indices[i]
             N = bc.interpolation_function_values[i]
@@ -520,14 +530,15 @@ function apply_sm_schwarz_coupling_dirichlet(
             model.free_dofs[dof_index] .= false
         end
     elseif (typeof(bc.coupled_subsim.model) <: RomModel)
-        for i ∈ 1:length(bc.side_set_node_indices)
+        for i in 1:length(bc.side_set_node_indices)
             node_index = bc.side_set_node_indices[i]
             coupled_node_indices = bc.coupled_nodes_indices[i]
             N = bc.interpolation_function_values[i]
             elem_posn = bc.coupled_subsim.model.fom_model.current[:, coupled_node_indices]
             elem_velo = bc.coupled_subsim.model.fom_model.velocity[:, coupled_node_indices]
-            elem_acce =
-                bc.coupled_subsim.model.fom_model.acceleration[:, coupled_node_indices]
+            elem_acce = bc.coupled_subsim.model.fom_model.acceleration[
+                :, coupled_node_indices
+            ]
             point_posn = elem_posn * N
             point_velo = elem_velo * N
             point_acce = elem_acce * N
@@ -541,16 +552,15 @@ function apply_sm_schwarz_coupling_dirichlet(
 end
 
 function apply_sm_schwarz_coupling_neumann(
-    model::SolidMechanics,
-    bc::CouplingSchwarzBoundaryCondition,
+    model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition
 )
     schwarz_tractions = get_dst_traction(bc)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
     num_local_nodes = length(global_from_local_map)
-    for local_node ∈ 1:num_local_nodes
+    for local_node in 1:num_local_nodes
         global_node = global_from_local_map[local_node]
         node_tractions = schwarz_tractions[:, local_node]
-        model.boundary_force[3*global_node-2:3*global_node] += node_tractions
+        model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
     end
 end
 
@@ -558,13 +568,13 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
     schwarz_controller = global_sim.schwarz_controller
     if typeof(bc) == SMContactSchwarzBC && schwarz_controller.active_contact == false
-        return
+        return nothing
     end
     empty_history = length(global_sim.schwarz_controller.time_hist) == 0
     same_step = schwarz_controller.same_step == true
     if empty_history == true
         apply_bc_detail(model, bc)
-        return
+        return nothing
     end
     # Save solution of coupled simulation
     saved_disp = bc.coupled_subsim.integrator.displacement
@@ -618,19 +628,15 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
         bc.coupled_subsim.integrator.acceleration = interp_acce
     end
     copy_solution_source_targets(
-        bc.coupled_subsim.integrator,
-        bc.coupled_subsim.solver,
-        bc.coupled_subsim.model,
+        bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model
     )
     apply_bc_detail(model, bc)
     bc.coupled_subsim.integrator.displacement = saved_disp
     bc.coupled_subsim.integrator.velocity = saved_velo
     bc.coupled_subsim.integrator.acceleration = saved_acce
     bc.coupled_subsim.model.internal_force = saved_∂Ω_f
-    copy_solution_source_targets(
-        bc.coupled_subsim.integrator,
-        bc.coupled_subsim.solver,
-        bc.coupled_subsim.model,
+    return copy_solution_source_targets(
+        bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model
     )
 end
 
@@ -638,13 +644,13 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
     schwarz_controller = global_sim.schwarz_controller
     if typeof(bc) == SMContactSchwarzBC && schwarz_controller.active_contact == false
-        return
+        return nothing
     end
     empty_history = length(global_sim.schwarz_controller.time_hist) == 0
     same_step = schwarz_controller.same_step == true
     if empty_history == true
         apply_bc_detail(model, bc)
-        return
+        return nothing
     end
     # Save solution of coupled simulation
     saved_disp = bc.coupled_subsim.integrator.displacement
@@ -669,7 +675,7 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
         same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
     if typeof(bc.coupled_subsim.model) == SolidMechanics
         bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    elseif typeof(bc.coupled_subsim.model) <: RomModel 
+    elseif typeof(bc.coupled_subsim.model) <: RomModel
         bc.coupled_subsim.model.fom_model.internal_force = interp_∂Ω_f
     end
 
@@ -704,9 +710,7 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     end
     # Copies from integrator to model
     copy_solution_source_targets(
-        bc.coupled_subsim.integrator,
-        bc.coupled_subsim.solver,
-        bc.coupled_subsim.model,
+        bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model
     )
     apply_bc_detail(model, bc)
     bc.coupled_subsim.integrator.displacement = saved_disp
@@ -714,17 +718,13 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     bc.coupled_subsim.integrator.acceleration = saved_acce
     bc.coupled_subsim.model.internal_force = saved_∂Ω_f
     # Copy from integrator to model
-    copy_solution_source_targets(
-        bc.coupled_subsim.integrator,
-        bc.coupled_subsim.solver,
-        bc.coupled_subsim.model,
+    return copy_solution_source_targets(
+        bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model
     )
 end
 
 function transfer_normal_component(
-    source::Vector{Float64},
-    target::Vector{Float64},
-    normal::Vector{Float64},
+    source::Vector{Float64}, target::Vector{Float64}, normal::Vector{Float64}
 )
     normal_projection = normal * normal'
     tangent_projection = I(length(normal)) - normal_projection
@@ -733,30 +733,27 @@ end
 
 function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContactSchwarzBC)
     side_set_node_indices = unique(bc.side_set_node_indices)
-    for node_index ∈ side_set_node_indices
+    for node_index in side_set_node_indices
         point = model.current[:, node_index]
-        new_point, ξ, _, closest_face_node_indices, closest_normal, _ =
-            project_point_to_side_set(
-                point,
-                bc.coupled_subsim.model,
-                bc.coupled_side_set_id,
-            )
+        new_point, ξ, _, closest_face_node_indices, closest_normal, _ = project_point_to_side_set(
+            point, bc.coupled_subsim.model, bc.coupled_side_set_id
+        )
 
         # The local basis comes from the closest_normal:
         axis = -closest_normal / norm(-closest_normal)
-        
+
         e1 = [1.0, 0.0, 0.0]
-        angle_btwn = acos(dot(axis,e1))
+        angle_btwn = acos(dot(axis, e1))
         w = cross(axis, e1)
         s = norm(w)
         if (angle_btwn ≈ 0.0)
-            rotation_matrix = I(3)*1.0
+            rotation_matrix = I(3) * 1.0
         elseif (angle_btwn ≈ π)
-            rotation_matrix = I(3)*1.0
-            rotation_matrix[1,1] = -1.0
-            rotation_matrix[2,2] = -1.0
+            rotation_matrix = I(3) * 1.0
+            rotation_matrix[1, 1] = -1.0
+            rotation_matrix[2, 2] = -1.0
         else
-            if angle_btwn > π/2
+            if angle_btwn > π / 2
                 θ = π - asin(s)
             else
                 θ = asin(s)
@@ -778,14 +775,10 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         model.free_dofs[[3 * node_index]] .= true
         if bc.friction_type == 0
             model.velocity[:, node_index] = transfer_normal_component(
-                source_velo,
-                model.velocity[:, node_index],
-                closest_normal,
+                source_velo, model.velocity[:, node_index], closest_normal
             )
             model.acceleration[:, node_index] = transfer_normal_component(
-                source_acce,
-                model.acceleration[:, node_index],
-                closest_normal,
+                source_acce, model.acceleration[:, node_index], closest_normal
             )
         elseif bc.friction_type == 1
             model.velocity[:, node_index] = source_velo
@@ -794,22 +787,23 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
             error("Unknown or not implemented friction type.")
         end
         global_base = 3 * (node_index - 1) # Block index in global stiffness
-        model.global_transform[global_base+1:global_base+3, global_base+1:global_base+3] =
-            bc.rotation_matrix
+        model.global_transform[
+            (global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)
+        ] = bc.rotation_matrix
     end
 end
 
 function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
     bcs = subsim.model.boundary_conditions
-    for bc ∈ bcs
+    for bc in bcs
         if typeof(bc) == SMContactSchwarzBC
             side_set_node_indices = unique(bc.side_set_node_indices)
-            for node_index ∈ side_set_node_indices
+            for node_index in side_set_node_indices
                 subsim.model.acceleration[:, node_index] = zeros(3)
             end
         end
     end
-    copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
+    return copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
 end
 
 function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSchwarzBC)
@@ -817,56 +811,48 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
     num_local_nodes = length(global_from_local_map)
-    for local_node ∈ 1:num_local_nodes
+    for local_node in 1:num_local_nodes
         global_node = global_from_local_map[local_node]
         node_tractions = schwarz_tractions[:, local_node]
         normal = normals[:, local_node]
         if bc.friction_type == 0
-            model.boundary_force[3*global_node-2:3*global_node] +=
-                transfer_normal_component(
-                    node_tractions,
-                    model.boundary_force[3*global_node-2:3*global_node],
-                    normal,
-                )
+            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += transfer_normal_component(
+                node_tractions,
+                model.boundary_force[(3 * global_node - 2):(3 * global_node)],
+                normal,
+            )
         elseif bc.friction_type == 1
-            model.boundary_force[3*global_node-2:3*global_node] += node_tractions
+            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
         else
             error("Unknown or not implemented friction type.")
         end
     end
 end
 
-
 function local_traction_from_global_force(
-    mesh::ExodusDatabase,
-    side_set_id::Integer,
-    global_force::Vector{Float64},
+    mesh::ExodusDatabase, side_set_id::Integer, global_force::Vector{Float64}
 )
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     num_local_nodes = length(global_from_local_map)
     local_traction = zeros(3, num_local_nodes)
-    for local_node ∈ 1:num_local_nodes
+    for local_node in 1:num_local_nodes
         global_node = global_from_local_map[local_node]
-        local_traction[:, local_node] = global_force[3*global_node-2:3*global_node]
+        local_traction[:, local_node] = global_force[(3 * global_node - 2):(3 * global_node)]
     end
     return local_traction
 end
 
 function update_transfer_operator(
-    dst_model::SolidMechanics,
-    dst_bc::SchwarzBoundaryCondition,
+    dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition
 )
     src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
     dst_side_set_id = dst_bc.side_set_id
     square_projection_matrix = get_square_projection_matrix(src_model, src_side_set_id)
     rectangular_projection_matrix = get_rectangular_projection_matrix(
-        src_model,
-        src_side_set_id,
-        dst_model,
-        dst_side_set_id,
+        src_model, src_side_set_id, dst_model, dst_side_set_id
     )
-    dst_bc.transfer_operator =
+    return dst_bc.transfer_operator =
         rectangular_projection_matrix * (square_projection_matrix \ I)
 end
 
@@ -874,8 +860,9 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     src_mesh = dst_bc.coupled_subsim.model.mesh
     src_side_set_id = dst_bc.coupled_side_set_id
     src_global_force = -dst_bc.coupled_subsim.model.internal_force
-    src_local_traction =
-        local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
+    src_local_traction = local_traction_from_global_force(
+        src_mesh, src_side_set_id, src_global_force
+    )
     num_dst_nodes = size(dst_bc.transfer_operator, 1)
     dst_traction = zeros(3, num_dst_nodes)
     dst_traction[1, :] = dst_bc.transfer_operator * src_local_traction[1, :]
@@ -888,7 +875,7 @@ function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)
     node_set_names = Exodus.read_names(mesh, NodeSet)
     num_names = length(node_set_names)
     node_set_index = 0
-    for index ∈ 1:num_names
+    for index in 1:num_names
         if node_set_name == node_set_names[index]
             node_set_index = index
             break
@@ -906,7 +893,7 @@ function side_set_id_from_name(side_set_name::String, mesh::ExodusDatabase)
     side_set_names = Exodus.read_names(mesh, SideSet)
     num_names = length(side_set_names)
     side_set_index = 0
-    for index ∈ 1:num_names
+    for index in 1:num_names
         if side_set_name == side_set_names[index]
             side_set_index = index
             break
@@ -924,7 +911,7 @@ function block_id_from_name(block_name::String, mesh::ExodusDatabase)
     block_names = Exodus.read_names(mesh, Block)
     num_names = length(block_names)
     block_index = 0
-    for index ∈ 1:num_names
+    for index in 1:num_names
         if block_name == block_names[index]
             block_index = index
             break
@@ -968,8 +955,8 @@ function create_bcs(params::Parameters)
     input_mesh = params["input_mesh"]
     bc_params = params["boundary conditions"]
     inclined_support_nodes = Vector{Int64}()
-    for (bc_type, bc_type_params) ∈ bc_params
-        for bc_setting_params ∈ bc_type_params
+    for (bc_type, bc_type_params) in bc_params
+        for bc_setting_params in bc_type_params
             if bc_type == "Dirichlet"
                 boundary_condition = SMDirichletBC(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
@@ -982,8 +969,9 @@ function create_bcs(params::Parameters)
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
-                boundary_condition =
-                    SMContactSchwarzBC(coupled_subsim, input_mesh, bc_setting_params)
+                boundary_condition = SMContactSchwarzBC(
+                    coupled_subsim, input_mesh, bc_setting_params
+                )
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Inclined Dirichlet"
                 boundary_condition = SMDirichletInclined(input_mesh, bc_setting_params)
@@ -998,11 +986,7 @@ function create_bcs(params::Parameters)
                 coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
                 boundary_condition = SMCouplingSchwarzBC(
-                    subsim,
-                    coupled_subsim,
-                    input_mesh,
-                    bc_type,
-                    bc_setting_params,
+                    subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params
                 )
                 push!(boundary_conditions, boundary_condition)
             else
@@ -1022,27 +1006,26 @@ end
 function apply_bcs(model::SolidMechanics)
     model.boundary_force .= 0.0
     model.free_dofs .= true
-    for boundary_condition ∈ model.boundary_conditions
+    for boundary_condition in model.boundary_conditions
         apply_bc(model, boundary_condition)
     end
 end
 
 function apply_bcs(model::RomModel)
     model.reduced_boundary_forcing[:] .= 0.0
-    for boundary_condition ∈ model.boundary_conditions
+    for boundary_condition in model.boundary_conditions
         apply_bc(model, boundary_condition)
     end
-
 end
 
 function apply_ics(params::Parameters, model::SolidMechanics)
     if haskey(params, "initial conditions") == false
-        return
+        return nothing
     end
     input_mesh = params["input_mesh"]
     ic_params = params["initial conditions"]
-    for (ic_type, ic_type_params) ∈ ic_params
-        for ic ∈ ic_type_params
+    for (ic_type, ic_type_params) in ic_params
+        for ic in ic_type_params
             node_set_name = ic["node set"]
             expression = ic["function"]
             component = ic["component"]
@@ -1052,7 +1035,7 @@ function apply_ics(params::Parameters, model::SolidMechanics)
             # expression is an arbitrary function of t, x, y, z in the input file
             ic_expr = Meta.parse(expression)
             ic_eval = eval(ic_expr)
-            for node_index ∈ node_set_node_indices
+            for node_index in node_set_node_indices
                 values = Dict(
                     t => model.time,
                     x => model.reference[1, node_index],
@@ -1073,11 +1056,10 @@ function apply_ics(params::Parameters, model::SolidMechanics)
 end
 
 function apply_ics(params::Parameters, model::RomModel)
-
     apply_ics(params, model.fom_model)
 
     if haskey(params, "initial conditions") == false
-        return
+        return nothing
     end
     n_var, n_node, n_mode = model.basis.size
     n_var_fom, n_node_fom = size(model.fom_model.current)
@@ -1088,10 +1070,10 @@ function apply_ics(params::Parameters, model::RomModel)
     end
 
     # project onto basis
-    for k = 1:n_mode
+    for k in 1:n_mode
         model.reduced_state[k] = 0.0
-        for j = 1:n_node
-            for n = 1:n_var
+        for j in 1:n_node
+            for n in 1:n_var
                 model.reduced_state[k] +=
                     model.basis[n, j, k] *
                     (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
@@ -1101,11 +1083,11 @@ function apply_ics(params::Parameters, model::RomModel)
 end
 
 function pair_schwarz_bcs(sim::MultiDomainSimulation)
-    for subsim ∈ sim.subsims
+    for subsim in sim.subsims
         model = subsim.model
         name = subsim.name
         bcs = model.boundary_conditions
-        for bc ∈ bcs
+        for bc in bcs
             pair_bc(name, bc)
         end
     end
@@ -1116,7 +1098,7 @@ function pair_bc(_::String, _::RegularBoundaryCondition) end
 function pair_bc(name::String, bc::ContactSchwarzBoundaryCondition)
     coupled_model = bc.coupled_subsim.model
     coupled_bcs = coupled_model.boundary_conditions
-    for coupled_bc ∈ coupled_bcs
+    for coupled_bc in coupled_bcs
         if is_coupled_to_current(name, coupled_bc) == true
             coupled_bc.is_dirichlet = !bc.is_dirichlet
             if coupled_bc.is_dirichlet == false
@@ -1130,7 +1112,7 @@ function pair_bc(name::String, bc::CouplingSchwarzBoundaryCondition)
     if typeof(bc) == SMNonOverlapSchwarzBC
         coupled_model = bc.coupled_subsim.model
         coupled_bcs = coupled_model.boundary_conditions
-        for coupled_bc ∈ coupled_bcs
+        for coupled_bc in coupled_bcs
             if is_coupled_to_current(name, coupled_bc) == true
                 coupled_bc.is_dirichlet = !bc.is_dirichlet
             end

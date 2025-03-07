@@ -61,12 +61,12 @@ function run(input_file::String)
     geometry, points = create_point_cloud(params)
     potential = create_potential(params)
     solver = create_solver(params)
-    solve(solver, geometry, potential, points)
+    return solve(solver, geometry, potential, points)
 end
 
 function create_params(input_file::String)
     println("Reading simulation file: ", input_file)
-    params = YAML.load_file(input_file; dicttype = Parameters)
+    params = YAML.load_file(input_file; dicttype=Parameters)
     return params
 end
 
@@ -166,7 +166,7 @@ end
 
 function return_map!(geometry::Geometry, points::Matrix{Float64})
     num_points = size(points, 2)
-    for point_index ∈ 1:num_points
+    for point_index in 1:num_points
         point = points[:, point_index]
         if is_inside(geometry, point) == false
             new_point = rescale(geometry, point)
@@ -198,17 +198,15 @@ function create_point_cloud(params::Parameters)
 end
 
 function compute_energy_force!(
-    potential::Lennard_Jones,
-    points::Matrix{Float64},
-    force::Matrix{Float64},
+    potential::Lennard_Jones, points::Matrix{Float64}, force::Matrix{Float64}
 )
     ε = potential.ε
     σ = potential.σ
     number_points = size(points, 2)
     energy = 0.0
     fill!(force, 0.0)
-    for i ∈ 1:number_points-1
-        for j ∈ i+1:number_points
+    for i in 1:(number_points - 1)
+        for j in (i + 1):number_points
             r_ij = points[:, j] - points[:, i]
             r = max(norm(r_ij), 1.0e-06) # Avoid singularity
             energy += 4 * ε * ((σ / r)^12 - (σ / r)^6)
@@ -222,17 +220,15 @@ function compute_energy_force!(
 end
 
 function compute_energy_force!(
-    potential::Repulsive,
-    points::Matrix{Float64},
-    force::Matrix{Float64},
+    potential::Repulsive, points::Matrix{Float64}, force::Matrix{Float64}
 )
     k = potential.k
     c = potential.c
     number_points = size(points, 2)
     energy = 0.0
     fill!(force, 0.0)
-    for i ∈ 1:number_points-1
-        for j ∈ i+1:number_points
+    for i in 1:(number_points - 1)
+        for j in (i + 1):number_points
             r_ij = points[:, j] - points[:, i]
             r = max(norm(r_ij), 1.0e-06) # Avoid singularity
             if r > c
@@ -248,9 +244,7 @@ function compute_energy_force!(
 end
 
 function compute_energy_force!(
-    potential::SymmetricSethHill,
-    points::Matrix{Float64},
-    force::Matrix{Float64},
+    potential::SymmetricSethHill, points::Matrix{Float64}, force::Matrix{Float64}
 )
     k = potential.k
     h = potential.h
@@ -259,8 +253,8 @@ function compute_energy_force!(
     number_points = size(points, 2)
     energy = 0.0
     fill!(force, 0.0)
-    for i ∈ 1:number_points-1
-        for j ∈ i+1:number_points
+    for i in 1:(number_points - 1)
+        for j in (i + 1):number_points
             r_ij = points[:, j] - points[:, i]
             r = max(norm(r_ij), 1.0e-06) # Avoid singularity
             if r > c
@@ -280,9 +274,7 @@ function compute_energy_force!(
 end
 
 function compute_energy_force!(
-    potential::Polynomial,
-    points::Matrix{Float64},
-    force::Matrix{Float64},
+    potential::Polynomial, points::Matrix{Float64}, force::Matrix{Float64}
 )
     k = potential.k
     h = potential.h
@@ -291,8 +283,8 @@ function compute_energy_force!(
     number_points = size(points, 2)
     energy = 0.0
     fill!(force, 0.0)
-    for i ∈ 1:number_points-1
-        for j ∈ i+1:number_points
+    for i in 1:(number_points - 1)
+        for j in (i + 1):number_points
             r_ij = points[:, j] - points[:, i]
             r = max(norm(r_ij), 1.0e-06) # Avoid singularity
             if r > c
@@ -326,7 +318,7 @@ function solve(
     initial_norm = norm(force)
     output_file = output_file_root * "-" * lpad(string(0), 6, '0') * ".vtk"
     write_points_vtk(output_file, points)
-    for iter ∈ 1:maximum_iterations
+    for iter in 1:maximum_iterations
         absolute_error = norm(force)
         relative_error = initial_norm > 0.0 ? absolute_error / initial_norm : absolute_error
         println(
@@ -372,7 +364,7 @@ function backtrack_line_search!(
     step_length = solver.step_length
     initial_solution = 1.0 * points
     initial_energy = energy
-    for _ ∈ 1:max_iters
+    for _ in 1:max_iters
         step = step_length * direction
         points = initial_solution + step
         return_map!(geometry, points)
@@ -407,7 +399,7 @@ function backtrack_line_search_orig!(
     merit_prime = -2.0 * merit
     step_length = solver.step_length
     initial_solution = 1.0 * points
-    for _ ∈ 1:max_iters
+    for _ in 1:max_iters
         merit_old = merit
         step = step_length * direction
         points = initial_solution + step
@@ -444,12 +436,12 @@ function write_points_vtk(filename::String, points::Matrix{Float64})
         println(io, "POINTS $N float")
 
         # Write point data
-        for i = 1:N
+        for i in 1:N
             println(io, join(points[:, i], " "))
         end
     end
 end
 
-for input_file ∈ ARGS
+for input_file in ARGS
     run(input_file)
 end

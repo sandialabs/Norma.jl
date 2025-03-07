@@ -41,7 +41,7 @@ function run(params::Parameters, name::String)
     return sim
 end
 
-for input_file ∈ ARGS
+for input_file in ARGS
     run(input_file)
 end
 

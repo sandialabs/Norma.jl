@@ -2,7 +2,7 @@ using Pkg
 
 # Ensure required packages are installed
 function ensure_installed(pkgs)
-    for pkg ∈ pkgs
+    for pkg in pkgs
         if !haskey(Pkg.project().dependencies, pkg)
             println("Installing missing package: $pkg")
             Pkg.add(pkg)
@@ -74,7 +74,7 @@ function plot_solns_overlap()
     num_files = length(matching_files)
 
     # -- Main loop --
-    for i ∈ 0:num_files-1
+    for i in 0:(num_files - 1)
         # Read data for subdomain #1
         d1 = readdlm(@sprintf("01-disp-%04d.csv", i), ',')
         v1 = readdlm(@sprintf("01-velo-%04d.csv", i), ',')
@@ -113,7 +113,7 @@ function plot_solns_overlap()
         veloz_merged = zeros(length(zz))
         accez_merged = zeros(length(zz))
 
-        for j ∈ eachindex(zz)
+        for j in eachindex(zz)
             # find matching points in each subdomain
             ii1 = findall(x -> x == zz[j], z1ind1)
             ii2 = findall(x -> x == zz[j], z2ind2)
@@ -222,36 +222,36 @@ function plot_solns_overlap()
 
         # subplot 1: displacement
         subplot(3, 1, 1)
-        plot(z1[ind1], dispz1[ind1, ctr], "-b", label = "subdomain 1")
-        plot(z2[ind2], dispz2[ind2, ctr], "-r", label = "subdomain 2")
-        plot(zz, d_ex, "--c", label = "exact")
+        plot(z1[ind1], dispz1[ind1, ctr], "-b"; label="subdomain 1")
+        plot(z2[ind2], dispz2[ind2, ctr], "-r"; label="subdomain 2")
+        plot(zz, d_ex, "--c"; label="exact")
         xlabel("z")
         ylabel("z-disp")
         title("displacement snapshot $(i+1) at time = $t")
         axis([minimum(z), maximum(z), -scale, scale])
-        legend(loc = "lower right")
+        legend(; loc="lower right")
 
         # subplot 2: velocity
         subplot(3, 1, 2)
-        plot(z1[ind1], veloz1[ind1, ctr], "-b", label = "subdomain 1")
-        plot(z2[ind2], veloz2[ind2, ctr], "-r", label = "subdomain 2")
-        plot(zz, v_ex, "--c", label = "exact")
+        plot(z1[ind1], veloz1[ind1, ctr], "-b"; label="subdomain 1")
+        plot(z2[ind2], veloz2[ind2, ctr], "-r"; label="subdomain 2")
+        plot(zz, v_ex, "--c"; label="exact")
         xlabel("z")
         ylabel("z-velo")
         title("velocity snapshot $(i+1) at time = $t")
         axis([minimum(z), maximum(z), -3e4 * scale, 3e4 * scale])
-        legend(loc = "lower right")
+        legend(; loc="lower right")
 
         # subplot 3: acceleration
         subplot(3, 1, 3)
-        plot(z1[ind1], accez1[ind1, ctr], "-b", label = "subdomain 1")
-        plot(z2[ind2], accez2[ind2, ctr], "-r", label = "subdomain 2")
-        plot(zz, a_ex, "--c", label = "exact")
+        plot(z1[ind1], accez1[ind1, ctr], "-b"; label="subdomain 1")
+        plot(z2[ind2], accez2[ind2, ctr], "-r"; label="subdomain 2")
+        plot(zz, a_ex, "--c"; label="exact")
         xlabel("z")
         ylabel("z-acce")
         title("acceleration snapshot $(i+1) at time = $t")
         axis([minimum(z), maximum(z), -2.5e9 * scale, 2.5e9 * scale])
-        legend(loc = "lower right")
+        legend(; loc="lower right")
 
         PyPlot.pause(0.001)  # short pause to visualize updates
 
@@ -280,7 +280,7 @@ function plot_solns_overlap()
     numerator_acce = 0.0
     denominator_acce = 0.0
 
-    for i ∈ 1:sz[2]
+    for i in 1:sz[2]
         numerator_disp += norm(disp_computed[:, i] .- disp_exact[:, i])^2
         denominator_disp += norm(disp_exact[:, i])^2
 
@@ -297,7 +297,7 @@ function plot_solns_overlap()
 
     println("z-disp avg rel error = $dispz_relerr")
     println("z-velo avg rel error = $veloz_relerr")
-    println("z-acce avg rel error = $accez_relerr")
+    return println("z-acce avg rel error = $accez_relerr")
 end
 
 # Call the function

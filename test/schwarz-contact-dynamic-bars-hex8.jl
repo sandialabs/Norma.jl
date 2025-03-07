@@ -6,13 +6,13 @@
 using YAML
 
 @testset "schwarz-contact-dynamic-bars-hex8" begin
-    cp("../examples/contact/implicit-dynamic/2_bars/bars.yaml", "bars.yaml", force = true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.yaml", "bar-1.yaml", force = true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.yaml", "bar-2.yaml", force = true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.g", "bar-1.g", force = true)
-    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.g", "bar-2.g", force = true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bars.yaml", "bars.yaml"; force=true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.yaml", "bar-1.yaml"; force=true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.yaml", "bar-2.yaml"; force=true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-1.g", "bar-1.g"; force=true)
+    cp("../examples/contact/implicit-dynamic/2_bars/bar-2.g", "bar-2.g"; force=true)
     input_file = "bars.yaml"
-    params = YAML.load_file(input_file; dicttype = Norma.Parameters)
+    params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = -1.0e-06
     params["final time"] = 1.0e-06
     sim = Norma.run(params, input_file)

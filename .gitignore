@@ -10,6 +10,7 @@
 .vscode
 *.e
 *.exo
+.JuliaFormatter.toml
 
 # CSV Output Interval Outputs
 **/*-potential-*.csv

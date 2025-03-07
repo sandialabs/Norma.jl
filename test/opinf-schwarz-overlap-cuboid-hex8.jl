@@ -6,33 +6,33 @@
 @testset "opinf-schwarz-overlap-static-cuboid-hex8-same-step" begin
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-1.yaml",
-        "cuboid-1.yaml",
-        force = true,
+        "cuboid-1.yaml";
+        force=true,
     )
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-2.yaml",
-        "cuboid-2.yaml",
-        force = true,
+        "cuboid-2.yaml";
+        force=true,
     )
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboids.yaml",
-        "cuboids.yaml",
-        force = true,
+        "cuboids.yaml";
+        force=true,
     )
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-opinf-rom/opinf-operator.npz",
-        "opinf-operator.npz",
-        force = true,
+        "opinf-operator.npz";
+        force=true,
     )
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-1.g",
-        "cuboid-1.g",
-        force = true,
+        "cuboid-1.g";
+        force=true,
     )
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-opinf-rom/cuboid-2.g",
-        "cuboid-2.g",
-        force = true,
+        "cuboid-2.g";
+        force=true,
     )
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
