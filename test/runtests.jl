@@ -30,3 +30,11 @@ include("solid-inclined-displacement.jl")
 include("opinf-schwarz-overlap-cuboid-hex8.jl")
 include("quadratic-opinf-schwarz-overlap-cuboid-hex8.jl")
 include("adaptive-time-stepping.jl")
+
+# WARNING: Do not leave output, meshes or inputs here.
+# They will be removed.
+for ext in ["yaml", "e", "g", "csv"]
+    for file in filter(f -> endswith(f, ".$ext"), readdir())
+        rm(file; force=true)
+    end
+end
