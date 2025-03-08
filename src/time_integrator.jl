@@ -408,14 +408,18 @@ function initialize_writing(
     Exodus.write_number_of_variables(output_mesh, GlobalVariable, num_global_vars)
 
     runtime_step_index = 1
-    Exodus.write_name(output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step")
+    Exodus.write_name(
+        output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step"
+    )
 
     # setup nodal variables
     num_node_vars = 6
     node_var_names = ["refe_x", "refe_y", "refe_z", "disp_x", "disp_y", "disp_z"]
     if is_dynamic(integrator) == true
         num_node_vars += 6
-        append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
+        append!(
+            node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"]
+        )
     end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
