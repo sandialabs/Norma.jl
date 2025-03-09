@@ -431,45 +431,72 @@ function voigt_cauchy_from_stress(
     return [σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2]]
 end
 
-function assemble(
-    rows::Vector{Int64},
-    cols::Vector{Int64},
-    global_stiffness::Vector{Float64},
-    element_stiffness::Matrix{Float64},
-    dofs::Vector{Int64},
+function assemble!(
+    rows::Vector{Int},
+    cols::Vector{Int},
+    global_stiff::Vector{Float64},
+    elem_stiff::Matrix{Float64},
+    dofs::Vector{Int},
 )
-    num_dofs = length(dofs)
-    for i in 1:num_dofs
+    ndofs = length(dofs)
+    n2    = ndofs * ndofs
+
+    # old length and new length
+    old_len = length(rows)
+    new_len = old_len + n2
+
+    # Resize each vector in one step
+    resize!(rows, new_len)
+    resize!(cols, new_len)
+    resize!(global_stiff, new_len)
+
+    idx = old_len + 1
+    @inbounds for i in 1:ndofs
         I = dofs[i]
-        for j in 1:num_dofs
-            J = dofs[j]
-            push!(rows, I)
-            push!(cols, J)
-            push!(global_stiffness, element_stiffness[i, j])
+        @inbounds for j in 1:ndofs
+            rows[idx]  = I
+            cols[idx]  = dofs[j]
+            global_stiff[idx] = elem_stiff[i, j]
+            idx += 1
         end
     end
+    return
 end
 
-function assemble(
-    rows::Vector{Int64},
-    cols::Vector{Int64},
-    global_stiffness::Vector{Float64},
+function assemble!(
+    rows::Vector{Int},
+    cols::Vector{Int},
+    global_stiff::Vector{Float64},
     global_mass::Vector{Float64},
-    element_stiffness::Matrix{Float64},
-    element_mass::Matrix{Float64},
-    dofs::Vector{Int64},
+    elem_stiff::Matrix{Float64},
+    elem_mass::Matrix{Float64},
+    dofs::Vector{Int},
 )
-    num_dofs = length(dofs)
-    for i in 1:num_dofs
+    ndofs = length(dofs)
+    n2    = ndofs * ndofs
+
+    # old length and new length
+    old_len = length(rows)
+    new_len = old_len + n2
+
+    # Resize each vector in one step
+    resize!(rows, new_len)
+    resize!(cols, new_len)
+    resize!(global_stiff, new_len)
+    resize!(global_mass, new_len)
+
+    idx = old_len + 1
+    @inbounds for i in 1:ndofs
         I = dofs[i]
-        for j in 1:num_dofs
-            J = dofs[j]
-            push!(rows, I)
-            push!(cols, J)
-            push!(global_mass, element_mass[i, j])
-            push!(global_stiffness, element_stiffness[i, j])
+        @inbounds for j in 1:ndofs
+            rows[idx]  = I
+            cols[idx]  = dofs[j]
+            global_stiff[idx] = elem_stiff[i, j]
+            global_mass[idx] = elem_mass[i, j]
+            idx += 1
         end
     end
+    return
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
@@ -588,10 +615,10 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             model.stored_energy[blk_index][blk_elem_index] = element_energy
             internal_force[elem_dofs] += element_internal_force
             if typeof(integrator) == QuasiStatic
-                assemble(rows, cols, stiffness, element_stiffness, elem_dofs)
+                assemble!(rows, cols, stiffness, element_stiffness, elem_dofs)
             end
             if typeof(integrator) == Newmark
-                assemble(
+                assemble!(
                     rows, cols, stiffness, mass, element_stiffness, element_mass, elem_dofs
                 )
             end
