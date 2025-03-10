@@ -1067,9 +1067,31 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                 if ic_type == "displacement"
                     model.current[offset, node_index] =
                         model.reference[offset, node_index] + disp_val
+                    non_zero_velocity = !(velo_val ≈ 0.0)
+                    if non_zero_velocity
+                        dissimilar_velocities = !(model.velocity[offset, node_index] ≈ velo_val)
+                        non_zero_pre_velocity = !(model.velocity[offset, node_index] ≈ 0.0)
+                        if dissimilar_velocities && non_zero_pre_velocity
+                            error("Multiple and inconsistent velocity initial conditions (ICs) are being applied to node ",
+                                node_index, ". Attempted to assign non-zero velocity derived from ",
+                                "displacement (v = ", velo_val, ") that overwrites previously assigned velocity (v=",
+                                model.velocity[offset, node_index], ").")
+                        else
+                            model.velocity[offset, node_index] = velo_val
+                        end
+                    end
                 end
-                if ic_type in ["displacement", "velocity"]
-                    model.velocity[offset, node_index] = velo_val
+                if ic_type == "velocity"
+                    velocity_already_defined = !(model.velocity[offset, node_index] ≈ 0.0)
+                    dissimilar_velocities = !(model.velocity[offset, node_index] ≈ velo_val)
+                    if velocity_already_defined && dissimilar_velocities
+                        error("Multiple and inconsistent velocity initial conditions (ICs) are being applied to node ",
+                            node_index, ". Attempted to assign non-zero velocity directly from velocity IC ",
+                            " (v = ", velo_val, ") that overwrites previously assigned velocity (v=",
+                            model.velocity[offset, node_index], ").")
+                    else
+                        model.velocity[offset, node_index] = velo_val
+                    end
                 end
                 model.acceleration[offset, node_index] = acce_val
             end
