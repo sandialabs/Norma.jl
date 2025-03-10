@@ -65,7 +65,9 @@ using YAML
     for (idx1, idx2) in face_pairs
         coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
         coordinate_2 = [x2[idx2], y2[idx2], z2[idx2]]
-        @test coordinate_1 ≈ coordinate_2 atol = 5e-3
+        @test coordinate_1[1] ≈ coordinate_2[1] atol = 1e-6
+        @test coordinate_1[2] ≈ coordinate_2[2] atol = 1e-6
+        @test coordinate_1[3] ≈ coordinate_2[3] atol = 1e-6
     end
 end
 
