@@ -1033,8 +1033,24 @@ function apply_ics(params::Parameters, model::SolidMechanics)
             node_set_id = node_set_id_from_name(node_set_name, input_mesh)
             node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
             # expression is an arbitrary function of t, x, y, z in the input file
-            ic_expr = Meta.parse(expression)
-            ic_eval = eval(ic_expr)
+            # Parse and expand derivatives only once
+            if ic_type == "displacement"
+                disp_num = eval(Meta.parse(expression))
+                velo_num = expand_derivatives(D(disp_num))
+                acce_num = expand_derivatives(D(velo_num))
+            elseif ic_type == "velocity"
+                disp_num = nothing  # Not needed
+                velo_num = eval(Meta.parse(expression))
+                acce_num = expand_derivatives(D(velo_num))
+            elseif ic_type == "acceleration"
+                disp_num = nothing  # Not needed
+                velo_num = nothing  # Not needed
+                acce_num = eval(Meta.parse(expression))
+            else
+                error(
+                    "Invalid initial condition type: '$ic_type'. Supported types are: displacement, velocity, and acceleration.",
+                )
+            end
             for node_index in node_set_node_indices
                 values = Dict(
                     t => model.time,
@@ -1042,14 +1058,20 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                     y => model.reference[2, node_index],
                     z => model.reference[3, node_index],
                 )
-                ic_sym = substitute(ic_eval, values)
-                ic_val = extract_value(ic_sym)
+                disp_val =
+                    disp_num === nothing ? 0.0 : extract_value(substitute(disp_num, values))
+                velo_val =
+                    velo_num === nothing ? 0.0 : extract_value(substitute(velo_num, values))
+                acce_val =
+                    acce_num === nothing ? 0.0 : extract_value(substitute(acce_num, values))
                 if ic_type == "displacement"
                     model.current[offset, node_index] =
-                        model.reference[offset, node_index] + ic_val
-                elseif ic_type == "velocity"
-                    model.velocity[offset, node_index] = ic_val
+                        model.reference[offset, node_index] + disp_val
                 end
+                if ic_type in ["displacement", "velocity"]
+                    model.velocity[offset, node_index] = velo_val
+                end
+                model.acceleration[offset, node_index] = acce_val
             end
         end
     end

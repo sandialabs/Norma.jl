@@ -412,41 +412,19 @@ function initialize_writing(
         output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step"
     )
 
-    num_node_vars = Exodus.read_number_of_variables(output_mesh, NodalVariable)
-    disp_x_index = num_node_vars + 1
-    disp_y_index = num_node_vars + 2
-    disp_z_index = num_node_vars + 3
-    num_node_vars += 3
-    refe_x_index = num_node_vars + 1
-    refe_y_index = num_node_vars + 2
-    refe_z_index = num_node_vars + 3
-    num_node_vars += 3
+    # setup nodal variables
+    num_node_vars = 6
+    node_var_names = ["refe_x", "refe_y", "refe_z", "disp_x", "disp_y", "disp_z"]
     if is_dynamic(integrator) == true
-        velo_x_index = num_node_vars + 1
-        velo_y_index = num_node_vars + 2
-        velo_z_index = num_node_vars + 3
-        num_node_vars += 3
-        acce_x_index = num_node_vars + 1
-        acce_y_index = num_node_vars + 2
-        acce_z_index = num_node_vars + 3
-        num_node_vars += 3
+        num_node_vars += 6
+        append!(
+            node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"]
+        )
     end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
-    Exodus.write_name(output_mesh, NodalVariable, Int32(refe_x_index), "refe_x")
-    Exodus.write_name(output_mesh, NodalVariable, Int32(refe_y_index), "refe_y")
-    Exodus.write_name(output_mesh, NodalVariable, Int32(refe_z_index), "refe_z")
-    Exodus.write_name(output_mesh, NodalVariable, Int32(disp_x_index), "disp_x")
-    Exodus.write_name(output_mesh, NodalVariable, Int32(disp_y_index), "disp_y")
-    Exodus.write_name(output_mesh, NodalVariable, Int32(disp_z_index), "disp_z")
-    if is_dynamic(integrator) == true
-        Exodus.write_name(output_mesh, NodalVariable, Int32(velo_x_index), "velo_x")
-        Exodus.write_name(output_mesh, NodalVariable, Int32(velo_y_index), "velo_y")
-        Exodus.write_name(output_mesh, NodalVariable, Int32(velo_z_index), "velo_z")
-        Exodus.write_name(output_mesh, NodalVariable, Int32(acce_x_index), "acce_x")
-        Exodus.write_name(output_mesh, NodalVariable, Int32(acce_y_index), "acce_y")
-        Exodus.write_name(output_mesh, NodalVariable, Int32(acce_z_index), "acce_z")
-    end
-    num_element_vars = Exodus.read_number_of_variables(output_mesh, ElementVariable)
+    Exodus.write_names(output_mesh, NodalVariable, node_var_names)
+
+    # get maximum number of quadrature points
     blocks = Exodus.read_sets(output_mesh, Block)
     max_num_int_points = 0
     for block in blocks
@@ -455,42 +433,23 @@ function initialize_writing(
         num_points = default_num_int_pts(element_type)
         max_num_int_points = max(max_num_int_points, num_points)
     end
-    ip_var_index = num_element_vars
-    num_element_vars += 6 * max_num_int_points
-    num_element_vars += 1
+
+    num_element_vars = 6 * max_num_int_points + 1
     Exodus.write_number_of_variables(output_mesh, ElementVariable, num_element_vars)
+
+    el_var_names = String[]
     for point in 1:max_num_int_points
-        stress_xx_index = ip_var_index + 1
-        stress_yy_index = ip_var_index + 2
-        stress_zz_index = ip_var_index + 3
-        stress_yz_index = ip_var_index + 4
-        stress_xz_index = ip_var_index + 5
-        stress_xy_index = ip_var_index + 6
-        ip_var_index += 6
         ip_str = "_" * string(point)
-        Exodus.write_name(
-            output_mesh, ElementVariable, Int32(stress_xx_index), "stress_xx" * ip_str
-        )
-        Exodus.write_name(
-            output_mesh, ElementVariable, Int32(stress_yy_index), "stress_yy" * ip_str
-        )
-        Exodus.write_name(
-            output_mesh, ElementVariable, Int32(stress_zz_index), "stress_zz" * ip_str
-        )
-        Exodus.write_name(
-            output_mesh, ElementVariable, Int32(stress_yz_index), "stress_yz" * ip_str
-        )
-        Exodus.write_name(
-            output_mesh, ElementVariable, Int32(stress_xz_index), "stress_xz" * ip_str
-        )
-        Exodus.write_name(
-            output_mesh, ElementVariable, Int32(stress_xy_index), "stress_xy" * ip_str
-        )
+        push!(el_var_names, "stress_xx" * ip_str)
+        push!(el_var_names, "stress_yy" * ip_str)
+        push!(el_var_names, "stress_zz" * ip_str)
+        push!(el_var_names, "stress_yz" * ip_str)
+        push!(el_var_names, "stress_xz" * ip_str)
+        push!(el_var_names, "stress_xy" * ip_str)
     end
-    element_stored_energy_index = ip_var_index
-    return Exodus.write_name(
-        output_mesh, ElementVariable, Int32(element_stored_energy_index), "stored_energy"
-    )
+    push!(el_var_names, "stored_energy")
+    Exodus.write_names(output_mesh, ElementVariable, el_var_names)
+    return nothing
 end
 
 function finalize_writing(params::Parameters)
