@@ -1,6 +1,6 @@
 ${side = 1.0}
 ${length = 1.0}
-${separation = 0.0}
+${separation = 1.0}
 ${nel_fine = 2}
 ${nel_coarse = 2}
 ${h_fine = length / nel_fine}
