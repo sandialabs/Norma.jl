@@ -24,6 +24,9 @@ using YAML
     params["time integrator"]["final time"] = time
     simulation = Norma.run(params, input_file)
 
+    E = 1.0e9
+    ν = 0.25
+
     integrator = simulation.integrator
     model = simulation.model
     rm("sphere.yaml")
@@ -41,14 +44,25 @@ using YAML
     @test min_disp[2] ≈ -time / 10 atol = 1.0e-06
     @test min_disp[3] ≈ -time / 10 atol = 1.0e-06
 
-    bulk_modulus = 1.0e+09 / (3.0 * (1.0 - 2 * 0.25))
+    # Deformation gradient
+    F = I(3)*(1-0.1*time)
+    # Right Cauch-Green
+    C = F' * F
+    # Green Strain
+    Ee = 1/2*(C - I(3))
+    # PK2 Stress
+    λ = E*ν/((1 + ν) * (1 - 2*ν) )
+    μ = E/2/(1+ν)
+    S = λ * tr(Ee) * I(3) + 2*μ*Ee
+    # Cauchy stress and analytical pressure
+    σ = 1/det(F) * F * S * F'
+    analytical_pressure = -tr(σ)/3.0
+
     # Stress should be uniform, so avg is sufficient
     avg_stress = average_components(model.stress)
     hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3]) / 3.0
-    volume_decrease =
-        4.0 / 3.0 * π * (1.0^3 - (1 - 0.1 * time)^3) / (4.0 / 3.0 * π * (1.0^3))
 
-    @test hydrostatic_stress ≈ (bulk_modulus * volume_decrease) rtol = 1.0e-03
+    @test hydrostatic_stress ≈ analytical_pressure rtol = 2.0e-4
     @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
