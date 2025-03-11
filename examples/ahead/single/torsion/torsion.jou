@@ -3,7 +3,6 @@ ${height = 1.0}
 ${h = 0.025}
 
 create brick x {side} y {side} z {height}
-#move volume 1 z {-offset} include_merged
 volume 1 size {h}
 mesh volume 1
 block 1 volume 1
