@@ -439,7 +439,7 @@ function assemble!(
     dofs::Vector{Int},
 )
     ndofs = length(dofs)
-    n2    = ndofs * ndofs
+    n2 = ndofs * ndofs
 
     # old length and new length
     old_len = length(rows)
@@ -454,13 +454,13 @@ function assemble!(
     @inbounds for i in 1:ndofs
         I = dofs[i]
         @inbounds for j in 1:ndofs
-            rows[idx]  = I
-            cols[idx]  = dofs[j]
+            rows[idx] = I
+            cols[idx] = dofs[j]
             global_stiff[idx] = elem_stiff[i, j]
             idx += 1
         end
     end
-    return
+    return nothing
 end
 
 function assemble!(
@@ -473,7 +473,7 @@ function assemble!(
     dofs::Vector{Int},
 )
     ndofs = length(dofs)
-    n2    = ndofs * ndofs
+    n2 = ndofs * ndofs
 
     # old length and new length
     old_len = length(rows)
@@ -489,14 +489,14 @@ function assemble!(
     @inbounds for i in 1:ndofs
         I = dofs[i]
         @inbounds for j in 1:ndofs
-            rows[idx]  = I
-            cols[idx]  = dofs[j]
+            rows[idx] = I
+            cols[idx] = dofs[j]
             global_stiff[idx] = elem_stiff[i, j]
             global_mass[idx] = elem_mass[i, j]
             idx += 1
         end
     end
-    return
+    return nothing
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)

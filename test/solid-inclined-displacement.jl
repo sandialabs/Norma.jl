@@ -45,18 +45,18 @@ using YAML
     @test min_disp[3] ≈ -time / 10 atol = 1.0e-06
 
     # Deformation gradient
-    F = I(3)*(1-0.1*time)
+    F = I(3) * (1 - 0.1 * time)
     # Right Cauch-Green
     C = F' * F
     # Green Strain
-    Ee = 1/2*(C - I(3))
+    Ee = 1 / 2 * (C - I(3))
     # PK2 Stress
-    λ = E*ν/((1 + ν) * (1 - 2*ν) )
-    μ = E/2/(1+ν)
-    S = λ * tr(Ee) * I(3) + 2*μ*Ee
+    λ = E * ν / ((1 + ν) * (1 - 2 * ν))
+    μ = E / 2 / (1 + ν)
+    S = λ * tr(Ee) * I(3) + 2 * μ * Ee
     # Cauchy stress and analytical pressure
-    σ = 1/det(F) * F * S * F'
-    analytical_pressure = -tr(σ)/3.0
+    σ = 1 / det(F) * F * S * F'
+    analytical_pressure = -tr(σ) / 3.0
 
     # Stress should be uniform, so avg is sufficient
     avg_stress = average_components(model.stress)
