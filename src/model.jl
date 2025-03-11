@@ -500,6 +500,10 @@ function assemble!(
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
+    is_newmark = integrator isa Newmark
+    is_central_difference = integrator isa CentralDifference
+    is_quasistatic = integrator isa QuasiStatic
+    is_dynamic = is_newmark || is_central_difference
     materials = model.materials
     input_mesh = model.mesh
     mesh_smoothing = model.mesh_smoothing
@@ -513,16 +517,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     stiffness = Vector{Float64}()
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blks = length(blocks)
-    if typeof(integrator) == Newmark
+    if is_newmark == true
         mass = Vector{Float64}()
     end
-    if typeof(integrator) == CentralDifference
+    if is_central_difference == true
         lumped_mass = zeros(num_dof)
     end
-
     for blk_index in 1:num_blks
         material = materials[blk_index]
-        if typeof(integrator) == Newmark || typeof(integrator) == CentralDifference
+        if is_dynamic == true
             ρ = material.ρ
         end
         block = blocks[blk_index]
@@ -568,15 +571,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 if det(dxdξ) ≤ 0.0
                     model.failed = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
-                    if typeof(integrator) == QuasiStatic
+                    if is_quasistatic == true
                         return 0.0,
                         zeros(num_dof), zeros(num_dof),
                         spzeros(num_dof, num_dof)
-                    elseif typeof(integrator) == Newmark
+                    elseif is_newmark == true
                         return 0.0,
                         zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof),
                         spzeros(num_dof, num_dof)
-                    elseif typeof(integrator) == CentralDifference
+                    elseif is_central_difference == true
                         return 0.0, zeros(num_dof), zeros(num_dof), zeros(num_dof)
                     else
                         error("Unknown type of time integrator", typeof(integrator))
