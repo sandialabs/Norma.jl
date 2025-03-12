@@ -1,0 +1,77 @@
+${side = 0.05}
+${height = 1.0}
+${overlap_vol_frac = 0.5}
+${h_bottom = 0.0125}
+${h_top = 0.025}
+
+${domain_height = height / 2.0}
+${offset = domain_height / 2.0}
+
+create brick x {side} y {side} z {domain_height}
+move volume 1 z {-offset} include_merged
+volume 1 size {h_bottom}
+mesh volume 1
+block 1 volume 1
+block 1 name "bottom"
+nodeset 1 surface 4
+nodeset 1 name "-X"
+nodeset 2 surface 6
+nodeset 2 name "+X"
+nodeset 3 surface 3
+nodeset 3 name "-Y"
+nodeset 4 surface 5
+nodeset 4 name "+Y"
+nodeset 5 surface 2
+nodeset 5 name "-Z"
+nodeset 6 surface 1
+nodeset 6 name "+Z"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface 4
+sideset 1 name "-X_ss"
+sideset 2 surface 6
+sideset 2 name "+X_ss"
+sideset 3 surface 3
+sideset 3 name "-Y_ss"
+sideset 4 surface 5
+sideset 4 name "+Y_ss"
+sideset 5 surface 2
+sideset 5 name "-Z_ss"
+sideset 6 surface 1
+sideset 6 name "+Z_ss"
+set large exodus file off
+export mesh "torsion-1.g" overwrite
+delete mesh
+move volume 1 z {2 * offset} include_merged
+volume 1 size {h_top}
+mesh volume 1
+block 1 volume 1
+block 1 name "top"
+nodeset 1 surface 4
+nodeset 1 name "-X"
+nodeset 2 surface 6
+nodeset 2 name "+X"
+nodeset 3 surface 3
+nodeset 3 name "-Y"
+nodeset 4 surface 5
+nodeset 4 name "+Y"
+nodeset 5 surface 2
+nodeset 5 name "-Z"
+nodeset 6 surface 1
+nodeset 6 name "+Z"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface 4
+sideset 1 name "-X_ss"
+sideset 2 surface 6
+sideset 2 name "+X_ss"
+sideset 3 surface 3
+sideset 3 name "-Y_ss"
+sideset 4 surface 5
+sideset 4 name "+Y_ss"
+sideset 5 surface 2
+sideset 5 name "-Z_ss"
+sideset 6 surface 1
+sideset 6 name "+Z_ss"
+set large exodus file off
+export mesh "torsion-2.g" overwrite
