@@ -576,9 +576,12 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             for point in 1:num_points
                 dNdξₚ = dNdξ[:, :, point]
                 dXdξ = dNdξₚ * elem_ref_pos'
-                dxdξ = dNdξₚ * elem_cur_pos'
-                det_dxdξ = det(dxdξ)
-                if det_dxdξ ≤ 0.0
+                dNdX = dXdξ \ dNdξₚ
+                F = dNdX * elem_cur_pos'
+                J = det(F)
+                B = gradient_operator(dNdX)
+                j = det(dXdξ)
+                if J ≤ 0.0
                     model.failed = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
                     if is_quasistatic == true
@@ -595,27 +598,21 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                         error("Unknown type of time integrator", typeof(integrator))
                     end
                 end
-                dxdX = dXdξ \ dxdξ
-                dNdX = dXdξ \ dNdξₚ
-                B = gradient_operator(dNdX)
-                det_dXdξ = det(dXdξ)
-                J = det_dxdξ / det_dXdξ
-                F = dxdX
                 W, P, A = constitutive(material, F)
                 stress = P[1:9]
                 moduli = second_from_fourth(A)
                 w = elem_weights[point]
-                element_energy += W * det_dXdξ * w
-                element_internal_force += B' * stress * det_dXdξ * w
-                element_stiffness += B' * moduli * B * det_dXdξ * w
+                element_energy += W * j * w
+                element_internal_force += B' * stress * j * w
+                element_stiffness += B' * moduli * B * j * w
                 if is_newmark == true
-                    reduced_mass = N[:, point] * N[:, point]' * ρ * det_dXdξ * w
+                    reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
                     element_mass[index_x, index_x] += reduced_mass
                     element_mass[index_y, index_y] += reduced_mass
                     element_mass[index_z, index_z] += reduced_mass
                 end
                 if is_central_difference == true
-                    reduced_mass = N[:, point] * N[:, point]' * ρ * det_dXdξ * w
+                    reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
                     element_lumped_mass[index_x] += reduced_lumped_mass
                     element_lumped_mass[index_y] += reduced_lumped_mass
