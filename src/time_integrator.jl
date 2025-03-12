@@ -196,19 +196,6 @@ function is_dynamic(integrator::TimeIntegrator)
     return is_static(integrator) == false
 end
 
-function get_analysis_type(integrator::TimeIntegrator)
-    integrator_type = typeof(integrator)
-    if integrator_type == QuasiStatic
-        return "static"
-    elseif integrator_type == Newmark
-        return "dynamic"
-    elseif integrator_type == CentralDifference
-        return "dynamic"
-    else
-        error("Unknown type of time integrator : ", integrator_type)
-    end
-end
-
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
     # Compute initial accelerations
     stored_energy, internal_force, external_force, _, mass_matrix = evaluate(

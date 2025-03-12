@@ -90,7 +90,6 @@ function MultiDomainSimulation(params::Parameters)
     same_step = true
     exodus_interval = get(params, "Exodus output interval", 1)
     csv_interval = get(params, "CSV output interval", 0)
-    sim_type = "none"
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
     for domain_name in domain_names
@@ -107,18 +106,10 @@ function MultiDomainSimulation(params::Parameters)
             same_step = false
         end
         params[domain_name] = subsim.params
-        subsim_type =
-            get_analysis_type(subsim.integrator) * " " * subparams["model"]["type"]
-        if sim_type == "none"
-            sim_type = subsim_type
-            #        elseif subsim_type ≠ sim_type && (subsim_type != "dynamic linear opinf rom" || subsim_type != "dynamic quadratic opinf rom")
-            #            error("Multidomain subdomains must all have the same physics")
-        end
         push!(subsims, subsim)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
-    params["subdomains type"] = sim_type
     params["same time step for domains"] = same_step
     schwarz_controller = create_schwarz_controller(params)
     failed = false
