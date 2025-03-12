@@ -533,7 +533,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         blk_id = block.id
         element_type = Exodus.read_block_parameters(input_mesh, blk_id)[1]
         num_points = default_num_int_pts(element_type)
-        N, dNdξ, elem_weights = isoparametric(element_type, num_points)
+        N, dN, elem_weights = isoparametric(element_type, num_points)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
         num_elem_dofs = 3 * num_elem_nodes
@@ -574,9 +574,9 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             elem_dofs[index_y] = 3 .* node_indices .- 1
             elem_dofs[index_z] = 3 .* node_indices
             for point in 1:num_points
-                dNdξₚ = dNdξ[:, :, point]
-                dXdξ = dNdξₚ * elem_ref_pos'
-                dNdX = dXdξ \ dNdξₚ
+                dNdξ = dN[:, :, point]
+                dXdξ = dNdξ * elem_ref_pos'
+                dNdX = dXdξ \ dNdξ
                 F = dNdX * elem_cur_pos'
                 J = det(F)
                 B = gradient_operator(dNdX)
@@ -605,14 +605,16 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_energy += W * j * w
                 element_internal_force += B' * stress * j * w
                 element_stiffness += B' * moduli * B * j * w
+                if is_dynamic
+                    Nξ = N[:, point]
+                    reduced_mass = Nξ * Nξ' * ρ * j * w
+                end
                 if is_newmark == true
-                    reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
                     element_mass[index_x, index_x] += reduced_mass
                     element_mass[index_y, index_y] += reduced_mass
                     element_mass[index_z, index_z] += reduced_mass
                 end
                 if is_central_difference == true
-                    reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
                     element_lumped_mass[index_x] += reduced_lumped_mass
                     element_lumped_mass[index_y] += reduced_lumped_mass
