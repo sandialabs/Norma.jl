@@ -504,6 +504,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     is_central_difference = integrator isa CentralDifference
     is_quasistatic = integrator isa QuasiStatic
     is_dynamic = is_newmark || is_central_difference
+    is_implicit = is_newmark || is_quasistatic
     materials = model.materials
     input_mesh = model.mesh
     mesh_smoothing = model.mesh_smoothing
@@ -552,10 +553,10 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             element_energy = 0.0
             element_internal_force = zeros(num_elem_dofs)
             element_stiffness = zeros(num_elem_dofs, num_elem_dofs)
-            if typeof(integrator) == Newmark
+            if is_newmark == true
                 element_mass = zeros(num_elem_dofs, num_elem_dofs)
             end
-            if typeof(integrator) == CentralDifference
+            if is_central_difference == true
                 element_lumped_mass = zeros(num_elem_dofs)
             end
             index_x = 1:3:(num_elem_dofs .- 2)
@@ -598,13 +599,13 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_energy += W * j * w
                 element_internal_force += B' * stress * j * w
                 element_stiffness += B' * moduli * B * j * w
-                if typeof(integrator) == Newmark
+                if is_newmark == true
                     reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
                     element_mass[index_x, index_x] += reduced_mass
                     element_mass[index_y, index_y] += reduced_mass
                     element_mass[index_z, index_z] += reduced_mass
                 end
-                if typeof(integrator) == CentralDifference
+                if is_central_difference == true
                     reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
                     element_lumped_mass[index_x] += reduced_lumped_mass
@@ -617,35 +618,35 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             energy += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
             internal_force[elem_dofs] += element_internal_force
-            if typeof(integrator) == QuasiStatic
+            if is_quasistatic == true
                 assemble!(rows, cols, stiffness, element_stiffness, elem_dofs)
             end
-            if typeof(integrator) == Newmark
+            if is_newmark == true
                 assemble!(
                     rows, cols, stiffness, mass, element_stiffness, element_mass, elem_dofs
                 )
             end
-            if typeof(integrator) == CentralDifference
+            if is_central_difference == true
                 lumped_mass[elem_dofs] += element_lumped_mass
             end
         end
     end
 
-    if typeof(integrator) == QuasiStatic || typeof(integrator) == Newmark
+    if is_implicit == true
         stiffness_matrix = sparse(rows, cols, stiffness)
     end
-    if typeof(integrator) == Newmark
+    if is_newmark == true
         mass_matrix = sparse(rows, cols, mass)
     end
     if mesh_smoothing == true
         internal_force -= integrator.velocity
     end
     model.internal_force = internal_force
-    if typeof(integrator) == QuasiStatic
+    if is_quasistatic == true
         return energy, internal_force, body_force, stiffness_matrix
-    elseif typeof(integrator) == Newmark
+    elseif is_newmark == true
         return energy, internal_force, body_force, stiffness_matrix, mass_matrix
-    elseif typeof(integrator) == CentralDifference
+    elseif is_central_difference == true
         return energy, internal_force, body_force, lumped_mass
     else
         error("Unknown type of time integrator", typeof(integrator))
