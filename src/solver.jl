@@ -4,6 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using IterativeSolvers
 using LinearAlgebra
 
 function create_step(solver_params::Parameters)
@@ -587,24 +588,28 @@ function backtrack_line_search(
     return step
 end
 
+function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64})
+    return cg(A, b)
+end
+
 function compute_step(
     _::QuasiStatic, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep
 )
     free = model.free_dofs
-    return -solver.hessian[free, free] \ solver.gradient[free]
+    return -solve_linear(solver.hessian[free, free], solver.gradient[free])
 end
 
 function compute_step(
     _::Newmark, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep
 )
     free = model.free_dofs
-    return -solver.hessian[free, free] \ solver.gradient[free]
+    return -solve_linear(solver.hessian[free, free], solver.gradient[free])
 end
 
 function compute_step(
     _::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep
 )
-    return -solver.hessian \ solver.gradient
+    return -solve_linear(solver.hessian, solver.gradient)
 end
 
 function compute_step(
