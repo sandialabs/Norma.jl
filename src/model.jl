@@ -516,14 +516,14 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     rows = Vector{Int64}()
     cols = Vector{Int64}()
     stiffness = Vector{Float64}()
-    blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(blocks)
     if is_newmark == true
         mass = Vector{Float64}()
     end
     if is_central_difference == true
         lumped_mass = zeros(num_dof)
     end
+    blocks = Exodus.read_sets(input_mesh, Block)
+    num_blks = length(blocks)
     for blk_index in 1:num_blks
         material = materials[blk_index]
         if is_dynamic == true
@@ -537,7 +537,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
         num_elem_dofs = 3 * num_elem_nodes
-        elem_dofs = zeros(Int64, num_elem_dofs)
+        elem_dofs = Vector{Int64}(undef, num_elem_dofs)
+        element_internal_force = Vector{Float64}(undef, num_elem_dofs)
+        element_stiffness = Matrix{Float64}(undef, num_elem_dofs, num_elem_dofs)
+        if is_newmark == true
+            element_mass = Matrix{Float64}(undef, num_elem_dofs, num_elem_dofs)
+        end
+        if is_central_difference == true
+            element_lumped_mass = Vector{Float64}(undef, num_elem_dofs)
+        end
         for blk_elem_index in 1:num_blk_elems
             conn_indices =
                 ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
@@ -551,13 +559,13 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
             elem_cur_pos = model.current[:, node_indices]
             element_energy = 0.0
-            element_internal_force = zeros(num_elem_dofs)
-            element_stiffness = zeros(num_elem_dofs, num_elem_dofs)
+            fill!(element_internal_force, 0.0)
+            fill!(element_stiffness, 0.0)
             if is_newmark == true
-                element_mass = zeros(num_elem_dofs, num_elem_dofs)
+                fill!(element_mass, 0.0)
             end
             if is_central_difference == true
-                element_lumped_mass = zeros(num_elem_dofs)
+                fill!(element_lumped_mass, 0.0)
             end
             index_x = 1:3:(num_elem_dofs .- 2)
             index_y = index_x .+ 1
@@ -631,7 +639,6 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
         end
     end
-
     if is_implicit == true
         stiffness_matrix = sparse(rows, cols, stiffness)
     end
