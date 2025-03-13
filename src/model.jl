@@ -567,12 +567,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             if is_central_difference == true
                 fill!(element_lumped_mass, 0.0)
             end
-            index_x = 1:3:(num_elem_dofs .- 2)
-            index_y = index_x .+ 1
-            index_z = index_x .+ 2
-            elem_dofs[index_x] = 3 .* node_indices .- 2
-            elem_dofs[index_y] = 3 .* node_indices .- 1
-            elem_dofs[index_z] = 3 .* node_indices
+            elem_dofs = reshape(3 .* node_indices' .- [2, 1, 0], :)
             for point in 1:num_points
                 dNdξ = dN[:, :, point]
                 dXdξ = dNdξ * elem_ref_pos'
@@ -610,15 +605,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                     reduced_mass = Nξ * Nξ' * ρ * j * w
                 end
                 if is_newmark == true
-                    element_mass[index_x, index_x] += reduced_mass
-                    element_mass[index_y, index_y] += reduced_mass
-                    element_mass[index_z, index_z] += reduced_mass
+                    element_mass[1:3:end, 1:3:end] += reduced_mass
+                    element_mass[2:3:end, 2:3:end] += reduced_mass
+                    element_mass[3:3:end, 3:3:end] += reduced_mass
                 end
                 if is_central_difference == true
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
-                    element_lumped_mass[index_x] += reduced_lumped_mass
-                    element_lumped_mass[index_y] += reduced_lumped_mass
-                    element_lumped_mass[index_z] += reduced_lumped_mass
+                    element_lumped_mass[1:3:end] += reduced_lumped_mass
+                    element_lumped_mass[2:3:end] += reduced_lumped_mass
+                    element_lumped_mass[3:3:end] += reduced_lumped_mass
                 end
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[blk_index][blk_elem_index][point] = voigt_cauchy
