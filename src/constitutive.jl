@@ -422,41 +422,33 @@ function Iox(B::Matrix{Float64})
 end
 
 function convect_tangent(CC::Array{Float64}, S::Matrix{Float64}, F::Matrix{Float64})
-    n, _ = size(F)
+    n = size(F,1)
+
+    # Pre-allocate the 4D output
     AA = zeros(n, n, n, n)
-    for i in 1:n
-        for j in 1:n
-            for k in 1:n
-                for l in 1:n
-                    s = 0.0
-                    for p in 1:n
-                        for q in 1:n
-                            s = s + F[i, p] * CC[p, j, l, q] * F[k, q]
-                        end
-                    end
-                    AA[i, j, k, l] = S[l, j] * I[i, k] + s
-                end
-            end
+
+    # Make an explicit identity matrix for easy broadcasting
+    I_n = Matrix{Float64}(I, n, n)
+
+    @inbounds @views for j in 1:n
+        for l in 1:n
+            # Extract the n×n "slice" M where M[p,q] = CC[p,j,l,q]
+            M = view(CC, :, j, l, :)
+
+            # G is the result of F*M*Fᵀ, an n×n matrix
+            G = F * M * F'
+
+            # Then AA[i,j,k,l] = S[l,j] * δ(i,k) + G[i,k]
+            # We can fill that sub-block with a simple broadcast:
+            AA[:, j, :, l] .= S[l,j] .* I_n .+ G
         end
     end
     return AA
 end
 
 function second_from_fourth(AA::Array{Float64})
-    n, _, _, _ = size(AA)
-    A = zeros(n * n, n * n)
-    for i in 1:n
-        for j in 1:n
-            p = n * (i - 1) + j
-            for k in 1:n
-                for l in 1:n
-                    q = n * (k - 1) + l
-                    A[p, q] = AA[i, j, k, l]
-                end
-            end
-        end
-    end
-    return A
+    n = size(AA, 1)
+    return reshape(AA, n^2, n^2)'
 end
 
 function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})

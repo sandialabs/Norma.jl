@@ -500,6 +500,11 @@ function assemble!(
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
+    is_newmark = integrator isa Newmark
+    is_central_difference = integrator isa CentralDifference
+    is_quasistatic = integrator isa QuasiStatic
+    is_dynamic = is_newmark || is_central_difference
+    is_implicit = is_newmark || is_quasistatic
     materials = model.materials
     input_mesh = model.mesh
     mesh_smoothing = model.mesh_smoothing
@@ -511,29 +516,36 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     rows = Vector{Int64}()
     cols = Vector{Int64}()
     stiffness = Vector{Float64}()
-    blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(blocks)
-    if typeof(integrator) == Newmark
+    if is_newmark == true
         mass = Vector{Float64}()
     end
-    if typeof(integrator) == CentralDifference
+    if is_central_difference == true
         lumped_mass = zeros(num_dof)
     end
-
+    blocks = Exodus.read_sets(input_mesh, Block)
+    num_blks = length(blocks)
     for blk_index in 1:num_blks
         material = materials[blk_index]
-        if typeof(integrator) == Newmark || typeof(integrator) == CentralDifference
+        if is_dynamic == true
             ρ = material.ρ
         end
         block = blocks[blk_index]
         blk_id = block.id
         element_type = Exodus.read_block_parameters(input_mesh, blk_id)[1]
         num_points = default_num_int_pts(element_type)
-        N, dNdξ, elem_weights = isoparametric(element_type, num_points)
+        N, dN, elem_weights = isoparametric(element_type, num_points)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
         num_elem_dofs = 3 * num_elem_nodes
-        elem_dofs = zeros(Int64, num_elem_dofs)
+        elem_dofs = Vector{Int64}(undef, num_elem_dofs)
+        element_internal_force = Vector{Float64}(undef, num_elem_dofs)
+        element_stiffness = Matrix{Float64}(undef, num_elem_dofs, num_elem_dofs)
+        if is_newmark == true
+            element_mass = Matrix{Float64}(undef, num_elem_dofs, num_elem_dofs)
+        end
+        if is_central_difference == true
+            element_lumped_mass = Vector{Float64}(undef, num_elem_dofs)
+        end
         for blk_elem_index in 1:num_blk_elems
             conn_indices =
                 ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
@@ -547,47 +559,40 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
             elem_cur_pos = model.current[:, node_indices]
             element_energy = 0.0
-            element_internal_force = zeros(num_elem_dofs)
-            element_stiffness = zeros(num_elem_dofs, num_elem_dofs)
-            if typeof(integrator) == Newmark
-                element_mass = zeros(num_elem_dofs, num_elem_dofs)
+            fill!(element_internal_force, 0.0)
+            fill!(element_stiffness, 0.0)
+            if is_newmark == true
+                fill!(element_mass, 0.0)
             end
-            if typeof(integrator) == CentralDifference
-                element_lumped_mass = zeros(num_elem_dofs)
+            if is_central_difference == true
+                fill!(element_lumped_mass, 0.0)
             end
-            index_x = 1:3:(num_elem_dofs .- 2)
-            index_y = index_x .+ 1
-            index_z = index_x .+ 2
-            elem_dofs[index_x] = 3 .* node_indices .- 2
-            elem_dofs[index_y] = 3 .* node_indices .- 1
-            elem_dofs[index_z] = 3 .* node_indices
+            elem_dofs = reshape(3 .* node_indices' .- [2, 1, 0], :)
             for point in 1:num_points
-                dNdξₚ = dNdξ[:, :, point]
-                dXdξ = dNdξₚ * elem_ref_pos'
-                dxdξ = dNdξₚ * elem_cur_pos'
-                if det(dxdξ) ≤ 0.0
+                dNdξ = dN[:, :, point]
+                dXdξ = dNdξ * elem_ref_pos'
+                dNdX = dXdξ \ dNdξ
+                F = dNdX * elem_cur_pos'
+                J = det(F)
+                B = gradient_operator(dNdX)
+                j = det(dXdξ)
+                if J ≤ 0.0
                     model.failed = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
-                    if typeof(integrator) == QuasiStatic
+                    if is_quasistatic == true
                         return 0.0,
                         zeros(num_dof), zeros(num_dof),
                         spzeros(num_dof, num_dof)
-                    elseif typeof(integrator) == Newmark
+                    elseif is_newmark == true
                         return 0.0,
                         zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof),
                         spzeros(num_dof, num_dof)
-                    elseif typeof(integrator) == CentralDifference
+                    elseif is_central_difference == true
                         return 0.0, zeros(num_dof), zeros(num_dof), zeros(num_dof)
                     else
                         error("Unknown type of time integrator", typeof(integrator))
                     end
                 end
-                dxdX = dXdξ \ dxdξ
-                dNdX = dXdξ \ dNdξₚ
-                B = gradient_operator(dNdX)
-                j = det(dXdξ)
-                J = det(dxdX)
-                F = dxdX
                 W, P, A = constitutive(material, F)
                 stress = P[1:9]
                 moduli = second_from_fourth(A)
@@ -595,18 +600,20 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_energy += W * j * w
                 element_internal_force += B' * stress * j * w
                 element_stiffness += B' * moduli * B * j * w
-                if typeof(integrator) == Newmark
-                    reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
-                    element_mass[index_x, index_x] += reduced_mass
-                    element_mass[index_y, index_y] += reduced_mass
-                    element_mass[index_z, index_z] += reduced_mass
+                if is_dynamic
+                    Nξ = N[:, point]
+                    reduced_mass = Nξ * Nξ' * ρ * j * w
                 end
-                if typeof(integrator) == CentralDifference
-                    reduced_mass = N[:, point] * N[:, point]' * ρ * j * w
+                if is_newmark == true
+                    element_mass[1:3:end, 1:3:end] += reduced_mass
+                    element_mass[2:3:end, 2:3:end] += reduced_mass
+                    element_mass[3:3:end, 3:3:end] += reduced_mass
+                end
+                if is_central_difference == true
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
-                    element_lumped_mass[index_x] += reduced_lumped_mass
-                    element_lumped_mass[index_y] += reduced_lumped_mass
-                    element_lumped_mass[index_z] += reduced_lumped_mass
+                    element_lumped_mass[1:3:end] += reduced_lumped_mass
+                    element_lumped_mass[2:3:end] += reduced_lumped_mass
+                    element_lumped_mass[3:3:end] += reduced_lumped_mass
                 end
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[blk_index][blk_elem_index][point] = voigt_cauchy
@@ -614,35 +621,34 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             energy += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
             internal_force[elem_dofs] += element_internal_force
-            if typeof(integrator) == QuasiStatic
+            if is_quasistatic == true
                 assemble!(rows, cols, stiffness, element_stiffness, elem_dofs)
             end
-            if typeof(integrator) == Newmark
+            if is_newmark == true
                 assemble!(
                     rows, cols, stiffness, mass, element_stiffness, element_mass, elem_dofs
                 )
             end
-            if typeof(integrator) == CentralDifference
+            if is_central_difference == true
                 lumped_mass[elem_dofs] += element_lumped_mass
             end
         end
     end
-
-    if typeof(integrator) == QuasiStatic || typeof(integrator) == Newmark
+    if is_implicit == true
         stiffness_matrix = sparse(rows, cols, stiffness)
     end
-    if typeof(integrator) == Newmark
+    if is_newmark == true
         mass_matrix = sparse(rows, cols, mass)
     end
     if mesh_smoothing == true
         internal_force -= integrator.velocity
     end
     model.internal_force = internal_force
-    if typeof(integrator) == QuasiStatic
+    if is_quasistatic == true
         return energy, internal_force, body_force, stiffness_matrix
-    elseif typeof(integrator) == Newmark
+    elseif is_newmark == true
         return energy, internal_force, body_force, stiffness_matrix, mass_matrix
-    elseif typeof(integrator) == CentralDifference
+    elseif is_central_difference == true
         return energy, internal_force, body_force, lumped_mass
     else
         error("Unknown type of time integrator", typeof(integrator))

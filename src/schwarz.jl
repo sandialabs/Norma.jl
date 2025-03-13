@@ -102,14 +102,7 @@ function SolidSchwarzController(params::Parameters)
 end
 
 function create_schwarz_controller(params::Parameters)
-    type = params["subdomains type"]
-    if type == "static solid mechanics" ||
-        type == "dynamic solid mechanics" ||
-        type == "dynamic linear opinf rom"
-        return SolidSchwarzController(params)
-    else
-        error("Unknown type of Schwarz controller : ", type)
-    end
+    return SolidSchwarzController(params)
 end
 
 function advance_independent(sim::MultiDomainSimulation)
