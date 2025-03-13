@@ -443,20 +443,8 @@ function convect_tangent(CC::Array{Float64}, S::Matrix{Float64}, F::Matrix{Float
 end
 
 function second_from_fourth(AA::Array{Float64})
-    n, _, _, _ = size(AA)
-    A = zeros(n * n, n * n)
-    for i in 1:n
-        for j in 1:n
-            p = n * (i - 1) + j
-            for k in 1:n
-                for l in 1:n
-                    q = n * (k - 1) + l
-                    A[p, q] = AA[i, j, k, l]
-                end
-            end
-        end
-    end
-    return A
+    n = size(AA, 1)
+    return reshape(AA, n^2, n^2)'
 end
 
 function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})
