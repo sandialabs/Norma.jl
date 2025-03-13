@@ -17,10 +17,12 @@ ind2 = find(x2 == min(x2) & y2 == min(y2));
 z = sort(unique([z1;z2])); 
 dispz1 = []; veloz1 = []; accez1 = [];
 dispz2 = []; veloz2 = []; accez2 = [];
+dispzRef1 = []; velozRef1 = []; accezRef1 = [];
+dispzRef2 = []; velozRef2 = []; accezRef2 = [];
 disp_computed = []; velo_computed = []; acce_computed = []; 
 disp_exact = []; velo_exact = []; acce_exact = [];
 fig = figure();
-save_figs = 0;  
+save_figs = 1;  
 ctr = 1; 
 for i=0:100:10000
   if (i < 10) 
@@ -32,6 +34,12 @@ for i=0:100:10000
     velo2_file_name = strcat('02-velo-000', num2str(i), '.csv');
     acce2_file_name = strcat('02-acce-000', num2str(i), '.csv');
     time2_file_name = strcat('02-time-000', num2str(i), '.csv');
+    dispRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-disp-000', num2str(i), '.csv');
+    veloRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-velo-000', num2str(i), '.csv');
+    acceRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-acce-000', num2str(i), '.csv');
+    dispRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-disp-000', num2str(i), '.csv');
+    veloRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-velo-000', num2str(i), '.csv');
+    acceRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-acce-000', num2str(i), '.csv');
   elseif (i < 100) 
     disp1_file_name = strcat('01-disp-00', num2str(i), '.csv');
     velo1_file_name = strcat('01-velo-00', num2str(i), '.csv');
@@ -41,6 +49,12 @@ for i=0:100:10000
     velo2_file_name = strcat('02-velo-00', num2str(i), '.csv');
     acce2_file_name = strcat('02-acce-00', num2str(i), '.csv');
     time2_file_name = strcat('02-time-00', num2str(i), '.csv');
+    dispRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-disp-00', num2str(i), '.csv');
+    veloRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-velo-00', num2str(i), '.csv');
+    acceRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-acce-00', num2str(i), '.csv');
+    dispRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-disp-00', num2str(i), '.csv');
+    veloRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-velo-00', num2str(i), '.csv');
+    acceRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-acce-00', num2str(i), '.csv');
   elseif (i < 1000) 
     disp1_file_name = strcat('01-disp-0', num2str(i), '.csv');
     velo1_file_name = strcat('01-velo-0', num2str(i), '.csv');
@@ -50,6 +64,12 @@ for i=0:100:10000
     velo2_file_name = strcat('02-velo-0', num2str(i), '.csv');
     acce2_file_name = strcat('02-acce-0', num2str(i), '.csv');
     time2_file_name = strcat('02-time-0', num2str(i), '.csv');
+    dispRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-disp-0', num2str(i), '.csv');
+    veloRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-velo-0', num2str(i), '.csv');
+    acceRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-acce-0', num2str(i), '.csv');
+    dispRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-disp-0', num2str(i), '.csv');
+    veloRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-velo-0', num2str(i), '.csv');
+    acceRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-acce-0', num2str(i), '.csv');
   else 
     disp1_file_name = strcat('01-disp-', num2str(i), '.csv');
     velo1_file_name = strcat('01-velo-', num2str(i), '.csv');
@@ -59,6 +79,12 @@ for i=0:100:10000
     velo2_file_name = strcat('02-velo-', num2str(i), '.csv');
     acce2_file_name = strcat('02-acce-', num2str(i), '.csv');
     time2_file_name = strcat('02-time-', num2str(i), '.csv');
+    dispRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-disp-', num2str(i), '.csv');
+    veloRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-velo-', num2str(i), '.csv');
+    acceRef1_file_name = strcat('../../dynamic-opinf-fom-neohookean/01-acce-', num2str(i), '.csv');
+    dispRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-disp-', num2str(i), '.csv');
+    veloRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-velo-', num2str(i), '.csv');
+    acceRef2_file_name = strcat('../../dynamic-opinf-fom-neohookean/02-acce-', num2str(i), '.csv');
   end
   d1 = dlmread(disp1_file_name); 
   v1 = dlmread(velo1_file_name); 
@@ -74,6 +100,19 @@ for i=0:100:10000
   dispz2 = [dispz2, d2(:,3)]; 
   veloz2 = [veloz2, v2(:,3)]; 
   accez2 = [accez2, a2(:,3)];
+  dRef1 = dlmread(dispRef1_file_name); 
+  vRef1 = dlmread(veloRef1_file_name); 
+  aRef1 = dlmread(acceRef1_file_name); 
+  dispzRef1 = [dispzRef1, dRef1(:,3)]; 
+  velozRef1 = [velozRef1, vRef1(:,3)]; 
+  accezRef1 = [accezRef1, aRef1(:,3)]; 
+  dRef2 = dlmread(dispRef2_file_name); 
+  vRef2 = dlmread(veloRef2_file_name); 
+  aRef2 = dlmread(acceRef2_file_name); 
+  dispzRef2 = [dispzRef2, dRef2(:,3)]; 
+  velozRef2 = [velozRef2, vRef2(:,3)]; 
+  accezRef2 = [accezRef2, aRef2(:,3)];
+  z1ind1 = z1(ind1); 
   z1ind1 = z1(ind1); 
   z2ind2 = z2(ind2);
   zz = uniquetol(sort([z1ind1;z2ind2]), 1e-5);
@@ -83,54 +122,62 @@ for i=0:100:10000
   vz2ind2 = veloz2(ind2,ctr); 
   az1ind1 = accez1(ind1,ctr); 
   az2ind2 = accez2(ind2,ctr); 
-  for i = 1:length(zz)
-    ii1 = find(z1ind1 == zz(i)); 
-    ii2 = find(z2ind2 == zz(i)); 
-    dispz_merged(i,1) = 0; 
-    veloz_merged(i,1) = 0; 
-    accez_merged(i,1) = 0; 
+  dzRef1ind1 = dispzRef1(ind1,ctr); 
+  dzRef2ind2 = dispzRef2(ind2,ctr); 
+  vzRef1ind1 = velozRef1(ind1,ctr); 
+  vzRef2ind2 = velozRef2(ind2,ctr); 
+  azRef1ind1 = accezRef1(ind1,ctr); 
+  azRef2ind2 = accezRef2(ind2,ctr); 
+  for k = 1:length(zz)
+    ii1 = find(z1ind1 == zz(k)); 
+    ii2 = find(z2ind2 == zz(k)); 
+    dispz_merged(k,1) = 0; 
+    veloz_merged(k,1) = 0; 
+    accez_merged(k,1) = 0; 
+    dispzRef_merged(k,1) = 0; 
+    velozRef_merged(k,1) = 0; 
+    accezRef_merged(k,1) = 0; 
     if length(ii1) > 0 
-      dispz_merged(i,1) = dispz_merged(i,1) + dz1ind1(ii1); 
-      veloz_merged(i,1) = veloz_merged(i,1) + vz1ind1(ii1); 
-      accez_merged(i,1) = accez_merged(i,1) + az1ind1(ii1); 
+      dispz_merged(k,1) = dispz_merged(k,1) + dz1ind1(ii1); 
+      veloz_merged(k,1) = veloz_merged(k,1) + vz1ind1(ii1); 
+      accez_merged(k,1) = accez_merged(k,1) + az1ind1(ii1); 
+      dispzRef_merged(k,1) = dispzRef_merged(k,1) + dzRef1ind1(ii1); 
+      velozRef_merged(k,1) = velozRef_merged(k,1) + vzRef1ind1(ii1); 
+      accezRef_merged(k,1) = accezRef_merged(k,1) + azRef1ind1(ii1); 
     end
     if length(ii2) > 0 
-      dispz_merged(i,1) = dispz_merged(i,1) + dz2ind2(ii2); 
-      veloz_merged(i,1) = veloz_merged(i,1) + vz2ind2(ii2); 
-      accez_merged(i,1) = accez_merged(i,1) + az2ind2(ii2); 
+      dispz_merged(k,1) = dispz_merged(k,1) + dz2ind2(ii2); 
+      veloz_merged(k,1) = veloz_merged(k,1) + vz2ind2(ii2); 
+      accez_merged(k,1) = accez_merged(k,1) + az2ind2(ii2); 
+      dispzRef_merged(k,1) = dispzRef_merged(k,1) + dzRef2ind2(ii2); 
+      velozRef_merged(k,1) = velozRef_merged(k,1) + vzRef2ind2(ii2); 
+      accezRef_merged(k,1) = accezRef_merged(k,1) + azRef2ind2(ii2); 
     end
     if length(ii1) + length(ii2) > 1 
-      dispz_merged(i,1) = dispz_merged(i,1)/2; 
-      veloz_merged(i,1) = veloz_merged(i,1)/2; 
-      accez_merged(i,1) = accez_merged(i,1)/2; 
+      dispz_merged(k,1) = dispz_merged(k,1)/2; 
+      veloz_merged(k,1) = veloz_merged(k,1)/2; 
+      accez_merged(k,1) = accez_merged(k,1)/2; 
+      dispzRef_merged(k,1) = dispzRef_merged(k,1)/2; 
+      velozRef_merged(k,1) = velozRef_merged(k,1)/2; 
+      accezRef_merged(k,1) = accezRef_merged(k,1)/2; 
     end 
   end
-  c = sqrt(1e9/1e3);
-  a = 0.001;
-  b = 0.0;
-  s = 0.02;
-  T = 1e-3;
-  d_ex = 1/2*a*(exp(-(zz-c*t1-b).^2/2/s^2) + exp(-(zz+c*t1-b).^2/2/s^2))...
-         - 1/2*a*(exp(-(zz-c*(T-t1)-b).^2/2/s^2) + exp(-(zz+c*(T-t1)-b).^2/2/s^2));
-  v_ex = c/2*a/s^2*((zz-c*t1-b).*exp(-(zz-c*t1-b).^2/2/s^2) - (zz+c*t1-b).*exp(-(zz+c*t1-b).^2/2/s^2))...
-          + c/2*a/s^2*((zz-c*(T-t1)-b).*exp(-(zz-c*(T-t1)-b).^2/2/s^2) - ...
-          (zz+c*(T-t1)-b).*exp(-(zz+c*(T-t1)-b).^2/2/s^2));
-  a_ex = 1/2*a*(-c^2/s^2*exp(-1/2*(zz-c*t1-b).^2/s^2)+1/s^4*c^2*((zz-c*t1-b).^2).*exp(-1/2*(zz-c*t1-b).^2/s^2)-c^2/s^2*exp(-1/2*(zz+c*t1-b).^2/s^2)+1/s^4*c^2*((zz+c*t1-b).^2).*exp(-1/2*(zz+c*t1-b).^2/s^2)) - ...
-             1/2*a*(-c^2/s^2*exp(-1/2*(zz-c*(T-t1)-b).^2/s^2)+1/s^4*c^2*((zz-c*(T-t1)-b).^2).*exp(-1/2*(zz-c*(T-t1)-b).^2/s^2)-c^2/s^2*exp(-1/2*(zz+c*(T-t1)-b).^2/s^2)+1/s^4*c^2*((zz+c*(T-t1)-b).^2).*exp(-1/2*(zz+c*(T-t1)-b).^2/s^2));
   disp_computed = [disp_computed, dispz_merged]; 
   velo_computed = [velo_computed, veloz_merged]; 
   acce_computed = [acce_computed, accez_merged]; 
-  disp_exact = [disp_exact, d_ex]; 
-  velo_exact = [velo_exact, v_ex]; 
-  acce_exact = [acce_exact, a_ex]; 
+  disp_exact = [disp_exact, dispzRef_merged]; 
+  velo_exact = [velo_exact, velozRef_merged]; 
+  acce_exact = [acce_exact, accezRef_merged]; 
 
   subplot(3,1,1);
   ax = gca;
   plot(z1(ind1), dispz1(ind1,ctr), '-b');
   hold on; 
   plot(z2(ind2), dispz2(ind2,ctr), '-r');
-  %hold on;
-  %plot(zz, d_ex, '--c'); 
+  hold on;
+  plot(z1(ind1), dispzRef1(ind1,ctr), '--c'); 
+  hold on;
+  plot(z2(ind2), dispzRef2(ind2,ctr), '--g'); 
   xlabel('z'); 
   ylabel('z-disp'); 
   hold on;
@@ -142,8 +189,10 @@ for i=0:100:10000
   plot(z1(ind1), veloz1(ind1,ctr), '-b');
   hold on; 
   plot(z2(ind2), veloz2(ind2,ctr), '-r');
-  %hold on;
-  %plot(zz, v_ex, '--c'); 
+  hold on;
+  plot(z1(ind1), velozRef1(ind1,ctr), '--c'); 
+  hold on;
+  plot(z2(ind2), velozRef2(ind2,ctr), '--g'); 
   xlabel('z'); 
   ylabel('z-velo'); 
   hold on;
@@ -155,8 +204,10 @@ for i=0:100:10000
   plot(z1(ind1), accez1(ind1,ctr), '-b');
   hold on; 
   plot(z2(ind2), accez2(ind2,ctr), '-r');
-  %hold on;
-  %plot(zz, a_ex, '--c'); 
+  hold on;
+  plot(z1(ind1), accezRef1(ind1,ctr), '--c'); 
+  hold on;
+  plot(z2(ind2), accezRef2(ind2,ctr), '--g'); 
   xlabel('z'); 
   ylabel('z-acce'); 
   title(['acceleration snapshot ', num2str(i+1), ' at time = ', num2str(t1)]);
@@ -192,18 +243,18 @@ numerator_velo = 0;
 denomenator_velo = 0; 
 numerator_acce = 0; 
 denomenator_acce = 0; 
-%for i=1:sz(2) 
-%  numerator_disp = numerator_disp + norm(disp_computed(:,i) - disp_exact(:,i))^2; 
-%  denomenator_disp = denomenator_disp + norm(disp_exact(:,i))^2; 
-%  numerator_velo = numerator_velo + norm(velo_computed(:,i) - velo_exact(:,i))^2; 
-%  denomenator_velo = denomenator_velo + norm(velo_exact(:,i))^2; 
-%  numerator_acce = numerator_acce + norm(acce_computed(:,i) - acce_exact(:,i))^2; 
-%  denomenator_acce = denomenator_acce + norm(acce_exact(:,i))^2; 
-%end
-%dispz_relerr = sqrt(numerator_disp/denomenator_disp); 
-%veloz_relerr = sqrt(numerator_velo/denomenator_velo); 
-%accez_relerr = sqrt(numerator_acce/denomenator_acce); 
+for i=1:sz(2) 
+  numerator_disp = numerator_disp + norm(disp_computed(:,i) - disp_exact(:,i))^2; 
+  denomenator_disp = denomenator_disp + norm(disp_exact(:,i))^2; 
+  numerator_velo = numerator_velo + norm(velo_computed(:,i) - velo_exact(:,i))^2; 
+  denomenator_velo = denomenator_velo + norm(velo_exact(:,i))^2; 
+  numerator_acce = numerator_acce + norm(acce_computed(:,i) - acce_exact(:,i))^2; 
+  denomenator_acce = denomenator_acce + norm(acce_exact(:,i))^2; 
+end
+dispz_relerr = sqrt(numerator_disp/denomenator_disp); 
+veloz_relerr = sqrt(numerator_velo/denomenator_velo); 
+accez_relerr = sqrt(numerator_acce/denomenator_acce); 
 
-%fprintf('z-disp avg rel error = %e\n', dispz_relerr); 
-%fprintf('z-velo avg rel error = %e\n', veloz_relerr); 
-%fprintf('z-acce avg rel error = %e\n', accez_relerr); 
+fprintf('z-disp avg rel error = %e\n', dispz_relerr); 
+fprintf('z-velo avg rel error = %e\n', veloz_relerr); 
+fprintf('z-acce avg rel error = %e\n', accez_relerr); 
