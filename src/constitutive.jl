@@ -426,8 +426,12 @@ function convect_tangent(CC::SArray{Tuple{3, 3, 3, 3}, Float64},
     for j in 1:3
         for l in 1:3
             # Extract slice M[p,q] = CC[p, j, l, q]
-            M = @view CC[:, j, l, :]
-
+            M = @SMatrix [
+                CC[1,j,l,1] CC[1,j,l,2] CC[1,j,l,3];
+                CC[2,j,l,1] CC[2,j,l,2] CC[2,j,l,3];
+                CC[3,j,l,1] CC[3,j,l,2] CC[3,j,l,3]
+            ]
+            
             # Compute G = F * M * Fᵀ
             G = F * M * F'
 
