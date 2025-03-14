@@ -410,8 +410,6 @@ function Iox(B::SMatrix{3, 3, Float64, 9})
     return SArray{Tuple{3, 3, 3, 3}}(C)
 end
 
-using StaticArrays
-
 function convect_tangent(CC::SArray{Tuple{3, 3, 3, 3}, Float64},
     S::SMatrix{3, 3, Float64, 9},
     F::SMatrix{3, 3, Float64, 9})

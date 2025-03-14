@@ -9,7 +9,6 @@ include("interpolation.jl")
 include("ics_bcs.jl")
 
 using NPZ
-using StaticArrays
 
 function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
