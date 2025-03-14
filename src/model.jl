@@ -574,7 +574,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             elem_dofs = reshape(3 .* node_indices' .- [2, 1, 0], :)
             for point in 1:num_points
                 dNdξ = dN[:, :, point]
-                dXdξ = dNdξ * elem_ref_pos'
+                dXdξ = SMatrix{3,3,Float64,9}(dNdξ * elem_ref_pos')
                 dNdX = dXdξ \ dNdξ
                 F = SMatrix{3,3,Float64,9}(dNdX * elem_cur_pos')
                 J = det(F)
