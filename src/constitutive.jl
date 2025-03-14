@@ -4,6 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using StaticArrays
+
 function elastic_constants(params::Parameters)
     E = 0.0
     ν = 0.0
@@ -254,7 +256,7 @@ function dev(A::Matrix{Float64})
 end
 
 function stress_update(
-    material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64
+    material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64,
 )
     max_rma_iter = 64
     max_ls_iter = 64
@@ -360,179 +362,204 @@ struct Linear_Isotropic <: Thermal
     end
 end
 
-function odot(A::Matrix{Float64}, B::Matrix{Float64})
-    n, _ = size(A)
-    C = zeros(n, n, n, n)
-    for a in 1:n
-        for b in 1:n
-            for c in 1:n
-                for d in 1:n
-                    C[a, b, c, d] = A[a, c] * B[b, d] + A[a, d] * B[b, c]
+function odot(A::SMatrix{3, 3, Float64, 9}, B::SMatrix{3, 3, Float64, 9})
+    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                for d in 1:3
+                    C[a, b, c, d] = 0.5 * (A[a, c] * B[b, d] + A[a, d] * B[b, c])
                 end
             end
         end
     end
-    C = 0.5 * C
-    return C
+    return SArray{Tuple{3, 3, 3, 3}}(C)
 end
 
-function ox(A::Matrix{Float64}, B::Matrix{Float64})
-    n, _ = size(A)
-    C = zeros(n, n, n, n)
-    for a in 1:n
-        for b in 1:n
-            for c in 1:n
-                for d in 1:n
+function ox(A::SMatrix{3, 3, Float64, 9}, B::SMatrix{3, 3, Float64, 9})
+    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                for d in 1:3
                     C[a, b, c, d] = A[a, b] * B[c, d]
                 end
             end
         end
     end
-    return C
+    return SArray{Tuple{3, 3, 3, 3}}(C)
 end
 
-function oxI(A::Matrix{Float64})
-    n, _ = size(A)
-    C = zeros(n, n, n, n)
-    for a in 1:n
-        for b in 1:n
-            for c in 1:n
-                for d in 1:n
-                    C[a, b, c, d] = A[a, b] * I[c, d]
-                end
+function oxI(A::SMatrix{3, 3, Float64, 9})
+    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                C[a, b, c, c] = A[a, b]  # Only fill diagonal blocks
             end
         end
     end
-    return C
+    return SArray{Tuple{3, 3, 3, 3}}(C)
 end
 
-function Iox(B::Matrix{Float64})
-    n, _ = size(B)
-    C = zeros(n, n, n, n)
-    for a in 1:n
-        for b in 1:n
-            for c in 1:n
-                for d in 1:n
-                    C[a, b, c, d] = I[a, b] * B[c, d]
-                end
-            end
-        end
+function Iox(B::SMatrix{3, 3, Float64, 9})
+    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    for a in 1:3
+        C[a, a, :, :] .= B  # Fill diagonal blocks directly
     end
-    return C
+    return SArray{Tuple{3, 3, 3, 3}}(C)
 end
 
-function convect_tangent(CC::Array{Float64}, S::Matrix{Float64}, F::Matrix{Float64})
-    n = size(F,1)
+using StaticArrays
 
-    # Pre-allocate the 4D output
-    AA = zeros(n, n, n, n)
+function convect_tangent(CC::SArray{Tuple{3, 3, 3, 3}, Float64},
+    S::SMatrix{3, 3, Float64, 9},
+    F::SMatrix{3, 3, Float64, 9})
+    # Pre-allocate the 4D output as mutable static array
+    AA = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
 
-    # Make an explicit identity matrix for easy broadcasting
-    I_n = Matrix{Float64}(I, n, n)
+    # Identity matrix for 3D
+    I_n = @SMatrix [                                                            1.0 0.0 0.0;
+        0.0 1.0 0.0;
+        0.0 0.0 1.0]
 
-    @inbounds @views for j in 1:n
-        for l in 1:n
-            # Extract the n×n "slice" M where M[p,q] = CC[p,j,l,q]
-            M = view(CC, :, j, l, :)
+    for j in 1:3
+        for l in 1:3
+            # Extract slice M[p,q] = CC[p, j, l, q]
+            M = @view CC[:, j, l, :]
 
-            # G is the result of F*M*Fᵀ, an n×n matrix
+            # Compute G = F * M * Fᵀ
             G = F * M * F'
 
-            # Then AA[i,j,k,l] = S[l,j] * δ(i,k) + G[i,k]
-            # We can fill that sub-block with a simple broadcast:
-            AA[:, j, :, l] .= S[l,j] .* I_n .+ G
+            # Fill the result tensor
+            AA[:, j, :, l] .= S[l, j] .* I_n .+ G
         end
     end
-    return AA
+    return SArray{Tuple{3, 3, 3, 3}}(AA)  # Convert to immutable for better efficiency
 end
 
-function second_from_fourth(AA::Array{Float64})
-    n = size(AA, 1)
-    return reshape(AA, n^2, n^2)'
+function second_from_fourth(AA::SArray{Tuple{3, 3, 3, 3}, Float64, 4})
+    # Reshape the 3x3x3x3 tensor to 9x9 directly
+    return SMatrix{9, 9, Float64, 81}(reshape(AA, 9, 9)')
 end
 
-function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})
+const I3 = @SMatrix [                                                                                     1.0 0.0 0.0;
+    0.0 1.0 0.0;
+    0.0 0.0 1.0]
+
+function constitutive(material::SaintVenant_Kirchhoff,
+    F::SMatrix{3, 3, Float64, 9})
     C = F' * F
-    E = 0.5 * (C - I)
+    E = 0.5 .* (C - I3)
+
     λ = material.λ
     μ = material.μ
+
     trE = tr(E)
-    W = 0.5 * λ * trE * trE + μ * tr(E * E)
-    S = λ * trE * I + 2.0 * μ * E
-    CC = zeros(3, 3, 3, 3)
+    # Strain energy
+    W = 0.5 * λ * (trE^2) + μ * tr(E * E)
+
+    # 2nd Piola-Kirchhoff stress
+    S = λ * trE .* I3 .+ 2.0 .* μ .* E
+
+    # 4th-order elasticity tensor CC
+    # Build it in an MArray, then convert to SArray
+    CC_m = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+
     for i in 1:3
         for j in 1:3
-            δᵢⱼ = I[i, j]
             for k in 1:3
-                δᵢₖ = I[i, k]
-                δⱼₖ = I[j, k]
                 for l in 1:3
-                    δᵢₗ = I[i, l]
-                    δⱼₗ = I[j, l]
-                    δₖₗ = I[k, l]
-                    CC[i, j, k, l] = λ * δᵢⱼ * δₖₗ + μ * (δᵢₖ * δⱼₗ + δᵢₗ * δⱼₖ)
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] +
+                                       μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
     end
+    CC_s = SArray{Tuple{3, 3, 3, 3}}(CC_m)
+
+    # 1st Piola-Kirchhoff stress
     P = F * S
-    AA = convect_tangent(CC, S, F)
+
+    # Convert the 4th-order tensor for large-deformation convect_tangent
+    AA = convect_tangent(CC_s, S, F)
+
     return W, P, AA
 end
 
-function constitutive(material::Linear_Elastic, F::Matrix{Float64})
-    ∇u = F - I
-    ϵ = MiniTensor.symm(∇u)
+function constitutive(material::Linear_Elastic,
+    F::SMatrix{3, 3, Float64, 9})
+    ∇u = F - I3
+    ϵ = 0.5 .* (∇u + ∇u')
+
     λ = material.λ
     μ = material.μ
+
     trϵ = tr(ϵ)
-    W = 0.5 * λ * trϵ * trϵ + μ * tr(ϵ * ϵ)
-    σ = λ * trϵ * I + 2.0 * μ * ϵ
-    CC = zeros(3, 3, 3, 3)
+    # Strain energy
+    W = 0.5 * λ * (trϵ^2) + μ * tr(ϵ * ϵ)
+
+    σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
+
+    # 4th-order elasticity tensor
+    CC_m = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
     for i in 1:3
         for j in 1:3
-            δᵢⱼ = I[i, j]
             for k in 1:3
-                δᵢₖ = I[i, k]
-                δⱼₖ = I[j, k]
                 for l in 1:3
-                    δᵢₗ = I[i, l]
-                    δⱼₗ = I[j, l]
-                    δₖₗ = I[k, l]
-                    CC[i, j, k, l] = λ * δᵢⱼ * δₖₗ + μ * (δᵢₖ * δⱼₗ + δᵢₗ * δⱼₖ)
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] +
+                                       μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
     end
-    return W, σ, CC
+    CC_s = SArray{Tuple{3, 3, 3, 3}}(CC_m)
+
+    return W, σ, CC_s
 end
 
-function constitutive(material::Neohookean, F::Matrix{Float64})
+function constitutive(material::Neohookean,
+    F::SMatrix{3, 3, Float64, 9})
     C = F' * F
     J2 = det(C)
-    Jm23 = 1.0 / cbrt(J2)
+    Jm23 = inv(cbrt(J2))
+
     trC = tr(C)
     κ = material.κ
     μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
+
+    # Decompose energy: volumetric + deviatoric
+    Wvol = 0.25 * κ * (J2 - log(J2) - 1.0)
+    Wdev = 0.5 * μ * (Jm23 * trC - 3.0)
     W = Wvol + Wdev
+
+    # Inverse of C
     IC = inv(C)
-    Svol = 0.5 * κ * (J2 - 1) * IC
-    Sdev = μ * Jm23 * (I - IC * trC / 3)
-    S = Svol + Sdev
+
+    # S = Svol + Sdev
+    Svol = 0.5 * κ * (J2 - 1.0) .* IC
+    Sdev = μ .* Jm23 .* (I3 .- (IC .* (trC / 3.0)))
+    S = Svol .+ Sdev
+
     ICxIC = ox(IC, IC)
     ICoIC = odot(IC, IC)
-    μJ2n = 2.0 * μ * Jm23 / 3
-    CCvol = κ * (J2 * ICxIC - (J2 - 1) * ICoIC)
-    CCdev = μJ2n * (trC * (ICxIC / 3 + ICoIC) - oxI(IC) - Iox(IC))
-    CC = CCvol + CCdev
+    μJ2n = 2.0 * μ * Jm23 / 3.0
+
+    CCvol = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC)
+    CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
+
+    CC = CCvol .+ CCdev
+
+    # 1st Piola stress
     P = F * S
+    # Large-deformation tangent
     AA = convect_tangent(CC, S, F)
+
     return W, P, AA
 end
 
-function constitutive(material::SethHill, F::Matrix{Float64})
+function constitutive(material::SethHill,
+    F::SMatrix{3, 3, Float64, 9})
     C = F' * F
     F⁻ᵀ = inv(F)'
     J = det(F)
@@ -561,7 +588,8 @@ function constitutive(material::SethHill, F::Matrix{Float64})
             F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ)
         )
     P = Pbulk + Pshear
-    AA = zeros(3, 3, 3, 3)
+    AA_m = MArray{Tuple{3, 3, 3, 3}, Float64}(0.0)  # fill with zeros
+    AA = SArray{Tuple{3, 3, 3, 3}}(AA_m)
     return W, P, AA
 end
 

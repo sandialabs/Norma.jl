@@ -9,6 +9,7 @@ include("interpolation.jl")
 include("ics_bcs.jl")
 
 using NPZ
+using StaticArrays
 
 function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
@@ -419,16 +420,30 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
 end
 
 function voigt_cauchy_from_stress(
-    _::Solid, P::Matrix{Float64}, F::Matrix{Float64}, J::Float64
+    _::Solid, P::SMatrix{3,3,Float64,9}, 
+    F::SMatrix{3,3,Float64,9}, 
+    J::Float64
 )
+    # Compute the Cauchy stress tensor
     σ = F * P' ./ J
-    return [σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2]]
+
+    # Return as an SVector for efficient indexing and stack-allocation
+    return SVector{6, Float64}(
+        σ[1, 1], σ[2, 2], σ[3, 3],
+        σ[2, 3], σ[1, 3], σ[1, 2]
+    )
 end
 
 function voigt_cauchy_from_stress(
-    _::Linear_Elastic, σ::Matrix{Float64}, _::Matrix{Float64}, _::Float64
+    _::Linear_Elastic, 
+    σ::SMatrix{3,3,Float64,9}, 
+    _::SMatrix{3,3,Float64,9}, 
+    _::Float64
 )
-    return [σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2]]
+    return SVector{6, Float64}(
+        σ[1, 1], σ[2, 2], σ[3, 3],
+        σ[2, 3], σ[1, 3], σ[1, 2]
+    )
 end
 
 function assemble!(
@@ -572,7 +587,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dNdξ = dN[:, :, point]
                 dXdξ = dNdξ * elem_ref_pos'
                 dNdX = dXdξ \ dNdξ
-                F = dNdX * elem_cur_pos'
+                F = SMatrix{3,3,Float64,9}(dNdX * elem_cur_pos')
                 J = det(F)
                 B = gradient_operator(dNdX)
                 j = det(dXdξ)
