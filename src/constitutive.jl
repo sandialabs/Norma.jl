@@ -256,7 +256,7 @@ function dev(A::Matrix{Float64})
 end
 
 function stress_update(
-    material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64,
+    material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64
 )
     max_rma_iter = 64
     max_ls_iter = 64
@@ -362,8 +362,8 @@ struct Linear_Isotropic <: Thermal
     end
 end
 
-function odot(A::SMatrix{3, 3, Float64, 9}, B::SMatrix{3, 3, Float64, 9})
-    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+function odot(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
     for a in 1:3
         for b in 1:3
             for c in 1:3
@@ -373,11 +373,11 @@ function odot(A::SMatrix{3, 3, Float64, 9}, B::SMatrix{3, 3, Float64, 9})
             end
         end
     end
-    return SArray{Tuple{3, 3, 3, 3}}(C)
+    return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function ox(A::SMatrix{3, 3, Float64, 9}, B::SMatrix{3, 3, Float64, 9})
-    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+function ox(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
     for a in 1:3
         for b in 1:3
             for c in 1:3
@@ -387,11 +387,11 @@ function ox(A::SMatrix{3, 3, Float64, 9}, B::SMatrix{3, 3, Float64, 9})
             end
         end
     end
-    return SArray{Tuple{3, 3, 3, 3}}(C)
+    return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function oxI(A::SMatrix{3, 3, Float64, 9})
-    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+function oxI(A::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
     for a in 1:3
         for b in 1:3
             for c in 1:3
@@ -399,37 +399,39 @@ function oxI(A::SMatrix{3, 3, Float64, 9})
             end
         end
     end
-    return SArray{Tuple{3, 3, 3, 3}}(C)
+    return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function Iox(B::SMatrix{3, 3, Float64, 9})
-    C = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+function Iox(B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
     for a in 1:3
         C[a, a, :, :] .= B  # Fill diagonal blocks directly
     end
-    return SArray{Tuple{3, 3, 3, 3}}(C)
+    return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function convect_tangent(CC::SArray{Tuple{3, 3, 3, 3}, Float64},
-    S::SMatrix{3, 3, Float64, 9},
-    F::SMatrix{3, 3, Float64, 9})
+function convect_tangent(
+    CC::SArray{Tuple{3,3,3,3},Float64}, S::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9}
+)
     # Pre-allocate the 4D output as mutable static array
-    AA = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    AA = MArray{Tuple{3,3,3,3},Float64}(undef)
 
     # Identity matrix for 3D
-    I_n = @SMatrix [                                                            1.0 0.0 0.0;
-        0.0 1.0 0.0;
-        0.0 0.0 1.0]
+    I_n = @SMatrix [
+        1.0 0.0 0.0
+        0.0 1.0 0.0
+        0.0 0.0 1.0
+    ]
 
     for j in 1:3
         for l in 1:3
             # Extract slice M[p,q] = CC[p, j, l, q]
             M = @SMatrix [
-                CC[1,j,l,1] CC[1,j,l,2] CC[1,j,l,3];
-                CC[2,j,l,1] CC[2,j,l,2] CC[2,j,l,3];
-                CC[3,j,l,1] CC[3,j,l,2] CC[3,j,l,3]
+                CC[1, j, l, 1] CC[1, j, l, 2] CC[1, j, l, 3]
+                CC[2, j, l, 1] CC[2, j, l, 2] CC[2, j, l, 3]
+                CC[3, j, l, 1] CC[3, j, l, 2] CC[3, j, l, 3]
             ]
-            
+
             # Compute G = F * M * Fᵀ
             G = F * M * F'
 
@@ -437,20 +439,21 @@ function convect_tangent(CC::SArray{Tuple{3, 3, 3, 3}, Float64},
             AA[:, j, :, l] .= S[l, j] .* I_n .+ G
         end
     end
-    return SArray{Tuple{3, 3, 3, 3}}(AA)  # Convert to immutable for better efficiency
+    return SArray{Tuple{3,3,3,3}}(AA)  # Convert to immutable for better efficiency
 end
 
-function second_from_fourth(AA::SArray{Tuple{3, 3, 3, 3}, Float64, 4})
+function second_from_fourth(AA::SArray{Tuple{3,3,3,3},Float64,4})
     # Reshape the 3x3x3x3 tensor to 9x9 directly
-    return SMatrix{9, 9, Float64, 81}(reshape(AA, 9, 9)')
+    return SMatrix{9,9,Float64,81}(reshape(AA, 9, 9)')
 end
 
-const I3 = @SMatrix [                                                                                     1.0 0.0 0.0;
-    0.0 1.0 0.0;
-    0.0 0.0 1.0]
+const I3 = @SMatrix [
+    1.0 0.0 0.0
+    0.0 1.0 0.0
+    0.0 0.0 1.0
+]
 
-function constitutive(material::SaintVenant_Kirchhoff,
-    F::SMatrix{3, 3, Float64, 9})
+function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9})
     C = F' * F
     E = 0.5 .* (C - I3)
 
@@ -466,19 +469,20 @@ function constitutive(material::SaintVenant_Kirchhoff,
 
     # 4th-order elasticity tensor CC
     # Build it in an MArray, then convert to SArray
-    CC_m = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
 
     for i in 1:3
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] +
-                                       μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
+                    CC_m[i, j, k, l] =
+                        λ * I3[i, j] * I3[k, l] +
+                        μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
     end
-    CC_s = SArray{Tuple{3, 3, 3, 3}}(CC_m)
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
 
     # 1st Piola-Kirchhoff stress
     P = F * S
@@ -489,8 +493,7 @@ function constitutive(material::SaintVenant_Kirchhoff,
     return W, P, AA
 end
 
-function constitutive(material::Linear_Elastic,
-    F::SMatrix{3, 3, Float64, 9})
+function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
     ∇u = F - I3
     ϵ = 0.5 .* (∇u + ∇u')
 
@@ -504,24 +507,24 @@ function constitutive(material::Linear_Elastic,
     σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
 
     # 4th-order elasticity tensor
-    CC_m = MArray{Tuple{3, 3, 3, 3}, Float64}(undef)
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] +
-                                       μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
+                    CC_m[i, j, k, l] =
+                        λ * I3[i, j] * I3[k, l] +
+                        μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
     end
-    CC_s = SArray{Tuple{3, 3, 3, 3}}(CC_m)
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
 
     return W, σ, CC_s
 end
 
-function constitutive(material::Neohookean,
-    F::SMatrix{3, 3, Float64, 9})
+function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9})
     C = F' * F
     J2 = det(C)
     Jm23 = inv(cbrt(J2))
@@ -560,8 +563,7 @@ function constitutive(material::Neohookean,
     return W, P, AA
 end
 
-function constitutive(material::SethHill,
-    F::SMatrix{3, 3, Float64, 9})
+function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
     C = F' * F
     F⁻ᵀ = inv(F)'
     J = det(F)
@@ -590,8 +592,8 @@ function constitutive(material::SethHill,
             F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ)
         )
     P = Pbulk + Pshear
-    AA_m = MArray{Tuple{3, 3, 3, 3}, Float64}(0.0)  # fill with zeros
-    AA = SArray{Tuple{3, 3, 3, 3}}(AA_m)
+    AA_m = MArray{Tuple{3,3,3,3},Float64}(0.0)  # fill with zeros
+    AA = SArray{Tuple{3,3,3,3}}(AA_m)
     return W, P, AA
 end
 

@@ -419,30 +419,19 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
 end
 
 function voigt_cauchy_from_stress(
-    _::Solid, P::SMatrix{3,3,Float64,9}, 
-    F::SMatrix{3,3,Float64,9}, 
-    J::Float64
+    _::Solid, P::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9}, J::Float64
 )
     # Compute the Cauchy stress tensor
     σ = F * P' ./ J
 
     # Return as an SVector for efficient indexing and stack-allocation
-    return SVector{6, Float64}(
-        σ[1, 1], σ[2, 2], σ[3, 3],
-        σ[2, 3], σ[1, 3], σ[1, 2]
-    )
+    return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
 function voigt_cauchy_from_stress(
-    _::Linear_Elastic, 
-    σ::SMatrix{3,3,Float64,9}, 
-    _::SMatrix{3,3,Float64,9}, 
-    _::Float64
+    _::Linear_Elastic, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64
 )
-    return SVector{6, Float64}(
-        σ[1, 1], σ[2, 2], σ[3, 3],
-        σ[2, 3], σ[1, 3], σ[1, 2]
-    )
+    return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
 function assemble!(
@@ -560,6 +549,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         if is_central_difference == true
             element_lumped_mass = Vector{Float64}(undef, num_elem_dofs)
         end
+        B = Matrix{Float64}(undef, 9, num_elem_dofs)
         for blk_elem_index in 1:num_blk_elems
             conn_indices =
                 ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
@@ -588,7 +578,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dNdX = dXdξ \ dNdξ
                 F = SMatrix{3,3,Float64,9}(dNdX * elem_cur_pos')
                 J = det(F)
-                B = gradient_operator(dNdX)
+                gradient_operator!(B, dNdX)
                 j = det(dXdξ)
                 if J ≤ 0.0
                     model.failed = true
