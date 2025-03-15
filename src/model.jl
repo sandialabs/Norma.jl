@@ -435,11 +435,11 @@ function voigt_cauchy_from_stress(
 end
 
 function assemble!(
-    rows::Vector{Int},
-    cols::Vector{Int},
+    rows::Vector{Int64},
+    cols::Vector{Int64},
     global_stiff::Vector{Float64},
-    elem_stiff::Matrix{Float64},
-    dofs::Vector{Int},
+    elem_stiff::AbstractMatrix{Float64},
+    dofs::AbstractVector{Int64},
 )
     ndofs = length(dofs)
     n2 = ndofs * ndofs
@@ -467,13 +467,13 @@ function assemble!(
 end
 
 function assemble!(
-    rows::Vector{Int},
-    cols::Vector{Int},
+    rows::Vector{Int64},
+    cols::Vector{Int64},
     global_stiff::Vector{Float64},
     global_mass::Vector{Float64},
-    elem_stiff::Matrix{Float64},
-    elem_mass::Matrix{Float64},
-    dofs::Vector{Int},
+    elem_stiff::AbstractMatrix{Float64},
+    elem_mass::AbstractMatrix{Float64},
+    dofs::AbstractVector{Int64},
 )
     ndofs = length(dofs)
     n2 = ndofs * ndofs
@@ -500,6 +500,42 @@ function assemble!(
         end
     end
     return nothing
+end
+
+function create_element_matrix(::Type{T}, ::Val{4}) where {T}
+    return MMatrix{12,12,T}(undef)
+end
+
+function create_element_matrix(::Type{T}, ::Val{8}) where {T}
+    return MMatrix{24,24,T}(undef)
+end
+
+function create_element_matrix(::Type{T}, ::Val{10}) where {T}
+    return MMatrix{30,30,T}(undef)
+end
+
+function create_element_vector(::Type{T}, ::Val{4}) where {T}
+    return MVector{12,T}(undef)
+end
+
+function create_element_vector(::Type{T}, ::Val{8}) where {T}
+    return MVector{24,T}(undef)
+end
+
+function create_element_vector(::Type{T}, ::Val{10}) where {T}
+    return MVector{30,T}(undef)
+end
+
+function create_gradient_operator(::Type{T}, ::Val{4}) where {T}
+    return MMatrix{9,12,T}(undef)
+end
+
+function create_gradient_operator(::Type{T}, ::Val{8}) where {T}
+    return MMatrix{9,24,T}(undef)
+end
+
+function create_gradient_operator(::Type{T}, ::Val{10}) where {T}
+    return MMatrix{9,30,T}(undef)
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
@@ -539,17 +575,16 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         N, dN, elem_weights = isoparametric(element_type, num_points)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
-        num_elem_dofs = 3 * num_elem_nodes
-        elem_dofs = Vector{Int64}(undef, num_elem_dofs)
-        element_internal_force = Vector{Float64}(undef, num_elem_dofs)
-        element_stiffness = Matrix{Float64}(undef, num_elem_dofs, num_elem_dofs)
+        elem_dofs = create_element_vector(Int64, Val(num_elem_nodes))
+        element_internal_force = create_element_vector(Float64, Val(num_elem_nodes))
+        element_stiffness = create_element_matrix(Float64, Val(num_elem_nodes))
         if is_newmark == true
-            element_mass = Matrix{Float64}(undef, num_elem_dofs, num_elem_dofs)
+            element_mass = create_element_matrix(Float64, Val(num_elem_nodes))
         end
         if is_central_difference == true
-            element_lumped_mass = Vector{Float64}(undef, num_elem_dofs)
+            element_lumped_mass = create_element_vector(Float64, Val(num_elem_nodes))
         end
-        B = Matrix{Float64}(undef, 9, num_elem_dofs)
+        B = create_gradient_operator(Float64, Val(num_elem_nodes))
         for blk_elem_index in 1:num_blk_elems
             conn_indices =
                 ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
