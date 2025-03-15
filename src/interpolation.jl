@@ -440,21 +440,16 @@ function isoparametric(element_type::String, num_int::Integer)
     end
 end
 
-function gradient_operator(dNdX::Matrix{Float64})
-    dim, nen = size(dNdX)
-    B = zeros(dim * dim, nen * dim)
-    for i in 1:dim
-        for j in 1:dim
-            p = dim * (i - 1) + j
-            for a in 1:nen
-                for k in 1:dim
-                    q = dim * (a - 1) + k
-                    B[p, q] = I[i, k] * dNdX[j, a]
-                end
-            end
+function gradient_operator!(B::AbstractMatrix{Float64}, dNdX::AbstractMatrix{Float64})
+    fill!(B, 0.0)  # ensure all off-diagonal entries are zero
+    nen = size(dNdX, 2)
+    @inbounds for i in 1:3
+        for a in 1:nen
+            # write the column directly as a slice
+            B[((i - 1) * 3 + 1):(i * 3), (a - 1) * 3 + i] = dNdX[:, a]
         end
     end
-    return B
+    return nothing
 end
 
 using Symbolics
