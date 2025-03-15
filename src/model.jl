@@ -539,11 +539,11 @@ function create_gradient_operator(::Type{T}, ::Val{10}) where {T}
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
-    is_newmark = integrator isa Newmark
-    is_central_difference = integrator isa CentralDifference
-    is_quasistatic = integrator isa QuasiStatic
-    is_dynamic = is_newmark || is_central_difference
-    is_implicit = is_newmark || is_quasistatic
+    is_implicit_dynamic = integrator isa Newmark
+    is_explicit_dynamic = integrator isa CentralDifference
+    is_implicit_static = integrator isa QuasiStatic
+    is_dynamic = is_implicit_dynamic || is_explicit_dynamic
+    is_implicit = is_implicit_dynamic || is_implicit_static
     materials = model.materials
     input_mesh = model.mesh
     mesh_smoothing = model.mesh_smoothing
@@ -555,10 +555,10 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     rows = Vector{Int64}()
     cols = Vector{Int64}()
     stiffness = Vector{Float64}()
-    if is_newmark == true
+    if is_implicit_dynamic == true
         mass = Vector{Float64}()
     end
-    if is_central_difference == true
+    if is_explicit_dynamic == true
         lumped_mass = zeros(num_dof)
     end
     blocks = Exodus.read_sets(input_mesh, Block)
@@ -578,10 +578,10 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         elem_dofs = create_element_vector(Int64, Val(num_elem_nodes))
         element_internal_force = create_element_vector(Float64, Val(num_elem_nodes))
         element_stiffness = create_element_matrix(Float64, Val(num_elem_nodes))
-        if is_newmark == true
+        if is_implicit_dynamic == true
             element_mass = create_element_matrix(Float64, Val(num_elem_nodes))
         end
-        if is_central_difference == true
+        if is_explicit_dynamic == true
             element_lumped_mass = create_element_vector(Float64, Val(num_elem_nodes))
         end
         B = create_gradient_operator(Float64, Val(num_elem_nodes))
@@ -600,10 +600,10 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             element_energy = 0.0
             fill!(element_internal_force, 0.0)
             fill!(element_stiffness, 0.0)
-            if is_newmark == true
+            if is_implicit_dynamic == true
                 fill!(element_mass, 0.0)
             end
-            if is_central_difference == true
+            if is_explicit_dynamic == true
                 fill!(element_lumped_mass, 0.0)
             end
             elem_dofs = reshape(3 .* node_indices' .- [2, 1, 0], :)
@@ -618,15 +618,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 if J ≤ 0.0
                     model.failed = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
-                    if is_quasistatic == true
+                    if is_implicit_static == true
                         return 0.0,
                         zeros(num_dof), zeros(num_dof),
                         spzeros(num_dof, num_dof)
-                    elseif is_newmark == true
+                    elseif is_implicit_dynamic == true
                         return 0.0,
                         zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof),
                         spzeros(num_dof, num_dof)
-                    elseif is_central_difference == true
+                    elseif is_explicit_dynamic == true
                         return 0.0, zeros(num_dof), zeros(num_dof), zeros(num_dof)
                     else
                         error("Unknown type of time integrator", typeof(integrator))
@@ -639,16 +639,16 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_energy += W * j * w
                 element_internal_force += B' * stress * j * w
                 element_stiffness += B' * moduli * B * j * w
-                if is_dynamic
+                if is_dynamic == true
                     Nξ = N[:, point]
                     reduced_mass = Nξ * Nξ' * ρ * j * w
                 end
-                if is_newmark == true
+                if is_implicit_dynamic == true
                     element_mass[1:3:end, 1:3:end] += reduced_mass
                     element_mass[2:3:end, 2:3:end] += reduced_mass
                     element_mass[3:3:end, 3:3:end] += reduced_mass
                 end
-                if is_central_difference == true
+                if is_explicit_dynamic == true
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
                     element_lumped_mass[1:3:end] += reduced_lumped_mass
                     element_lumped_mass[2:3:end] += reduced_lumped_mass
@@ -660,15 +660,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             energy += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
             internal_force[elem_dofs] += element_internal_force
-            if is_quasistatic == true
+            if is_implicit_static == true
                 assemble!(rows, cols, stiffness, element_stiffness, elem_dofs)
             end
-            if is_newmark == true
+            if is_implicit_dynamic == true
                 assemble!(
                     rows, cols, stiffness, mass, element_stiffness, element_mass, elem_dofs
                 )
             end
-            if is_central_difference == true
+            if is_explicit_dynamic == true
                 lumped_mass[elem_dofs] += element_lumped_mass
             end
         end
@@ -676,18 +676,18 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     if is_implicit == true
         stiffness_matrix = sparse(rows, cols, stiffness)
     end
-    if is_newmark == true
+    if is_implicit_dynamic == true
         mass_matrix = sparse(rows, cols, mass)
     end
     if mesh_smoothing == true
         internal_force -= integrator.velocity
     end
     model.internal_force = internal_force
-    if is_quasistatic == true
+    if is_implicit_static == true
         return energy, internal_force, body_force, stiffness_matrix
-    elseif is_newmark == true
+    elseif is_implicit_dynamic == true
         return energy, internal_force, body_force, stiffness_matrix, mass_matrix
-    elseif is_central_difference == true
+    elseif is_explicit_dynamic == true
         return energy, internal_force, body_force, lumped_mass
     else
         error("Unknown type of time integrator", typeof(integrator))
