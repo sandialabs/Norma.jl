@@ -1,12 +1,21 @@
-${h_size = 0.1}
+# DO NOT CHANGE h_size WITHOUT CHANGING NODES
+${h_size = 0.25}
 
 create sphere radius 1 
-#move vol 1 x -0.5 y -0.5 z -0.5
+webcut volume all with general plane xplane 
+webcut volume all with general plane yplane 
+webcut volume all with general plane zplane 
+merge volume all
+imprint volume all
 volume all size {h_size}
+volume all scheme tetprimitive
 mesh volume all
-block 1 volume 1
+block 1 volume all
 block 1 name "sphere"
-nodeset 1 add surface 1
+nodeset 1 add surface 21 23 27 35 45 33 41 47
 nodeset 1 name "sphere_surf"
+nodeset 1 remove node 2 6 24
+nodeset 2 add node 2 6 24
+nodeset 2 name "axial_fix"
 set large exodus file off
 export mesh "sphere.g" overwrite

@@ -9,9 +9,9 @@ model:
     blocks:
       sphere: elastic
     elastic:
-      model: Saint-Venant Kirchhoff
-      elastic modulus: 1.0e+09
-      Poisson's ratio: 0.25
+      model: linear elastic
+      elastic modulus: 200e9
+      Poisson's ratio: 0.27
       density: 1000.0
 time integrator:
   type: quasi static
@@ -22,11 +22,14 @@ boundary conditions:
     Inclined Dirichlet:
     - node set: sphere_surf
       normal vector: [ "x", "y", "z" ]
-      function: "-0.1*t"
+      function: "-0.0005*t"
+    - node set: axial_fix
+      normal vector: [ "x", "y", "z" ]
+      function: [ "-0.0005*t", "0", "0" ]
 solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1
-  maximum iterations: 16
-  relative tolerance: 1.0e-12
-  absolute tolerance: 1.0e-08
+  maximum iterations: 32
+  relative tolerance: 1.0e-04
+  absolute tolerance: 1.0e-03
