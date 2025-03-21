@@ -436,32 +436,26 @@ end
 
 function assemble!(
     rows::Vector{Int64},
-    cols::Vector{Int64},
-    global_stiff::Vector{Float64},
-    elem_stiff::AbstractMatrix{Float64},
+    global_vector::Vector{Float64},
+    elem_vector::AbstractMatrix{Float64},
     dofs::AbstractVector{Int64},
 )
     ndofs = length(dofs)
-    n2 = ndofs * ndofs
 
     # old length and new length
     old_len = length(rows)
-    new_len = old_len + n2
+    new_len = old_len + ndofs
 
     # Resize each vector in one step
     resize!(rows, new_len)
-    resize!(cols, new_len)
-    resize!(global_stiff, new_len)
+    resize!(global_vector, new_len)
 
     idx = old_len + 1
     @inbounds for i in 1:ndofs
         I = dofs[i]
-        @inbounds for j in 1:ndofs
-            rows[idx] = I
-            cols[idx] = dofs[j]
-            global_stiff[idx] = elem_stiff[i, j]
-            idx += 1
-        end
+        rows[idx] = I
+        global_vector[idx] = elem_vector[i, j]
+        idx += 1
     end
     return nothing
 end
@@ -469,10 +463,8 @@ end
 function assemble!(
     rows::Vector{Int64},
     cols::Vector{Int64},
-    global_stiff::Vector{Float64},
-    global_mass::Vector{Float64},
-    elem_stiff::AbstractMatrix{Float64},
-    elem_mass::AbstractMatrix{Float64},
+    global_matrix::Vector{Float64},
+    elem_matrix::AbstractMatrix{Float64},
     dofs::AbstractVector{Int64},
 )
     ndofs = length(dofs)
@@ -485,8 +477,7 @@ function assemble!(
     # Resize each vector in one step
     resize!(rows, new_len)
     resize!(cols, new_len)
-    resize!(global_stiff, new_len)
-    resize!(global_mass, new_len)
+    resize!(global_matrix, new_len)
 
     idx = old_len + 1
     @inbounds for i in 1:ndofs
@@ -494,8 +485,7 @@ function assemble!(
         @inbounds for j in 1:ndofs
             rows[idx] = I
             cols[idx] = dofs[j]
-            global_stiff[idx] = elem_stiff[i, j]
-            global_mass[idx] = elem_mass[i, j]
+            global_matrix[idx] = elem_matrix[i, j]
             idx += 1
         end
     end
@@ -552,10 +542,12 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     energy = 0.0
     internal_force = zeros(num_dof)
     body_force = zeros(num_dof)
-    rows = Vector{Int64}()
-    cols = Vector{Int64}()
+    rows_stiff = Vector{Int64}()
+    cols_stiff = Vector{Int64}()
     stiffness = Vector{Float64}()
     if is_implicit_dynamic == true
+        rows_mass = Vector{Int64}()
+        cols_mass = Vector{Int64}()
         mass = Vector{Float64}()
     end
     if is_explicit_dynamic == true
@@ -660,13 +652,11 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             energy += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
             internal_force[elem_dofs] += element_internal_force
-            if is_implicit_static == true
-                assemble!(rows, cols, stiffness, element_stiffness, elem_dofs)
+            if is_implicit == true
+                assemble!(rows_stiff, cols_stiff, stiffness, element_stiffness, elem_dofs)
             end
             if is_implicit_dynamic == true
-                assemble!(
-                    rows, cols, stiffness, mass, element_stiffness, element_mass, elem_dofs
-                )
+                assemble!(rows_mass, cols_mass, mass, element_mass, elem_dofs)
             end
             if is_explicit_dynamic == true
                 lumped_mass[elem_dofs] += element_lumped_mass
@@ -674,10 +664,10 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         end
     end
     if is_implicit == true
-        stiffness_matrix = sparse(rows, cols, stiffness)
+        stiffness_matrix = sparse(rows_stiff, cols_stiff, stiffness)
     end
     if is_implicit_dynamic == true
-        mass_matrix = sparse(rows, cols, mass)
+        mass_matrix = sparse(rows_mass, cols_mass, mass)
     end
     if mesh_smoothing == true
         internal_force -= integrator.velocity
