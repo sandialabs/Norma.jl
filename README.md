@@ -1,7 +1,12 @@
 # Norma
 
 ![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/norma-contact-1.png)
+*Simulation of the impact of two bars: one using hexahedral elements with an implicit time integrator, and the other using tetrahedral elements with an explicit time integrator, each with different time steps.*
+
 ![Norma Contact Simulation 2](https://github.com/sandialabs/Norma.jl/blob/main/doc/norma-contact-2.png)
+
+![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)
+*Dynamic simulation of torsion with large deformations.*
 
 **Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
 
@@ -56,7 +61,7 @@ julia --project=@. /some_path/Norma.jl/src/Norma.jl input.yaml
 ```
 
 To run `Norma` interactively from a Julia session:
-```bash
+```julia
 cd /some_path/Norma.jl
 julia
 using Pkg
@@ -210,3 +215,4 @@ If you encounter SSL certificate errors during setup, follow these steps:
    export JULIA_SSL_CA_ROOTS_PATH=/etc/ssl/certs/ca-bundle.crt
    ```
 3. Retry the installation workflow.
+
