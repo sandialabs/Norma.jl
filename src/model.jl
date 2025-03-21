@@ -437,7 +437,7 @@ end
 function assemble!(
     rows::Vector{Int64},
     global_vector::Vector{Float64},
-    elem_vector::AbstractMatrix{Float64},
+    elem_vector::AbstractVector{Float64},
     dofs::AbstractVector{Int64},
 )
     ndofs = length(dofs)
@@ -454,7 +454,7 @@ function assemble!(
     @inbounds for i in 1:ndofs
         I = dofs[i]
         rows[idx] = I
-        global_vector[idx] = elem_vector[i, j]
+        global_vector[idx] = elem_vector[i]
         idx += 1
     end
     return nothing
@@ -490,6 +490,14 @@ function assemble!(
         end
     end
     return nothing
+end
+
+function dense(indices::Vector{Int64}, values::Vector{Float64}, vector_size::Int64)
+    dense_vector = zeros(vector_size)
+    @inbounds for i in 1:length(indices)
+        dense_vector[indices[i]] += values[i]
+    end
+    return dense_vector
 end
 
 function create_element_matrix(::Type{T}, ::Val{4}) where {T}
@@ -540,8 +548,9 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     num_nodes = size(model.reference)[2]
     num_dof = 3 * num_nodes
     energy = 0.0
-    internal_force = zeros(num_dof)
-    body_force = zeros(num_dof)
+    rows_int_force = Vector{Int64}()
+    internal_force = Vector{Float64}()
+    body_force_vector = zeros(num_dof)
     rows_stiff = Vector{Int64}()
     cols_stiff = Vector{Int64}()
     stiffness = Vector{Float64}()
@@ -551,7 +560,8 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         mass = Vector{Float64}()
     end
     if is_explicit_dynamic == true
-        lumped_mass = zeros(num_dof)
+        rows_lumped_mass = Vector{Int64}()
+        lumped_mass = Vector{Float64}()
     end
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blks = length(blocks)
@@ -651,7 +661,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
             energy += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
-            internal_force[elem_dofs] += element_internal_force
+            assemble!(rows_int_force, internal_force, element_internal_force, elem_dofs)
             if is_implicit == true
                 assemble!(rows_stiff, cols_stiff, stiffness, element_stiffness, elem_dofs)
             end
@@ -659,26 +669,30 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 assemble!(rows_mass, cols_mass, mass, element_mass, elem_dofs)
             end
             if is_explicit_dynamic == true
-                lumped_mass[elem_dofs] += element_lumped_mass
+                assemble!(rows_lumped_mass, lumped_mass, element_lumped_mass, elem_dofs)
             end
         end
     end
+    internal_force_vector = dense(rows_int_force, internal_force, num_dof)
     if is_implicit == true
-        stiffness_matrix = sparse(rows_stiff, cols_stiff, stiffness)
+        stiffness_matrix = sparse(rows_stiff, cols_stiff, stiffness, num_dof, num_dof)
     end
     if is_implicit_dynamic == true
-        mass_matrix = sparse(rows_mass, cols_mass, mass)
+        mass_matrix = sparse(rows_mass, cols_mass, mass, num_dof, num_dof)
+    end
+    if is_explicit_dynamic == true
+        lumped_mass_vector = dense(rows_lumped_mass, lumped_mass, num_dof)
     end
     if mesh_smoothing == true
-        internal_force -= integrator.velocity
+        internal_force_vector -= integrator.velocity
     end
-    model.internal_force = internal_force
+    model.internal_force = internal_force_vector
     if is_implicit_static == true
-        return energy, internal_force, body_force, stiffness_matrix
+        return energy, internal_force_vector, body_force_vector, stiffness_matrix
     elseif is_implicit_dynamic == true
-        return energy, internal_force, body_force, stiffness_matrix, mass_matrix
+        return energy, internal_force_vector, body_force_vector, stiffness_matrix, mass_matrix
     elseif is_explicit_dynamic == true
-        return energy, internal_force, body_force, lumped_mass
+        return energy, internal_force_vector, body_force_vector, lumped_mass_vector
     else
         error("Unknown type of time integrator", typeof(integrator))
     end
