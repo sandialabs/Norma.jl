@@ -536,6 +536,40 @@ function create_gradient_operator(::Type{T}, ::Val{10}) where {T}
     return MMatrix{9,30,T}(undef)
 end
 
+using Base.Threads: @threads, threadid, nthreads
+
+function create_coo_matrix()
+    rows = Vector{Int64}()
+    cols = Vector{Int64}()
+    vals = Vector{Float64}()
+    return rows, cols, vals
+end
+
+function create_coo_vector()
+    index = Vector{Int64}()
+    vals = Vector{Float64}()
+    return index, vals
+end
+
+function create_matrix_containers()
+    rows_tl = Vector{Vector{Int64}}(undef, nthreads())
+    cols_tl = Vector{Vector{Int64}}(undef, nthreads())
+    vals_tl = Vector{Vector{Float64}}(undef, nthreads())
+    for i in 1:nthreads()
+        rows_tl[i], cols_tl[i], vals_tl[i] = create_coo_matrix()
+    end
+    return rows_tl, cols_tl, vals_tl
+end
+
+function create_vector_containers()
+    index_tl = Vector{Vector{Int64}}(undef, nthreads())
+    vals_tl = Vector{Vector{Float64}}(undef, nthreads())
+    for i in 1:nthreads()
+        index_tl[i], vals_tl[i] = create_coo_vector()
+    end
+    return index_tl, vals_tl
+end
+
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     is_implicit_dynamic = integrator isa Newmark
     is_explicit_dynamic = integrator isa CentralDifference
@@ -545,23 +579,25 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     materials = model.materials
     input_mesh = model.mesh
     mesh_smoothing = model.mesh_smoothing
-    num_nodes = size(model.reference)[2]
+    num_nodes = size(model.reference, 2)
     num_dof = 3 * num_nodes
-    energy = 0.0
-    rows_int_force = Vector{Int64}()
-    internal_force = Vector{Float64}()
-    body_force_vector = zeros(num_dof)
-    rows_stiff = Vector{Int64}()
-    cols_stiff = Vector{Int64}()
-    stiffness = Vector{Float64}()
-    if is_implicit_dynamic == true
-        rows_mass = Vector{Int64}()
-        cols_mass = Vector{Int64}()
-        mass = Vector{Float64}()
-    end
+    index_int_force_tl, internal_force_tl = create_vector_containers()
     if is_explicit_dynamic == true
-        rows_lumped_mass = Vector{Int64}()
-        lumped_mass = Vector{Float64}()
+        index_lumped_mass_tl, lumped_mass_tl = create_vector_containers()
+    end
+    rows_stiff_tl, cols_stiff_tl, stiffness_tl = create_matrix_containers()
+    if is_implicit_dynamic == true
+        rows_mass_tl, cols_mass_tl, mass_tl = create_matrix_containers()
+    end
+    energy = 0.0
+    body_force_vector = zeros(num_dof)
+    index_int_force, internal_force = create_coo_vector()
+    if is_explicit_dynamic == true
+        index_lumped_mass, lumped_mass = create_coo_vector()
+    end
+    rows_stiff, cols_stiff, stiffness = create_coo_matrix()
+    if is_implicit_dynamic == true
+        rows_mass, cols_mass, mass = create_coo_matrix()
     end
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blks = length(blocks)
@@ -661,7 +697,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
             energy += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
-            assemble!(rows_int_force, internal_force, element_internal_force, elem_dofs)
+            assemble!(index_int_force, internal_force, element_internal_force, elem_dofs)
             if is_implicit == true
                 assemble!(rows_stiff, cols_stiff, stiffness, element_stiffness, elem_dofs)
             end
@@ -669,11 +705,11 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 assemble!(rows_mass, cols_mass, mass, element_mass, elem_dofs)
             end
             if is_explicit_dynamic == true
-                assemble!(rows_lumped_mass, lumped_mass, element_lumped_mass, elem_dofs)
+                assemble!(index_lumped_mass, lumped_mass, element_lumped_mass, elem_dofs)
             end
         end
     end
-    internal_force_vector = dense(rows_int_force, internal_force, num_dof)
+    internal_force_vector = dense(index_int_force, internal_force, num_dof)
     if is_implicit == true
         stiffness_matrix = sparse(rows_stiff, cols_stiff, stiffness, num_dof, num_dof)
     end
@@ -681,7 +717,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         mass_matrix = sparse(rows_mass, cols_mass, mass, num_dof, num_dof)
     end
     if is_explicit_dynamic == true
-        lumped_mass_vector = dense(rows_lumped_mass, lumped_mass, num_dof)
+        lumped_mass_vector = dense(index_lumped_mass, lumped_mass, num_dof)
     end
     if mesh_smoothing == true
         internal_force_vector -= integrator.velocity
