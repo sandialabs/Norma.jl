@@ -33,7 +33,7 @@ mutable struct SolidMechanics <: Model
     mesh_smoothing::Bool
     smooth_reference::String
     inclined_support::Bool
-    global_transform::SparseArrays.Matrix{Float64}
+    global_transform::SparseMatrixCSC{Float64, Int64}
     kinematics::Kinematics
 end
 
