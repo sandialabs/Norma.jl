@@ -198,14 +198,16 @@ function sync_time(sim::SingleDomainSimulation)
     initial_time = sim.integrator.prev_time
     final_time = sim.integrator.time
     if stop == 0
-        @printf("Initializing run at stop 0 with time = %6.2e\n", final_time)
+        @printf("Initializing: Stop 0 | Time = %.4e\n", final_time)
     else
+        Δt = final_time - initial_time
         @printf(
-            "Advancing from stop %d with time = %6.2e to stop %d with time = %6.2e\n",
+            "Advancing: Stop %d → Stop %d | Time: %.4e → %.4e | Δt = %.4e\n",
             stop - 1,
-            initial_time,
             stop,
-            final_time
+            initial_time,
+            final_time,
+            Δt
         )
     end
 end
@@ -216,14 +218,16 @@ function sync_time(sim::MultiDomainSimulation)
     initial_time = sim.schwarz_controller.prev_time
     final_time = sim.schwarz_controller.time
     if stop == 0
-        @printf("Initializing run at stop 0 with time = %6.2e\n", final_time)
+        @printf("Initializing: Stop 0 | Time = %.4e\n", final_time)
     else
+        Δt = final_time - initial_time
         @printf(
-            "Advancing from stop %d with time = %6.2e to stop %d with time = %6.2e\n",
+            "Advancing: Stop %d → Stop %d | Time: %.4e → %.4e | Δt = %.4e\n",
             stop - 1,
-            initial_time,
             stop,
-            final_time
+            initial_time,
+            final_time,
+            Δt
         )
     end
 end
