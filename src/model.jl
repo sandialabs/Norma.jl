@@ -167,9 +167,9 @@ function SolidMechanics(params::Parameters)
         smooth_reference = ""
     end
 
-    # BRP: define a global transform for inclined support
     inclined_support = false
-    global_transform = sparse(Diagonal(ones(3 * num_nodes)))
+    num_dofs = 3 * num_nodes
+    global_transform = sparse(I, num_dofs, num_dofs)
 
     return SolidMechanics(
         input_mesh,
