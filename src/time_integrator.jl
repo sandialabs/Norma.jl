@@ -258,7 +258,7 @@ end
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
-        println("Establishing initial equilibrium")
+        @printf("Establishing Initial Equilibrium...\n")
         solve(integrator, solver, model)
         if model.failed == true
             error("Finite element model failed to establish initial equlibrium")
@@ -275,14 +275,14 @@ function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    println("Computing initial acceleration")
+    @printf("Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     stored_energy, internal_force, external_force, _, mass_matrix = evaluate(
         integrator, model
     )
     if model.failed == true
-        error("The finite element model has failed to initialize")
+        error("Finite element model failed to initialize")
     end
     if model.inclined_support == true
         external_force = model.global_transform * external_force
@@ -331,7 +331,7 @@ end
 function initialize(
     integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics
 )
-    println("Computing initial acceleration")
+    @printf("Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)

@@ -13,10 +13,10 @@ function SolidSchwarzController(params::Parameters)
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
-    println("Requested time step is ", time_step)
+    @printf("Requested Time Step: %.4e\n", time_step)
     num_stops = round(Int64, (final_time - initial_time) / time_step) + 1
     time_step = (final_time - initial_time) / (num_stops - 1)
-    println("Adjusted time step is ", time_step, " with ", num_stops, " stops")
+    @printf("Adjusted Time Step: %.4e | Stops: %d\n", time_step, num_stops)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
     same_step = get(params, "same time step for domains", false)
@@ -129,7 +129,7 @@ function schwarz(sim::MultiDomainSimulation)
     end
 
     while true
-        println("Schwarz iteration=", iteration_number)
+        @printf("Schwarz Iteration = %d\n", iteration_number)
         sim.schwarz_controller.iteration_number = iteration_number
         synchronize(sim)
         subcycle(sim, is_schwarz)
@@ -139,9 +139,9 @@ function schwarz(sim::MultiDomainSimulation)
             sim.schwarz_controller.convergence_hist[iteration_number - 1, 1] = ΔX
             sim.schwarz_controller.convergence_hist[iteration_number - 1, 2] = Δx
         end
-        println("Schwarz criterion |ΔX|=", ΔX, " |ΔX|/|X|=", Δx)
+        @printf(" Schwarz Criterion |ΔX| = %.3e | |ΔX|/|X| = %.3e\n", ΔX, Δx)
         if stop_schwarz(sim, iteration_number) == true
-            println("Performed ", iteration_number - 1, " Schwarz iterations")
+            @printf("Performed %d Schwarz iterations\n", iteration_number - 1)
             break
         end
         save_schwarz_solutions(sim)
@@ -274,7 +274,7 @@ end
 function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
     subsim_index = 1
     for subsim in sim.subsims
-        println("subcycle ", subsim.name)
+        @printf(" Subcycle: %s\n", subsim.name)
         stop_index = 1
         while true
             advance_time(subsim)

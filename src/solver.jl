@@ -6,6 +6,7 @@
 
 using IterativeSolvers
 using LinearAlgebra
+using Printf
 
 function create_step(solver_params::Parameters)
     step_name = solver_params["step"]
@@ -71,7 +72,6 @@ end
 
 function ExplicitSolver(params::Parameters, model::Model)
     solver_params = params["solver"]
-    input_mesh = params["input_mesh"]
     num_dof = length(model.free_dofs)
     value = 0.0
     gradient = zeros(num_dof)
@@ -721,9 +721,9 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         residual = solver.gradient
         norm_residual = norm(residual[model.free_dofs])
         if iteration_number == 0
-            println("|R|=", norm_residual)
+            @printf(" |R| = %.3e\n", norm_residual)
         else
-            println("|R|=", norm_residual, ", solver iteration=", iteration_number)
+            @printf(" |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number)
         end
         update_solver_convergence_criterion(solver, norm_residual)
         iteration_number += 1

@@ -4,6 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using Printf
 using YAML
 
 include("simulation_types.jl")
@@ -29,7 +30,7 @@ function create_simulation(params::Parameters, name::String)
 end
 
 function create_simulation(input_file::String)
-    println("Reading simulation file: ", input_file)
+    @printf("Reading Simulation File: %s\n", input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     return create_simulation(params, input_file)
 end
@@ -93,7 +94,7 @@ function MultiDomainSimulation(params::Parameters)
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
     for domain_name in domain_names
-        println("Reading subsimulation file: ", domain_name)
+        @printf("Reading Subsimulation File: %s\n", domain_name)
         subparams = YAML.load_file(domain_name; dicttype=Parameters)
         subparams["name"] = domain_name
         subparams["time integrator"]["initial time"] = initial_time
