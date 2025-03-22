@@ -550,12 +550,10 @@ function create_coo_vector()
 end
 
 function merge_threadlocal_coo_vectors(
-    index_tl::Vector{Vector{Int64}},
-    vals_tl::Vector{Vector{Float64}},
-    num_dof::Int64
+    index_tl::Vector{Vector{Int64}}, vals_tl::Vector{Vector{Float64}}, num_dof::Int64
 )
     index = vcat(index_tl...)
-    vals  = vcat(vals_tl...)
+    vals = vcat(vals_tl...)
     return dense(index, vals, num_dof)
 end
 
@@ -563,7 +561,7 @@ function merge_threadlocal_coo_matrices(
     rows_tl::Vector{Vector{Int64}},
     cols_tl::Vector{Vector{Int64}},
     vals_tl::Vector{Vector{Float64}},
-    num_dof::Int64
+    num_dof::Int64,
 )
     rows = vcat(rows_tl...)
     cols = vcat(cols_tl...)
@@ -573,7 +571,7 @@ end
 
 using Base.Threads: @threads, threadid, nthreads
 
-function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T, N}
+function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T,N}
     local_mats = Vector{typeof(create_element_matrix(T, Val(N)))}(undef, nthreads())
     for i in 1:nthreads()
         local_mats[i] = create_element_matrix(T, Val(N))
@@ -581,7 +579,7 @@ function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T, N}
     return local_mats
 end
 
-function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T, N}
+function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
     local_vecs = Vector{typeof(create_element_vector(T, Val(N)))}(undef, nthreads())
     for i in 1:nthreads()
         local_vecs[i] = create_element_vector(T, Val(N))
@@ -589,7 +587,7 @@ function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T, N}
     return local_vecs
 end
 
-function create_threadlocal_gradient_operators(::Type{T}, ::Val{N}) where {T, N}
+function create_threadlocal_gradient_operators(::Type{T}, ::Val{N}) where {T,N}
     local_ops = Vector{typeof(create_gradient_operator(T, Val(N)))}(undef, nthreads())
     for i in 1:nthreads()
         local_ops[i] = create_gradient_operator(T, Val(N))
@@ -654,15 +652,23 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
         elem_dofs_tl = create_threadlocal_element_vectors(Int64, Val(num_elem_nodes))
-        element_internal_force_tl = create_threadlocal_element_vectors(Float64, Val(num_elem_nodes))
+        element_internal_force_tl = create_threadlocal_element_vectors(
+            Float64, Val(num_elem_nodes)
+        )
         if is_explicit_dynamic == true
-            element_lumped_mass_tl = create_threadlocal_element_vectors(Float64, Val(num_elem_nodes))
+            element_lumped_mass_tl = create_threadlocal_element_vectors(
+                Float64, Val(num_elem_nodes)
+            )
         end
         if is_implicit == true
-            element_stiffness_tl = create_threadlocal_element_matrices(Float64, Val(num_elem_nodes))
+            element_stiffness_tl = create_threadlocal_element_matrices(
+                Float64, Val(num_elem_nodes)
+            )
         end
         if is_implicit_dynamic == true
-            element_mass_tl = create_threadlocal_element_matrices(Float64, Val(num_elem_nodes))
+            element_mass_tl = create_threadlocal_element_matrices(
+                Float64, Val(num_elem_nodes)
+            )
         end
         B_tl = create_threadlocal_gradient_operators(Float64, Val(num_elem_nodes))
         @threads for blk_elem_index in 1:num_blk_elems
@@ -756,28 +762,54 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
             energy_tl[t] += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
-            assemble!(index_int_force_tl[t], internal_force_tl[t], element_internal_force, elem_dofs)
+            assemble!(
+                index_int_force_tl[t],
+                internal_force_tl[t],
+                element_internal_force,
+                elem_dofs,
+            )
             if is_explicit_dynamic == true
-                assemble!(index_lumped_mass_tl[t], lumped_mass_tl[t], element_lumped_mass, elem_dofs)
+                assemble!(
+                    index_lumped_mass_tl[t],
+                    lumped_mass_tl[t],
+                    element_lumped_mass,
+                    elem_dofs,
+                )
             end
             if is_implicit == true
-                assemble!(rows_stiff_tl[t], cols_stiff_tl[t], stiffness_tl[t], element_stiffness, elem_dofs)
+                assemble!(
+                    rows_stiff_tl[t],
+                    cols_stiff_tl[t],
+                    stiffness_tl[t],
+                    element_stiffness,
+                    elem_dofs,
+                )
             end
             if is_implicit_dynamic == true
-                assemble!(rows_mass_tl[t], cols_mass_tl[t], mass_tl[t], element_mass, elem_dofs)
+                assemble!(
+                    rows_mass_tl[t], cols_mass_tl[t], mass_tl[t], element_mass, elem_dofs
+                )
             end
         end
     end
     energy = sum(energy_tl)
-    internal_force_vector = merge_threadlocal_coo_vectors(index_int_force_tl, internal_force_tl, num_dof)
+    internal_force_vector = merge_threadlocal_coo_vectors(
+        index_int_force_tl, internal_force_tl, num_dof
+    )
     if is_explicit_dynamic == true
-        lumped_mass_vector = merge_threadlocal_coo_vectors(index_lumped_mass_tl, lumped_mass_tl, num_dof)
+        lumped_mass_vector = merge_threadlocal_coo_vectors(
+            index_lumped_mass_tl, lumped_mass_tl, num_dof
+        )
     end
     if is_implicit == true
-        stiffness_matrix = merge_threadlocal_coo_matrices(rows_stiff_tl, cols_stiff_tl, stiffness_tl, num_dof)
+        stiffness_matrix = merge_threadlocal_coo_matrices(
+            rows_stiff_tl, cols_stiff_tl, stiffness_tl, num_dof
+        )
     end
     if is_implicit_dynamic == true
-        mass_matrix = merge_threadlocal_coo_matrices(rows_mass_tl, cols_mass_tl, mass_tl, num_dof)
+        mass_matrix = merge_threadlocal_coo_matrices(
+            rows_mass_tl, cols_mass_tl, mass_tl, num_dof
+        )
     end
     if mesh_smoothing == true
         internal_force_vector -= integrator.velocity
@@ -786,7 +818,9 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     if is_implicit_static == true
         return energy, internal_force_vector, body_force_vector, stiffness_matrix
     elseif is_implicit_dynamic == true
-        return energy, internal_force_vector, body_force_vector, stiffness_matrix, mass_matrix
+        return energy,
+        internal_force_vector, body_force_vector, stiffness_matrix,
+        mass_matrix
     elseif is_explicit_dynamic == true
         return energy, internal_force_vector, body_force_vector, lumped_mass_vector
     else

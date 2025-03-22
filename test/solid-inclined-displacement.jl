@@ -40,12 +40,12 @@ using YAML
     max_disp = maximum_components(global_displacement)
     min_disp = minimum_components(global_displacement)
 
-    @test max_disp[1] ≈ time*displacement_slope atol = 1.0e-06
-    @test max_disp[2] ≈ time*displacement_slope atol = 1.0e-06
-    @test max_disp[3] ≈ time*displacement_slope atol = 1.0e-06
-    @test min_disp[1] ≈ -time*displacement_slope atol = 1.0e-06
-    @test min_disp[2] ≈ -time*displacement_slope atol = 1.0e-06
-    @test min_disp[3] ≈ -time*displacement_slope atol = 1.0e-06
+    @test max_disp[1] ≈ time * displacement_slope atol = 1.0e-06
+    @test max_disp[2] ≈ time * displacement_slope atol = 1.0e-06
+    @test max_disp[3] ≈ time * displacement_slope atol = 1.0e-06
+    @test min_disp[1] ≈ -time * displacement_slope atol = 1.0e-06
+    @test min_disp[2] ≈ -time * displacement_slope atol = 1.0e-06
+    @test min_disp[3] ≈ -time * displacement_slope atol = 1.0e-06
 
     # Deformation gradient
     F = I(3) * (1 - displacement_slope * time)
