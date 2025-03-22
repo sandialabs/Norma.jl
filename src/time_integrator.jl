@@ -292,7 +292,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     integrator.stored_energy = stored_energy
-    integrator.acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
+    integrator.acceleration[free] = solve_linear(mass_matrix[free, free], inertial_force[free])
     return copy_solution_source_targets(integrator, solver, model)
 end
 
