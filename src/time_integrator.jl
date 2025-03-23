@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -292,7 +292,9 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     integrator.stored_energy = stored_energy
-    integrator.acceleration[free] = solve_linear(mass_matrix[free, free], inertial_force[free])
+    integrator.acceleration[free] = solve_linear(
+        mass_matrix[free, free], inertial_force[free]
+    )
     return copy_solution_source_targets(integrator, solver, model)
 end
 

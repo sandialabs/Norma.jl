@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -723,7 +723,9 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         if iteration_number == 0
             @printf(" |R| = %.3e\n", norm_residual)
         else
-            @printf(" |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number)
+            @printf(
+                " |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number
+            )
         end
         update_solver_convergence_criterion(solver, norm_residual)
         iteration_number += 1

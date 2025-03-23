@@ -1,14 +1,12 @@
 # Norma
 
-![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/norma-contact-1.png)
-*Simulation of the impact of two bars: one using hexahedral elements with an implicit time integrator, and the other using tetrahedral elements with an explicit time integrator, each with different time steps.*
+**Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
 
-![Norma Contact Simulation 2](https://github.com/sandialabs/Norma.jl/blob/main/doc/norma-contact-2.png)
+![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/bars.gif)
+*Simulation of the impact of two bars: one using hexahedral elements with an implicit time integrator, and the other using tetrahedral elements with an explicit time integrator, each with different time steps.*
 
 ![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)
 *Dynamic simulation of torsion with large deformations.*
-
-**Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
 
 ---
 
