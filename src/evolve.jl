@@ -202,7 +202,7 @@ function sync_time(sim::SingleDomainSimulation)
     else
         Δt = final_time - initial_time
         @printf(
-            "Advancing: Stop %d → Stop %d | Time: %.4e → %.4e | Δt = %.4e\n",
+            "Advancing: Stop %d → %d | Time: %.4e → %.4e | Δt = %.4e\n",
             stop - 1,
             stop,
             initial_time,
@@ -222,7 +222,7 @@ function sync_time(sim::MultiDomainSimulation)
     else
         Δt = final_time - initial_time
         @printf(
-            "Advancing: Stop %d → Stop %d | Time: %.4e → %.4e | Δt = %.4e\n",
+            "Advancing: Stop %d → %d | Time: %.4e → %.4e | Δt = %.4e\n",
             stop - 1,
             stop,
             initial_time,

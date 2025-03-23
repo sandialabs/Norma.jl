@@ -501,7 +501,9 @@ function detect_contact(sim::MultiDomainSimulation)
             end
         end
     end
-    println("contact ", sim.schwarz_controller.active_contact)
+    if sim.schwarz_controller.active_contact == true
+        println("Contact Detected")
+    end
     resize!(sim.schwarz_controller.contact_hist, sim.schwarz_controller.stop + 1)
     sim.schwarz_controller.contact_hist[sim.schwarz_controller.stop + 1] =
         sim.schwarz_controller.active_contact
