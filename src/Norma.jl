@@ -19,7 +19,6 @@ function configure_logger()
     else
         # Default to Info level
         global_logger(ConsoleLogger(stderr, Logging.Info))
-        @info "Debugging disabled"
     end
 end
 
