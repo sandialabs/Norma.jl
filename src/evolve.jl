@@ -105,9 +105,9 @@ function advance(sim::MultiDomainSimulation)
     detect_contact(sim)
     if sim.schwarz_controller.active_contact ≠ was_in_contact
         if was_in_contact == true
-            println("Contact release detected, redoing control step")
+            println("Contact released — reattempting control step.")
         else
-            println("Contact initiation detected, redoing control step")
+            println("Contact initiated — reattempting control step.")
         end
         restore_stop_solutions(sim)
         solve_contact(sim)
@@ -202,10 +202,8 @@ function sync_time(sim::SingleDomainSimulation)
     else
         Δt = final_time - initial_time
         @printf(
-            "Advancing: Stop %d → %d | Time: %.4e → %.4e | Δt = %.4e\n",
-            stop - 1,
+            "Advancing to: Stop %d | Time = %.4e | Δt = %.4e\n",
             stop,
-            initial_time,
             final_time,
             Δt
         )
@@ -222,10 +220,8 @@ function sync_time(sim::MultiDomainSimulation)
     else
         Δt = final_time - initial_time
         @printf(
-            "Advancing: Stop %d → %d | Time: %.4e → %.4e | Δt = %.4e\n",
-            stop - 1,
+            "Advancing to: Stop %d | Time = %.4e | Δt = %.4e\n",
             stop,
-            initial_time,
             final_time,
             Δt
         )
