@@ -748,17 +748,21 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 end
                 if is_implicit_dynamic == true
                     element_mass[1:3:end, 1:3:end] += reduced_mass
-                    element_mass[2:3:end, 2:3:end] += reduced_mass
-                    element_mass[3:3:end, 3:3:end] += reduced_mass
                 end
                 if is_explicit_dynamic == true
                     reduced_lumped_mass = sum(reduced_mass; dims=2)
                     element_lumped_mass[1:3:end] += reduced_lumped_mass
-                    element_lumped_mass[2:3:end] += reduced_lumped_mass
-                    element_lumped_mass[3:3:end] += reduced_lumped_mass
                 end
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[blk_index][blk_elem_index][point] = voigt_cauchy
+            end
+            if is_implicit_dynamic == true
+                element_mass[3:3:end, 3:3:end] .=
+                    element_mass[2:3:end, 2:3:end] .= element_mass[1:3:end, 1:3:end]
+            end
+            if is_explicit_dynamic == true
+                element_lumped_mass[3:3:end] .=
+                    element_lumped_mass[2:3:end] .= element_lumped_mass[1:3:end]
             end
             energy_tl[t] += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
