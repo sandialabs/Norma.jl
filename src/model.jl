@@ -614,6 +614,10 @@ function create_threadlocal_coo_vectors()
     return index_tl, vals_tl
 end
 
+function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
+    return SVector{N,T}(sum(A; dims=2)[:, 1])
+end
+
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     is_implicit_dynamic = integrator isa Newmark
     is_explicit_dynamic = integrator isa CentralDifference
@@ -750,8 +754,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                     element_mass[1:3:end, 1:3:end] += reduced_mass
                 end
                 if is_explicit_dynamic == true
-                    reduced_lumped_mass = sum(reduced_mass; dims=2)
-                    element_lumped_mass[1:3:end] += reduced_lumped_mass
+                    element_lumped_mass[1:3:end] += row_sum_lump(reduced_mass)
                 end
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[blk_index][blk_elem_index][point] = voigt_cauchy

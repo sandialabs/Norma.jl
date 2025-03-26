@@ -4,346 +4,364 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-function barycentricD2N3(ξ::Vector{Float64})
-    N = [1.0 - ξ[1] - ξ[2], ξ[1], ξ[2]]
-    dN = [
-        -1 1 0
-        -1 0 1
-    ] / 1.0
-    ddN = zeros(2, 2, 3)
+using StaticArrays
+
+function barycentricD2N3(ξ::SVector{2,T}) where {T<:Real}
+    N = @SVector [one(T) - ξ[1] - ξ[2], ξ[1], ξ[2]]
+    dN = @SMatrix [
+        -one(T) one(T) zero(T)
+        -one(T) zero(T) one(T)
+    ]
+    ddN = zeros(SArray{Tuple{2,2,3},T,3})
     return N, dN, ddN
 end
 
 function barycentricD2N3G1()
-    w = 0.5 * ones(1)
-    N = zeros(3, 1)
-    dN = zeros(2, 3, 1)
-    ξ = ones(2) / 3
-    N, dN[:, :, 1], _ = barycentricD2N3(ξ)
-    return N, dN, w, ξ
+    w = @SVector [1 / 2]
+    N = MMatrix{3,1,Float64}(undef)
+    dN = MArray{Tuple{2,3,1},Float64}(undef)
+    ξ = @SMatrix [1 / 3; 1 / 3]
+    for p in 1:1
+        Np, dNp, _ = barycentricD2N3(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:3
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:2
+            @inbounds @simd for j in 1:3
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
+    end
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function barycentricD2N3G3()
-    w = ones(3) / 6.0
-    N = zeros(3, 3)
-    dN = zeros(2, 3, 3)
-    ξ = [
-        1 4 1
-        1 1 4
-    ] / 6
+    w = @SVector [1 / 6, 1 / 6, 1 / 6]
+    N = MMatrix{3,3,Float64}(undef)
+    dN = MArray{Tuple{2,3,3},Float64}(undef)
+    ξ = @SMatrix [
+        1/6 4/6 1/6
+        1/6 1/6 4/6
+    ]
     for p in 1:3
-        N[:, p], dN[:, :, p], _ = barycentricD2N3(ξ[:, p])
+        Np, dNp, _ = barycentricD2N3(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:3
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:2
+            @inbounds @simd for j in 1:3
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
-function barycentricD3N4(ξ::Vector{Float64})
-    N = [1 - ξ[1] - ξ[2] - ξ[3], ξ[1], ξ[2], ξ[3]]
-    dN = [
-        -1 1 0 0
-        -1 0 1 0
-        -1 0 0 1
-    ] / 1.0
-    ddN = zeros(3, 3, 4)
+function barycentricD3N4(ξ::SVector{3,T}) where {T<:Real}
+    N = @SVector [one(T) - ξ[1] - ξ[2] - ξ[3], ξ[1], ξ[2], ξ[3]]
+    dN = @SMatrix [
+        -one(T) one(T) zero(T) zero(T)
+        -one(T) zero(T) one(T) zero(T)
+        -one(T) zero(T) zero(T) one(T)
+    ]
+    ddN = zeros(SArray{Tuple{3,3,4},T,3})
     return N, dN, ddN
 end
 
-function barycentricD3N10(ξ::Vector{Float64})
-    t0 = 1 - ξ[1] - ξ[2] - ξ[3]
+function barycentricD3N10(ξ::SVector{3,T}) where {T<:Real}
+    t0 = one(T) - ξ[1] - ξ[2] - ξ[3]
     t1 = ξ[1]
     t2 = ξ[2]
     t3 = ξ[3]
-    N = [
-        t0 * (2 * t0 - 1),
-        t1 * (2 * t1 - 1),
-        t2 * (2 * t2 - 1),
-        t3 * (2 * t3 - 1),
-        4 * t0 * t1,
-        4 * t1 * t2,
-        4 * t2 * t0,
-        4 * t0 * t3,
-        4 * t1 * t3,
-        4 * t2 * t3,
+    N = @SVector [
+        t0 * (2t0 - one(T)),  # node 1
+        t1 * (2t1 - one(T)),  # node 2
+        t2 * (2t2 - one(T)),  # node 3
+        t3 * (2t3 - one(T)),  # node 4
+        4t0 * t1,             # node 5
+        4t1 * t2,             # node 6
+        4t2 * t0,             # node 7
+        4t0 * t3,             # node 8
+        4t1 * t3,             # node 9
+        4t2 * t3,             # node 10
     ]
-    dN = [
-        1-4 * t0 4 * t1-1 0 0 4*(t0 - t1) 4*t2 -4*t2 -4*t3 4*t3 0
-        1-4 * t0 0 4 * t2-1 0 -4*t1 4*t1 4*(t0 - t2) -4*t3 0 4*t3
-        1-4 * t0 0 0 4 * t3-1 -4*t1 0 -4*t2 4*(t0 - t3) 4*t1 4*t2
+    dN = @SMatrix [
+        (one(T)-4t0) (4t1-one(T)) zero(T) zero(T) 4(t0 - t1) 4t2 -4t2 -4t3 4t3 zero(T)
+        (one(T)-4t0) zero(T) (4t2-one(T)) zero(T) -4t1 4t1 4(t0 - t2) -4t3 zero(T) 4t3
+        (one(T)-4t0) zero(T) zero(T) (4t3-one(T)) -4t1 zero(T) -4t2 4(t0 - t3) 4t1 4t2
     ]
-    ddN = zeros(3, 3, 10)
-    ddN[1, 1, :] = [4 4 0 0 -8 0 0 0 0 0] * 1.0
-    ddN[1, 2, :] = [4 0 0 0 -4 4 -4 0 0 0] * 1.0
-    ddN[1, 3, :] = [4 0 0 0 -4 0 0 -4 4 0] * 1.0
-    ddN[2, 1, :] = [4 0 0 0 -4 4 -4 0 0 0] * 1.0
-    ddN[2, 2, :] = [4 0 4 0 0 0 -8 0 0 0] * 1.0
-    ddN[2, 3, :] = [4 0 0 0 0 0 -4 -4 0 4] * 1.0
-    ddN[3, 1, :] = [4 0 0 0 -4 0 0 -4 4 0] * 1.0
-    ddN[3, 2, :] = [4 0 0 0 0 0 -4 -4 0 4] * 1.0
-    ddN[3, 3, :] = [4 0 0 4 0 0 0 -8 0 0] * 1.0
-    return N, dN, ddN
+    ddN = MArray{Tuple{3,3,10},Float64,3}(undef)
+    ddN[1, 1, :] = @SVector [4, 4, 0, 0, -8, 0, 0, 0, 0, 0]
+    ddN[1, 2, :] = @SVector [4, 0, 0, 0, -4, 4, -4, 0, 0, 0]
+    ddN[1, 3, :] = @SVector [4, 0, 0, 0, -4, 0, 0, -4, 4, 0]
+    ddN[2, 1, :] = @SVector [4, 0, 0, 0, -4, 4, -4, 0, 0, 0]
+    ddN[2, 2, :] = @SVector [4, 0, 4, 0, 0, 0, -8, 0, 0, 0]
+    ddN[2, 3, :] = @SVector [4, 0, 0, 0, 0, 0, -4, -4, 0, 4]
+    ddN[3, 1, :] = @SVector [4, 0, 0, 0, -4, 0, 0, -4, 4, 0]
+    ddN[3, 2, :] = @SVector [4, 0, 0, 0, 0, 0, -4, -4, 0, 4]
+    ddN[3, 3, :] = @SVector [4, 0, 0, 4, 0, 0, 0, -8, 0, 0]
+    return N, dN, SArray(ddN)
 end
 
 function barycentricD3N4G1()
-    w = ones(1) / 6.0
-    N = zeros(4, 1)
-    dN = zeros(3, 4, 1)
-    ξ = 0.25 * ones(3)
-    N, dN[:, :, 1], _ = barycentricD3N4(ξ)
-    return N, dN, w, ξ
+    w = @SVector [1 / 6]
+    N = MMatrix{4,1,Float64}(undef)
+    dN = MArray{Tuple{3,4,1},Float64}(undef)
+    ξ = @SMatrix [0.25; 0.25; 0.25]
+    for p in 1:1
+        Np, dNp, _ = barycentricD3N4(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:4
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:3
+            @inbounds @simd for j in 1:4
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
+    end
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function barycentricD3N4G4()
-    w = ones(4) / 24.0
-    N = zeros(4, 4)
-    dN = zeros(3, 4, 4)
-    s = sqrt(5.0)
-    a = 5.0 + 3.0 * s
-    b = 5.0 - s
-    ξ = [
+    w = @SVector [1 / 24, 1 / 24, 1 / 24, 1 / 24]
+    N = MMatrix{4,4,Float64}(undef)
+    dN = MArray{Tuple{3,4,4},Float64}(undef)
+    s = sqrt(5)
+    a = (5 + 3 * s) / 20
+    b = (5 - s) / 20
+    ξ = @SMatrix [
         b a b b
         b b a b
         b b b a
-    ] / 20.0
+    ]
     for p in 1:4
-        N[:, p], dN[:, :, p], _ = barycentricD3N4(ξ[:, p])
+        Np, dNp, _ = barycentricD3N4(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:4
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:3
+            @inbounds @simd for j in 1:4
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function barycentricD3N10G4()
-    w = ones(4) / 24.0
-    N = zeros(10, 4)
-    dN = zeros(3, 10, 4)
-    s = sqrt(5.0)
-    a = 5.0 + 3.0 * s
-    b = 5.0 - s
-    ξ = [
+    w = @SVector [1 / 24, 1 / 24, 1 / 24, 1 / 24]
+    N = MMatrix{10,4,Float64}(undef)
+    dN = MArray{Tuple{3,10,4},Float64}(undef)
+    s = sqrt(5)
+    a = (5 + 3 * s) / 20
+    b = (5 - s) / 20
+    ξ = @SMatrix [
         b a b b
         b b a b
         b b b a
-    ] / 20.0
+    ]
     for p in 1:4
-        N[:, p], dN[:, :, p], _ = barycentricD3N10(ξ[:, p])
+        Np, dNp, _ = barycentricD3N10(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:10
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:3
+            @inbounds @simd for j in 1:10
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function barycentricD3N10G5()
     a = -2 / 15
     b = 3 / 40
-    w = [a b b b b]
-    N = zeros(10, 5)
-    dN = zeros(3, 10, 5)
-    ξ = [
+    w = @SVector [a, b, b, b, b]
+    N = MMatrix{10,5,Float64}(0)
+    dN = MArray{Tuple{3,10,5},Float64}(undef)
+    ξ = @SMatrix [
         1/4 1/6 1/6 1/6 1/2
         1/4 1/6 1/6 1/2 1/6
         1/4 1/6 1/2 1/6 1/6
     ]
     for p in 1:5
-        N[:, p], dN[:, :, p], _ = barycentricD3N4(ξ[:, p])
+        Np, dNp, _ = barycentricD3N10(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:10
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:3
+            @inbounds @simd for j in 1:10
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
-# Computes the nodes x and weights w
-# for n-point Gauss-Legendre quadrature.
-# Reference:
-# G. H. Golub and J. H. Welsch, Calculation of Gauss quadrature
-# rules, Math. Comp., 23(106):221-230, 1969.
-function gauss_legendre(n::Integer)
-    if n == 1
-        return zeros(1), 2.0 * ones(1)
-    elseif n == 2
-        g = sqrt(3.0 / 3.0)
-        return [-g, g], ones(2)
-    elseif n == 3
-        w = [5.0, 8.0, 5.0] / 9.0
-        g = sqrt(3.0 / 5.0)
-        ξ = [-g, 0, g]
-        return ξ, w
-    elseif n == 4
-        a = sqrt(3.0 / 7.0 + 2.0 * sqrt(6.0 / 5.0) / 7.0)
-        b = sqrt(3.0 / 7.0 - 2.0 * sqrt(6.0 / 5.0) / 7.0)
-        c = (18.0 - sqrt(30.0)) / 36.0
-        d = (18.0 + sqrt(30.0)) / 36.0
-        w = [c, d, d, c]
-        ξ = [-a, -b, b, a]
-        return ξ, w
-    end
-    i = 1:(n - 1)
-    v = i ./ sqrt.(4.0 .* i .* i .- 1.0)
-    vv = eigen(diagm(1 => v, -1 => v))
-    ξ = vv.values
-    w = 2.0 * vv.vectors[1, :] .^ 2
-    return ξ, w
-end
-
-function gauss_legendreD1(n::Integer)
-    return gauss_legendre(n)
-end
-
-function gauss_legendreD2(n::Integer)
-    if n ∉ [1, 4, 9]
-        error("Order must be in [1,4,9] : ", n)
-    end
-    if n == 1
-        return zeros(2, 1), 4.0 * ones(1)
-    elseif n == 4
-        w = ones(4)
-        g = sqrt(3.0) / 3.0
-        ξ = g * [
-            -1 1 1 -1
-            -1 -1 1 1
-        ]
-        return ξ, w
-    elseif n == 9
-        x, ω = gauss_legendreD1(3)
-        ξ = [
-            x[1] x[3] x[3] x[1] x[2] x[3] x[2] x[1] x[2]
-            x[1] x[1] x[3] x[3] x[1] x[2] x[3] x[2] x[2]
-        ]
-        w = [
-            ω[1] * ω[1],
-            ω[3] * ω[1],
-            ω[3] * ω[3],
-            ω[1] * ω[3],
-            ω[2] * ω[1],
-            ω[3] * ω[2],
-            ω[2] * ω[3],
-            ω[1] * ω[2],
-            ω[2] * ω[2],
-        ]
-        return ξ, w
-    end
-end
-
-function lagrangianD1N2(ξ::Float64)
-    N = [0.5 * (1.0 - ξ), 0.5 * (1.0 + ξ)]
-    dN = [-0.5, 0.5]
-    ddN = zeros(1, 1, 2)
+function lagrangianD1N2(ξ::SVector{1,T}) where {T<:Real}
+    N = @SVector [0.5 * (1.0 - ξ[1]), 0.5 * (1.0 + ξ[1])]
+    dN = @SMatrix [-0.5; 0.5]
+    ddN = zeros(SArray{Tuple{1,1,2},T,3})
     return N, dN, ddN
 end
 
 function lagrangianD1N2G1()
-    N = zeros(2, 1)
-    dN = zeros(1, 2, 1)
-    ξ, w = gauss_legendreD1(1)
-    N, dN[:, :, 1], _ = lagrangianD1N2(ξ[1])
-    return N, dN, w, ξ
+    w = @SVector [2.0]
+    N = MMatrix{2,1,Float64}(undef)
+    dN = MArray{Tuple{1,2,1},Float64}(undef)
+    ξ = @SMatrix [0.0]
+    for p in 1:1
+        Np, dNp, _ = lagrangianD1N2(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:2
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:1
+            @inbounds @simd for j in 1:2
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
+    end
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function lagrangianD1N2G2()
-    N = zeros(2, 2)
-    dN = zeros(1, 2, 2)
-    ξ, w = gauss_legendreD1(2)
+    w = @SVector [1.0, 1.0]
+    N = MMatrix{2,2,Float64}(undef)
+    dN = MArray{Tuple{1,2,2},Float64}(undef)
+    g = 1 / sqrt(3)
+    ξ = @SMatrix [-g; g]
     for p in 1:2
-        N[:, p], dN[:, :, p], _ = lagrangianD1N2(ξ[p])
+        Np, dNp, _ = lagrangianD1N2(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:2
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:1
+            @inbounds @simd for j in 1:2
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
-function lagrangianD1N2G3()
-    N = zeros(2, 3)
-    dN = zeros(1, 2, 3)
-    ξ, w = gauss_legendreD1(3)
-    for p in 1:3
-        N[:, p], dN[:, :, p], _ = lagrangianD1N2(ξ[p])
-    end
-    return N, dN, w, ξ
-end
-
-function lagrangianD1N2G4()
-    N = zeros(2, 4)
-    dN = zeros(1, 2, 4)
-    ξ, w = gauss_legendreD1(4)
+function lagrangianD2N4(ξ::SVector{2,T}) where {T<:Real}
+    r, s = ξ
+    ra = @SVector [-1, 1, 1, -1]
+    sa = @SVector [-1, -1, 1, 1]
+    N = MVector{4,T}(undef)
+    dN = MMatrix{2,4,T}(undef)
+    ddN = MArray{Tuple{2,2,4},T,3}(undef)
     for p in 1:4
-        N[:, p], dN[:, :, p], _ = lagrangianD1N2(ξ[p])
-    end
-    return N, dN, w, ξ
-end
-
-function lagrangianD2N4(ξ::Vector{Float64})
-    r = ξ[1]
-    s = ξ[2]
-    ra = [-1 1 1 -1] / 1.0
-    sa = [-1 -1 1 1] / 1.0
-    N = zeros(4)
-    dN = zeros(2, 4)
-    ddN = zeros(2, 2, 4)
-    for p in 1:4
-        N[p] = 0.25 * (1.0 + ra[p] * r) * (1.0 + sa[p] * s)
+        N[p] = 0.25 * (1 + ra[p] * r) * (1 + sa[p] * s)
         dN[1, p] = 0.25 * ra[p] * (1 + sa[p] * s)
-        dN[2, p] = 0.25 * (1 + ra[p] * r) * sa[p]
-        ddN[1, 1, p] = 0.0
+        dN[2, p] = 0.25 * sa[p] * (1 + ra[p] * r)
+        ddN[1, 1, p] = zero(T)
         ddN[1, 2, p] = 0.25 * ra[p] * sa[p]
         ddN[2, 1, p] = 0.25 * ra[p] * sa[p]
-        ddN[2, 2, p] = 0.0
+        ddN[2, 2, p] = zero(T)
     end
-    return N, dN, ddN
+    return SVector(N), SMatrix(dN), SArray(ddN)
 end
 
 function lagrangianD2N4G4()
-    N = zeros(4, 4)
-    dN = zeros(2, 4, 4)
-    ξ, w = gauss_legendreD2(4)
+    w = @SVector [1.0, 1.0, 1.0, 1.0]
+    N = MMatrix{4,4,Float64}(undef)
+    dN = MArray{Tuple{2,4,4},Float64}(undef)
+    g = 1 / sqrt(3)
+    ξ = @SMatrix [
+        -g g g -g
+        -g -g g g
+    ]
     for p in 1:4
-        N[:, p], dN[:, :, p], _ = lagrangianD2N4(ξ[:, p])
+        Np, dNp, _ = lagrangianD2N4(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:4
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:2
+            @inbounds @simd for j in 1:4
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function lagrangianD2N4G9()
-    N = zeros(4, 9)
-    dN = zeros(2, 4, 9)
-    ξ, w = gauss_legendreD2(9)
-    for p in 1:4
-        N[:, p], dN[:, :, p], _ = lagrangianD2N4(ξ[:, p])
+    a = 25 / 81
+    b = 40 / 81
+    c = 64 / 81
+    w = @SVector [a, a, a, a, b, b, b, b, c]
+    N = MMatrix{4,9,Float64}(undef)
+    dN = MArray{Tuple{2,4,9},Float64}(undef)
+    g = sqrt(3 / 5)
+    ξ = @SMatrix [
+        -g g g -g 0 g 0 -g 0
+        -g -g g g -g 0 g 0 0
+    ]
+    for p in 1:9
+        Np, dNp, _ = lagrangianD2N4(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:4
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:2
+            @inbounds @simd for j in 1:4
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
-function lagrangianD3N8(ξ::Vector{Float64})
-    r = ξ[1]
-    s = ξ[2]
-    t = ξ[3]
-    ra = [-1 1 1 -1 -1 1 1 -1] / 1.0
-    sa = [-1 -1 1 1 -1 -1 1 1] / 1.0
-    ta = [-1 -1 -1 -1 1 1 1 1] / 1.0
-    N = zeros(8)
-    dN = zeros(3, 8)
-    ddN = zeros(3, 3, 8)
+function lagrangianD3N8(ξ::SVector{3,T}) where {T<:Real}
+    r, s, t = ξ
+    ra = @SVector [-1, 1, 1, -1, -1, 1, 1, -1]
+    sa = @SVector [-1, -1, 1, 1, -1, -1, 1, 1]
+    ta = @SVector [-1, -1, -1, -1, 1, 1, 1, 1]
+    N = MVector{8,T}(undef)
+    dN = MMatrix{3,8,T}(undef)
+    ddN = MArray{Tuple{3,3,8},T,3}(undef)
     for p in 1:8
-        N[p] = 0.125 * (1.0 + ra[p] * r) * (1.0 + sa[p] * s) * (1.0 + ta[p] * t)
-        dN[1, p] = 0.125 * ra[p] * (1.0 + sa[p] * s) * (1.0 + ta[p] * t)
-        dN[2, p] = 0.125 * (1.0 + ra[p] * r) * sa[p] * (1.0 + ta[p] * t)
-        dN[3, p] = 0.125 * (1.0 + ra[p] * r) * (1.0 + sa[p] * s) * ta[p]
-        ddN[1, 1, p] = 0.0
-        ddN[1, 2, p] = 0.125 * ra[p] * sa[p] * (1.0 + ta[p] * t)
-        ddN[1, 3, p] = 0.125 * ra[p] * ta[p] * (1.0 + sa[p] * s)
-        ddN[2, 1, p] = 0.125 * ra[p] * sa[p] * (1.0 + ta[p] * t)
-        ddN[2, 2, p] = 0.0
-        ddN[2, 3, p] = 0.125 * sa[p] * ta[p] * (1.0 + ra[p] * r)
-        ddN[3, 1, p] = 0.125 * ra[p] * ta[p] * (1.0 + sa[p] * s)
-        ddN[3, 2, p] = 0.125 * sa[p] * ta[p] * (1.0 + ra[p] * r)
-        ddN[3, 3, p] = 0.0
+        r_p, s_p, t_p = ra[p], sa[p], ta[p]
+        N[p] = 0.125 * (1 + r_p * r) * (1 + s_p * s) * (1 + t_p * t)
+        dN[1, p] = 0.125 * r_p * (1 + s_p * s) * (1 + t_p * t)
+        dN[2, p] = 0.125 * (1 + r_p * r) * s_p * (1 + t_p * t)
+        dN[3, p] = 0.125 * (1 + r_p * r) * (1 + s_p * s) * t_p
+        ddN[1, 1, p] = zero(T)
+        ddN[1, 2, p] = 0.125 * r_p * s_p * (1 + t_p * t)
+        ddN[1, 3, p] = 0.125 * r_p * t_p * (1 + s_p * s)
+        ddN[2, 1, p] = ddN[1, 2, p]
+        ddN[2, 2, p] = zero(T)
+        ddN[2, 3, p] = 0.125 * s_p * t_p * (1 + r_p * r)
+        ddN[3, 1, p] = ddN[1, 3, p]
+        ddN[3, 2, p] = ddN[2, 3, p]
+        ddN[3, 3, p] = zero(T)
     end
-    return N, dN, ddN
+    return SVector(N), SMatrix(dN), SArray(ddN)
 end
 
 function lagrangianD3N8G8()
-    w = ones(8)
-    N = zeros(8, 8)
-    dN = zeros(3, 8, 8)
-    g = sqrt(3.0) / 3.0
-    ξ = g * [
-        -1 1 1 -1 -1 1 1 -1
-        -1 -1 1 1 -1 -1 1 1
-        -1 -1 -1 -1 1 1 1 1
+    w = @SVector [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    N = MMatrix{8,8,Float64}(undef)
+    dN = MArray{Tuple{3,8,8},Float64}(undef)
+    g = 1 / sqrt(3)
+    ξ = @SMatrix [
+        -g g g -g -g g g -g
+        -g -g g g -g -g g g
+        -g -g -g -g g g g g
     ]
     for p in 1:8
-        N[:, p], dN[:, :, p], _ = lagrangianD3N8(ξ[:, p])
+        Np, dNp, _ = lagrangianD3N8(SVector(ξ[:, p]))
+        @inbounds @simd for i in 1:8
+            N[i, p] = Np[i]
+        end
+        @inbounds for i in 1:3
+            @inbounds @simd for j in 1:8
+                dN[i, j, p] = dNp[i, j]
+            end
+        end
     end
-    return N, dN, w, ξ
+    return SMatrix(N), SArray(dN), w, ξ
 end
 
 function default_num_int_pts(element_type::String)
@@ -561,9 +579,8 @@ function map_to_parametric(
 )
     tol = 1.0e-08
     max_iters = 1024
-    dim = length(point)
-    ξ = zeros(dim)
-    hessian = zeros(dim, dim)
+    ξ = MVector{3,Float64}(0.0, 0.0, 0.0)
+    hessian = MMatrix{3,3,Float64}(undef)
     for _ in 1:max_iters
         N, dN, _ = interpolate(element_type, ξ)
         trial_point = nodes * N
@@ -579,26 +596,26 @@ function map_to_parametric(
     return ξ
 end
 
-function interpolate(element_type::String, ξ::Vector{Float64})
+function interpolate(element_type::String, ξ::AbstractVector{Float64})
     if element_type == "BAR2"
-        return lagrangianD1N2(ξ)
+        return lagrangianD1N2(SVector(ξ))
     elseif element_type == "TRI3"
-        return barycentricD2N3(ξ)
+        return barycentricD2N3(SVector(ξ))
     elseif element_type == "QUAD4"
-        return lagrangianD2N4(ξ)
+        return lagrangianD2N4(SVector(ξ))
     elseif element_type == "TETRA4"
-        return barycentricD3N4(ξ)
+        return barycentricD3N4(SVector(ξ))
     elseif element_type == "TETRA10"
-        return barycentricD3N10(ξ)
+        return barycentricD3N10(SVector(ξ))
     elseif element_type == "HEX8"
-        return lagrangianD3N8(ξ)
+        return lagrangianD3N8(SVector(ξ))
     else
         error("Invalid element type: ", element_type)
     end
 end
 
 function is_inside_parametric(
-    element_type::String, ξ::Vector{Float64}, tol::Float64=1.0e-06
+    element_type::String, ξ::AbstractVector{Float64}, tol::Float64=1.0e-06
 )
     factor = 1.0 + tol
     if element_type == "BAR2"
@@ -620,7 +637,7 @@ function is_inside(
     point::Vector{Float64},
     tol::Float64=1.0e-06,
 )
-    ξ = zeros(length(point))
+    ξ = @SVector [0.0, 0.0, 0.0]
     if in_bounding_box(nodes, point, 0.1) == false
         return ξ, false
     end
@@ -705,11 +722,7 @@ function project_point_to_side_set(
     point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer
 )
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
-    space_dim = length(point)
-    parametric_dim = space_dim - 1
-    new_point, ξ, surface_distance, normal = closest_point_projection(
-        parametric_dim, face_nodes, point
-    )
+    new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end
 
@@ -911,22 +924,21 @@ end
 
 using Einsum
 
-function closest_point_projection(
-    parametric_dim::Integer, nodes::Matrix{Float64}, x::Vector{Float64}
-)
-    space_dim, num_nodes = size(nodes)
-    element_type = get_element_type(parametric_dim, num_nodes)
-    ξ = zeros(parametric_dim)
-    residual = zeros(parametric_dim)
-    hessian = zeros(parametric_dim, parametric_dim)
-    y = x
-    yx = zeros(space_dim)
+function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
+    num_nodes = size(nodes, 2)
+    element_type = get_element_type(2, num_nodes)
+    ξ = @MVector zeros(Float64, 2)
+    y = @MVector zeros(Float64, 3)
+    residual = @MVector zeros(Float64, 2)
+    hessian = @MMatrix zeros(Float64, 2, 2)
+    yx = @MVector zeros(Float64, 3)
+    ddyddξ = MArray{Tuple{2,2,3},Float64,3}(undef)
+    ddyddξyx = MMatrix{2,2,Float64}(undef)
     tol = 1.0e-10
-    normal = zeros(space_dim)
     iteration = 1
     max_iterations = 64
     while true
-        N, dN, ddN = interpolate(element_type, ξ)
+        N, dN, ddN = interpolate(element_type, SVector(ξ))
         y = nodes * N
         dydξ = dN * nodes'
         yx = y - x
