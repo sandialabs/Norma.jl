@@ -385,7 +385,7 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
 
             m = w / s
             rv = θ * m
-            # Rotation is converted via the psuedo vector to rotation matrix
+            # Rotation is converted via the pseudo vector to rotation matrix
             rotation_matrix = MiniTensor.rt_from_rv(rv)
         end
 
@@ -1037,18 +1037,12 @@ function apply_ics(params::Parameters, model::SolidMechanics)
             if ic_type == "displacement"
                 disp_num = eval(Meta.parse(expression))
                 velo_num = expand_derivatives(D(disp_num))
-                acce_num = expand_derivatives(D(velo_num))
             elseif ic_type == "velocity"
                 disp_num = nothing  # Not needed
                 velo_num = eval(Meta.parse(expression))
-                acce_num = expand_derivatives(D(velo_num))
-            elseif ic_type == "acceleration"
-                disp_num = nothing  # Not needed
-                velo_num = nothing  # Not needed
-                acce_num = eval(Meta.parse(expression))
             else
                 error(
-                    "Invalid initial condition type: '$ic_type'. Supported types are: displacement, velocity, and acceleration.",
+                    "Invalid initial condition type: '$ic_type'. Supported types are: displacement or velocity.",
                 )
             end
             for node_index in node_set_node_indices
@@ -1062,8 +1056,6 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                     disp_num === nothing ? 0.0 : extract_value(substitute(disp_num, values))
                 velo_val =
                     velo_num === nothing ? 0.0 : extract_value(substitute(velo_num, values))
-                acce_val =
-                    acce_num === nothing ? 0.0 : extract_value(substitute(acce_num, values))
                 if ic_type == "displacement"
                     model.current[offset, node_index] =
                         model.reference[offset, node_index] + disp_val
@@ -1071,8 +1063,8 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                     if non_zero_velocity
                         dissimilar_velocities =
                             !(model.velocity[offset, node_index] ≈ velo_val)
-                        non_zero_pre_velocity = !(model.velocity[offset, node_index] ≈ 0.0)
-                        if dissimilar_velocities && non_zero_pre_velocity
+                        velocity_already_defined = !(model.velocity[offset, node_index] ≈ 0.0)
+                        if dissimilar_velocities && velocity_already_defined
                             error(
                                 "Multiple and inconsistent velocity initial conditions (ICs) are being applied to node ",
                                 node_index,
@@ -1106,7 +1098,6 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                         model.velocity[offset, node_index] = velo_val
                     end
                 end
-                model.acceleration[offset, node_index] = acce_val
             end
         end
     end
