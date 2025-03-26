@@ -699,6 +699,7 @@ function stop_solve(_::ExplicitSolver, _::Int64)
 end
 
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
+    is_explicit_dynamic = integrator isa CentralDifference
     predict(integrator, solver, model)
     evaluate(integrator, solver, model)
     if model.failed == true
@@ -720,12 +721,14 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         end
         residual = solver.gradient
         norm_residual = norm(residual[model.free_dofs])
-        if iteration_number == 0
-            @printf(" |R| = %.3e\n", norm_residual)
-        else
-            @printf(
-                " |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number
-            )
+        if is_explicit_dynamic == false
+            if iteration_number == 0
+                @printf(" |R| = %.3e | Initial Residual\n", norm_residual)
+            else
+                @printf(
+                    " |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number
+                )
+            end
         end
         update_solver_convergence_criterion(solver, norm_residual)
         iteration_number += 1
