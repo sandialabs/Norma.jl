@@ -23,23 +23,23 @@
     src_side_set_id = 5
     dst_side_set_id = 6
     src_T = get_boundary_traction_force(src_mesh, src_side_set_id)
-    println("Number of nodes of the source side set ", length(src_T))
+    println("Source side set:         $(length(src_T)) nodes")
     dst_T_real = get_boundary_traction_force(dst_mesh, dst_side_set_id)
-    println("Number of nodes of the destination side set ", length(dst_T_real))
+    println("Destination side set:    $(length(dst_T_real)) nodes")
     H = Norma.get_square_projection_matrix(src_model, src_side_set_id)
     L = Norma.get_rectangular_projection_matrix(
         src_model, src_side_set_id, dst_model, dst_side_set_id
     )
     dst_T = L * inv(H) * src_T
     rel_er_tr = norm(dst_T - dst_T_real) / norm(dst_T_real)
-    println("traction: relative error ", rel_er_tr)
+    @printf("Relative error (traction):     %.4e\n", rel_er_tr)
     @test norm(dst_T - dst_T_real) / norm(dst_T_real) ≈ 0.0 atol = 1.0e-08
     M = Norma.get_square_projection_matrix(dst_model, dst_side_set_id)
     src_u = ones(length(src_T))
     dst_u = inv(M) * L * src_u
     dst_u_real = ones(length(dst_T_real))
     rel_er_disp = norm(dst_u - dst_u_real) / norm(dst_u_real)
-    println("displacement: relative error ", rel_er_disp)
+    @printf("Relative error (displacement): %.4e\n", rel_er_disp)
     @test norm(dst_u - dst_u_real) / norm(dst_u_real) ≈ 0.0 atol = 1.0e-08
     Exodus.close(src_sim.params["input_mesh"])
     Exodus.close(src_sim.params["output_mesh"])
