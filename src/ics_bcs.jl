@@ -940,11 +940,11 @@ function component_offset_from_string(name::String)
 end
 
 function extract_value(value::Real)
-    return value
+    return Float64(value)
 end
 
 function extract_value(symbol::Num)
-    return symbol.val
+    return Float64(symbol.val)
 end
 
 function create_bcs(params::Parameters)
@@ -1018,6 +1018,25 @@ function apply_bcs(model::RomModel)
     end
 end
 
+function assign_velocity!(velocity::Matrix{Float64}, offset::Int64, node_index::Int32, velo_val::Float64, context::String)
+    current_val = velocity[offset, node_index]
+    velocity_already_defined = !(current_val ≈ 0.0)
+    dissimilar_velocities = !(current_val ≈ velo_val)
+    if velocity_already_defined && dissimilar_velocities
+        error(
+            "Inconsistent velocity initial conditions (ICs) for node ",
+            node_index,
+            ": attempted to assign velocity ",
+            context,
+            " (v = ", velo_val, ")",
+            " which conflicts with an already assigned value (v = ", current_val, ")."
+        )
+    else
+        velocity[offset, node_index] = velo_val
+    end
+    return nothing
+end
+
 function apply_ics(params::Parameters, model::SolidMechanics)
     if haskey(params, "initial conditions") == false
         return nothing
@@ -1061,41 +1080,11 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                         model.reference[offset, node_index] + disp_val
                     non_zero_velocity = !(velo_val ≈ 0.0)
                     if non_zero_velocity
-                        velocity_already_defined = !(model.velocity[offset, node_index] ≈ 0.0)
-                        dissimilar_velocities = !(model.velocity[offset, node_index] ≈ velo_val)
-                        if dissimilar_velocities && velocity_already_defined
-                            error(
-                                "Multiple and inconsistent velocity initial conditions (ICs) are being applied to node ",
-                                node_index,
-                                ". Attempted to assign non-zero velocity derived from ",
-                                "displacement (v = ",
-                                velo_val,
-                                ") that overwrites previously assigned velocity (v=",
-                                model.velocity[offset, node_index],
-                                ").",
-                            )
-                        else
-                            model.velocity[offset, node_index] = velo_val
-                        end
+                        assign_velocity!(model.velocity, offset, node_index, velo_val, "derived from displacement")
                     end
                 end
                 if ic_type == "velocity"
-                    velocity_already_defined = !(model.velocity[offset, node_index] ≈ 0.0)
-                    dissimilar_velocities = !(model.velocity[offset, node_index] ≈ velo_val)
-                    if velocity_already_defined && dissimilar_velocities
-                        error(
-                            "Multiple and inconsistent velocity initial conditions (ICs) are being applied to node ",
-                            node_index,
-                            ". Attempted to assign non-zero velocity directly from velocity IC ",
-                            " (v = ",
-                            velo_val,
-                            ") that overwrites previously assigned velocity (v=",
-                            model.velocity[offset, node_index],
-                            ").",
-                        )
-                    else
-                        model.velocity[offset, node_index] = velo_val
-                    end
+                    assign_velocity!(model.velocity, offset, node_index, velo_val, "directly from velocity IC")
                 end
             end
         end
