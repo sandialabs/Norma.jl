@@ -1061,9 +1061,8 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                         model.reference[offset, node_index] + disp_val
                     non_zero_velocity = !(velo_val ≈ 0.0)
                     if non_zero_velocity
-                        dissimilar_velocities =
-                            !(model.velocity[offset, node_index] ≈ velo_val)
                         velocity_already_defined = !(model.velocity[offset, node_index] ≈ 0.0)
+                        dissimilar_velocities = !(model.velocity[offset, node_index] ≈ velo_val)
                         if dissimilar_velocities && velocity_already_defined
                             error(
                                 "Multiple and inconsistent velocity initial conditions (ICs) are being applied to node ",

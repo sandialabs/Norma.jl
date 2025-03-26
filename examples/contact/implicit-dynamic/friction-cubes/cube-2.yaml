@@ -19,11 +19,7 @@ initial conditions:
   displacement:
     - node set: nsall
       component: x
-      function: "-0.4999"
-  velocity:
-    - node set: nsall
-      component: x
-      function: "-100.0 * 1.0"
+      function: "-0.5099 - 100.0 * t"
 boundary conditions:
   Schwarz contact:
     - side set: ssx-
