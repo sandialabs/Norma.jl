@@ -738,7 +738,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                     end
                 end
                 W, P, A = constitutive(material, F)
-                stress = P[1:9]
+                stress = SVector{9, Float64}(P)
                 w = elem_weights[point]
                 element_energy += W * j * w
                 element_internal_force += B' * stress * j * w
