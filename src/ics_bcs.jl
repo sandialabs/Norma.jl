@@ -1018,7 +1018,13 @@ function apply_bcs(model::RomModel)
     end
 end
 
-function assign_velocity!(velocity::Matrix{Float64}, offset::Int64, node_index::Int32, velo_val::Float64, context::String)
+function assign_velocity!(
+    velocity::Matrix{Float64},
+    offset::Int64,
+    node_index::Int32,
+    velo_val::Float64,
+    context::String,
+)
     current_val = velocity[offset, node_index]
     velocity_already_defined = !(current_val ≈ 0.0)
     dissimilar_velocities = !(current_val ≈ velo_val)
@@ -1028,8 +1034,12 @@ function assign_velocity!(velocity::Matrix{Float64}, offset::Int64, node_index::
             node_index,
             ": attempted to assign velocity ",
             context,
-            " (v = ", velo_val, ")",
-            " which conflicts with an already assigned value (v = ", current_val, ")."
+            " (v = ",
+            velo_val,
+            ")",
+            " which conflicts with an already assigned value (v = ",
+            current_val,
+            ").",
         )
     else
         velocity[offset, node_index] = velo_val
@@ -1080,11 +1090,23 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                         model.reference[offset, node_index] + disp_val
                     non_zero_velocity = !(velo_val ≈ 0.0)
                     if non_zero_velocity
-                        assign_velocity!(model.velocity, offset, node_index, velo_val, "derived from displacement")
+                        assign_velocity!(
+                            model.velocity,
+                            offset,
+                            node_index,
+                            velo_val,
+                            "derived from displacement",
+                        )
                     end
                 end
                 if ic_type == "velocity"
-                    assign_velocity!(model.velocity, offset, node_index, velo_val, "directly from velocity IC")
+                    assign_velocity!(
+                        model.velocity,
+                        offset,
+                        node_index,
+                        velo_val,
+                        "directly from velocity IC",
+                    )
                 end
             end
         end

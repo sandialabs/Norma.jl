@@ -618,6 +618,15 @@ function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
     return SVector{N,T}(sum(A; dims=2)[:, 1])
 end
 
+function assemble_element_internal_force!(
+    internal_force::MVector{M,T},
+    gradient::MMatrix{N,M,T},
+    stress_vector::SVector{N,T},
+    scale::T,
+) where {M,N,T}
+    @einsum internal_force[i] += gradient[j, i] * stress_vector[j] * scale
+end
+
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     is_implicit_dynamic = integrator isa Newmark
     is_explicit_dynamic = integrator isa CentralDifference
@@ -741,7 +750,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 stress = SVector{9,Float64}(P)
                 w = elem_weights[point]
                 element_energy += W * j * w
-                element_internal_force += B' * stress * j * w
+                assemble_element_internal_force!(element_internal_force, B, stress, j * w)
                 if is_implicit == true
                     moduli = second_from_fourth(A)
                     element_stiffness += B' * moduli * B * j * w
