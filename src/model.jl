@@ -624,7 +624,7 @@ function assemble_element_internal_force!(
     stress_vector::SVector{N,T},
     scale::T,
 ) where {M,N,T}
-    @einsum internal_force[i] += gradient[j, i] * stress_vector[j] * scale
+    @tullio internal_force[i] += gradient[j, i] * stress_vector[j] * scale
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)

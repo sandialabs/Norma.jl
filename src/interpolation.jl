@@ -922,7 +922,7 @@ function interpolate(
     end
 end
 
-using Einsum
+using Tullio
 
 function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
     num_nodes = size(nodes, 2)
@@ -943,8 +943,8 @@ function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
         dydξ = dN * nodes'
         yx = y - x
         residual = dydξ * yx
-        @einsum ddyddξ[i, j, k] := ddN[i, j, l] * nodes[k, l]
-        @einsum ddyddξyx[i, j] := ddyddξ[i, j, k] * yx[k]
+        @tullio ddyddξ[i, j, k] := ddN[i, j, l] * nodes[k, l]
+        @tullio ddyddξyx[i, j] := ddyddξ[i, j, k] * yx[k]
         hessian = ddyddξyx + dydξ * dydξ'
         δ = -hessian \ residual
         ξ = ξ + δ
