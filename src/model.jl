@@ -500,40 +500,41 @@ function dense(indices::Vector{Int64}, values::Vector{Float64}, vector_size::Int
     return dense_vector
 end
 
-function create_element_matrix(::Type{T}, ::Val{4}) where {T}
-    return MMatrix{12,12,T}(undef)
+@generated function create_element_matrix(::Type{T}, ::Val{N}) where {T,N}
+    dof_per_node = 3
+    total_dofs = dof_per_node * N
+    quote
+        MMatrix{$total_dofs,$total_dofs,$T}(undef)
+    end
 end
 
-function create_element_matrix(::Type{T}, ::Val{8}) where {T}
-    return MMatrix{24,24,T}(undef)
+@generated function create_reduced_element_matrix(::Type{T}, ::Val{N}) where {T,N}
+    quote
+        MMatrix{$N,$N,$T}(undef)
+    end
 end
 
-function create_element_matrix(::Type{T}, ::Val{10}) where {T}
-    return MMatrix{30,30,T}(undef)
+@generated function create_element_vector(::Type{T}, ::Val{N}) where {T,N}
+    dof_per_node = 3
+    total_dofs = dof_per_node * N
+    quote
+        MVector{$total_dofs,$T}(undef)
+    end
 end
 
-function create_element_vector(::Type{T}, ::Val{4}) where {T}
-    return MVector{12,T}(undef)
+@generated function create_reduced_element_vector(::Type{T}, ::Val{N}) where {T,N}
+    quote
+        MVector{$N,$T}(undef)
+    end
 end
 
-function create_element_vector(::Type{T}, ::Val{8}) where {T}
-    return MVector{24,T}(undef)
-end
-
-function create_element_vector(::Type{T}, ::Val{10}) where {T}
-    return MVector{30,T}(undef)
-end
-
-function create_gradient_operator(::Type{T}, ::Val{4}) where {T}
-    return MMatrix{9,12,T}(undef)
-end
-
-function create_gradient_operator(::Type{T}, ::Val{8}) where {T}
-    return MMatrix{9,24,T}(undef)
-end
-
-function create_gradient_operator(::Type{T}, ::Val{10}) where {T}
-    return MMatrix{9,30,T}(undef)
+@generated function create_gradient_operator(::Type{T}, ::Val{N}) where {T,N}
+    dof_per_node = 3
+    d2 = dof_per_node * dof_per_node
+    total_dofs = dof_per_node * N
+    quote
+        MMatrix{$d2,$total_dofs,$T}(undef)
+    end
 end
 
 function create_coo_matrix()
