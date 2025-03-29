@@ -619,7 +619,7 @@ function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
     return SVector{N,T}(sum(A; dims=2)[:, 1])
 end
 
-function assemble_element_internal_force!(
+@inline function assemble_element_internal_force!(
     internal_force::MVector{M,T},
     gradient::MMatrix{N,M,T},
     stress_vector::SVector{N,T},
@@ -629,7 +629,7 @@ function assemble_element_internal_force!(
     return nothing
 end
 
-function assemble_element_reduced_lumped_mass!(
+@inline function assemble_element_reduced_lumped_mass!(
     reduced_lumped_mass::MVector{N,T}, shape_functions::SVector{N,T}, scale::T
 ) where {N,T}
     @einsum reduced_lumped_mass[i] += shape_functions[i] * shape_functions[j] * scale
@@ -642,7 +642,7 @@ end
     return nothing
 end
 
-function assemble_element_reduced_mass!(
+@inline function assemble_element_reduced_mass!(
     reduced_mass::MMatrix{N,N,T}, shape_functions::SVector{N,T}, scale::T
 ) where {N,T}
     @einsum reduced_mass[i, j] += shape_functions[i] * shape_functions[j] * scale
@@ -765,7 +765,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 stress = SVector{9,Float64}(P)
                 w = elem_weights[point]
                 element_energy += W * j * w
-                assemble_element_internal_force!(element_internal_force, B, stress, j * w)
+                @einsum element_internal_force[p] += B[q, p] * stress[q] * j * w
                 if is_implicit == true
                     moduli = second_from_fourth(A)
                     element_stiffness += B' * moduli * B * j * w
