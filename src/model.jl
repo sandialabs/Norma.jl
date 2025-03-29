@@ -626,6 +626,26 @@ function assemble_element_internal_force!(
     scale::T,
 ) where {M,N,T}
     @einsum internal_force[i] += gradient[j, i] * stress_vector[j] * scale
+    return nothing
+end
+
+function assemble_element_reduced_lumped_mass!(
+    reduced_lumped_mass::MVector{N,T}, shape_functions::SVector{N,T}, scale::T
+) where {N,T}
+    @einsum reduced_lumped_mass[i] += shape_functions[i] * shape_functions[j] * scale
+end
+
+@inline function assemble_element_stiffness!(
+    stiffness::MMatrix{M,M,T}, gradient::MMatrix{N,M,T}, moduli::SMatrix{N,N,T}, scale::T
+) where {M,N,T}
+    stiffness .+= gradient' * moduli * gradient * scale
+    return nothing
+end
+
+function assemble_element_reduced_mass!(
+    reduced_mass::MMatrix{N,N,T}, shape_functions::SVector{N,T}, scale::T
+) where {N,T}
+    @einsum reduced_mass[i, j] += shape_functions[i] * shape_functions[j] * scale
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
