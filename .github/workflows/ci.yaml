@@ -4,41 +4,49 @@ on:
   push:
     branches:
       - main
+    tags: ['*']
   pull_request:
   workflow_dispatch:
   schedule:
     - cron: '0 8 * * *'  # Midnight PST (8:00 UTC)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
 jobs:
   test:
-    name: Run Tests
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        julia-version: ["1.11"]
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.11']
+        os: [ubuntu-latest, macos-latest]
 
     steps:
-      - name: Check out code
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Julia
-        uses: julia-actions/setup-julia@v1
+        uses: julia-actions/setup-julia@v2
         with:
-          version: ${{ matrix.julia-version }}
+          version: ${{ matrix.version }}
 
-      - name: Remove existing Manifest.toml
-        run: rm -f Manifest.toml
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v2
 
-      - name: Install dependencies
-        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Build project
+        uses: julia-actions/julia-buildpkg@v1
 
-      - name: Run tests with coverage
-        run: julia --project=. --code-coverage=user -e 'using Pkg; Pkg.test()'
+      - name: Run tests
+        uses: julia-actions/julia-runtest@v1
+
+      - name: Process coverage
+        uses: julia-actions/julia-processcoverage@v1
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}  # Optional if public repo
+          files: lcov.info
+          fail_ci_if_error: true
