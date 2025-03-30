@@ -35,5 +35,10 @@ jobs:
       - name: Install dependencies
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
-      - name: Run tests
-        run: julia --project=. -e 'using Pkg; Pkg.test()'
+      - name: Run tests with coverage
+        run: julia --project=. --code-coverage=user -e 'using Pkg; Pkg.test()'
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}  # Optional if public repo
