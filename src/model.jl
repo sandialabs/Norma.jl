@@ -676,7 +676,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     for blk_index in 1:num_blks
         material = materials[blk_index]
         if is_dynamic == true
-            ρ = material.ρ
+            density = material.ρ
         end
         block = blocks[blk_index]
         blk_id = block.id
@@ -723,7 +723,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_mass = element_mass_tl[t]
                 fill!(element_mass, 0.0)
             end
-            B = B_tl[t]
+            grad_op = B_tl[t]
             conn_indices =
                 ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
             node_indices = elem_blk_conn[conn_indices]
@@ -742,8 +742,8 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dNdX = dXdξ \ dNdξ
                 F = SMatrix{3,3,Float64,9}(dNdX * elem_cur_pos')
                 J = det(F)
-                gradient_operator!(B, dNdX)
-                j = det(dXdξ)
+                gradient_operator!(grad_op, dNdX)
+                det_dXdξ = det(dXdξ)
                 if J ≤ 0.0
                     model.failed = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
@@ -763,16 +763,17 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 end
                 W, P, A = constitutive(material, F)
                 stress = SVector{9,Float64}(P)
-                w = elem_weights[point]
-                element_energy += W * j * w
-                @einsum element_internal_force[p] += B[q, p] * stress[q] * j * w
+                ip_weight = elem_weights[point]
+                dvol = det_dXdξ * ip_weight
+                element_energy += W * dvol
+                @einsum element_internal_force[p] += grad_op[q, p] * stress[q] * dvol
                 if is_implicit == true
                     moduli = second_from_fourth(A)
-                    element_stiffness += B' * moduli * B * j * w
+                    element_stiffness += grad_op' * moduli * grad_op * dvol
                 end
                 if is_dynamic == true
                     Nξ = N[:, point]
-                    reduced_mass = Nξ * Nξ' * ρ * j * w
+                    reduced_mass = Nξ * Nξ' * density * dvol
                 end
                 if is_implicit_dynamic == true
                     element_mass[1:3:end, 1:3:end] += reduced_mass
