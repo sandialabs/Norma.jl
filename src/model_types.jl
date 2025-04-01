@@ -15,6 +15,19 @@ using SparseArrays
     Finite
 end
 
+mutable struct COOVector
+    index::Vector{Int64}
+    vals::Vector{Float64}
+    len::Int64  # logical length
+end
+
+mutable struct COOMatrix
+    rows::Vector{Int64}
+    cols::Vector{Int64}
+    vals::Vector{Float64}
+    len::Int64 # logical length
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}

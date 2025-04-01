@@ -8,6 +8,7 @@ include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
+using Base.Threads: @threads, threadid, nthreads
 using NPZ
 
 function LinearOpInfRom(params::Parameters)
@@ -423,64 +424,6 @@ function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9},
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
-function assemble!(
-    rows::Vector{Int64},
-    global_vector::Vector{Float64},
-    elem_vector::AbstractVector{Float64},
-    dofs::AbstractVector{Int64},
-)
-    ndofs = length(dofs)
-
-    # old length and new length
-    old_len = length(rows)
-    new_len = old_len + ndofs
-
-    # Resize each vector in one step
-    resize!(rows, new_len)
-    resize!(global_vector, new_len)
-
-    idx = old_len + 1
-    @inbounds for i in 1:ndofs
-        I = dofs[i]
-        rows[idx] = I
-        global_vector[idx] = elem_vector[i]
-        idx += 1
-    end
-    return nothing
-end
-
-function assemble!(
-    rows::Vector{Int64},
-    cols::Vector{Int64},
-    global_matrix::Vector{Float64},
-    elem_matrix::AbstractMatrix{Float64},
-    dofs::AbstractVector{Int64},
-)
-    ndofs = length(dofs)
-    n2 = ndofs * ndofs
-
-    # old length and new length
-    old_len = length(rows)
-    new_len = old_len + n2
-
-    # Resize each vector in one step
-    resize!(rows, new_len)
-    resize!(cols, new_len)
-    resize!(global_matrix, new_len)
-
-    idx = old_len + 1
-    @inbounds for i in 1:ndofs
-        I = dofs[i]
-        @inbounds for j in 1:ndofs
-            rows[idx] = I
-            cols[idx] = dofs[j]
-            global_matrix[idx] = elem_matrix[i, j]
-            idx += 1
-        end
-    end
-    return nothing
-end
-
 function dense(indices::Vector{Int64}, values::Vector{Float64}, vector_size::Int64)
     dense_vector = zeros(vector_size)
     @inbounds for i in 1:length(indices)
@@ -526,37 +469,102 @@ end
     end
 end
 
-function create_coo_matrix()
-    rows = Vector{Int64}()
-    cols = Vector{Int64}()
-    vals = Vector{Float64}()
-    return rows, cols, vals
+function create_coo_vector(capacity::Int64)
+    index = Vector{Int64}(undef, capacity)
+    vals = Vector{Float64}(undef, capacity)
+    return COOVector(index, vals, 0)
 end
 
-function create_coo_vector()
-    index = Vector{Int64}()
-    vals = Vector{Float64}()
-    return index, vals
+function create_coo_matrix(capacity::Int64)
+    rows = Vector{Int64}(undef, capacity)
+    cols = Vector{Int64}(undef, capacity)
+    vals = Vector{Float64}(undef, capacity)
+    return COOMatrix(rows, cols, vals, 0)
 end
 
-function merge_threadlocal_coo_vectors(
-    index_tl::Vector{Vector{Int64}}, vals_tl::Vector{Vector{Float64}}, num_dof::Int64
-)
-    index = vcat(index_tl...)
-    vals = vcat(vals_tl...)
+function ensure_capacity!(vector::COOVector, needed::Int64)
+    current = length(vector.index)
+    required = vector.len + needed
+    if required > current
+        newcap = max(required, ceil(Int64, 1.5 * current))
+        resize!(vector.index, newcap)
+        resize!(vector.vals, newcap)
+    end
+    return nothing
+end
+
+function ensure_capacity!(matrix::COOMatrix, needed::Int64)
+    current = length(matrix.rows)
+    required = matrix.len + needed
+    if required > current
+        newcap = max(required, ceil(Int64, 1.5 * current))
+        resize!(matrix.rows, newcap)
+        resize!(matrix.cols, newcap)
+        resize!(matrix.vals, newcap)
+    end
+    return nothing
+end
+
+function assemble!(global_vector::COOVector, element_vector::AbstractVector{Float64}, dofs::AbstractVector{Int64})
+    ndofs = length(dofs)
+    ensure_capacity!(global_vector, ndofs)
+    idx = global_vector.len + 1
+    @inbounds for i in 1:ndofs
+        global_vector.index[idx] = dofs[i]
+        global_vector.vals[idx] = element_vector[i]
+        idx += 1
+    end
+    global_vector.len += ndofs
+    return nothing
+end
+
+function assemble!(global_matrix::COOMatrix, element_matrix::AbstractMatrix{Float64}, dofs::AbstractVector{Int64})
+    ndofs = length(dofs)
+    n2 = ndofs * ndofs
+    ensure_capacity!(global_matrix, n2)
+    idx = global_matrix.len + 1
+    @inbounds for i in 1:ndofs
+        I = dofs[i]
+        @inbounds for j in 1:ndofs
+            global_matrix.rows[idx] = I
+            global_matrix.cols[idx] = dofs[j]
+            global_matrix.vals[idx] = element_matrix[i, j]
+            idx += 1
+        end
+    end
+    global_matrix.len += n2
+    return nothing
+end
+
+function count_coo_matrix_nnz(model::SolidMechanics)
+    mesh = model.mesh
+    blocks = Exodus.read_sets(mesh, Block)
+    num_blocks = length(blocks)
+    total = 0
+    for block_index in 1:num_blocks
+        block = blocks[block_index]
+        block_id = block.id
+        element_block_conn = get_block_connectivity(mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_conn)
+        total += num_block_elements * num_element_nodes * num_element_nodes * 9
+    end
+    return total
+end
+
+function merge_threadlocal_coo_vectors(coo_vectors::Vector{COOVector}, num_dof::Int64)
+    # Trimmed slices
+    index = vcat((v.index[1:(v.len)] for v in coo_vectors)...)
+    vals = vcat((v.vals[1:(v.len)] for v in coo_vectors)...)
     return dense(index, vals, num_dof)
 end
 
-function merge_threadlocal_coo_matrices(
-    rows_tl::Vector{Vector{Int64}}, cols_tl::Vector{Vector{Int64}}, vals_tl::Vector{Vector{Float64}}, num_dof::Int64
-)
-    rows = vcat(rows_tl...)
-    cols = vcat(cols_tl...)
-    vals = vcat(vals_tl...)
+function merge_threadlocal_coo_matrices(coo_matrices::Vector{COOMatrix}, num_dof::Int64)
+    # Trimmed slices
+    rows = vcat((m.rows[1:(m.len)] for m in coo_matrices)...)
+    cols = vcat((m.cols[1:(m.len)] for m in coo_matrices)...)
+    vals = vcat((m.vals[1:(m.len)] for m in coo_matrices)...)
     return sparse(rows, cols, vals, num_dof, num_dof)
 end
-
-using Base.Threads: @threads, threadid, nthreads
 
 function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T,N}
     local_mats = Vector{typeof(create_element_matrix(T, Val(N)))}(undef, nthreads())
@@ -582,23 +590,24 @@ function create_threadlocal_gradient_operators(::Type{T}, ::Val{N}) where {T,N}
     return local_ops
 end
 
-function create_threadlocal_coo_matrices()
-    rows_tl = Vector{Vector{Int64}}(undef, nthreads())
-    cols_tl = Vector{Vector{Int64}}(undef, nthreads())
-    vals_tl = Vector{Vector{Float64}}(undef, nthreads())
-    for i in 1:nthreads()
-        rows_tl[i], cols_tl[i], vals_tl[i] = create_coo_matrix()
+function create_threadlocal_coo_vectors(num_dofs::Int64)
+    nthreads = Threads.nthreads()
+    capacity = ceil(Int64, num_dofs / nthreads)
+    coo_vectors = Vector{COOVector}(undef, nthreads)
+    for i in 1:nthreads
+        coo_vectors[i] = create_coo_vector(capacity)
     end
-    return rows_tl, cols_tl, vals_tl
+    return coo_vectors
 end
 
-function create_threadlocal_coo_vectors()
-    index_tl = Vector{Vector{Int64}}(undef, nthreads())
-    vals_tl = Vector{Vector{Float64}}(undef, nthreads())
-    for i in 1:nthreads()
-        index_tl[i], vals_tl[i] = create_coo_vector()
+function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
+    nthreads = Threads.nthreads()
+    capacity = ceil(Int64, coo_matrix_nnz / nthreads)
+    coo_matrices = Vector{COOMatrix}(undef, nthreads)
+    for i in 1:nthreads
+        coo_matrices[i] = create_coo_matrix(capacity)
     end
-    return index_tl, vals_tl
+    return coo_matrices
 end
 
 function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
@@ -646,19 +655,22 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
     energy_tl = zeros(nthreads())
-    index_internal_force_tl, internal_force_tl = create_threadlocal_coo_vectors()
+    internal_force_tl = create_threadlocal_coo_vectors(num_dofs)
     if compute_lumped_mass == true
-        index_lumped_mass_tl, lumped_mass_tl = create_threadlocal_coo_vectors()
+        lumped_mass_tl = create_threadlocal_coo_vectors(num_dofs)
         model.compute_lumped_mass = false
     end
+    if compute_stiffness == true || compute_mass == true
+        coo_matrix_nnz = count_coo_matrix_nnz(model)
+    end
     if compute_stiffness == true
-        rows_stiffness_tl, cols_stiffness_tl, stiffness_tl = create_threadlocal_coo_matrices()
+        stiffness_tl = create_threadlocal_coo_matrices(coo_matrix_nnz)
         if model.kinematics == Infinitesimal
             model.compute_stiffness = false
         end
     end
     if compute_mass == true
-        rows_mass_tl, cols_mass_tl, mass_tl = create_threadlocal_coo_matrices()
+        mass_tl = create_threadlocal_coo_matrices(coo_matrix_nnz)
         model.compute_mass = false
     end
     body_force_vector = zeros(num_dofs)
@@ -765,29 +777,29 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             end
             energy_tl[t] += element_energy
             model.stored_energy[block_index][block_element_index] = element_energy
-            assemble!(index_internal_force_tl[t], internal_force_tl[t], element_internal_force, element_dofs)
+            assemble!(internal_force_tl[t], element_internal_force, element_dofs)
             if compute_lumped_mass == true
-                assemble!(index_lumped_mass_tl[t], lumped_mass_tl[t], element_lumped_mass, element_dofs)
+                assemble!(lumped_mass_tl[t], element_lumped_mass, element_dofs)
             end
             if compute_stiffness == true
-                assemble!(rows_stiffness_tl[t], cols_stiffness_tl[t], stiffness_tl[t], element_stiffness, element_dofs)
+                assemble!(stiffness_tl[t], element_stiffness, element_dofs)
             end
             if compute_mass == true
-                assemble!(rows_mass_tl[t], cols_mass_tl[t], mass_tl[t], element_mass, element_dofs)
+                assemble!(mass_tl[t], element_mass, element_dofs)
             end
         end
     end
     model.strain_energy = sum(energy_tl)
     model.body_force = body_force_vector
-    model.internal_force = merge_threadlocal_coo_vectors(index_internal_force_tl, internal_force_tl, num_dofs)
+    model.internal_force = merge_threadlocal_coo_vectors(internal_force_tl, num_dofs)
     if compute_lumped_mass == true
-        model.lumped_mass = merge_threadlocal_coo_vectors(index_lumped_mass_tl, lumped_mass_tl, num_dofs)
+        model.lumped_mass = merge_threadlocal_coo_vectors(lumped_mass_tl, num_dofs)
     end
     if compute_stiffness == true
-        model.stiffness = merge_threadlocal_coo_matrices(rows_stiffness_tl, cols_stiffness_tl, stiffness_tl, num_dofs)
+        model.stiffness = merge_threadlocal_coo_matrices(stiffness_tl, num_dofs)
     end
     if compute_mass == true
-        model.mass = merge_threadlocal_coo_matrices(rows_mass_tl, cols_mass_tl, mass_tl, num_dofs)
+        model.mass = merge_threadlocal_coo_matrices(mass_tl, num_dofs)
     end
     if mesh_smoothing == true
         model.internal_force -= integrator.velocity
