@@ -2,8 +2,37 @@
 
 [![CI](https://github.com/sandialabs/Norma.jl/actions/workflows/ci.yaml/badge.svg)](https://github.com/sandialabs/Norma.jl/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/gh/sandialabs/Norma.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/sandialabs/Norma.jl)
+[![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE.md)
+
+# **Norma.jl**
 
 **Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
+
+---
+
+## Quick Start
+
+```bash
+julia --project=@. /path/to/Norma.jl/src/Norma.jl input.yaml
+```
+
+Or run it interactively:
+```julia
+using Pkg; Pkg.activate("/path/to/Norma.jl")
+using Norma
+Norma.run("input.yaml")
+```
+
+---
+
+## What is Norma.jl?
+
+- A prototyping framework for multiphysics and coupling algorithms
+- Focused on solid mechanics and heat conduction
+- Designed for high extensibility and experimentation
+- Supports implicit and explicit time integrators
+
+---
 
 ![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/bars.gif)
 *Simulation of the impact of two bars: one using hexahedral elements with an implicit time integrator, and the other using tetrahedral elements with an explicit time integrator, each with different time steps.*
@@ -22,9 +51,9 @@
 6. [Profiling](#profiling)
 7. [Debugging](#debugging)
 8. [Troubleshooting](#troubleshooting)
+9. [License](#license)
 
 ---
-
 ## **Features**
 - Prototyping of coupling and multiphysics algorithms.
 - Applications in solid mechanics and heat conduction.
@@ -36,7 +65,7 @@
 
 ### Clone the Repository
 ```bash
-cd /some_path
+cd /path/to
 git clone git@github.com:sandialabs/Norma.jl.git
 cd Norma.jl
 julia
@@ -58,12 +87,12 @@ Press `Backspace` or `Delete` to exit the package manager.
 
 To run the main program, assuming Julia is in your executable path:
 ```bash
-julia --project=@. /some_path/Norma.jl/src/Norma.jl input.yaml
+julia --project=@. /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
 
 To run `Norma` interactively from a Julia session:
 ```julia
-cd /some_path/Norma.jl
+cd /path/to/Norma.jl
 julia
 using Pkg
 Pkg.activate(".")
@@ -98,7 +127,7 @@ julia --project=@. ./runtests.jl
 
 To run the `examples/ahead/overlap/cuboid/dynamic` example:
 ```bash
-cd /some_path/Norma.jl/examples/ahead/overlap/cuboid/dynamic
+cd /path/to/Norma.jl/examples/ahead/overlap/cuboid/dynamic
 julia
 ]
 activate .
@@ -117,8 +146,8 @@ Run the simulation with the `@profile` macro:
 ```julia
 using Profile
 
-include("/some_path/Norma.jl/src/Norma.jl")
-cd("/some_path/Norma.jl/examples/ahead/overlap/cuboid/dynamic")
+include("/path/to/Norma.jl/src/Norma.jl")
+cd("/path/to/Norma.jl/examples/ahead/overlap/cuboid/dynamic")
 @profile Norma.run("cuboid.yaml")
 ```
 
@@ -142,19 +171,6 @@ ProfileView.view()  # Open the visualization
 
 This will display a flame graph where the horizontal axis represents function calls and their cumulative time, allowing you to pinpoint performance bottlenecks.
 
-### Step 4: Optional: Export Results as HTML
-For more interactive analysis, use `StatProfilerHTML`:
-
-1. Install the package:
-   ```julia
-   Pkg.add("StatProfilerHTML")
-   ```
-2. Generate and open an HTML report:
-   ```julia
-   using StatProfilerHTML
-   StatProfilerHTML.open()
-   ```
-
 ### Example Command-Line Workflow
 From the command line, you can combine profiling with Julia's REPL:
 ```bash
@@ -171,7 +187,7 @@ To enable debug-level logging and printing statements in `Norma.jl`, you can use
 ### Step 1: Enable Debug Printing
 To enable debug messages for the `Norma` module, prepend `JULIA_DEBUG=Norma` to the Julia command:
 ```bash
-JULIA_DEBUG=Norma julia --project=@. /some_path/Norma.jl/src/Norma.jl input.yaml
+JULIA_DEBUG=Norma julia --project=@. /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
 This will display all debug-level messages from the `Norma` module.
 
@@ -197,7 +213,7 @@ unset JULIA_DEBUG
 ```
 Alternatively, set it to a higher logging level (e.g., `INFO`):
 ```bash
-JULIA_DEBUG= julia --project=@. /some_path/Norma.jl/src/Norma.jl input.yaml
+JULIA_DEBUG= julia --project=@. /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
 
 ---
@@ -216,4 +232,10 @@ If you encounter SSL certificate errors during setup, follow these steps:
    export JULIA_SSL_CA_ROOTS_PATH=/etc/ssl/certs/ca-bundle.crt
    ```
 3. Retry the installation workflow.
+
+---
+
+## **License**
+
+Norma.jl is licensed under the BSD 3-Clause License. See [LICENSE.md](LICENSE.md) for details.
 

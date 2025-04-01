@@ -1,6 +1,4 @@
-========================================================================
-                           Norma.jl License
-========================================================================
+## Norma.jl License (BSD 3-Clause Equivalent)
 
 Copyright (C) 2025, National Technology & Engineering Solutions of
 Sandia, LLC (NTESS).
@@ -8,11 +6,11 @@ Sandia, LLC (NTESS).
 Under the terms of Contract DE-NA0003525 with NTESS, the U.S.
 Government retains certain rights in this software.
 
---------------------------------------------------------------------
+---
+
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
 met:
---------------------------------------------------------------------
 
 1. Redistributions of source code must retain the above copyright
    notice, this list of conditions, and the following disclaimer.
@@ -22,15 +20,15 @@ met:
    the documentation and/or other materials provided with the
    distribution.
 
-3. Neither the name of Sandia Corporation nor the names of
-   contributors may be used to endorse or promote products derived
-   from this software without specific prior written permission.
+3. Neither the name of NTESS nor the names of contributors may be
+   used to endorse or promote products derived from this software
+   without specific prior written permission.
 
---------------------------------------------------------------------
-DISCLAIMER:
---------------------------------------------------------------------
+---
 
-THIS SOFTWARE IS PROVIDED BY NTESS **"AS IS"**, AND ANY EXPRESS OR
+**DISCLAIMER:**
+
+THIS SOFTWARE IS PROVIDED BY NTESS "AS IS", AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE,
 ARE DISCLAIMED.
@@ -44,6 +42,6 @@ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
 IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
---------------------------------------------------------------------
+---
+
 Questions? Contact Alejandro Mota (amota@sandia.gov)
---------------------------------------------------------------------
