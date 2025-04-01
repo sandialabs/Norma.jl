@@ -681,12 +681,17 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     index_internal_force_tl, internal_force_tl = create_threadlocal_coo_vectors()
     if compute_lumped_mass == true
         index_lumped_mass_tl, lumped_mass_tl = create_threadlocal_coo_vectors()
+        model.compute_lumped_mass = false
     end
     if compute_stiffness == true
         rows_stiffness_tl, cols_stiffness_tl, stiffness_tl = create_threadlocal_coo_matrices()
+        if model.kinematics == Infinitesimal
+            model.compute_stiffness = false
+        end
     end
     if compute_mass == true
         rows_mass_tl, cols_mass_tl, mass_tl = create_threadlocal_coo_matrices()
+        model.compute_mass = false
     end
     body_force_vector = zeros(num_dof)
     blocks = Exodus.read_sets(input_mesh, Block)
@@ -764,6 +769,8 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 det_dXdξ = det(dXdξ)
                 if J ≤ 0.0
                     model.failed = true
+                    model.compute_stiffness =
+                        model.compute_mass = model.compute_lumped_mass = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
                     return nothing
                 end
