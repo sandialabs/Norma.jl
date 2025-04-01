@@ -473,9 +473,7 @@ end
 using Symbolics
 @variables t, x, y, z
 
-function get_side_set_nodal_forces(
-    nodal_coord::Matrix{Float64}, traction_num::Num, time::Float64
-)
+function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_num::Num, time::Float64)
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
     num_int_points = default_num_int_pts(element_type)
@@ -488,9 +486,7 @@ function get_side_set_nodal_forces(
         j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
         wₚ = w[point]
         point_coord = nodal_coord * Nₚ
-        values = Dict(
-            t => time, x => point_coord[1], y => point_coord[2], z => point_coord[3]
-        )
+        values = Dict(t => time, x => point_coord[1], y => point_coord[2], z => point_coord[3])
         traction_sym = substitute(traction_num, values)
         traction_val = extract_value(traction_sym)
         nodal_force_component += traction_val * Nₚ * j * wₚ
@@ -501,13 +497,7 @@ end
 # Given 3 points p1, p2, p3 that define a plane
 # determine if point p is in the same side of the normal
 # to the plane as defined by the right hand rule.
-function in_normal_side(
-    p::Vector{Float64},
-    p1::Vector{Float64},
-    p2::Vector{Float64},
-    p3::Vector{Float64},
-    tol::Float64,
-)
+function in_normal_side(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, tol::Float64)
     v1 = p2 - p1
     v2 = p3 - p1
     h = min(norm(v1), norm(v2))
@@ -518,12 +508,7 @@ function in_normal_side(
 end
 
 function in_tetrahedron(
-    p::Vector{Float64},
-    p1::Vector{Float64},
-    p2::Vector{Float64},
-    p3::Vector{Float64},
-    p4::Vector{Float64},
-    tol::Float64,
+    p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, p4::Vector{Float64}, tol::Float64
 )
     if in_normal_side(p, p1, p2, p3, tol) == false
         return false
@@ -574,9 +559,7 @@ function in_hexahedron(
     return true
 end
 
-function map_to_parametric(
-    element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}
-)
+function map_to_parametric(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64})
     tol = 1.0e-08
     max_iters = 1024
     ξ = MVector{3,Float64}(0.0, 0.0, 0.0)
@@ -614,9 +597,7 @@ function interpolate(element_type::String, ξ::AbstractVector{Float64})
     end
 end
 
-function is_inside_parametric(
-    element_type::String, ξ::AbstractVector{Float64}, tol::Float64=1.0e-06
-)
+function is_inside_parametric(element_type::String, ξ::AbstractVector{Float64}, tol::Float64=1.0e-06)
     factor = 1.0 + tol
     if element_type == "BAR2"
         return -factor ≤ ξ ≤ factor
@@ -631,12 +612,7 @@ function is_inside_parametric(
     end
 end
 
-function is_inside(
-    element_type::String,
-    nodes::Matrix{Float64},
-    point::Vector{Float64},
-    tol::Float64=1.0e-06,
-)
+function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
     ξ = @SVector [0.0, 0.0, 0.0]
     if in_bounding_box(nodes, point, 0.1) == false
         return ξ, false
@@ -645,9 +621,7 @@ function is_inside(
     return ξ, is_inside_parametric(element_type, ξ, tol)
 end
 
-function in_bounding_box(
-    nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06
-)::Bool
+function in_bounding_box(nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)::Bool
     for i in 1:3
         coord_min = minimum(nodes[i, :])
         coord_max = maximum(nodes[i, :])
@@ -661,16 +635,9 @@ function in_bounding_box(
     return true
 end
 
-function is_inside_guess(
-    element_type::String,
-    nodes::Matrix{Float64},
-    point::Vector{Float64},
-    tol::Float64=1.0e-06,
-)
+function is_inside_guess(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
     if element_type == "TETRA4" || element_type == "TETRA10"
-        return in_tetrahedron(
-            point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], tol
-        )
+        return in_tetrahedron(point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], tol)
     elseif element_type == "HEX8"
         return in_hexahedron(
             point,
@@ -689,13 +656,9 @@ function is_inside_guess(
     end
 end
 
-function closest_face_to_point(
-    point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer
-)
+function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
     mesh = model.mesh
-    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(
-        mesh, side_set_id
-    )
+    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     ss_node_index = 1
     closest_face_nodes = Array{Float64}(undef, 0)
     closest_face_node_indices = Array{Int64}(undef, 0)
@@ -718,9 +681,7 @@ end
 # and then project the point that closest face in the side set.
 # This is done in place of a strict search because the contact surfaces may be deformed
 # and not match each other exactly. We assume that we know the contact surfaces in advance
-function project_point_to_side_set(
-    point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer
-)
+function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
     new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
@@ -739,9 +700,7 @@ function get_minimum_distance_to_nodes(nodes::Matrix{Float64}, point::Vector{Flo
 end
 
 function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::Integer)
-    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(
-        mesh, side_set_id
-    )
+    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     unique_node_indices = unique(side_set_node_indices)
     num_nodes = length(unique_node_indices)
     local_from_global_map = Dict{Int64,Int64}()
@@ -798,15 +757,10 @@ function get_square_projection_matrix(model::SolidMechanics, side_set_id::Intege
 end
 
 function get_rectangular_projection_matrix(
-    src_model::SolidMechanics,
-    src_side_set_id::Integer,
-    dst_model::SolidMechanics,
-    dst_side_set_id::Integer,
+    src_model::SolidMechanics, src_side_set_id::Integer, dst_model::SolidMechanics, dst_side_set_id::Integer
 )
     src_mesh = src_model.mesh
-    src_local_from_global_map, _, _ = get_side_set_local_from_global_map(
-        src_mesh, src_side_set_id
-    )
+    src_local_from_global_map, _, _ = get_side_set_local_from_global_map(src_mesh, src_side_set_id)
     src_num_nodes = length(src_local_from_global_map)
     dst_mesh = dst_model.mesh
     dst_local_from_global_map, dst_num_nodes_sides, dst_side_set_node_indices = get_side_set_local_from_global_map(
@@ -840,8 +794,7 @@ function get_rectangular_projection_matrix(
             src_side_element_type = get_element_type(2, size(src_side_coordinates)[2])
             src_Nₚ, _, _ = interpolate(src_side_element_type, ξ)
             src_local_indices = get.(Ref(src_local_from_global_map), src_side_nodes, 0)
-            rectangular_projection_matrix[dst_local_indices, src_local_indices] +=
-                dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
+            rectangular_projection_matrix[dst_local_indices, src_local_indices] += dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
         end
         dst_side_set_node_index += dst_num_nodes_side
     end
@@ -878,9 +831,7 @@ function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMe
     return normals
 end
 
-function interpolate(
-    tᵃ::Float64, tᵇ::Float64, xᵃ::Vector{Float64}, xᵇ::Vector{Float64}, t::Float64
-)
+function interpolate(tᵃ::Float64, tᵇ::Float64, xᵃ::Vector{Float64}, xᵇ::Vector{Float64}, t::Float64)
     Δt = tᵇ - tᵃ
     if Δt == 0.0
         return 0.5 * (xᵃ + xᵇ)
@@ -890,9 +841,7 @@ function interpolate(
     return p * xᵃ + q * xᵇ
 end
 
-function interpolate(
-    param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, param::Float64
-)
+function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, param::Float64)
     if param < param_hist[1]
         param = param_hist[1]
     end
@@ -912,13 +861,7 @@ function interpolate(
     elseif index == size
         return value_hist[size]
     else
-        return interpolate(
-            param_hist[index],
-            param_hist[index + 1],
-            value_hist[index],
-            value_hist[index + 1],
-            param,
-        )
+        return interpolate(param_hist[index], param_hist[index + 1], value_hist[index], value_hist[index + 1], param)
     end
 end
 

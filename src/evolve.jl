@@ -52,12 +52,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     end
     new_time_step = decrease_factor * time_step
     if new_time_step < minimum_time_step
-        error(
-            "Cannot adapt time step to ",
-            new_time_step,
-            " because minimum is ",
-            minimum_time_step,
-        )
+        error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
     @info "Time step failure. Decreasing time step." time_step new_time_step
@@ -247,10 +242,7 @@ function advance_time(sim::MultiDomainSimulation)
     final_time = sim.schwarz_controller.final_time
     initial_time = sim.schwarz_controller.initial_time
     num_stops = sim.schwarz_controller.num_stops
-    next_time = round(
-        (final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time;
-        digits=12,
-    )
+    next_time = round((final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time; digits=12)
     sim.schwarz_controller.time = next_time
     return sim.schwarz_controller.stop = stop
 end

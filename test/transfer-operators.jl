@@ -27,9 +27,7 @@
     dst_T_real = get_boundary_traction_force(dst_mesh, dst_side_set_id)
     println("Destination side set:    $(length(dst_T_real)) nodes")
     H = Norma.get_square_projection_matrix(src_model, src_side_set_id)
-    L = Norma.get_rectangular_projection_matrix(
-        src_model, src_side_set_id, dst_model, dst_side_set_id
-    )
+    L = Norma.get_rectangular_projection_matrix(src_model, src_side_set_id, dst_model, dst_side_set_id)
     dst_T = L * inv(H) * src_T
     rel_er_tr = norm(dst_T - dst_T_real) / norm(dst_T_real)
     @printf("Relative error (traction):     %.4e\n", rel_er_tr)

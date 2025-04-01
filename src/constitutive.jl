@@ -255,9 +255,7 @@ function dev(A::Matrix{Float64})
     return A - vol(A)
 end
 
-function stress_update(
-    material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64
-)
+function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64)
     max_rma_iter = 64
     max_ls_iter = 64
 
@@ -290,9 +288,7 @@ function stress_update(
         end
         Δεᵖ₀ = Δεᵖ
         merit_old = r * r
-        H =
-            hardening_rate(material, εᵖ + Δεᵖ) +
-            viscoplastic_hardening_rate(material, Δεᵖ, Δt)
+        H = hardening_rate(material, εᵖ + Δεᵖ) + viscoplastic_hardening_rate(material, Δεᵖ, Δt)
         ∂r = -3.0 * μ - H
         δεᵖ = -r / ∂r
 
@@ -410,9 +406,7 @@ function Iox(B::SMatrix{3,3,Float64,9})
     return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function convect_tangent(
-    CC::SArray{Tuple{3,3,3,3},Float64}, S::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9}
-)
+function convect_tangent(CC::SArray{Tuple{3,3,3,3},Float64}, S::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9})
     # Pre-allocate the 4D output as mutable static array
     AA = MArray{Tuple{3,3,3,3},Float64}(undef)
 
@@ -475,9 +469,7 @@ function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9}
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    CC_m[i, j, k, l] =
-                        λ * I3[i, j] * I3[k, l] +
-                        μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
@@ -512,9 +504,7 @@ function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    CC_m[i, j, k, l] =
-                        λ * I3[i, j] * I3[k, l] +
-                        μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
@@ -581,16 +571,12 @@ function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
     trCbar²ⁿ = tr(Cbar²ⁿ)
     trCbar⁻²ⁿ = tr(Cbar⁻²ⁿ)
     Wbulk = material.κ / 4 / material.m^2 * ((Jᵐ - 1)^2 + (J⁻ᵐ - 1)^2)
-    Wshear =
-        material.μ / 4 / material.n^2 *
-        (trCbar²ⁿ + trCbar⁻²ⁿ - 2 * trCbarⁿ - 2 * trCbar⁻ⁿ + 6)
+    Wshear = material.μ / 4 / material.n^2 * (trCbar²ⁿ + trCbar⁻²ⁿ - 2 * trCbarⁿ - 2 * trCbar⁻ⁿ + 6)
     W = Wbulk + Wshear
     Pbulk = material.κ / 2 / material.m * (J²ᵐ - Jᵐ - J⁻²ᵐ + J⁻ᵐ) * F⁻ᵀ
     Pshear =
-        material.μ / material.n * (
-            1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ +
-            F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ)
-        )
+        material.μ / material.n *
+        (1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
     P = Pbulk + Pshear
     AA_m = MArray{Tuple{3,3,3,3},Float64}(0.0)  # fill with zeros
     AA = SArray{Tuple{3,3,3,3}}(AA_m)

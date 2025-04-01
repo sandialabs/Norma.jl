@@ -86,9 +86,7 @@ end
     y2 = model_2.current[2, :]
     z2 = model_2.current[3, :]
 
-    face_pairs = Dict(
-        19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17
-    )
+    face_pairs = Dict(19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17)
 
     for (idx1, idx2) in face_pairs
         coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
@@ -103,31 +101,11 @@ end
 
     angles = [0.0, 22.5, 45, 90]
     for (i, angle_deg) in enumerate(angles)
-        cp(
-            "../examples/contact/static/inclined-cubes/cubes-test$i.yaml",
-            "cubes-test$i.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/static/inclined-cubes/cube-test$i-1.yaml",
-            "cube-test$i-1.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/static/inclined-cubes/cube-test$i-2.yaml",
-            "cube-test$i-2.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/static/inclined-cubes/cube-test$i-1.g",
-            "cube-test$i-1.g";
-            force=true,
-        )
-        cp(
-            "../examples/contact/static/inclined-cubes/cube-test$i-2.g",
-            "cube-test$i-2.g";
-            force=true,
-        )
+        cp("../examples/contact/static/inclined-cubes/cubes-test$i.yaml", "cubes-test$i.yaml"; force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml"; force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-2.yaml", "cube-test$i-2.yaml"; force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-1.g", "cube-test$i-1.g"; force=true)
+        cp("../examples/contact/static/inclined-cubes/cube-test$i-2.g", "cube-test$i-2.g"; force=true)
         input_file = "cubes-test$i.yaml"
         params = YAML.load_file(input_file; dicttype=Norma.Parameters)
         params["initial time"] = -2.0

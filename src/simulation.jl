@@ -64,21 +64,13 @@ function SingleDomainSimulation(params::Parameters)
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
     controller = SolidSingleController(
-        0.0,
-        0.0,
-        0,
-        Vector{Float64}(),
-        Vector{Float64}(),
-        Vector{Float64}(),
-        Vector{Float64}(),
+        0.0, 0.0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
     )
     model = create_model(params)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
     failed = false
-    return SingleDomainSimulation(
-        name, params, controller, integrator, solver, model, failed
-    )
+    return SingleDomainSimulation(name, params, controller, integrator, solver, model, failed)
 end
 
 function MultiDomainSimulation(params::Parameters)
@@ -114,9 +106,7 @@ function MultiDomainSimulation(params::Parameters)
     params["same time step for domains"] = same_step
     schwarz_controller = create_schwarz_controller(params)
     failed = false
-    sim = MultiDomainSimulation(
-        name, params, schwarz_controller, subsims, subsim_name_index_map, failed
-    )
+    sim = MultiDomainSimulation(name, params, schwarz_controller, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
         subsim.params["global_simulation"] = sim
     end

@@ -7,31 +7,11 @@
 using YAML
 
 @testset "schwarz-contact-implicit-cubes-tied" begin
-    cp(
-        "../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml",
-        "cubes.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml",
-        "cube-1.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml",
-        "cube-2.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/contact/implicit-dynamic/friction-cubes/cube-1.g",
-        "cube-1.g";
-        force=true,
-    )
-    cp(
-        "../examples/contact/implicit-dynamic/friction-cubes/cube-2.g",
-        "cube-2.g";
-        force=true,
-    )
+    cp("../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
+    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
+    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
+    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-1.g", "cube-1.g"; force=true)
+    cp("../examples/contact/implicit-dynamic/friction-cubes/cube-2.g", "cube-2.g"; force=true)
     input_file = "cubes.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = -1.0e-06
@@ -58,9 +38,7 @@ using YAML
     y2 = model_2.current[2, :]
     z2 = model_2.current[3, :]
 
-    face_pairs = Dict(
-        19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17
-    )
+    face_pairs = Dict(19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17)
 
     for (idx1, idx2) in face_pairs
         coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
@@ -72,31 +50,11 @@ using YAML
 end
 
 @testset "schwarz-contact-explicit-cubes-tied" begin
-    cp(
-        "../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml",
-        "cubes.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml",
-        "cube-1.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml",
-        "cube-2.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/contact/explicit-dynamic/friction-cubes/cube-1.g",
-        "cube-1.g";
-        force=true,
-    )
-    cp(
-        "../examples/contact/explicit-dynamic/friction-cubes/cube-2.g",
-        "cube-2.g";
-        force=true,
-    )
+    cp("../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
+    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
+    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
+    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.g", "cube-1.g"; force=true)
+    cp("../examples/contact/explicit-dynamic/friction-cubes/cube-2.g", "cube-2.g"; force=true)
     input_file = "cubes.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = -1.0e-06
@@ -123,9 +81,7 @@ end
     y2 = model_2.current[2, :]
     z2 = model_2.current[3, :]
 
-    face_pairs = Dict(
-        19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17
-    )
+    face_pairs = Dict(19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17)
 
     for (idx1, idx2) in face_pairs
         coordinate_1 = [x1[idx1], y1[idx1], z1[idx1]]
@@ -140,31 +96,11 @@ end
 
     angles = [0.0, 22.5, 45, 90]
     for (i, angle_deg) in enumerate(angles)
-        cp(
-            "../examples/contact/explicit-dynamic/inclined-cubes/cubes-test$i.yaml",
-            "cubes-test$i.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-1.yaml",
-            "cube-test$i-1.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-2.yaml",
-            "cube-test$i-2.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-1.g",
-            "cube-test$i-1.g";
-            force=true,
-        )
-        cp(
-            "../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-2.g",
-            "cube-test$i-2.g";
-            force=true,
-        )
+        cp("../examples/contact/explicit-dynamic/inclined-cubes/cubes-test$i.yaml", "cubes-test$i.yaml"; force=true)
+        cp("../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml"; force=true)
+        cp("../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-2.yaml", "cube-test$i-2.yaml"; force=true)
+        cp("../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-1.g", "cube-test$i-1.g"; force=true)
+        cp("../examples/contact/explicit-dynamic/inclined-cubes/cube-test$i-2.g", "cube-test$i-2.g"; force=true)
         input_file = "cubes-test$i.yaml"
         params = YAML.load_file(input_file; dicttype=Norma.Parameters)
         params["initial time"] = -1.0e-06
@@ -214,31 +150,11 @@ end
 
     angles = [0.0, 22.5, 45, 90]
     for (i, angle_deg) in enumerate(angles)
-        cp(
-            "../examples/contact/implicit-dynamic/inclined-cubes/cubes-test$i.yaml",
-            "cubes-test$i.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-1.yaml",
-            "cube-test$i-1.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-2.yaml",
-            "cube-test$i-2.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-1.g",
-            "cube-test$i-1.g";
-            force=true,
-        )
-        cp(
-            "../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-2.g",
-            "cube-test$i-2.g";
-            force=true,
-        )
+        cp("../examples/contact/implicit-dynamic/inclined-cubes/cubes-test$i.yaml", "cubes-test$i.yaml"; force=true)
+        cp("../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-1.yaml", "cube-test$i-1.yaml"; force=true)
+        cp("../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-2.yaml", "cube-test$i-2.yaml"; force=true)
+        cp("../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-1.g", "cube-test$i-1.g"; force=true)
+        cp("../examples/contact/implicit-dynamic/inclined-cubes/cube-test$i-2.g", "cube-test$i-2.g"; force=true)
         input_file = "cubes-test$i.yaml"
         params = YAML.load_file(input_file; dicttype=Norma.Parameters)
         params["initial time"] = -1.0e-06
