@@ -198,11 +198,10 @@ end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
     # Compute initial accelerations
-    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(
-        integrator, model.fom_model
-    )
+    evaluate(integrator, model.fom_model)
     free = model.fom_model.free_dofs
-
+    internal_force = model.fom_model.internal_force
+    external_force = model.fom_model.body_force + model.fom_model.boundary_force
     if model.fom_model.inclined_support == true
         external_force = model.fom_model.global_transform * external_force
         internal_force = model.fom_model.global_transform * internal_force
@@ -215,7 +214,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomMod
     #_, num_nodes = size(model.fom_model.reference)
     acceleration = zeros(3 * num_nodes)
 
-    acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
+    acceleration[free] = model.fom_model.mass[free, free] \ inertial_force[free]
 
     integrator.displacement[:] = model.reduced_state[:]
     solver.solution[:] = model.reduced_state[:]
@@ -278,22 +277,22 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     @printf("Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
-    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(
-        integrator, model
-    )
+    evaluate(integrator, model)
     if model.failed == true
         error("Finite element model failed to initialize")
     end
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
     inertial_force = external_force - internal_force
-    kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
+    kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = stored_energy
+    integrator.stored_energy = model.strain_energy
     integrator.acceleration[free] = solve_linear(
-        mass_matrix[free, free], inertial_force[free]
+        model.mass[free, free], inertial_force[free]
     )
     return copy_solution_source_targets(integrator, solver, model)
 end
@@ -337,19 +336,21 @@ function initialize(
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
-    stored_energy, internal_force, external_force, lumped_mass = evaluate(integrator, model)
+    evaluate(integrator, model)
     if model.failed == true
         error("The finite element model has failed to initialize")
     end
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
-    kinetic_energy = 0.5 * lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
+    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = stored_energy
+    integrator.stored_energy = model.strain_energy
     inertial_force = external_force - internal_force
-    integrator.acceleration[free] = inertial_force[free] ./ lumped_mass[free]
+    integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
     return copy_solution_source_targets(integrator, solver, model)
 end
 

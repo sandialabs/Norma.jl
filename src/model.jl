@@ -160,13 +160,20 @@ function SolidMechanics(params::Parameters)
         push!(stress, block_stress)
         push!(stored_energy, block_stored_energy)
     end
+    strain_energy = 0.0
+    stiffness = spzeros(0, 0)
+    mass = spzeros(0, 0)
+    lumped_mass = Float64[]
+    body_force = Float64[]
+    compute_stiffness = true
+    compute_mass = true
+    compute_lumped_mass = true
     mesh_smoothing = params["mesh smoothing"]
     if mesh_smoothing == true
         smooth_reference = model_params["smooth reference"]
     else
         smooth_reference = ""
     end
-
     inclined_support = false
     num_dofs = 3 * num_nodes
     global_transform = sparse(I, num_dofs, num_dofs)
@@ -183,8 +190,16 @@ function SolidMechanics(params::Parameters)
         boundary_conditions,
         stress,
         stored_energy,
+        strain_energy,
+        stiffness,
+        mass,
+        lumped_mass,
+        body_force,
         free_dofs,
         time,
+        compute_stiffness,
+        compute_mass,
+        compute_lumped_mass,
         failed,
         mesh_smoothing,
         smooth_reference,
@@ -654,6 +669,9 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     is_implicit_static = integrator isa QuasiStatic
     is_dynamic = is_implicit_dynamic || is_explicit_dynamic
     is_implicit = is_implicit_dynamic || is_implicit_static
+    compute_lumped_mass = is_explicit_dynamic == true && model.compute_lumped_mass == true
+    compute_stiffness = is_implicit == true && model.compute_stiffness == true
+    compute_mass = is_implicit_dynamic == true && model.compute_mass == true
     materials = model.materials
     input_mesh = model.mesh
     mesh_smoothing = model.mesh_smoothing
@@ -661,13 +679,13 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
     num_dof = 3 * num_nodes
     energy_tl = zeros(nthreads())
     index_internal_force_tl, internal_force_tl = create_threadlocal_coo_vectors()
-    if is_explicit_dynamic == true
+    if compute_lumped_mass == true
         index_lumped_mass_tl, lumped_mass_tl = create_threadlocal_coo_vectors()
     end
-    if is_implicit == true
+    if compute_stiffness == true
         rows_stiffness_tl, cols_stiffness_tl, stiffness_tl = create_threadlocal_coo_matrices()
     end
-    if is_implicit_dynamic == true
+    if compute_mass == true
         rows_mass_tl, cols_mass_tl, mass_tl = create_threadlocal_coo_matrices()
     end
     body_force_vector = zeros(num_dof)
@@ -689,17 +707,17 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         element_internal_force_tl = create_threadlocal_element_vectors(
             Float64, Val(num_elem_nodes)
         )
-        if is_explicit_dynamic == true
+        if compute_lumped_mass == true
             element_lumped_mass_tl = create_threadlocal_element_vectors(
                 Float64, Val(num_elem_nodes)
             )
         end
-        if is_implicit == true
+        if compute_stiffness == true
             element_stiffness_tl = create_threadlocal_element_matrices(
                 Float64, Val(num_elem_nodes)
             )
         end
-        if is_implicit_dynamic == true
+        if compute_mass == true
             element_mass_tl = create_threadlocal_element_matrices(
                 Float64, Val(num_elem_nodes)
             )
@@ -711,15 +729,15 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
             elem_dofs = elem_dofs_tl[t]
             element_internal_force = element_internal_force_tl[t]
             fill!(element_internal_force, 0.0)
-            if is_explicit_dynamic == true
+            if compute_lumped_mass == true
                 element_lumped_mass = element_lumped_mass_tl[t]
                 fill!(element_lumped_mass, 0.0)
             end
-            if is_implicit == true
+            if compute_stiffness == true
                 element_stiffness = element_stiffness_tl[t]
                 fill!(element_stiffness, 0.0)
             end
-            if is_implicit_dynamic == true
+            if compute_mass == true
                 element_mass = element_mass_tl[t]
                 fill!(element_mass, 0.0)
             end
@@ -747,19 +765,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 if J ≤ 0.0
                     model.failed = true
                     @info "Non-positive Jacobian detected! This may indicate element distortion. Attempting to recover by adjusting time step size..."
-                    if is_implicit_static == true
-                        return 0.0,
-                        zeros(num_dof), zeros(num_dof),
-                        spzeros(num_dof, num_dof)
-                    elseif is_implicit_dynamic == true
-                        return 0.0,
-                        zeros(num_dof), zeros(num_dof), spzeros(num_dof, num_dof),
-                        spzeros(num_dof, num_dof)
-                    elseif is_explicit_dynamic == true
-                        return 0.0, zeros(num_dof), zeros(num_dof), zeros(num_dof)
-                    else
-                        error("Unknown type of time integrator", typeof(integrator))
-                    end
+                    return nothing
                 end
                 W, P, A = constitutive(material, F)
                 stress = SVector{9,Float64}(P)
@@ -767,30 +773,30 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dvol = det_dXdξ * ip_weight
                 element_energy += W * dvol
                 @einsum element_internal_force[p] += grad_op[q, p] * stress[q] * dvol
-                if is_implicit == true
+                if compute_lumped_mass == true
+                    Nξ = N[:, point]
+                    reduced_mass = Nξ * Nξ' * density * dvol
+                    element_lumped_mass[1:3:end] += row_sum_lump(reduced_mass)
+                end
+                if compute_stiffness == true
                     moduli = second_from_fourth(A)
                     element_stiffness += grad_op' * moduli * grad_op * dvol
                 end
-                if is_dynamic == true
+                if compute_mass == true
                     Nξ = N[:, point]
                     reduced_mass = Nξ * Nξ' * density * dvol
-                end
-                if is_implicit_dynamic == true
                     element_mass[1:3:end, 1:3:end] += reduced_mass
-                end
-                if is_explicit_dynamic == true
-                    element_lumped_mass[1:3:end] += row_sum_lump(reduced_mass)
                 end
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[blk_index][blk_elem_index][point] = voigt_cauchy
             end
-            if is_implicit_dynamic == true
-                element_mass[3:3:end, 3:3:end] .=
-                    element_mass[2:3:end, 2:3:end] .= element_mass[1:3:end, 1:3:end]
-            end
-            if is_explicit_dynamic == true
+            if compute_lumped_mass == true
                 element_lumped_mass[3:3:end] .=
                     element_lumped_mass[2:3:end] .= element_lumped_mass[1:3:end]
+            end
+            if compute_mass == true
+                element_mass[3:3:end, 3:3:end] .=
+                    element_mass[2:3:end, 2:3:end] .= element_mass[1:3:end, 1:3:end]
             end
             energy_tl[t] += element_energy
             model.stored_energy[blk_index][blk_elem_index] = element_energy
@@ -800,7 +806,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_internal_force,
                 elem_dofs,
             )
-            if is_explicit_dynamic == true
+            if compute_lumped_mass == true
                 assemble!(
                     index_lumped_mass_tl[t],
                     lumped_mass_tl[t],
@@ -808,7 +814,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                     elem_dofs,
                 )
             end
-            if is_implicit == true
+            if compute_stiffness == true
                 assemble!(
                     rows_stiffness_tl[t],
                     cols_stiffness_tl[t],
@@ -817,45 +823,35 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                     elem_dofs,
                 )
             end
-            if is_implicit_dynamic == true
+            if compute_mass == true
                 assemble!(
                     rows_mass_tl[t], cols_mass_tl[t], mass_tl[t], element_mass, elem_dofs
                 )
             end
         end
     end
-    energy = sum(energy_tl)
-    internal_force_vector = merge_threadlocal_coo_vectors(
+    model.strain_energy = sum(energy_tl)
+    model.body_force = body_force_vector
+    model.internal_force = merge_threadlocal_coo_vectors(
         index_internal_force_tl, internal_force_tl, num_dof
     )
-    if is_explicit_dynamic == true
-        lumped_mass_vector = merge_threadlocal_coo_vectors(
+    if compute_lumped_mass == true
+        model.lumped_mass = merge_threadlocal_coo_vectors(
             index_lumped_mass_tl, lumped_mass_tl, num_dof
         )
     end
-    if is_implicit == true
-        stiffness_matrix = merge_threadlocal_coo_matrices(
+    if compute_stiffness == true
+        model.stiffness = merge_threadlocal_coo_matrices(
             rows_stiffness_tl, cols_stiffness_tl, stiffness_tl, num_dof
         )
     end
-    if is_implicit_dynamic == true
-        mass_matrix = merge_threadlocal_coo_matrices(
+    if compute_mass == true
+        model.mass = merge_threadlocal_coo_matrices(
             rows_mass_tl, cols_mass_tl, mass_tl, num_dof
         )
     end
     if mesh_smoothing == true
-        internal_force_vector -= integrator.velocity
+        model.internal_force -= integrator.velocity
     end
-    model.internal_force = internal_force_vector
-    if is_implicit_static == true
-        return energy, internal_force_vector, body_force_vector, stiffness_matrix
-    elseif is_implicit_dynamic == true
-        return energy,
-        internal_force_vector, body_force_vector, stiffness_matrix,
-        mass_matrix
-    elseif is_explicit_dynamic == true
-        return energy, internal_force_vector, body_force_vector, lumped_mass_vector
-    else
-        error("Unknown type of time integrator", typeof(integrator))
-    end
+    return nothing
 end

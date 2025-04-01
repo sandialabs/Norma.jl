@@ -27,8 +27,16 @@ mutable struct SolidMechanics <: Model
     boundary_conditions::Vector{BoundaryCondition}
     stress::Vector{Vector{Vector{Vector{Float64}}}}
     stored_energy::Vector{Vector{Float64}}
+    strain_energy::Float64
+    stiffness::SparseMatrixCSC{Float64,Int64}
+    mass::SparseMatrixCSC{Float64,Int64}
+    lumped_mass::Vector{Float64}
+    body_force::Vector{Float64}
     free_dofs::BitVector
     time::Float64
+    compute_stiffness::Bool
+    compute_mass::Bool
+    compute_lumped_mass::Bool
     failed::Bool
     mesh_smoothing::Bool
     smooth_reference::String

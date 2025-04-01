@@ -467,85 +467,89 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix = evaluate(
-        integrator, model
-    )
+    evaluate(integrator, model)
     if model.failed == true
         return nothing
     end
-    integrator.stored_energy = stored_energy
-    solver.value = stored_energy
-    external_force = body_force + model.boundary_force
+    integrator.stored_energy = model.strain_energy
+    solver.value = model.strain_energy
+    external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
-        solver.gradient = model.global_transform * (internal_force - external_force)
-        solver.hessian = model.global_transform * stiffness_matrix * model.global_transform'
+        solver.gradient = model.global_transform * (model.internal_force - external_force)
+        solver.hessian = model.global_transform * model.stiffness * model.global_transform'
     else
-        solver.gradient = internal_force - external_force
-        solver.hessian = stiffness_matrix
+        solver.gradient = model.internal_force - external_force
+        solver.hessian = model.stiffness
     end
+    return nothing
 end
 
 function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::SolidMechanics)
-    stored_energy, internal_force, body_force, _ = evaluate(integrator, model)
+    evaluate(integrator, model)
     if model.failed == true
         return nothing
     end
-    integrator.stored_energy = stored_energy
-    solver.value = stored_energy
-    external_force = body_force + model.boundary_force
-    return solver.gradient = internal_force - external_force
+    integrator.stored_energy = model.strain_energy
+    solver.value = model.strain_energy
+    external_force = model.body_force + model.boundary_force
+    solver.gradient = model.internal_force - external_force
+    return nothing
 end
 
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    stored_energy, internal_force, body_force, stiffness_matrix, mass_matrix = evaluate(
-        integrator, model
-    )
+    evaluate(integrator, model)
     if model.failed == true
         return nothing
     end
-    integrator.stored_energy = stored_energy
+    integrator.stored_energy = model.strain_energy
     β = integrator.β
     Δt = integrator.time_step
-    inertial_force = mass_matrix * integrator.acceleration
-    kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
+    inertial_force = model.mass * integrator.acceleration
+    kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
-    external_force = body_force + model.boundary_force
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
+    stiffness = model.stiffness
     if model.inclined_support == true
-        stiffness_matrix =
-            model.global_transform * stiffness_matrix * model.global_transform'
-        external_force = model.global_transform * external_force
-        internal_force = model.global_transform * internal_force
+        global_transform = model.global_transform
+        internal_force = global_transform * internal_force
+        external_force = global_transform * external_force
+        stiffness = global_transform * stiffness * global_transform'
     end
-    solver.hessian = stiffness_matrix + mass_matrix / β / Δt / Δt
-    solver.value = stored_energy - external_force ⋅ integrator.displacement + kinetic_energy
-    return solver.gradient = internal_force - external_force + inertial_force
+    solver.hessian = stiffness + model.mass / β / Δt / Δt
+    solver.gradient = internal_force - external_force + inertial_force
+    solver.value =
+        model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
+    return nothing
 end
 
 function evaluate(
     integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics
 )
-    stored_energy, internal_force, body_force, lumped_mass = evaluate(integrator, model)
+    evaluate(integrator, model)
     if model.failed == true
         return nothing
     end
-
-    integrator.stored_energy = stored_energy
+    integrator.stored_energy = model.strain_energy
     # Intertial force (local)
-    inertial_force = lumped_mass .* integrator.acceleration
-    kinetic_energy = 0.5 * lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
+    inertial_force = model.lumped_mass .* integrator.acceleration
+    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     # Body force -> global
     # Model boundary force -> global
-    external_force = body_force + model.boundary_force
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
     # External and internal force in local
-    solver.value = stored_energy - external_force ⋅ integrator.displacement + kinetic_energy
+    solver.value =
+        model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     # Graident -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
-    return solver.lumped_hessian = lumped_mass
+    solver.lumped_hessian = model.lumped_mass
+    return nothing
 end
 
 # Taken from ELASTOPLASITICITY—PART II: GLOBALLY CONVERGENT SCHEMES, Perez-Foguet & Armero, 2002
