@@ -751,7 +751,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dvol = det_dXdξ * ip_weight
                 element_energy += W * dvol
                 gradient_operator!(grad_op, dNdX)
-                @einsum element_internal_force[p] += grad_op[q, p] * stress[q] * dvol
+                @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
                 if compute_lumped_mass == true
                     Nξ = N[:, point]
                     reduced_mass = Nξ * Nξ' * density * dvol
