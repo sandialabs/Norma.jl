@@ -25,6 +25,7 @@ function LinearOpInfRom(params::Parameters)
     null_vec = zeros(num_dofs)
 
     reduced_state = zeros(num_dofs)
+    reduced_velocity = zeros(num_dofs)
     reduced_boundary_forcing = zeros(num_dofs)
     free_dofs = trues(num_dofs)
     boundary_conditions = Vector{BoundaryCondition}()
@@ -32,6 +33,7 @@ function LinearOpInfRom(params::Parameters)
         opinf_model,
         basis,
         reduced_state,
+        reduced_velocity,
         reduced_boundary_forcing,
         null_vec,
         free_dofs,
@@ -58,6 +60,7 @@ function QuadraticOpInfRom(params::Parameters)
     null_vec = zeros(num_dofs)
 
     reduced_state = zeros(num_dofs)
+    reduced_velocity = zeros(num_dofs)
     reduced_boundary_forcing = zeros(num_dofs)
     free_dofs = trues(num_dofs)
     boundary_conditions = Vector{BoundaryCondition}()
@@ -65,6 +68,7 @@ function QuadraticOpInfRom(params::Parameters)
         opinf_model,
         basis,
         reduced_state,
+        reduced_velocity,
         reduced_boundary_forcing,
         null_vec,
         free_dofs,

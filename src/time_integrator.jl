@@ -212,6 +212,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomMod
     acceleration[free] = model.fom_model.mass[free, free] \ inertial_force[free]
 
     integrator.displacement[:] = model.reduced_state[:]
+    integrator.velocity[:] = model.reduced_velocity[:]
     solver.solution[:] = model.reduced_state[:]
 
     for k in 1:n_mode
