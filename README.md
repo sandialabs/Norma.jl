@@ -100,8 +100,8 @@ using Norma
 ```
 Then, navigate to your desired example folder and run the simulation. For example:
 ```julia
-cd("examples/ahead/overlap/cuboid/dynamic")
-Norma.run("cuboid.yaml")
+cd("examples/contact/implicit-dynamic/2-bars")
+Norma.run("bars.yaml")
 ```
 
 **Note**: If you make changes to the Norma code, you need to reload the Norma module (`using Norma`) for those changes to take effect.
