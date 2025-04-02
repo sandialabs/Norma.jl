@@ -1005,10 +1005,15 @@ function apply_ics(params::Parameters, model::RomModel)
     # project onto basis
     for k in 1:n_mode
         model.reduced_state[k] = 0.0
+        model.reduced_velocity[k] = 0.0
         for j in 1:n_node
             for n in 1:n_var
                 model.reduced_state[k] +=
-                    model.basis[n, j, k] * (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
+                    model.basis[n, j, k] *
+                    (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
+                model.reduced_velocity[k] +=
+                    model.basis[n, j, k] *
+                    (model.fom_model.velocity[n, j])
             end
         end
     end
