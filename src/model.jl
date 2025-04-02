@@ -413,10 +413,7 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
 end
 
 function voigt_cauchy_from_stress(_::Solid, P::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9}, J::Float64)
-    # Compute the Cauchy stress tensor
     σ = F * P' ./ J
-
-    # Return as an SVector for efficient indexing and stack-allocation
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
@@ -460,13 +457,16 @@ end
     end
 end
 
-@generated function create_gradient_operator(::Type{T}, ::Val{N}) where {T,N}
-    dof_per_node = 3
-    d2 = dof_per_node * dof_per_node
-    total_dofs = dof_per_node * N
-    quote
-        MMatrix{$d2,$total_dofs,$T}(undef)
+function create_gradient_operator(dNdX::SMatrix{3,N,T}) :: SMatrix{9, 3N, T} where {N, T}
+    B = MMatrix{9, 3N, T}(undef)
+    fill!(B, zero(T))
+        @inbounds for i in 1:3         # i = direction of derivative
+        for a in 1:N              # a = local node index
+            # Place dNdX[:, a] into the appropriate 3×1 column
+            B[(3*(i-1)+1):(3*i), (3*(a-1)+i)] = dNdX[:, a]
+        end
     end
+    return SMatrix{9, 3N, T}(B)
 end
 
 function create_coo_vector(capacity::Int64)
@@ -582,14 +582,6 @@ function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
     return local_vecs
 end
 
-function create_threadlocal_gradient_operators(::Type{T}, ::Val{N}) where {T,N}
-    local_ops = Vector{typeof(create_gradient_operator(T, Val(N)))}(undef, nthreads())
-    for i in 1:nthreads()
-        local_ops[i] = create_gradient_operator(T, Val(N))
-    end
-    return local_ops
-end
-
 function create_threadlocal_coo_vectors(num_dofs::Int64)
     nthreads = Threads.nthreads()
     capacity = ceil(Int64, num_dofs / nthreads)
@@ -612,32 +604,6 @@ end
 
 function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
     return SVector{N,T}(sum(A; dims=2)[:, 1])
-end
-
-@inline function assemble_element_internal_force!(
-    internal_force::MVector{M,T}, gradient::MMatrix{N,M,T}, stress_vector::SVector{N,T}, scale::T
-) where {M,N,T}
-    @einsum internal_force[i] += gradient[j, i] * stress_vector[j] * scale
-    return nothing
-end
-
-@inline function assemble_element_reduced_lumped_mass!(
-    reduced_lumped_mass::MVector{N,T}, shape_functions::SVector{N,T}, scale::T
-) where {N,T}
-    @einsum reduced_lumped_mass[i] += shape_functions[i] * shape_functions[j] * scale
-end
-
-@inline function assemble_element_stiffness!(
-    stiffness::MMatrix{M,M,T}, gradient::MMatrix{N,M,T}, moduli::SMatrix{N,N,T}, scale::T
-) where {M,N,T}
-    stiffness .+= gradient' * moduli * gradient * scale
-    return nothing
-end
-
-@inline function assemble_element_reduced_mass!(
-    reduced_mass::MMatrix{N,N,T}, shape_functions::SVector{N,T}, scale::T
-) where {N,T}
-    @einsum reduced_mass[i, j] += shape_functions[i] * shape_functions[j] * scale
 end
 
 function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
@@ -699,7 +665,6 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         if compute_mass == true
             element_mass_tl = create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
         end
-        grad_op_tl = create_threadlocal_gradient_operators(Float64, Val(num_element_nodes))
         @threads for block_element_index in 1:num_block_elements
             t = threadid()
             element_energy = 0.0
@@ -718,7 +683,6 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 element_mass = element_mass_tl[t]
                 fill!(element_mass, 0.0)
             end
-            grad_op = grad_op_tl[t]
             conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_conn[conn_indices]
             if mesh_smoothing == true
@@ -750,7 +714,7 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 det_dXdξ = det(dXdξ)
                 dvol = det_dXdξ * ip_weight
                 element_energy += W * dvol
-                gradient_operator!(grad_op, dNdX)
+                grad_op = create_gradient_operator(dNdX)
                 @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
                 if compute_lumped_mass == true
                     Nξ = N[:, point]

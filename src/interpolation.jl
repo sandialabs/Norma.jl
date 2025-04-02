@@ -458,18 +458,6 @@ function isoparametric(element_type::String, num_int::Integer)
     end
 end
 
-function gradient_operator!(B::AbstractMatrix{Float64}, dNdX::AbstractMatrix{Float64})
-    fill!(B, 0.0)  # ensure all off-diagonal entries are zero
-    nen = size(dNdX, 2)
-    @inbounds for i in 1:3
-        for a in 1:nen
-            # write the column directly as a slice
-            B[((i - 1) * 3 + 1):(i * 3), (a - 1) * 3 + i] = dNdX[:, a]
-        end
-    end
-    return nothing
-end
-
 using Symbolics
 @variables t, x, y, z
 
