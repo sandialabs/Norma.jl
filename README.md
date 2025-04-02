@@ -185,7 +185,7 @@ ProfileView.view()
 
 ### Command-Line Workflow
 ```bash
-julia -project=@/path/to/Norma.jl -e 'using Profile; using Norma; cd("examples/contact/implicit-dynamic/2-bars"); @profile Norma.run("bars.yaml")' -E 'using ProfileView; ProfileView.view()'
+julia --project=@/path/to/Norma.jl -e 'using Profile; using Norma; cd("examples/contact/implicit-dynamic/2-bars"); @profile Norma.run("bars.yaml")' -E 'using ProfileView; ProfileView.view()'
 ```
 
 ---
@@ -195,7 +195,7 @@ julia -project=@/path/to/Norma.jl -e 'using Profile; using Norma; cd("examples/c
 To enable debug-level logging in Norma.jl, use the `JULIA_DEBUG` environment variable:
 
 ```bash
-JULIA_DEBUG=Norma julia -project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
+JULIA_DEBUG=Norma julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
 
 To add debug messages in code:
@@ -210,7 +210,7 @@ unset JULIA_DEBUG
 
 Or suppress it at launch:
 ```bash
-JULIA_DEBUG= julia -project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
+JULIA_DEBUG= julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
 
 ---

@@ -4,11 +4,11 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "transfer-operators" begin
-    cp("../examples/contact/transfer_operators/transfer.yaml", "transfer.yaml"; force=true)
-    cp("../examples/contact/transfer_operators/src.yaml", "src.yaml"; force=true)
-    cp("../examples/contact/transfer_operators/dst.yaml", "dst.yaml"; force=true)
-    cp("../examples/contact/transfer_operators/src.g", "src.g"; force=true)
-    cp("../examples/contact/transfer_operators/dst.g", "dst.g"; force=true)
+    cp("../examples/contact/transfer-operators/transfer.yaml", "transfer.yaml"; force=true)
+    cp("../examples/contact/transfer-operators/src.yaml", "src.yaml"; force=true)
+    cp("../examples/contact/transfer-operators/dst.yaml", "dst.yaml"; force=true)
+    cp("../examples/contact/transfer-operators/src.g", "src.g"; force=true)
+    cp("../examples/contact/transfer-operators/dst.g", "dst.g"; force=true)
     input_file = "transfer.yaml"
     sim = Norma.create_simulation(input_file)
     src_sim = sim.subsims[1]
