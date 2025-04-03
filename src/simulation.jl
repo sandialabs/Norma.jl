@@ -1,9 +1,10 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using Printf
 using YAML
 
 include("simulation_types.jl")
@@ -29,7 +30,7 @@ function create_simulation(params::Parameters, name::String)
 end
 
 function create_simulation(input_file::String)
-    println("Reading simulation file: ", input_file)
+    @printf("Reading Simulation File: %s\n", input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     return create_simulation(params, input_file)
 end
@@ -63,21 +64,13 @@ function SingleDomainSimulation(params::Parameters)
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
     controller = SolidSingleController(
-        0.0,
-        0.0,
-        0,
-        Vector{Float64}(),
-        Vector{Float64}(),
-        Vector{Float64}(),
-        Vector{Float64}(),
+        0.0, 0.0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
     )
     model = create_model(params)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
     failed = false
-    return SingleDomainSimulation(
-        name, params, controller, integrator, solver, model, failed
-    )
+    return SingleDomainSimulation(name, params, controller, integrator, solver, model, failed)
 end
 
 function MultiDomainSimulation(params::Parameters)
@@ -90,11 +83,10 @@ function MultiDomainSimulation(params::Parameters)
     same_step = true
     exodus_interval = get(params, "Exodus output interval", 1)
     csv_interval = get(params, "CSV output interval", 0)
-    sim_type = "none"
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
     for domain_name in domain_names
-        println("Reading subsimulation file: ", domain_name)
+        @printf("Reading Subsimulation File: %s\n", domain_name)
         subparams = YAML.load_file(domain_name; dicttype=Parameters)
         subparams["name"] = domain_name
         subparams["time integrator"]["initial time"] = initial_time
@@ -107,24 +99,14 @@ function MultiDomainSimulation(params::Parameters)
             same_step = false
         end
         params[domain_name] = subsim.params
-        subsim_type =
-            get_analysis_type(subsim.integrator) * " " * subparams["model"]["type"]
-        if sim_type == "none"
-            sim_type = subsim_type
-            #        elseif subsim_type ≠ sim_type && (subsim_type != "dynamic linear opinf rom" || subsim_type != "dynamic quadratic opinf rom")
-            #            error("Multidomain subdomains must all have the same physics")
-        end
         push!(subsims, subsim)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
-    params["subdomains type"] = sim_type
     params["same time step for domains"] = same_step
     schwarz_controller = create_schwarz_controller(params)
     failed = false
-    sim = MultiDomainSimulation(
-        name, params, schwarz_controller, subsims, subsim_name_index_map, failed
-    )
+    sim = MultiDomainSimulation(name, params, schwarz_controller, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
         subsim.params["global_simulation"] = sim
     end

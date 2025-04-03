@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -43,10 +43,8 @@ function symm(A::AbstractMatrix{Float64})
 end
 
 function determinant(A::AbstractMatrix{Float64})
-    return -A[1, 3] * A[2, 2] * A[3, 1] +
-           A[1, 2] * A[2, 3] * A[3, 1] +
-           A[1, 3] * A[2, 1] * A[3, 2] - A[1, 1] * A[2, 3] * A[3, 2] -
-           A[1, 2] * A[2, 1] * A[3, 3] + A[1, 1] * A[2, 2] * A[3, 3]
+    return -A[1, 3] * A[2, 2] * A[3, 1] + A[1, 2] * A[2, 3] * A[3, 1] + A[1, 3] * A[2, 1] * A[3, 2] -
+           A[1, 1] * A[2, 3] * A[3, 2] - A[1, 2] * A[2, 1] * A[3, 3] + A[1, 1] * A[2, 2] * A[3, 3]
 end
 
 function trace(A::AbstractMatrix{Float64})
@@ -105,126 +103,110 @@ function bch(x::AbstractMatrix{Float64}, y::AbstractMatrix{Float64})
 
     z2 = 0.5 * (x * y - y * x)
 
-    z3 =
-        x * x * y / 12 - x * y * x / 6 + x * y * y / 12 + y * x * x / 12 - y * x * y / 6 +
-        y * y * x / 12
+    z3 = x * x * y / 12 - x * y * x / 6 + x * y * y / 12 + y * x * x / 12 - y * x * y / 6 + y * y * x / 12
 
     z4 = x * x * y * y / 24 - x * y * x * y / 12 + y * x * y * x / 12 - y * y * x * x / 24
 
     z5 =
-        -x * x * x * x * y / 720 + x * x * x * y * x / 180 + x * x * x * y * y / 180 -
-        x * x * y * x * x / 120 - x * x * y * x * y / 120 - x * x * y * y * x / 120 +
+        -x * x * x * x * y / 720 + x * x * x * y * x / 180 + x * x * x * y * y / 180 - x * x * y * x * x / 120 -
+        x * x * y * x * y / 120 - x * x * y * y * x / 120 +
         x * x * y * y * y / 180 +
-        x * y * x * x * x / 180 - x * y * x * x * y / 120 + x * y * x * y * x / 30 -
-        x * y * x * y * y / 120 - x * y * y * x * x / 120 - x * y * y * x * y / 120
-    +x * y * y * y * x / 180 - x * y * y * y * y / 720 - y * x * x * x * x / 720 +
-    y * x * x * x * y / 180 - y * x * x * y * x / 120 - y * x * x * y * y / 120 -
-    y * x * y * x * x / 120 + y * x * y * x * y / 30 - y * x * y * y * x / 120
-    +y * x * y * y * y / 180 + y * y * x * x * x / 180 - y * y * x * x * y / 120 -
-    y * y * x * y * x / 120 - y * y * x * y * y / 120 +
+        x * y * x * x * x / 180 - x * y * x * x * y / 120 + x * y * x * y * x / 30 - x * y * x * y * y / 120 -
+        x * y * y * x * x / 120 - x * y * y * x * y / 120
+    +x * y * y * y * x / 180 - x * y * y * y * y / 720 - y * x * x * x * x / 720 + y * x * x * x * y / 180 -
+    y * x * x * y * x / 120 - y * x * x * y * y / 120 - y * x * y * x * x / 120 + y * x * y * x * y / 30 -
+    y * x * y * y * x / 120
+    +y * x * y * y * y / 180 + y * y * x * x * x / 180 - y * y * x * x * y / 120 - y * y * x * y * x / 120 -
+    y * y * x * y * y / 120 +
     y * y * y * x * x / 180 +
     y * y * y * x * y / 180 - y * y * y * y * x / 720
 
     z6 =
-        -x * x * x * x * y * y / 1440 +
-        x * x * x * y * x * y / 360 +
-        x * x * x * y * y * y / 360 - x * x * y * x * x * y / 240
-    -x * x * y * x * y * y / 240 - x * x * y * y * x * y / 240 -
-    x * x * y * y * y * y / 1440 + x * y * x * x * x * y / 360 -
-    x * y * x * x * y * y / 240 +
+        -x * x * x * x * y * y / 1440 + x * x * x * y * x * y / 360 + x * x * x * y * y * y / 360 -
+        x * x * y * x * x * y / 240
+    -x * x * y * x * y * y / 240 - x * x * y * y * x * y / 240 - x * x * y * y * y * y / 1440 +
+    x * y * x * x * x * y / 360 - x * y * x * x * y * y / 240 +
     x * y * x * y * x * y / 60 +
-    x * y * x * y * y * y / 360 - x * y * y * x * x * y / 240 -
-    x * y * y * x * y * y / 240 + x * y * y * y * x * y / 360 -
-    y * x * x * x * y * x / 360 +
+    x * y * x * y * y * y / 360 - x * y * y * x * x * y / 240 - x * y * y * x * y * y / 240 +
+    x * y * y * y * x * y / 360 - y * x * x * x * y * x / 360 +
     y * x * x * y * x * x / 240 +
     y * x * x * y * y * x / 240 - y * x * y * x * x * x / 360 - y * x * y * x * y * x / 60 +
     y * x * y * y * x * x / 240 - y * x * y * y * y * x / 360 +
     y * y * x * x * x * x / 1440 +
     y * y * x * x * y * x / 240 +
     y * y * x * y * x * x / 240 +
-    y * y * x * y * y * x / 240 - y * y * y * x * x * x / 360 -
-    y * y * y * x * y * x / 360 + y * y * y * y * x * x / 1440
+    y * y * x * y * y * x / 240 - y * y * y * x * x * x / 360 - y * y * y * x * y * x / 360 +
+    y * y * y * y * x * x / 1440
 
     z7 =
-        x * x * x * x * x * x * y / 30240 - x * x * x * x * x * y * x / 5040 -
-        x * x * x * x * x * y * y / 5040 +
+        x * x * x * x * x * x * y / 30240 - x * x * x * x * x * y * x / 5040 - x * x * x * x * x * y * y / 5040 +
         x * x * x * x * y * x * x / 2016 +
         x * x * x * x * y * x * y / 2016 +
         x * x * x * x * y * y * x / 2016 +
-        x * x * x * x * y * y * y / 3780 - x * x * x * y * x * x * x / 1512 -
-        x * x * x * y * x * x * y / 5040 - x * x * x * y * x * y * x / 630 -
-        x * x * x * y * x * y * y / 5040 - x * x * x * y * y * x * x / 5040 -
+        x * x * x * x * y * y * y / 3780 - x * x * x * y * x * x * x / 1512 - x * x * x * y * x * x * y / 5040 -
+        x * x * x * y * x * y * x / 630 - x * x * x * y * x * y * y / 5040 - x * x * x * y * y * x * x / 5040 -
         x * x * x * y * y * x * y / 5040 - x * x * x * y * y * y * x / 1512 +
         x * x * x * y * y * y * y / 3780 +
-        x * x * y * x * x * x * x / 2016 - x * x * y * x * x * x * y / 5040 +
-        x * x * y * x * x * y * x / 840 - x * x * y * x * x * y * y / 1120 +
+        x * x * y * x * x * x * x / 2016 - x * x * y * x * x * x * y / 5040 + x * x * y * x * x * y * x / 840 -
+        x * x * y * x * x * y * y / 1120 +
         x * x * y * x * y * x * x / 840 +
         x * x * y * x * y * x * y / 840 +
-        x * x * y * x * y * y * x / 840 - x * x * y * x * y * y * y / 5040 -
-        x * x * y * y * x * x * x / 5040 - x * x * y * y * x * x * y / 1120 +
-        x * x * y * y * x * y * x / 840 - x * x * y * y * x * y * y / 1120 -
-        x * x * y * y * y * x * x / 5040 - x * x * y * y * y * x * y / 5040 +
-        x * x * y * y * y * y * x / 2016 - x * x * y * y * y * y * y / 5040 -
-        x * y * x * x * x * x * x / 5040 + x * y * x * x * x * x * y / 2016 -
+        x * x * y * x * y * y * x / 840 - x * x * y * x * y * y * y / 5040 - x * x * y * y * x * x * x / 5040 -
+        x * x * y * y * x * x * y / 1120 + x * x * y * y * x * y * x / 840 - x * x * y * y * x * y * y / 1120 -
+        x * x * y * y * y * x * x / 5040 - x * x * y * y * y * x * y / 5040 + x * x * y * y * y * y * x / 2016 -
+        x * x * y * y * y * y * y / 5040 - x * y * x * x * x * x * x / 5040 + x * y * x * x * x * x * y / 2016 -
         x * y * x * x * x * y * x / 630 - x * y * x * x * x * y * y / 5040 +
         x * y * x * x * y * x * x / 840 +
         x * y * x * x * y * x * y / 840 +
-        x * y * x * x * y * y * x / 840 - x * y * x * x * y * y * y / 5040 -
-        x * y * x * y * x * x * x / 630 + x * y * x * y * x * x * y / 840 -
-        x * y * x * y * x * y * x / 140 +
+        x * y * x * x * y * y * x / 840 - x * y * x * x * y * y * y / 5040 - x * y * x * y * x * x * x / 630 +
+        x * y * x * y * x * x * y / 840 - x * y * x * y * x * y * x / 140 +
         x * y * x * y * x * y * y / 840 +
         x * y * x * y * y * x * x / 840 +
         x * y * x * y * y * x * y / 840 - x * y * x * y * y * y * x / 630 +
         x * y * x * y * y * y * y / 2016 +
-        x * y * y * x * x * x * x / 2016 - x * y * y * x * x * x * y / 5040 +
-        x * y * y * x * x * y * x / 840 - x * y * y * x * x * y * y / 1120 +
+        x * y * y * x * x * x * x / 2016 - x * y * y * x * x * x * y / 5040 + x * y * y * x * x * y * x / 840 -
+        x * y * y * x * x * y * y / 1120 +
         x * y * y * x * y * x * x / 840 +
         x * y * y * x * y * x * y / 840 +
-        x * y * y * x * y * y * x / 840 - x * y * y * x * y * y * y / 5040 -
-        x * y * y * y * x * x * x / 1512 - x * y * y * y * x * x * y / 5040 -
-        x * y * y * y * x * y * x / 630 - x * y * y * y * x * y * y / 5040 +
+        x * y * y * x * y * y * x / 840 - x * y * y * x * y * y * y / 5040 - x * y * y * y * x * x * x / 1512 -
+        x * y * y * y * x * x * y / 5040 - x * y * y * y * x * y * x / 630 - x * y * y * y * x * y * y / 5040 +
         x * y * y * y * y * x * x / 2016 +
         x * y * y * y * y * x * y / 2016 - x * y * y * y * y * y * x / 5040 +
         x * y * y * y * y * y * y / 30240 +
         y * x * x * x * x * x * x / 30240 - y * x * x * x * x * x * y / 5040 +
         y * x * x * x * x * y * x / 2016 +
-        y * x * x * x * x * y * y / 2016 - y * x * x * x * y * x * x / 5040 -
-        y * x * x * x * y * x * y / 630 - y * x * x * x * y * y * x / 5040 -
-        y * x * x * x * y * y * y / 1512 - y * x * x * y * x * x * x / 5040 +
+        y * x * x * x * x * y * y / 2016 - y * x * x * x * y * x * x / 5040 - y * x * x * x * y * x * y / 630 -
+        y * x * x * x * y * y * x / 5040 - y * x * x * x * y * y * y / 1512 - y * x * x * y * x * x * x / 5040 +
         y * x * x * y * x * x * y / 840 +
         y * x * x * y * x * y * x / 840 +
-        y * x * x * y * x * y * y / 840 - y * x * x * y * y * x * x / 1120 +
-        y * x * x * y * y * x * y / 840 - y * x * x * y * y * y * x / 5040 +
+        y * x * x * y * x * y * y / 840 - y * x * x * y * y * x * x / 1120 + y * x * x * y * y * x * y / 840 -
+        y * x * x * y * y * y * x / 5040 +
         y * x * x * y * y * y * y / 2016 +
         y * x * y * x * x * x * x / 2016 - y * x * y * x * x * x * y / 630 +
         y * x * y * x * x * y * x / 840 +
         y * x * y * x * x * y * y / 840 +
-        y * x * y * x * y * x * x / 840 - y * x * y * x * y * x * y / 140 +
-        y * x * y * x * y * y * x / 840 - y * x * y * x * y * y * y / 630 -
-        y * x * y * y * x * x * x / 5040 +
+        y * x * y * x * y * x * x / 840 - y * x * y * x * y * x * y / 140 + y * x * y * x * y * y * x / 840 -
+        y * x * y * x * y * y * y / 630 - y * x * y * y * x * x * x / 5040 +
         y * x * y * y * x * x * y / 840 +
         y * x * y * y * x * y * x / 840 +
-        y * x * y * y * x * y * y / 840 - y * x * y * y * y * x * x / 5040 -
-        y * x * y * y * y * x * y / 630 + y * x * y * y * y * y * x / 2016 -
-        y * x * y * y * y * y * y / 5040 - y * y * x * x * x * x * x / 5040 +
-        y * y * x * x * x * x * y / 2016 - y * y * x * x * x * y * x / 5040 -
-        y * y * x * x * x * y * y / 5040 - y * y * x * x * y * x * x / 1120 +
-        y * y * x * x * y * x * y / 840 - y * y * x * x * y * y * x / 1120 -
+        y * x * y * y * x * y * y / 840 - y * x * y * y * y * x * x / 5040 - y * x * y * y * y * x * y / 630 +
+        y * x * y * y * y * y * x / 2016 - y * x * y * y * y * y * y / 5040 - y * y * x * x * x * x * x / 5040 +
+        y * y * x * x * x * x * y / 2016 - y * y * x * x * x * y * x / 5040 - y * y * x * x * x * y * y / 5040 -
+        y * y * x * x * y * x * x / 1120 + y * y * x * x * y * x * y / 840 - y * y * x * x * y * y * x / 1120 -
         y * y * x * x * y * y * y / 5040 - y * y * x * y * x * x * x / 5040 +
         y * y * x * y * x * x * y / 840 +
         y * y * x * y * x * y * x / 840 +
-        y * y * x * y * x * y * y / 840 - y * y * x * y * y * x * x / 1120 +
-        y * y * x * y * y * x * y / 840 - y * y * x * y * y * y * x / 5040 +
+        y * y * x * y * x * y * y / 840 - y * y * x * y * y * x * x / 1120 + y * y * x * y * y * x * y / 840 -
+        y * y * x * y * y * y * x / 5040 +
         y * y * x * y * y * y * y / 2016 +
-        y * y * y * x * x * x * x / 3780 - y * y * y * x * x * x * y / 1512 -
-        y * y * y * x * x * y * x / 5040 - y * y * y * x * x * y * y / 5040 -
-        y * y * y * x * y * x * x / 5040 - y * y * y * x * y * x * y / 630 -
+        y * y * y * x * x * x * x / 3780 - y * y * y * x * x * x * y / 1512 - y * y * y * x * x * y * x / 5040 -
+        y * y * y * x * x * y * y / 5040 - y * y * y * x * y * x * x / 5040 - y * y * y * x * y * x * y / 630 -
         y * y * y * x * y * y * x / 5040 - y * y * y * x * y * y * y / 1512 +
         y * y * y * y * x * x * x / 3780 +
         y * y * y * y * x * x * y / 2016 +
         y * y * y * y * x * y * x / 2016 +
-        y * y * y * y * x * y * y / 2016 - y * y * y * y * y * x * x / 5040 -
-        y * y * y * y * y * x * y / 5040 + y * y * y * y * y * y * x / 30240
+        y * y * y * y * x * y * y / 2016 - y * y * y * y * y * x * x / 5040 - y * y * y * y * y * x * y / 5040 +
+        y * y * y * y * y * y * x / 30240
 
     z8 =
         x * x * x * x * x * x * y * y / 60480 - x * x * x * x * x * y * x * y / 10080 -

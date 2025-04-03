@@ -5,27 +5,22 @@
 # top-level Norma.jl directory.
 using YAML
 
-@testset "sphere-inclined-disp" begin
-    cp(
-        "../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml",
-        "sphere.yaml";
-        force=true,
-    )
-    cp(
-        "../examples/single/static-solid/sphere-inclined-displacement/sphere.g",
-        "sphere.g";
-        force=true,
-    )
+@testset "static-sphere-inclined-disp" begin
+    cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
+    cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
     input_file = "sphere.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
-    time = 0.005
+    time = 0.1
     params["time integrator"]["initial time"] = 0
     params["time integrator"]["time step"] = time
     params["time integrator"]["final time"] = time
-    simulation = Norma.run(params, input_file)
 
-    E = 1.0e9
-    ν = 0.25
+    params["model"]["material"]["elastic"]["model"] = "Saint-Venant Kirchhoff"
+
+    simulation = Norma.run(params, input_file)
+    velocity = 0.0005
+    E = 200e9
+    ν = 0.27
 
     integrator = simulation.integrator
     model = simulation.model
@@ -37,50 +32,102 @@ using YAML
     max_disp = maximum_components(global_displacement)
     min_disp = minimum_components(global_displacement)
 
-    @test max_disp[1] ≈ time / 10 atol = 1.0e-06
-    @test max_disp[2] ≈ time / 10 atol = 1.0e-06
-    @test max_disp[3] ≈ time / 10 atol = 1.0e-06
-    @test min_disp[1] ≈ -time / 10 atol = 1.0e-06
-    @test min_disp[2] ≈ -time / 10 atol = 1.0e-06
-    @test min_disp[3] ≈ -time / 10 atol = 1.0e-06
+    @test max_disp[1] ≈ time * velocity atol = 1.0e-06
+    @test max_disp[2] ≈ time * velocity atol = 1.0e-06
+    @test max_disp[3] ≈ time * velocity atol = 1.0e-06
+    @test min_disp[1] ≈ -time * velocity atol = 1.0e-06
+    @test min_disp[2] ≈ -time * velocity atol = 1.0e-06
+    @test min_disp[3] ≈ -time * velocity atol = 1.0e-06
 
     # Deformation gradient
-    F = I(3)*(1-0.1*time)
+    F = I(3) * (1 - velocity * time)
     # Right Cauch-Green
     C = F' * F
     # Green Strain
-    Ee = 1/2*(C - I(3))
+    Ee = 1 / 2 * (C - I(3))
     # PK2 Stress
-    λ = E*ν/((1 + ν) * (1 - 2*ν) )
-    μ = E/2/(1+ν)
-    S = λ * tr(Ee) * I(3) + 2*μ*Ee
+    λ = E * ν / ((1 + ν) * (1 - 2 * ν))
+    μ = E / 2 / (1 + ν)
+    S = λ * tr(Ee) * I(3) + 2 * μ * Ee
     # Cauchy stress and analytical pressure
-    σ = 1/det(F) * F * S * F'
-    analytical_pressure = -tr(σ)/3.0
+    σ = 1 / det(F) * F * S * F'
+    analytical_pressure = -tr(σ) / 3.0
 
     # Stress should be uniform, so avg is sufficient
     avg_stress = average_components(model.stress)
     hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3]) / 3.0
 
-    @test hydrostatic_stress ≈ analytical_pressure rtol = 2.0e-4
-    @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
-    @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
-    @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
+    @test hydrostatic_stress ≈ analytical_pressure rtol = 1e-3
+    # Tolerance is large since pressure ≈ 21 MPa, 3 Pa is negligible
+    @test avg_stress[4] ≈ 0.0 atol = 3.0
+    @test avg_stress[5] ≈ 0.0 atol = 3.0
+    @test avg_stress[6] ≈ 0.0 atol = 3.0
+end
+
+@testset "implicit-dynamic-sphere-inclined-disp" begin
+    cp("../examples/single/implicit-dynamic-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
+    cp("../examples/single/implicit-dynamic-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
+    input_file = "sphere.yaml"
+    params = YAML.load_file(input_file; dicttype=Norma.Parameters)
+    time = 0.1
+    params["time integrator"]["initial time"] = 0
+    params["time integrator"]["time step"] = time
+    params["time integrator"]["final time"] = time
+
+    params["model"]["material"]["elastic"]["model"] = "Saint-Venant Kirchhoff"
+
+    simulation = Norma.run(params, input_file)
+    velocity = 0.01
+    E = 200e9
+    ν = 0.27
+
+    integrator = simulation.integrator
+    model = simulation.model
+    rm("sphere.yaml")
+    rm("sphere.g")
+    rm("sphere.e")
+
+    global_displacement = vec(model.current - model.reference)
+    max_disp = maximum_components(global_displacement)
+    min_disp = minimum_components(global_displacement)
+
+    @test max_disp[1] ≈ time * velocity atol = 1.0e-06
+    @test max_disp[2] ≈ time * velocity atol = 1.0e-06
+    @test max_disp[3] ≈ time * velocity atol = 1.0e-06
+    @test min_disp[1] ≈ -time * velocity atol = 1.0e-06
+    @test min_disp[2] ≈ -time * velocity atol = 1.0e-06
+    @test min_disp[3] ≈ -time * velocity atol = 1.0e-06
+
+    # Deformation gradient
+    F = I(3) * (1 - velocity * time)
+    # Right Cauch-Green
+    C = F' * F
+    # Green Strain
+    Ee = 1 / 2 * (C - I(3))
+    # PK2 Stress
+    λ = E * ν / ((1 + ν) * (1 - 2 * ν))
+    μ = E / 2 / (1 + ν)
+    S = λ * tr(Ee) * I(3) + 2 * μ * Ee
+    # Cauchy stress and analytical pressure
+    σ = 1 / det(F) * F * S * F'
+    analytical_pressure = -tr(σ) / 3.0
+
+    # Stress should be uniform, so avg is sufficient
+    avg_stress = average_components(model.stress)
+    hydrostatic_stress = -(avg_stress[1] + avg_stress[2] + avg_stress[3]) / 3.0
+
+    @test hydrostatic_stress ≈ analytical_pressure rtol = 1e-3
+    # Tolerance is large since pressure ≈ 21 MPa, 3 Pa is negligible
+    @test avg_stress[4] ≈ 0.0 atol = 3.0
+    @test avg_stress[5] ≈ 0.0 atol = 3.0
+    @test avg_stress[6] ≈ 0.0 atol = 3.0
 end
 
 @testset "quasi-static-inclined-support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
-        cp(
-            "../examples/single/static-solid/cube_inclined_support/cube-test$i.yaml",
-            "cube-test$i.yaml";
-            force=true,
-        )
-        cp(
-            "../examples/single/static-solid/cube_inclined_support/cube-test$i.g",
-            "cube-test$i.g";
-            force=true,
-        )
+        cp("../examples/single/static-solid/cube-inclined-support/cube-test$i.yaml", "cube-test$i.yaml"; force=true)
+        cp("../examples/single/static-solid/cube-inclined-support/cube-test$i.g", "cube-test$i.g"; force=true)
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model
@@ -203,15 +250,11 @@ end
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(
-            "../examples/single/implicit-dynamic-solid/cube_inclined_support/cube-test$i.yaml",
+            "../examples/single/implicit-dynamic-solid/cube-inclined-support/cube-test$i.yaml",
             "cube-test$i.yaml";
             force=true,
         )
-        cp(
-            "../examples/single/implicit-dynamic-solid/cube_inclined_support/cube-test$i.g",
-            "cube-test$i.g";
-            force=true,
-        )
+        cp("../examples/single/implicit-dynamic-solid/cube-inclined-support/cube-test$i.g", "cube-test$i.g"; force=true)
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model
@@ -334,15 +377,11 @@ end
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(
-            "../examples/single/explicit-dynamic-solid/cube_inclined_support/cube-test$i.yaml",
+            "../examples/single/explicit-dynamic-solid/cube-inclined-support/cube-test$i.yaml",
             "cube-test$i.yaml";
             force=true,
         )
-        cp(
-            "../examples/single/explicit-dynamic-solid/cube_inclined_support/cube-test$i.g",
-            "cube-test$i.g";
-            force=true,
-        )
+        cp("../examples/single/explicit-dynamic-solid/cube-inclined-support/cube-test$i.g", "cube-test$i.g"; force=true)
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model

@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -15,6 +15,19 @@ using SparseArrays
     Finite
 end
 
+mutable struct COOVector
+    index::Vector{Int64}
+    vals::Vector{Float64}
+    len::Int64  # logical length
+end
+
+mutable struct COOMatrix
+    rows::Vector{Int64}
+    cols::Vector{Int64}
+    vals::Vector{Float64}
+    len::Int64 # logical length
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
@@ -27,13 +40,21 @@ mutable struct SolidMechanics <: Model
     boundary_conditions::Vector{BoundaryCondition}
     stress::Vector{Vector{Vector{Vector{Float64}}}}
     stored_energy::Vector{Vector{Float64}}
+    strain_energy::Float64
+    stiffness::SparseMatrixCSC{Float64,Int64}
+    mass::SparseMatrixCSC{Float64,Int64}
+    lumped_mass::Vector{Float64}
+    body_force::Vector{Float64}
     free_dofs::BitVector
     time::Float64
+    compute_stiffness::Bool
+    compute_mass::Bool
+    compute_lumped_mass::Bool
     failed::Bool
     mesh_smoothing::Bool
     smooth_reference::String
     inclined_support::Bool
-    global_transform::SparseArrays.Matrix{Float64}
+    global_transform::SparseMatrixCSC{Float64,Int64}
     kinematics::Kinematics
 end
 
@@ -58,6 +79,7 @@ mutable struct QuadraticOpInfRom <: OpInfModel
     opinf_rom::Dict{Any,Any}
     basis::Array{Float64}
     reduced_state::Vector{Float64}
+    reduced_velocity::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}
     #internal_force not used, but include to ease interfacing in Schwarz
     internal_force::Vector{Float64}
@@ -74,6 +96,7 @@ mutable struct LinearOpInfRom <: OpInfModel
     opinf_rom::Dict{Any,Any}
     basis::Array{Float64}
     reduced_state::Vector{Float64}
+    reduced_velocity::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}
     #internal_force not used, but include to ease interfacing in Schwarz
     internal_force::Vector{Float64}

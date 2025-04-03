@@ -1,0 +1,9 @@
+type: multi
+domains: ["src.yaml", "dst.yaml"]
+initial time: -1.0
+final time: 1.0
+time step: 1.0
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

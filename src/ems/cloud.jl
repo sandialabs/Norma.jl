@@ -108,11 +108,7 @@ function create_potential(params::Parameters)
         c = potential_params["cutoff"]
         return Polynomial(k, h, m, c)
     else
-        error(
-            "Unrecognized potential type: ",
-            type,
-            ", options are Lennard-Jones, repulsive, or symmetric Seth-Hill",
-        )
+        error("Unrecognized potential type: ", type, ", options are Lennard-Jones, repulsive, or symmetric Seth-Hill")
     end
 end
 
@@ -197,9 +193,7 @@ function create_point_cloud(params::Parameters)
     return geometry, points
 end
 
-function compute_energy_force!(
-    potential::Lennard_Jones, points::Matrix{Float64}, force::Matrix{Float64}
-)
+function compute_energy_force!(potential::Lennard_Jones, points::Matrix{Float64}, force::Matrix{Float64})
     ε = potential.ε
     σ = potential.σ
     number_points = size(points, 2)
@@ -219,9 +213,7 @@ function compute_energy_force!(
     return energy
 end
 
-function compute_energy_force!(
-    potential::Repulsive, points::Matrix{Float64}, force::Matrix{Float64}
-)
+function compute_energy_force!(potential::Repulsive, points::Matrix{Float64}, force::Matrix{Float64})
     k = potential.k
     c = potential.c
     number_points = size(points, 2)
@@ -243,9 +235,7 @@ function compute_energy_force!(
     return energy
 end
 
-function compute_energy_force!(
-    potential::SymmetricSethHill, points::Matrix{Float64}, force::Matrix{Float64}
-)
+function compute_energy_force!(potential::SymmetricSethHill, points::Matrix{Float64}, force::Matrix{Float64})
     k = potential.k
     h = potential.h
     m = potential.m
@@ -273,9 +263,7 @@ function compute_energy_force!(
     return energy
 end
 
-function compute_energy_force!(
-    potential::Polynomial, points::Matrix{Float64}, force::Matrix{Float64}
-)
+function compute_energy_force!(potential::Polynomial, points::Matrix{Float64}, force::Matrix{Float64})
     k = potential.k
     h = potential.h
     m = potential.m
@@ -302,12 +290,7 @@ function compute_energy_force!(
     return energy
 end
 
-function solve(
-    solver::SteepestDescent,
-    geometry::Geometry,
-    potential::Potential,
-    points::Matrix{Float64},
-)
+function solve(solver::SteepestDescent, geometry::Geometry, potential::Potential, points::Matrix{Float64})
     maximum_iterations = solver.maximum_iterations
     absolute_tolerance = solver.absolute_tolerance
     relative_tolerance = solver.relative_tolerance
@@ -333,12 +316,7 @@ function solve(
         )
         if absolute_error < absolute_tolerance || relative_error < relative_tolerance
             println("Converged")
-            println(
-                "Absolute tolerance : ",
-                absolute_tolerance,
-                ", relative tolerance : ",
-                relative_tolerance,
-            )
+            println("Absolute tolerance : ", absolute_tolerance, ", relative tolerance : ", relative_tolerance)
             break
         end
         points, energy = backtrack_line_search!(solver, geometry, potential, points, force)
@@ -350,11 +328,7 @@ function solve(
 end
 
 function backtrack_line_search!(
-    solver::Solver,
-    geometry::Geometry,
-    potential::Potential,
-    points::Matrix{Float64},
-    force::Matrix{Float64},
+    solver::Solver, geometry::Geometry, potential::Potential, points::Matrix{Float64}, force::Matrix{Float64}
 )
     backtrack_factor = solver.backtrack_factor
     decrease_factor = solver.decrease_factor
@@ -384,11 +358,7 @@ function backtrack_line_search!(
 end
 
 function backtrack_line_search_orig!(
-    solver::Solver,
-    geometry::Geometry,
-    potential::Potential,
-    points::Matrix{Float64},
-    force::Matrix{Float64},
+    solver::Solver, geometry::Geometry, potential::Potential, points::Matrix{Float64}, force::Matrix{Float64}
 )
     backtrack_factor = solver.backtrack_factor
     decrease_factor = solver.decrease_factor
@@ -410,10 +380,8 @@ function backtrack_line_search_orig!(
             break
         end
         step_length =
-            max(
-                backtrack_factor * step_length,
-                -0.5 * step_length * step_length * merit_prime,
-            ) / (merit - merit_old - step_length * merit_prime)
+            max(backtrack_factor * step_length, -0.5 * step_length * step_length * merit_prime) /
+            (merit - merit_old - step_length * merit_prime)
     end
     return points, energy
 end

@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -52,12 +52,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     end
     new_time_step = decrease_factor * time_step
     if new_time_step < minimum_time_step
-        error(
-            "Cannot adapt time step to ",
-            new_time_step,
-            " because minimum is ",
-            minimum_time_step,
-        )
+        error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
     @info "Time step failure. Decreasing time step." time_step new_time_step
@@ -105,9 +100,9 @@ function advance(sim::MultiDomainSimulation)
     detect_contact(sim)
     if sim.schwarz_controller.active_contact ≠ was_in_contact
         if was_in_contact == true
-            println("Contact release detected, redoing control step")
+            println("Contact released — reattempting control step.")
         else
-            println("Contact initiation detected, redoing control step")
+            println("Contact initiated — reattempting control step.")
         end
         restore_stop_solutions(sim)
         solve_contact(sim)
@@ -198,15 +193,10 @@ function sync_time(sim::SingleDomainSimulation)
     initial_time = sim.integrator.prev_time
     final_time = sim.integrator.time
     if stop == 0
-        @printf("Initializing run at stop 0 with time = %6.2e\n", final_time)
+        @printf("Initializing: Stop 0 | Time = %.4e\n", final_time)
     else
-        @printf(
-            "Advancing from stop %d with time = %6.2e to stop %d with time = %6.2e\n",
-            stop - 1,
-            initial_time,
-            stop,
-            final_time
-        )
+        Δt = final_time - initial_time
+        @printf("Advancing to: Stop %d | Time = %.4e | Δt = %.4e\n", stop, final_time, Δt)
     end
 end
 
@@ -216,15 +206,10 @@ function sync_time(sim::MultiDomainSimulation)
     initial_time = sim.schwarz_controller.prev_time
     final_time = sim.schwarz_controller.time
     if stop == 0
-        @printf("Initializing run at stop 0 with time = %6.2e\n", final_time)
+        @printf("Initializing: Stop 0 | Time = %.4e\n", final_time)
     else
-        @printf(
-            "Advancing from stop %d with time = %6.2e to stop %d with time = %6.2e\n",
-            stop - 1,
-            initial_time,
-            stop,
-            final_time
-        )
+        Δt = final_time - initial_time
+        @printf("Advancing to: Stop %d | Time = %.4e | Δt = %.4e\n", stop, final_time, Δt)
     end
 end
 
@@ -257,10 +242,7 @@ function advance_time(sim::MultiDomainSimulation)
     final_time = sim.schwarz_controller.final_time
     initial_time = sim.schwarz_controller.initial_time
     num_stops = sim.schwarz_controller.num_stops
-    next_time = round(
-        (final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time;
-        digits=12,
-    )
+    next_time = round((final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time; digits=12)
     sim.schwarz_controller.time = next_time
     return sim.schwarz_controller.stop = stop
 end

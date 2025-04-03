@@ -67,9 +67,7 @@ function get_boundary_traction_force(mesh::ExodusDatabase, side_set_id::Int64)
     for side in num_nodes_sides
         side_nodes = side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = coords[:, side_nodes]
-        nodal_force_component = Norma.get_side_set_nodal_forces(
-            side_coordinates, traction_num, t
-        )
+        nodal_force_component = Norma.get_side_set_nodal_forces(side_coordinates, traction_num, t)
         local_indices = get.(Ref(local_from_global_map), side_nodes, 0)
         boundary_tractions_force[local_indices] += nodal_force_component
         ss_node_index += side

@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -28,12 +28,7 @@ function adaptive_stepping_parameters(integrator_params::Parameters)
         decrease_factor = increase_factor = 1.0
     end
     if minimum_time_step > maximum_time_step
-        error(
-            "Minimum time step ",
-            minimum_time_step,
-            " must be greater or equal than maximum ",
-            maximum_time_step,
-        )
+        error("Minimum time step ", minimum_time_step, " must be greater or equal than maximum ", maximum_time_step)
     end
     if decrease_factor > 1.0
         error("Decrease factor ", decrease_factor, " must be less or equal to one.")
@@ -196,26 +191,12 @@ function is_dynamic(integrator::TimeIntegrator)
     return is_static(integrator) == false
 end
 
-function get_analysis_type(integrator::TimeIntegrator)
-    integrator_type = typeof(integrator)
-    if integrator_type == QuasiStatic
-        return "static"
-    elseif integrator_type == Newmark
-        return "dynamic"
-    elseif integrator_type == CentralDifference
-        return "dynamic"
-    else
-        error("Unknown type of time integrator : ", integrator_type)
-    end
-end
-
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
     # Compute initial accelerations
-    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(
-        integrator, model.fom_model
-    )
+    evaluate(integrator, model.fom_model)
     free = model.fom_model.free_dofs
-
+    internal_force = model.fom_model.internal_force
+    external_force = model.fom_model.body_force + model.fom_model.boundary_force
     if model.fom_model.inclined_support == true
         external_force = model.fom_model.global_transform * external_force
         internal_force = model.fom_model.global_transform * internal_force
@@ -228,17 +209,17 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomMod
     #_, num_nodes = size(model.fom_model.reference)
     acceleration = zeros(3 * num_nodes)
 
-    acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
+    acceleration[free] = model.fom_model.mass[free, free] \ inertial_force[free]
 
     integrator.displacement[:] = model.reduced_state[:]
+    integrator.velocity[:] = model.reduced_velocity[:]
     solver.solution[:] = model.reduced_state[:]
 
     for k in 1:n_mode
         integrator.acceleration[k] = 0.0
         for j in 1:n_node
             for n in 1:n_var
-                integrator.acceleration[k] +=
-                    model.basis[n, j, k] * acceleration[3 * (j - 1) + n]
+                integrator.acceleration[k] += model.basis[n, j, k] * acceleration[3 * (j - 1) + n]
             end
         end
     end
@@ -253,8 +234,7 @@ function predict(integrator::Newmark, solver::Solver, model::RomModel)
             integrator.displacement[:] +
             dt * integrator.velocity +
             1.0 / 2.0 * dt * dt * (1.0 - 2.0 * beta) * integrator.acceleration
-    integrator.velo_pre[:] =
-        integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
+    integrator.velo_pre[:] = integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
     solver.solution[:] = integrator.displacement[:]
     return model.reduced_state[:] = integrator.displacement[:]
 end
@@ -271,7 +251,7 @@ end
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
-        println("Establishing initial equilibrium")
+        @printf("Establishing Initial Equilibrium...\n")
         solve(integrator, solver, model)
         if model.failed == true
             error("Finite element model failed to establish initial equlibrium")
@@ -288,24 +268,24 @@ function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    println("Computing initial acceleration")
+    @printf("Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
-    stored_energy, internal_force, external_force, _, mass_matrix = evaluate(
-        integrator, model
-    )
+    evaluate(integrator, model)
     if model.failed == true
-        error("The finite element model has failed to initialize")
+        error("Finite element model failed to initialize")
     end
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
     inertial_force = external_force - internal_force
-    kinetic_energy = 0.5 * dot(integrator.velocity, mass_matrix, integrator.velocity)
+    kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = stored_energy
-    integrator.acceleration[free] = mass_matrix[free, free] \ inertial_force[free]
+    integrator.stored_energy = model.strain_energy
+    integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free])
     return copy_solution_source_targets(integrator, solver, model)
 end
 
@@ -341,32 +321,30 @@ function correct(integrator::Newmark, solver::HessianMinimizer, model::SolidMech
     return copy_solution_source_targets(integrator, solver, model)
 end
 
-function initialize(
-    integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics
-)
-    println("Computing initial acceleration")
+function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
+    @printf("Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
-    stored_energy, internal_force, external_force, lumped_mass = evaluate(integrator, model)
+    evaluate(integrator, model)
     if model.failed == true
         error("The finite element model has failed to initialize")
     end
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         external_force = model.global_transform * external_force
         internal_force = model.global_transform * internal_force
     end
-    kinetic_energy = 0.5 * lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
+    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = stored_energy
+    integrator.stored_energy = model.strain_energy
     inertial_force = external_force - internal_force
-    integrator.acceleration[free] = inertial_force[free] ./ lumped_mass[free]
+    integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
     return copy_solution_source_targets(integrator, solver, model)
 end
 
-function predict(
-    integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics
-)
+function predict(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
@@ -380,9 +358,7 @@ function predict(
     return copy_solution_source_targets(integrator, solver, model)
 end
 
-function correct(
-    integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics
-)
+function correct(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     Δt = integrator.time_step
     γ = integrator.γ
     a = integrator.acceleration = solver.solution
@@ -391,15 +367,11 @@ function correct(
     return copy_solution_source_targets(integrator, solver, model)
 end
 
-function initialize_writing(
-    params::Parameters, integrator::DynamicTimeIntegrator, model::RomModel
-)
+function initialize_writing(params::Parameters, integrator::DynamicTimeIntegrator, model::RomModel)
     return initialize_writing(params, integrator, model.fom_model)
 end
 
-function initialize_writing(
-    params::Parameters, integrator::TimeIntegrator, _::SolidMechanics
-)
+function initialize_writing(params::Parameters, integrator::TimeIntegrator, _::SolidMechanics)
     output_mesh = params["output_mesh"]
 
     # global variables
@@ -408,18 +380,14 @@ function initialize_writing(
     Exodus.write_number_of_variables(output_mesh, GlobalVariable, num_global_vars)
 
     runtime_step_index = 1
-    Exodus.write_name(
-        output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step"
-    )
+    Exodus.write_name(output_mesh, GlobalVariable, Int32(runtime_step_index), "runtime_step")
 
     # setup nodal variables
     num_node_vars = 6
     node_var_names = ["refe_x", "refe_y", "refe_z", "disp_x", "disp_y", "disp_z"]
     if is_dynamic(integrator) == true
         num_node_vars += 6
-        append!(
-            node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"]
-        )
+        append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
     end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
@@ -515,9 +483,7 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
     end
 end
 
-function write_sideset_step_csv(
-    integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer
-)
+function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
     stop = integrator.stop
     index_string = "-" * string(stop; pad=4)
     sim_id_string = string(sim_id; pad=2) * "-"
@@ -534,38 +500,10 @@ function write_sideset_step_csv(
             if offset == 3
                 offset_name = "z"
             end
-            curr_filename =
-                sim_id_string *
-                node_set_name *
-                "-" *
-                offset_name *
-                "-curr" *
-                index_string *
-                ".csv"
-            disp_filename =
-                sim_id_string *
-                node_set_name *
-                "-" *
-                offset_name *
-                "-disp" *
-                index_string *
-                ".csv"
-            velo_filename =
-                sim_id_string *
-                node_set_name *
-                "-" *
-                offset_name *
-                "-velo" *
-                index_string *
-                ".csv"
-            acce_filename =
-                sim_id_string *
-                node_set_name *
-                "-" *
-                offset_name *
-                "-acce" *
-                index_string *
-                ".csv"
+            curr_filename = sim_id_string * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
+            disp_filename = sim_id_string * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
+            velo_filename = sim_id_string * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
+            acce_filename = sim_id_string * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
             writedlm(curr_filename, model.current[bc.offset, bc.node_set_node_indices])
             writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
             writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
@@ -582,13 +520,9 @@ function write_sideset_step_csv(
             acce_filename = sim_id_string * side_set_name * "-acce" * index_string * ".csv"
             writedlm_nodal_array(curr_filename, model.current[:, bc.side_set_node_indices])
             writedlm_nodal_array(velo_filename, model.velocity[:, bc.side_set_node_indices])
+            writedlm_nodal_array(acce_filename, model.acceleration[:, bc.side_set_node_indices])
             writedlm_nodal_array(
-                acce_filename, model.acceleration[:, bc.side_set_node_indices]
-            )
-            writedlm_nodal_array(
-                disp_filename,
-                model.current[:, bc.side_set_node_indices] -
-                model.reference[:, bc.side_set_node_indices],
+                disp_filename, model.current[:, bc.side_set_node_indices] - model.reference[:, bc.side_set_node_indices]
             )
         end
     end
@@ -603,9 +537,7 @@ function write_step_csv(integrator::DynamicTimeIntegrator, model::RomModel, sim_
     return write_step_csv(integrator, model.fom_model, sim_id)
 end
 
-function write_step_exodus(
-    params::Parameters, integrator::DynamicTimeIntegrator, model::RomModel
-)
+function write_step_exodus(params::Parameters, integrator::DynamicTimeIntegrator, model::RomModel)
     #Re-construct full state
     displacement = integrator.displacement
     velocity = integrator.velocity
@@ -616,22 +548,19 @@ function write_step_exodus(
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3
         if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] =
-                model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
             model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
             model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] =
-                model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
             model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
             model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] =
-                model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
             model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
@@ -639,9 +568,7 @@ function write_step_exodus(
     return write_step_exodus(params, integrator, model.fom_model)
 end
 
-function write_step_exodus(
-    params::Parameters, integrator::TimeIntegrator, model::SolidMechanics
-)
+function write_step_exodus(params::Parameters, integrator::TimeIntegrator, model::SolidMechanics)
     time = integrator.time
     stop = integrator.stop
     runtime_step = integrator.runtime_step
@@ -686,9 +613,7 @@ function write_step_exodus(
     blocks = Exodus.read_sets(output_mesh, Block)
     for (block, block_stress, block_stored_energy) in zip(blocks, stress, stored_energy)
         blk_id = block.id
-        element_type, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(
-            output_mesh, blk_id
-        )
+        element_type, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(output_mesh, blk_id)
         num_points = default_num_int_pts(element_type)
         stress_xx = zeros(num_blk_elems, num_points)
         stress_yy = zeros(num_blk_elems, num_points)
@@ -711,61 +636,26 @@ function write_step_exodus(
         for point in 1:num_points
             ip_str = "_" * string(point)
             Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(blk_id),
-                "stress_xx" * ip_str,
-                stress_xx[:, point],
+                output_mesh, ElementVariable, time_index, Int64(blk_id), "stress_xx" * ip_str, stress_xx[:, point]
             )
             Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(blk_id),
-                "stress_yy" * ip_str,
-                stress_yy[:, point],
+                output_mesh, ElementVariable, time_index, Int64(blk_id), "stress_yy" * ip_str, stress_yy[:, point]
             )
             Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(blk_id),
-                "stress_zz" * ip_str,
-                stress_zz[:, point],
+                output_mesh, ElementVariable, time_index, Int64(blk_id), "stress_zz" * ip_str, stress_zz[:, point]
             )
             Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(blk_id),
-                "stress_yz" * ip_str,
-                stress_yz[:, point],
+                output_mesh, ElementVariable, time_index, Int64(blk_id), "stress_yz" * ip_str, stress_yz[:, point]
             )
             Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(blk_id),
-                "stress_xz" * ip_str,
-                stress_xz[:, point],
+                output_mesh, ElementVariable, time_index, Int64(blk_id), "stress_xz" * ip_str, stress_xz[:, point]
             )
             Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(blk_id),
-                "stress_xy" * ip_str,
-                stress_xy[:, point],
+                output_mesh, ElementVariable, time_index, Int64(blk_id), "stress_xy" * ip_str, stress_xy[:, point]
             )
         end
         Exodus.write_values(
-            output_mesh,
-            ElementVariable,
-            time_index,
-            Int64(blk_id),
-            "stored_energy",
-            block_stored_energy,
+            output_mesh, ElementVariable, time_index, Int64(blk_id), "stored_energy", block_stored_energy
         )
     end
 end
