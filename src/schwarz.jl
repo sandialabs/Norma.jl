@@ -412,7 +412,7 @@ function initialize_transfer_operators(sim::MultiDomainSimulation)
             if typeof(bc) ≠ SMContactSchwarzBC && typeof(bc) ≠ SMNonOverlapSchwarzBC
                 continue
             end
-            update_transfer_operator(subsim.model, bc)
+            compute_transfer_operator(subsim.model, bc)
         end
     end
 end
@@ -426,7 +426,7 @@ function update_transfer_operators(sim::MultiDomainSimulation)
                 continue
             end
             if is_contact == true || subsim.model.kinematics == Infinitesimal
-                update_transfer_operator(subsim.model, bc)
+                compute_transfer_operator(subsim.model, bc)
             end
         end
     end

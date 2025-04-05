@@ -20,9 +20,34 @@ function configure_logger()
         # Default to Info level
         global_logger(ConsoleLogger(stderr, Logging.Info))
     end
+    return nothing
 end
 
 configure_logger()
+
+# Constants for Linux/glibc FPE trap masks
+const FE_INVALID    = 1  # 0x01
+const FE_DIVBYZERO  = 4  # 0x04
+const FE_OVERFLOW   = 8  # 0x08
+
+"""
+    enable_fpe_traps()
+
+Attempts to enable floating-point exceptions (FPE traps) on supported platforms.
+Catches invalid operations, divide-by-zero, and overflow. Only supported on Linux x86_64.
+Warns that parser behavior may break due to this setting.
+"""
+function enable_fpe_traps()
+    if Sys.islinux() && Sys.ARCH == :x86_64
+        @warn "Enabling FPE traps can break Julia's parser if done too early (e.g., before Meta.parse())."
+        mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
+        ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
+        @info "Floating-point exceptions enabled (invalid, div-by-zero, overflow)"
+    else
+        @warn "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)"
+    end
+    return nothing
+end
 
 include("minitensor.jl")
 include("simulation.jl")
@@ -57,6 +82,9 @@ end
 function run(input_file::String)
     start_time = time()
     sim = create_simulation(input_file)
+    if get(sim.params, "enable FPE", false) == true
+        enable_fpe_traps()
+    end
     evolve(sim)
     elapsed_time = time() - start_time
     println("Simulation completed in ", format_time(elapsed_time))
@@ -66,13 +94,24 @@ end
 function run(params::Parameters, name::String)
     start_time = time()
     sim = create_simulation(params, name)
+    if get(sim.params, "enable FPE", false) == true
+        enable_fpe_traps()
+    end
     evolve(sim)
     elapsed_time = time() - start_time
     println("Simulation completed in ", format_time(elapsed_time))
     return sim
 end
 
-for input_file in ARGS
+function parse_args()
+    if length(ARGS) != 1
+        error("Usage: julia Norma.jl <input_file>")
+    end
+    return ARGS[1]
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    input_file = parse_args()
     run(input_file)
 end
 

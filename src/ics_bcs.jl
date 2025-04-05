@@ -748,7 +748,7 @@ function local_traction_from_global_force(mesh::ExodusDatabase, side_set_id::Int
     return local_traction
 end
 
-function update_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
+function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
     src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
     dst_side_set_id = dst_bc.side_set_id
@@ -756,7 +756,8 @@ function update_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBoun
     rectangular_projection_matrix = get_rectangular_projection_matrix(
         src_model, src_side_set_id, dst_model, dst_side_set_id
     )
-    return dst_bc.transfer_operator = rectangular_projection_matrix * (square_projection_matrix \ I)
+    dst_bc.transfer_operator = rectangular_projection_matrix * (square_projection_matrix \ I)
+    return nothing
 end
 
 function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
