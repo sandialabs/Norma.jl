@@ -11,6 +11,7 @@ using Test
 include("../src/Norma.jl")
 include("helpers.jl")
 
+include("minitensor.jl")
 include("interpolation.jl")
 include("constitutive.jl")
 include("single-static-solid-cube.jl")

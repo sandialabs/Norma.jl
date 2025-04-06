@@ -5,7 +5,8 @@
 # top-level Norma.jl directory.
 
 module MiniTensor
-using LinearAlgebra: norm
+using LinearAlgebra
+using LinearAlgebra: norm, tr, dot, normalize
 using StaticArrays
 
 #
@@ -384,7 +385,7 @@ function rv_of_q(qq::SVector{4,Float64})::SVector{3,Float64}
     q = qq[1] >= 0.0 ? qq : -qq
     qs = q[1]
     qv = SVector{3,Float64}(q[2:4])
-    qvnorm = norm(qv)
+    qvnorm = LinearAlgebra.norm(qv)
     aanorm = 2.0 * (qvnorm < sqrt(0.5) ? asin(qvnorm) : acos(qs))
     coef = qvnorm < sqrt(eps()) ? 2.0 : aanorm / qvnorm
     return coef * qv
@@ -420,7 +421,7 @@ Implements the formula:
 with asymptotic handling for small angles using `psi`.
 """
 function q_of_rv(aa::SVector{3,Float64})::SVector{4,Float64}
-    halfnorm = 0.5 * norm(aa)
+    halfnorm = 0.5 * LinearAlgebra.norm(aa)
     temp = 0.5 * psi(halfnorm)
     return @SVector [cos(halfnorm), temp * aa[1], temp * aa[2], temp * aa[3]]
 end
@@ -467,13 +468,13 @@ Returns a rotation pseudo-vector that is equivalent to `old` (represents the sam
 This helps enforce continuity in incremental rotation updates by accounting for 2π ambiguities in the exponential map.
 """
 function rv_continue(old::SVector{3,Float64}, prev::SVector{3,Float64})::SVector{3,Float64}
-    norm_old = norm(old)
+    norm_old = LinearAlgebra.norm(old)
     if norm_old > 0.0
-        unit = normalize(old)
-        proj = dot(unit, prev)
+        unit = LinearAlgebra.normalize(old)
+        proj = LinearAlgebra.dot(unit, prev)
     else
-        unit = normalize(prev)
-        proj = norm(prev)
+        unit = LinearAlgebra.normalize(prev)
+        proj = LinearAlgebra.norm(prev)
     end
     if proj == 0.0
         return old
