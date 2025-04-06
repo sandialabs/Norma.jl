@@ -5,7 +5,6 @@
 # top-level Norma.jl directory.
 
 using LinearAlgebra
-
 using .MiniTensor
 
 abstract type Material end

@@ -12,6 +12,7 @@ include("../src/Norma.jl")
 include("helpers.jl")
 
 include("interpolation.jl")
+include("constitutive.jl")
 include("single-static-solid-cube.jl")
 include("single-static-solid-neumann-bc.jl")
 include("single-implicit-dynamic-solid-cube.jl")
