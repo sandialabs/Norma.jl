@@ -461,16 +461,16 @@ end
     end
 end
 
-function create_gradient_operator(dNdX::SMatrix{3,N,T}) :: SMatrix{9, 3N, T} where {N, T}
-    B = MMatrix{9, 3N, T}(undef)
+function create_gradient_operator(dNdX::SMatrix{3,N,T})::SMatrix{9,3N,T} where {N,T}
+    B = MMatrix{9,3N,T}(undef)
     fill!(B, zero(T))
-        @inbounds for i in 1:3         # i = direction of derivative
+    @inbounds for i in 1:3         # i = direction of derivative
         for a in 1:N              # a = local node index
             # Place dNdX[:, a] into the appropriate 3×1 column
-            B[(3*(i-1)+1):(3*i), (3*(a-1)+i)] = dNdX[:, a]
+            B[(3 * (i - 1) + 1):(3 * i), (3 * (a - 1) + i)] = dNdX[:, a]
         end
     end
-    return SMatrix{9, 3N, T}(B)
+    return SMatrix{9,3N,T}(B)
 end
 
 function create_coo_vector(capacity::Int64)

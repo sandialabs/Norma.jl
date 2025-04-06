@@ -275,7 +275,7 @@ function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, 
     Y = flow_strength(material, εᵖ)
     r = σᵛᵐ - Y
     r0 = r
-    
+
     Δεᵖ = 0.0
     r_tol = 1e-10
     Δεᵖ_tol = 1e-10
