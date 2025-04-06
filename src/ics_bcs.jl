@@ -306,9 +306,28 @@ function apply_bc(model::SolidMechanics, bc::SMNeumannBC)
     end
 end
 
-function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
-    e1 = [1.0, 0.0, 0.0]
+function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
+    e1 = @SVector [1.0, 0.0, 0.0]
+    angle_btwn = acos(dot(axis, e1))
+    w = cross(axis, e1)
+    s = clamp(norm(w), -1.0, 1.0)
+    if isapprox(angle_btwn, 0.0; atol=1e-12)
+        return @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+    elseif isapprox(angle_btwn, π; atol=1e-12)
+        return @SMatrix [
+            -1.0 0.0 0.0
+            0.0 -1.0 0.0
+            0.0 0.0 1.0
+        ]
+    else
+        θ = angle_btwn > π / 2 ? π - asin(s) : asin(s)
+        m = normalize(w)
+        rv = θ * m
+        return MiniTensor.rt_of_rv(rv)
+    end
+end
 
+function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
     for node_index in bc.node_set_node_indices
         values = Dict(
             t => model.time,
@@ -316,73 +335,48 @@ function apply_bc(model::SolidMechanics, bc::SMDirichletInclined)
             y => model.reference[2, node_index],
             z => model.reference[3, node_index],
         )
-        # The local basis is determined from a normal vector
-        axis = bc.reference_normal
-        axis = [extract_value(substitute(av, values)) for av in axis]
 
-        axis = axis / norm(axis)
-        w = cross(axis, e1)
-        s = norm(w)
-        angle_btwn = acos(dot(axis, e1))
+        # Local basis from reference normal
+        normal = [extract_value(substitute(av, values)) for av in bc.reference_normal]
+        axis = normalize(SVector{3,Float64}(normal))
+        rotation_matrix = compute_rotation_matrix(axis)
 
-        if (angle_btwn ≈ 0.0)
-            rotation_matrix = I(3) * 1.0
-        elseif (angle_btwn ≈ π)
-            rotation_matrix = I(3) * 1.0
-            rotation_matrix[1, 1] = -1.0
-            rotation_matrix[2, 2] = -1.0
-        else
-            if angle_btwn > π / 2
-                θ = π - asin(s)
-            else
-                θ = asin(s)
-            end
+        disp_val_loc = SVector{3,Float64}([extract_value(substitute(exp, values)) for exp in bc.disp_expression])
+        velo_val_loc = SVector{3,Float64}([extract_value(substitute(exp, values)) for exp in bc.velo_expression])
+        acce_val_loc = SVector{3,Float64}([extract_value(substitute(exp, values)) for exp in bc.acce_expression])
 
-            m = w / s
-            rv = θ * m
-            # Rotation is converted via the pseudo vector to rotation matrix
-            rotation_matrix = MiniTensor.rt_from_rv(rv)
-        end
-
-        disp_val_loc = [extract_value(substitute(exp, values)) for exp in bc.disp_expression]
-        velo_val_loc = [extract_value(substitute(exp, values)) for exp in bc.velo_expression]
-        acce_val_loc = [extract_value(substitute(exp, values)) for exp in bc.acce_expression]
-
-        # Inherit free values from model (required for explicit dynamics)
         original_disp = model.current[:, node_index] - model.reference[:, node_index]
-        original_acceleration = model.acceleration[:, node_index]
         original_velocity = model.velocity[:, node_index]
-        local_original_displacement = rotation_matrix * original_disp
-        local_original_acceleration = rotation_matrix * original_acceleration
-        local_original_velocity = rotation_matrix * original_velocity
+        original_acceleration = model.acceleration[:, node_index]
 
-        # Inclined support is only applied in local X
+        local_original_displacement = MVector(rotation_matrix * original_disp)
+        local_original_velocity = MVector(rotation_matrix * original_velocity)
+        local_original_acceleration = MVector(rotation_matrix * original_acceleration)
+
         if bc.off_axis_free == true
             model.free_dofs[3 * node_index - 2] = false
             model.free_dofs[3 * node_index - 1] = true
             model.free_dofs[3 * node_index] = true
-            # Set local X direction to inclined support
+
             local_original_displacement[1] = disp_val_loc[1]
-            local_original_acceleration[1] = acce_val_loc[1]
             local_original_velocity[1] = velo_val_loc[1]
+            local_original_acceleration[1] = acce_val_loc[1]
         else
             model.free_dofs[3 * node_index - 2] = false
             model.free_dofs[3 * node_index - 1] = false
             model.free_dofs[3 * node_index] = false
-            # Set local X direction to inclined support
-            local_original_displacement = disp_val_loc
-            local_original_acceleration = acce_val_loc
-            local_original_velocity = velo_val_loc
+
+            local_original_displacement .= disp_val_loc
+            local_original_velocity .= velo_val_loc
+            local_original_acceleration .= acce_val_loc
         end
 
-        original_velocity = rotation_matrix' * local_original_velocity
-        original_acceleration = rotation_matrix' * local_original_acceleration
-        disp_vector_glob = rotation_matrix' * local_original_displacement
+        model.velocity[:, node_index] = rotation_matrix' * SVector(local_original_velocity)
+        model.acceleration[:, node_index] = rotation_matrix' * SVector(local_original_acceleration)
+        model.current[:, node_index] =
+            model.reference[:, node_index] + rotation_matrix' * SVector(local_original_displacement)
 
-        model.current[:, node_index] = model.reference[:, node_index] + disp_vector_glob
-        model.velocity[:, node_index] = original_velocity
-        model.acceleration[:, node_index] = original_acceleration
-        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        global_base = 3 * (node_index - 1)
         model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
             rotation_matrix
     end
@@ -649,32 +643,8 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         new_point, ξ, _, closest_face_node_indices, closest_normal, _ = project_point_to_side_set(
             point, bc.coupled_subsim.model, bc.coupled_side_set_id
         )
-
-        # The local basis comes from the closest_normal:
-        axis = -closest_normal / norm(-closest_normal)
-
-        e1 = [1.0, 0.0, 0.0]
-        angle_btwn = acos(dot(axis, e1))
-        w = cross(axis, e1)
-        s = norm(w)
-        if (angle_btwn ≈ 0.0)
-            rotation_matrix = I(3) * 1.0
-        elseif (angle_btwn ≈ π)
-            rotation_matrix = I(3) * 1.0
-            rotation_matrix[1, 1] = -1.0
-            rotation_matrix[2, 2] = -1.0
-        else
-            if angle_btwn > π / 2
-                θ = π - asin(s)
-            else
-                θ = asin(s)
-            end
-            m = w / s
-            rv = θ * m
-            # Rotation is converted via the pseudo vector to rotation matrix
-            bc.rotation_matrix = MiniTensor.rt_from_rv(rv)
-        end
-
+        axis = SVector{3,Float64}(-normalize(closest_normal))
+        bc.rotation_matrix = compute_rotation_matrix(axis)
         model.current[:, node_index] = new_point
         num_nodes = length(closest_face_node_indices)
         element_type = get_element_type(2, num_nodes)
