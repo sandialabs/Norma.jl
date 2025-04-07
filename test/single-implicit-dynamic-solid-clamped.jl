@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "single-implicit-dynamic-solid-clamped" begin
+@testset "Single Implicit Dynamic Solid Clamped                     " begin
     cp("../examples/single/implicit-dynamic-solid/clamped/clamped.yaml", "clamped.yaml"; force=true)
     cp("../examples/single/implicit-dynamic-solid/clamped/clamped.g", "clamped.g"; force=true)
     simulation = Norma.run("clamped.yaml")

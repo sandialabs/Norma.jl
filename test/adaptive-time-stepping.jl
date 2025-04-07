@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "adaptive-time-stepping" begin
+@testset "Adaptive Time Stepping                                    " begin
     cp("../examples/adaptive-time-stepping/single/cube.yaml", "cube.yaml"; force=true)
     cp("../examples/adaptive-time-stepping/single/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")

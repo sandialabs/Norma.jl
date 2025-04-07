@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "single-static-solid-cube" begin
+@testset "Single Static Solid Cube                                  " begin
     cp("../examples/single/static-solid/cube/cube.yaml", "cube.yaml"; force=true)
     cp("../examples/single/static-solid/cube/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
