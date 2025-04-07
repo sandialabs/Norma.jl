@@ -482,71 +482,6 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_num::N
     return nodal_force_component
 end
 
-# Given 3 points p1, p2, p3 that define a plane
-# determine if point p is in the same side of the normal
-# to the plane as defined by the right hand rule.
-function in_normal_side(p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, tol::Float64)
-    v1 = p2 - p1
-    v2 = p3 - p1
-    h = min(norm(v1), norm(v2))
-    n = normalize(cross(v1, v2))
-    v = p - p1
-    s = dot(v, n)
-    return s ≥ -tol * h
-end
-
-function in_tetrahedron(
-    p::Vector{Float64}, p1::Vector{Float64}, p2::Vector{Float64}, p3::Vector{Float64}, p4::Vector{Float64}, tol::Float64
-)
-    if in_normal_side(p, p1, p2, p3, tol) == false
-        return false
-    end
-    if in_normal_side(p, p1, p4, p2, tol) == false
-        return false
-    end
-    if in_normal_side(p, p2, p4, p3, tol) == false
-        return false
-    end
-    if in_normal_side(p, p3, p4, p1, tol) == false
-        return false
-    end
-    return true
-end
-
-# The assumtion is that the faces are planar, which is ok since this function is used a a rough approximation.
-function in_hexahedron(
-    p::Vector{Float64},
-    p1::Vector{Float64},
-    p2::Vector{Float64},
-    p3::Vector{Float64},
-    p4::Vector{Float64},
-    p5::Vector{Float64},
-    p6::Vector{Float64},
-    p7::Vector{Float64},
-    p8::Vector{Float64},
-    tol::Float64,
-)
-    if in_normal_side(p, p1, p2, p3, tol) == false
-        return false
-    end
-    if in_normal_side(p, p1, p5, p6, tol) == false
-        return false
-    end
-    if in_normal_side(p, p2, p6, p7, tol) == false
-        return false
-    end
-    if in_normal_side(p, p3, p7, p8, tol) == false
-        return false
-    end
-    if in_normal_side(p, p4, p8, p5, tol) == false
-        return false
-    end
-    if in_normal_side(p, p5, p8, p7, tol) == false
-        return false
-    end
-    return true
-end
-
 function map_to_parametric(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64})
     tol = 1.0e-08
     max_iters = 1024
@@ -623,27 +558,6 @@ function in_bounding_box(nodes::Matrix{Float64}, point::Vector{Float64}, tol::Fl
     return true
 end
 
-function is_inside_guess(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
-    if element_type == "TETRA4" || element_type == "TETRA10"
-        return in_tetrahedron(point, nodes[:, 1], nodes[:, 2], nodes[:, 3], nodes[:, 4], tol)
-    elseif element_type == "HEX8"
-        return in_hexahedron(
-            point,
-            nodes[:, 1],
-            nodes[:, 2],
-            nodes[:, 3],
-            nodes[:, 4],
-            nodes[:, 5],
-            nodes[:, 6],
-            nodes[:, 7],
-            nodes[:, 8],
-            tol,
-        )
-    else
-        error("Invalid element type: ", element_type)
-    end
-end
-
 function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
     mesh = model.mesh
     num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
@@ -673,13 +587,6 @@ function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
     new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
-end
-
-function get_distance_to_centroid(nodes::Matrix{Float64}, point::Vector{Float64})
-    num_nodes = size(nodes, 2)
-    centroid = sum(nodes; dims=2) / num_nodes
-    distance = norm(centroid - point)
-    return distance
 end
 
 function get_minimum_distance_to_nodes(nodes::Matrix{Float64}, point::Vector{Float64})
