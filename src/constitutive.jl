@@ -570,7 +570,7 @@ function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
         material.μ / material.n *
         (1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
     P = Pbulk + Pshear
-    AA_m = MArray{Tuple{3,3,3,3},Float64}(0.0)  # fill with zeros
+    AA_m = zeros(MArray{Tuple{3,3,3,3},Float64})
     AA = SArray{Tuple{3,3,3,3}}(AA_m)
     return W, P, AA
 end

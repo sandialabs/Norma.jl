@@ -4,6 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 using LinearAlgebra: norm
+using StaticArrays
 
 @testset "Elastic Constants                                         " begin
     @testset "Given E And Ν                                            " begin
@@ -110,6 +111,50 @@ using LinearAlgebra: norm
         @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("Lamé's first constant" => 90e9))
         @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("shear modulus" => 80e9))
         @test_throws ErrorException Norma.elastic_constants(Norma.Parameters())
+    end
+end
+
+const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+
+@testset "Constitutive() For All Solids At Identity Deformation     " begin
+    F = I3
+
+    @testset "Saint Venant Kirchhoff                                    " begin
+        params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
+        mat = Norma.SaintVenant_Kirchhoff(params)
+        W, P, AA = Norma.constitutive(mat, F)
+        @test isapprox(W, 0.0; atol=1e-12)
+        @test size(P) == (3, 3)
+        @test size(AA) == (3, 3, 3, 3)
+    end
+
+    @testset "Linear Elastic                                            " begin
+        params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
+        mat = Norma.Linear_Elastic(params)
+        W, σ, CC = Norma.constitutive(mat, F)
+        @test isapprox(W, 0.0; atol=1e-12)
+        @test size(σ) == (3, 3)
+        @test size(CC) == (3, 3, 3, 3)
+    end
+
+    @testset "Neohookean                                                " begin
+        params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
+        mat = Norma.Neohookean(params)
+        W, P, AA = Norma.constitutive(mat, F)
+        @test isapprox(W, 0.0; atol=1e-12)
+        @test size(P) == (3, 3)
+        @test size(AA) == (3, 3, 3, 3)
+    end
+
+    @testset "Seth Hill                                                 " begin
+        params = Norma.Parameters(
+            "elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0, "m" => 1, "n" => 1
+        )
+        mat = Norma.SethHill(params)
+        W, P, AA = Norma.constitutive(mat, F)
+        @test isapprox(W, 0.0; atol=1e-12)
+        @test size(P) == (3, 3)
+        @test size(AA) == (3, 3, 3, 3)
     end
 end
 
