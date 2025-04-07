@@ -350,14 +350,6 @@ function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, 
     return Fᵉ, Fᵖ, εᵖ, σ
 end
 
-struct Linear_Isotropic <: Thermal
-    κ::Float64
-    function Linear_Isotropic(params::Parameters)
-        κ = params["thermal conductivity"]
-        return new(κ)
-    end
-end
-
 function odot(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
     C = MArray{Tuple{3,3,3,3},Float64}(undef)
     for a in 1:3
