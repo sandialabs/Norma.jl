@@ -6,7 +6,6 @@
 using LinearAlgebra: norm
 
 @testset "Elastic Constants                                         " begin
-
     @testset "Given E And Ν                                            " begin
         params = Norma.Parameters("elastic modulus" => 210e9, "Poisson's ratio" => 0.3)
         E, ν, κ, λ, μ = Norma.elastic_constants(params)

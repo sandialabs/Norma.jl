@@ -147,7 +147,8 @@ function SolidMechanics(params::Parameters)
     stored_energy = Vector{Vector{Float64}}()
     for block in blocks
         blk_id = block.id
-        element_type, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, blk_id)
+        element_type_string, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, blk_id)
+        element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         block_stress = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
@@ -261,7 +262,8 @@ function HeatConduction(params::Parameters)
     stored_energy = Vector{Vector{Float64}}()
     for block in blocks
         blk_id = block.id
-        element_type, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, blk_id)
+        element_type_string, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, blk_id)
+        element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         block_flux = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
@@ -315,8 +317,8 @@ function create_model(params::Parameters)
     end
 end
 
-function create_smooth_reference(smooth_reference::String, element_type::String, elem_ref_pos::Matrix{Float64})
-    if element_type == "TETRA4"
+function create_smooth_reference(smooth_reference::String, element_type::ElementType, elem_ref_pos::Matrix{Float64})
+    if element_type == TETRA4
         u = elem_ref_pos[:, 2] - elem_ref_pos[:, 1]
         v = elem_ref_pos[:, 3] - elem_ref_pos[:, 1]
         w = elem_ref_pos[:, 4] - elem_ref_pos[:, 1]
@@ -365,11 +367,11 @@ function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, edges::Vect
     return minimum_edge_length
 end
 
-function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, element_type::String)
-    if element_type == "TETRA4"
+function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, element_type::ElementType)
+    if element_type == TETRA4
         edges = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4), (2, 4)]
         return get_minimum_edge_length(nodal_coordinates, edges)
-    elseif element_type == "HEX8"
+    elseif element_type == HEX8
         edges = [(1, 4), (1, 5), (4, 8), (5, 8), (2, 3), (2, 6), (3, 7), (6, 7), (1, 2), (3, 4), (5, 6), (7, 8)]
         return get_minimum_edge_length(nodal_coordinates, edges)
     else
@@ -391,7 +393,8 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         minimum_blk_edge_length = Inf
         block = blocks[blk_index]
         blk_id = block.id
-        element_type = Exodus.read_block_parameters(input_mesh, blk_id)[1]
+        element_type_string = Exodus.read_block_parameters(input_mesh, blk_id)[1]
+        element_type = element_type_from_string(element_type_string)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
         for blk_elem_index in 1:num_blk_elems
@@ -653,7 +656,8 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
         end
         block = blocks[block_index]
         block_id = block.id
-        element_type = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_conn = get_block_connectivity(input_mesh, block_id)

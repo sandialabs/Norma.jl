@@ -63,8 +63,8 @@ function barycentric_shape_functions(::Val{3}, ::Val{10}, ξ::SVector{3,T}) wher
 end
 
 function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{1})
-    ξ = @SMatrix [1/3; 1/3]
-    w = @SVector [1/2]
+    ξ = @SMatrix [1 / 3; 1 / 3]
+    w = @SVector [1 / 2]
     return ξ, w
 end
 
@@ -73,39 +73,39 @@ function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{3})
         1/6 4/6 1/6
         1/6 1/6 4/6
     ]
-    w = @SVector [1/6, 1/6, 1/6]
+    w = @SVector [1 / 6, 1 / 6, 1 / 6]
     return ξ, w
 end
 
 function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{1})
-    ξ = @SMatrix [1/4; 1/4; 1/4]
-    w = @SVector [1/6]
+    ξ = @SMatrix [1 / 4; 1 / 4; 1 / 4]
+    w = @SVector [1 / 6]
     return ξ, w
 end
 
 function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{4})
     s = sqrt(5)
-    a = (5 + 3s)/20
-    b = (5 - s)/20
+    a = (5 + 3s) / 20
+    b = (5 - s) / 20
     ξ = @SMatrix [
         b a b b
         b b a b
         b b b a
     ]
-    w = @SVector [1/24, 1/24, 1/24, 1/24]
+    w = @SVector [1 / 24, 1 / 24, 1 / 24, 1 / 24]
     return ξ, w
 end
 
 function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{4})
     s = sqrt(5)
-    a = (5 + 3s)/20
-    b = (5 - s)/20
+    a = (5 + 3s) / 20
+    b = (5 - s) / 20
     ξ = @SMatrix [
         b a b b
         b b a b
         b b b a
     ]
-    w = @SVector [1/24, 1/24, 1/24, 1/24]
+    w = @SVector [1 / 24, 1 / 24, 1 / 24, 1 / 24]
     return ξ, w
 end
 
@@ -115,7 +115,7 @@ function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{5})
         1/4 1/6 1/6 1/2 1/6
         1/4 1/6 1/2 1/6 1/6
     ]
-    w = @SVector [-2/15, 3/40, 3/40, 3/40, 3/40]
+    w = @SVector [-2 / 15, 3 / 40, 3 / 40, 3 / 40, 3 / 40]
     return ξ, w
 end
 
@@ -154,9 +154,9 @@ function lagrangian_shape_functions(::Val{2}, ::Val{4}, ξ::SVector{2,T}) where 
     dN = MMatrix{2,4,T}(undef)
     ddN = MArray{Tuple{2,2,4},T,3}(undef)
     for p in 1:4
-        N[p] = 0.25 * (1 + ra[p]*r) * (1 + sa[p]*s)
-        dN[1, p] = 0.25 * ra[p] * (1 + sa[p]*s)
-        dN[2, p] = 0.25 * sa[p] * (1 + ra[p]*r)
+        N[p] = 0.25 * (1 + ra[p] * r) * (1 + sa[p] * s)
+        dN[1, p] = 0.25 * ra[p] * (1 + sa[p] * s)
+        dN[2, p] = 0.25 * sa[p] * (1 + ra[p] * r)
         ddN[1, 1, p] = 0
         ddN[1, 2, p] = 0.25 * ra[p] * sa[p]
         ddN[2, 1, p] = ddN[1, 2, p]
@@ -208,29 +208,29 @@ end
 function lagrangian_quadrature(::Val{2}, ::Val{4}, ::Val{4})
     g = 1 / sqrt(3)
     ξ = @SMatrix [
-        -g  g  g -g
-        -g -g  g  g
+        -g g g -g
+        -g -g g g
     ]
     w = @SVector [1.0, 1.0, 1.0, 1.0]
     return ξ, w
 end
 
 function lagrangian_quadrature(::Val{2}, ::Val{4}, ::Val{9})
-    g = sqrt(3/5)
+    g = sqrt(3 / 5)
     ξ = @SMatrix [
-        -g  g  g -g  0  g  0 -g  0
-        -g -g  g  g -g  0  g  0  0
+        -g g g -g 0 g 0 -g 0
+        -g -g g g -g 0 g 0 0
     ]
-    w = @SVector [25/81, 25/81, 25/81, 25/81, 40/81, 40/81, 40/81, 40/81, 64/81]
+    w = @SVector [25 / 81, 25 / 81, 25 / 81, 25 / 81, 40 / 81, 40 / 81, 40 / 81, 40 / 81, 64 / 81]
     return ξ, w
 end
 
 function lagrangian_quadrature(::Val{3}, ::Val{8}, ::Val{8})
     g = 1 / sqrt(3)
     ξ = @SMatrix [
-        -g  g  g -g -g  g  g -g
-        -g -g  g  g -g -g  g  g
-        -g -g -g -g  g  g  g  g
+        -g g g -g -g g g -g
+        -g -g g g -g -g g g
+        -g -g -g -g g g g g
     ]
     w = @SVector [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     return ξ, w
@@ -256,65 +256,67 @@ function lagrangian(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
     return SMatrix(Nmat), SArray(dNmat), w, ξ
 end
 
-function default_num_int_pts(element_type::String)
-    if element_type == "BAR2"
-        return 1
-    elseif element_type == "TRI3"
-        return 3
-    elseif element_type == "QUAD4"
-        return 4
-    elseif element_type == "TETRA4"
-        return 4
-    elseif element_type == "TETRA10"
-        return 4
-    elseif element_type == "HEX8"
-        return 8
+function element_type_from_string(s::AbstractString)::ElementType
+    if s == "BAR2"
+        return BAR2
+    elseif s == "TRI3"
+        return TRI3
+    elseif s == "QUAD4"
+        return QUAD4
+    elseif s == "TETRA4"
+        return TETRA4
+    elseif s == "TETRA10"
+        return TETRA10
+    elseif s == "HEX8"
+        return HEX8
     else
-        error("Invalid element type: ", element_type)
+        error("Unknown element type string: $s")
     end
 end
 
-function get_element_type(dim::Integer, num_nodes::Integer)
+default_num_int_pts(::Val{BAR2}) = 1
+default_num_int_pts(::Val{TRI3}) = 3
+default_num_int_pts(::Val{QUAD4}) = 4
+default_num_int_pts(::Val{TETRA4}) = 4
+default_num_int_pts(::Val{TETRA10}) = 4
+default_num_int_pts(::Val{HEX8}) = 8
+default_num_int_pts(et::ElementType) = default_num_int_pts(Val(et))
+
+get_element_dim_nodes(::Val{BAR2}) = (1, 2)
+get_element_dim_nodes(::Val{TRI3}) = (2, 3)
+get_element_dim_nodes(::Val{QUAD4}) = (2, 4)
+get_element_dim_nodes(::Val{TETRA4}) = (3, 4)
+get_element_dim_nodes(::Val{TETRA10}) = (3, 10)
+get_element_dim_nodes(::Val{HEX8}) = (3, 8)
+get_element_dim_nodes(et::ElementType) = get_element_dim_nodes(Val(et))
+
+is_barycentric(::Val{BAR2}) = false
+is_barycentric(::Val{TRI3}) = true
+is_barycentric(::Val{QUAD4}) = false
+is_barycentric(::Val{TETRA4}) = true
+is_barycentric(::Val{TETRA10}) = true
+is_barycentric(::Val{HEX8}) = false
+is_barycentric(et::ElementType) = is_barycentric(Val(et))
+
+get_element_type(dim::Integer, num_nodes::Integer) = begin
     if dim == 1 && num_nodes == 2
-        return "BAR2"
+        return BAR2
     elseif dim == 2 && num_nodes == 3
-        return "TRI3"
+        return TRI3
     elseif dim == 2 && num_nodes == 4
-        return "QUAD4"
+        return QUAD4
     elseif dim == 3 && num_nodes == 4
-        return "TETRA4"
+        return TETRA4
     elseif dim == 3 && num_nodes == 10
-        return "TETRA10"
+        return TETRA10
     elseif dim == 3 && num_nodes == 8
-        return "HEX8"
+        return HEX8
     else
-        error("Invalid dimension : ", dim, " and number of nodes : ", num_nodes)
+        error("Invalid dim=$dim and num_nodes=$num_nodes")
     end
 end
 
-function get_element_dim_nodes(element_type::String)
-    if element_type == "BAR2"
-        return 1, 2
-    elseif element_type == "TRI3"
-        return 2, 3
-    elseif element_type == "QUAD4"
-        return 2, 4
-    elseif element_type == "TETRA4"
-        return 3, 4
-    elseif element_type == "TETRA10"
-        return 3, 10
-    elseif element_type == "HEX8"
-        return 3, 8
-    else
-        error("Unsupported element type: ", element_type)
-    end
-end
-
-function is_barycentric(element_type::String)
-    element_type in ("TRI3", "TETRA4", "TETRA10")
-end
-
-function isoparametric(element_type::String, G::Integer)
+function isoparametric(element_type::ElementType, G::Integer)
     D, N = get_element_dim_nodes(element_type)
     return if is_barycentric(element_type)
         barycentric(Val(D), Val(N), Val(G))
@@ -323,7 +325,7 @@ function isoparametric(element_type::String, G::Integer)
     end
 end
 
-function interpolate(element_type::String, ξ::AbstractVector{Float64})
+function interpolate(element_type::ElementType, ξ::AbstractVector{Float64})
     D, N = get_element_dim_nodes(element_type)
     ξs = SVector{D}(ξ)
     if is_barycentric(element_type)
@@ -357,7 +359,7 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_num::N
     return nodal_force_component
 end
 
-function map_to_parametric(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64})
+function map_to_parametric(element_type::ElementType, nodes::Matrix{Float64}, point::Vector{Float64})
     tol = 1.0e-08
     max_iters = 1024
     ξ = MVector{3,Float64}(0.0, 0.0, 0.0)
@@ -377,22 +379,22 @@ function map_to_parametric(element_type::String, nodes::Matrix{Float64}, point::
     return ξ
 end
 
-function is_inside_parametric(element_type::String, ξ::AbstractVector{Float64}, tol::Float64=1.0e-06)
+function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Float64}, tol::Float64=1e-6)
     factor = 1.0 + tol
-    if element_type == "BAR2"
-        return -factor ≤ ξ ≤ factor
-    elseif element_type == "TRI3" || element_type == "TETRA4" || element_type == "TETRA10"
+    if element_type == BAR2
+        return -factor ≤ ξ[1] ≤ factor
+    elseif element_type == TRI3 || element_type == TETRA4 || element_type == TETRA10
         return sum(ξ) ≤ factor
-    elseif element_type == "QUAD4"
-        return reduce(*, -factor * ones(2) .≤ ξ .≤ factor * ones(2))
-    elseif element_type == "HEX8"
-        return reduce(*, -factor * ones(3) .≤ ξ .≤ factor * ones(3))
+    elseif element_type == QUAD4
+        return all(-factor .≤ ξ[1:2] .≤ factor)
+    elseif element_type == HEX8
+        return all(-factor .≤ ξ[1:3] .≤ factor)
     else
-        error("Invalid element type: ", element_type)
+        error("Unsupported element type: ", element_type)
     end
 end
 
-function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
+function is_inside(element_type::ElementType, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64=1.0e-06)
     ξ = @SVector [0.0, 0.0, 0.0]
     if in_bounding_box(nodes, point, 0.1) == false
         return ξ, false

@@ -6,7 +6,7 @@
 
 @testset "Barycentric Shape Functions                               " begin
     @testset "D=2, N=3 (tri3)                                           " begin
-        ξ = @SVector [1/3, 1/3]
+        ξ = @SVector [1 / 3, 1 / 3]
         N, dN, ddN = Norma.barycentric_shape_functions(Val(2), Val(3), ξ)
         @test isapprox(sum(N), 1.0; atol=1e-12)
         @test size(dN) == (2, 3)
@@ -14,7 +14,7 @@
     end
 
     @testset "D=3, N=4 (tetra4)                                         " begin
-        ξ = @SVector [1/4, 1/4, 1/4]
+        ξ = @SVector [1 / 4, 1 / 4, 1 / 4]
         N, dN, ddN = Norma.barycentric_shape_functions(Val(3), Val(4), ξ)
         @test isapprox(sum(N), 1.0; atol=1e-12)
         @test size(dN) == (3, 4)
@@ -116,7 +116,7 @@ end
         0 0 1 0
         0 0 0 1
     ] * 1.0
-    element_type = "TETRA4"
+    element_type = Norma.TETRA4
     x1 = zeros(3)
     ξ1 = Norma.map_to_parametric(element_type, vertices, x1)
     x2 = ones(3) / 3.0
@@ -146,7 +146,7 @@ end
         -1 -1 1 1 -1 -1 1 1
         -1 -1 -1 -1 1 1 1 1
     ] * 0.5
-    element_type = "HEX8"
+    element_type = Norma.HEX8
     x1 = zeros(3)
     ξ1 = Norma.map_to_parametric(element_type, vertices, x1)
     x2 = 0.5 * ones(3)

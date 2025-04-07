@@ -7,7 +7,6 @@ using Test
 using Logging
 
 @testset "Utils Tests                                               " begin
-
     @testset "Format_time                                               " begin
         @test Norma.format_time(0.0) == "0.0s"
         @test Norma.format_time(59.9) == "59.9s"
@@ -65,5 +64,4 @@ using Logging
             end
         end
     end
-
 end

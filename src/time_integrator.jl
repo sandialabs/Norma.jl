@@ -397,7 +397,8 @@ function initialize_writing(params::Parameters, integrator::TimeIntegrator, _::S
     max_num_int_points = 0
     for block in blocks
         blk_id = block.id
-        element_type = Exodus.read_block_parameters(output_mesh, blk_id)[1]
+        element_type_string = Exodus.read_block_parameters(output_mesh, blk_id)[1]
+        element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         max_num_int_points = max(max_num_int_points, num_points)
     end
@@ -613,7 +614,8 @@ function write_step_exodus(params::Parameters, integrator::TimeIntegrator, model
     blocks = Exodus.read_sets(output_mesh, Block)
     for (block, block_stress, block_stored_energy) in zip(blocks, stress, stored_energy)
         blk_id = block.id
-        element_type, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(output_mesh, blk_id)
+        element_type_string, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(output_mesh, blk_id)
+        element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         stress_xx = zeros(num_blk_elems, num_points)
         stress_yy = zeros(num_blk_elems, num_points)

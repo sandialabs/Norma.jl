@@ -7,6 +7,7 @@
 using Printf
 using YAML
 
+include("interpolation_types.jl")
 include("simulation_types.jl")
 include("model.jl")
 include("time_integrator.jl")
