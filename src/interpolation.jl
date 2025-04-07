@@ -141,7 +141,7 @@ end
 
 function lagrangian_shape_functions(::Val{1}, ::Val{2}, ξ::SVector{1,T}) where {T}
     N = @SVector [0.5 * (1.0 - ξ[1]), 0.5 * (1.0 + ξ[1])]
-    dN = @SMatrix [-0.5; 0.5]
+    dN = @SMatrix [-0.5 0.5]
     ddN = zeros(SArray{Tuple{1,1,2},T,3})
     return N, dN, ddN
 end

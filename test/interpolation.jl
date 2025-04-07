@@ -3,6 +3,113 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
+@testset "Barycentric Shape Functions" begin
+    @testset "D=2, N=3 (TRI3)" begin
+        ξ = @SVector [1/3, 1/3]
+        N, dN, ddN = Norma.barycentric_shape_functions(Val(2), Val(3), ξ)
+        @test isapprox(sum(N), 1.0; atol=1e-12)
+        @test size(dN) == (2, 3)
+        @test size(ddN) == (2, 2, 3)
+    end
+
+    @testset "D=3, N=4 (TETRA4)" begin
+        ξ = @SVector [1/4, 1/4, 1/4]
+        N, dN, ddN = Norma.barycentric_shape_functions(Val(3), Val(4), ξ)
+        @test isapprox(sum(N), 1.0; atol=1e-12)
+        @test size(dN) == (3, 4)
+        @test size(ddN) == (3, 3, 4)
+    end
+
+    @testset "D=3, N=10 (TETRA10)" begin
+        ξ = @SVector [0.1, 0.2, 0.3]
+        N, dN, ddN = Norma.barycentric_shape_functions(Val(3), Val(10), ξ)
+        @test isapprox(sum(N), 1.0; atol=1e-12)
+        @test size(dN) == (3, 10)
+        @test size(ddN) == (3, 3, 10)
+    end
+end
+
+@testset "Lagrangian Shape Functions" begin
+    @testset "D=1, N=2 (BAR2)" begin
+        ξ = @SVector [0.0]
+        N, dN, ddN = Norma.lagrangian_shape_functions(Val(1), Val(2), ξ)
+        @test isapprox(sum(N), 1.0; atol=1e-12)
+        @test size(dN) == (1, 2)
+        @test size(ddN) == (1, 1, 2)
+    end
+
+    @testset "D=2, N=4 (QUAD4)" begin
+        ξ = @SVector [0.0, 0.0]
+        N, dN, ddN = Norma.lagrangian_shape_functions(Val(2), Val(4), ξ)
+        @test isapprox(sum(N), 1.0; atol=1e-12)
+        @test size(dN) == (2, 4)
+        @test size(ddN) == (2, 2, 4)
+    end
+
+    @testset "D=3, N=8 (HEX8)" begin
+        ξ = @SVector [0.0, 0.0, 0.0]
+        N, dN, ddN = Norma.lagrangian_shape_functions(Val(3), Val(8), ξ)
+        @test isapprox(sum(N), 1.0; atol=1e-12)
+        @test size(dN) == (3, 8)
+        @test size(ddN) == (3, 3, 8)
+    end
+end
+
+@testset "Barycentric Quadrature and Interpolation" begin
+    @testset "TRI3 1-point" begin
+        N, dN, w, ξ = Norma.barycentric(Val(2), Val(3), Val(1))
+        @test size(N) == (3, 1)
+        @test size(dN) == (2, 3, 1)
+        @test length(w) == 1
+        @test size(ξ) == (2, 1)
+    end
+
+    @testset "TRI3 3-point" begin
+        N, dN, w, ξ = Norma.barycentric(Val(2), Val(3), Val(3))
+        @test size(N) == (3, 3)
+        @test size(dN) == (2, 3, 3)
+        @test length(w) == 3
+        @test size(ξ) == (2, 3)
+    end
+
+    @testset "TETRA10 5-point" begin
+        N, dN, w, ξ = Norma.barycentric(Val(3), Val(10), Val(5))
+        @test size(N) == (10, 5)
+        @test size(dN) == (3, 10, 5)
+    end
+end
+
+@testset "Lagrangian Quadrature and Interpolation" begin
+    @testset "BAR2 2-point" begin
+        N, dN, w, ξ = Norma.lagrangian(Val(1), Val(2), Val(2))
+        @test size(N) == (2, 2)
+        @test size(dN) == (1, 2, 2)
+        @test length(w) == 2
+    end
+
+    @testset "QUAD4 4-point" begin
+        N, dN, w, ξ = Norma.lagrangian(Val(2), Val(4), Val(4))
+        @test size(N) == (4, 4)
+        @test size(dN) == (2, 4, 4)
+        @test length(w) == 4
+    end
+
+    @testset "QUAD4 9-point" begin
+        N, dN, w, ξ = Norma.lagrangian(Val(2), Val(4), Val(9))
+        @test size(N) == (4, 9)
+        @test size(dN) == (2, 4, 9)
+        @test length(w) == 9
+    end
+
+    @testset "HEX8 8-point" begin
+        N, dN, w, ξ = Norma.lagrangian(Val(3), Val(8), Val(8))
+        @test size(N) == (8, 8)
+        @test size(dN) == (3, 8, 8)
+        @test length(w) == 8
+    end
+end
+
 @testset "interpolation tet" begin
     vertices = [
         0 1 0 0
