@@ -33,6 +33,8 @@ include("solid-inclined-displacement.jl")
 include("opinf-schwarz-overlap-cuboid-hex8.jl")
 include("quadratic-opinf-schwarz-overlap-cuboid-hex8.jl")
 include("adaptive-time-stepping.jl")
+# Must go last for now due to FPE trapping
+include("utils.jl")
 
 # WARNING: Do not leave output, meshes or inputs here.
 # They will be removed.
