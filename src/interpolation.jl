@@ -6,7 +6,7 @@
 
 using StaticArrays
 
-function barycentricD2N3(ξ::SVector{2,T}) where {T<:Real}
+function barycentric_shape_functions(::Val{2}, ::Val{3}, ξ::SVector{2,T}) where {T}
     N = @SVector [one(T) - ξ[1] - ξ[2], ξ[1], ξ[2]]
     dN = @SMatrix [
         -one(T) one(T) zero(T)
@@ -16,48 +16,7 @@ function barycentricD2N3(ξ::SVector{2,T}) where {T<:Real}
     return N, dN, ddN
 end
 
-function barycentricD2N3G1()
-    w = @SVector [1 / 2]
-    N = MMatrix{3,1,Float64}(undef)
-    dN = MArray{Tuple{2,3,1},Float64}(undef)
-    ξ = @SMatrix [1 / 3; 1 / 3]
-    for p in 1:1
-        Np, dNp, _ = barycentricD2N3(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:3
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:2
-            @inbounds @simd for j in 1:3
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
-end
-
-function barycentricD2N3G3()
-    w = @SVector [1 / 6, 1 / 6, 1 / 6]
-    N = MMatrix{3,3,Float64}(undef)
-    dN = MArray{Tuple{2,3,3},Float64}(undef)
-    ξ = @SMatrix [
-        1/6 4/6 1/6
-        1/6 1/6 4/6
-    ]
-    for p in 1:3
-        Np, dNp, _ = barycentricD2N3(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:3
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:2
-            @inbounds @simd for j in 1:3
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
-end
-
-function barycentricD3N4(ξ::SVector{3,T}) where {T<:Real}
+function barycentric_shape_functions(::Val{3}, ::Val{4}, ξ::SVector{3,T}) where {T}
     N = @SVector [one(T) - ξ[1] - ξ[2] - ξ[3], ξ[1], ξ[2], ξ[3]]
     dN = @SMatrix [
         -one(T) one(T) zero(T) zero(T)
@@ -68,7 +27,7 @@ function barycentricD3N4(ξ::SVector{3,T}) where {T<:Real}
     return N, dN, ddN
 end
 
-function barycentricD3N10(ξ::SVector{3,T}) where {T<:Real}
+function barycentric_shape_functions(::Val{3}, ::Val{10}, ξ::SVector{3,T}) where {T}
     t0 = one(T) - ξ[1] - ξ[2] - ξ[3]
     t1 = ξ[1]
     t2 = ξ[2]
@@ -103,149 +62,91 @@ function barycentricD3N10(ξ::SVector{3,T}) where {T<:Real}
     return N, dN, SArray(ddN)
 end
 
-function barycentricD3N4G1()
-    w = @SVector [1 / 6]
-    N = MMatrix{4,1,Float64}(undef)
-    dN = MArray{Tuple{3,4,1},Float64}(undef)
-    ξ = @SMatrix [0.25; 0.25; 0.25]
-    for p in 1:1
-        Np, dNp, _ = barycentricD3N4(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:4
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:3
-            @inbounds @simd for j in 1:4
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
+function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{1})
+    ξ = @SMatrix [1/3; 1/3]
+    w = @SVector [1/2]
+    return ξ, w
 end
 
-function barycentricD3N4G4()
-    w = @SVector [1 / 24, 1 / 24, 1 / 24, 1 / 24]
-    N = MMatrix{4,4,Float64}(undef)
-    dN = MArray{Tuple{3,4,4},Float64}(undef)
+function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{3})
+    ξ = @SMatrix [
+        1/6 4/6 1/6
+        1/6 1/6 4/6
+    ]
+    w = @SVector [1/6, 1/6, 1/6]
+    return ξ, w
+end
+
+function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{1})
+    ξ = @SMatrix [1/4; 1/4; 1/4]
+    w = @SVector [1/6]
+    return ξ, w
+end
+
+function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{4})
     s = sqrt(5)
-    a = (5 + 3 * s) / 20
-    b = (5 - s) / 20
+    a = (5 + 3s)/20
+    b = (5 - s)/20
     ξ = @SMatrix [
         b a b b
         b b a b
         b b b a
     ]
-    for p in 1:4
-        Np, dNp, _ = barycentricD3N4(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:4
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:3
-            @inbounds @simd for j in 1:4
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
+    w = @SVector [1/24, 1/24, 1/24, 1/24]
+    return ξ, w
 end
 
-function barycentricD3N10G4()
-    w = @SVector [1 / 24, 1 / 24, 1 / 24, 1 / 24]
-    N = MMatrix{10,4,Float64}(undef)
-    dN = MArray{Tuple{3,10,4},Float64}(undef)
+function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{4})
     s = sqrt(5)
-    a = (5 + 3 * s) / 20
-    b = (5 - s) / 20
+    a = (5 + 3s)/20
+    b = (5 - s)/20
     ξ = @SMatrix [
         b a b b
         b b a b
         b b b a
     ]
-    for p in 1:4
-        Np, dNp, _ = barycentricD3N10(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:10
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:3
-            @inbounds @simd for j in 1:10
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
+    w = @SVector [1/24, 1/24, 1/24, 1/24]
+    return ξ, w
 end
 
-function barycentricD3N10G5()
-    a = -2 / 15
-    b = 3 / 40
-    w = @SVector [a, b, b, b, b]
-    N = MMatrix{10,5,Float64}(0)
-    dN = MArray{Tuple{3,10,5},Float64}(undef)
+function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{5})
     ξ = @SMatrix [
         1/4 1/6 1/6 1/6 1/2
         1/4 1/6 1/6 1/2 1/6
         1/4 1/6 1/2 1/6 1/6
     ]
-    for p in 1:5
-        Np, dNp, _ = barycentricD3N10(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:10
-            N[i, p] = Np[i]
+    w = @SVector [-2/15, 3/40, 3/40, 3/40, 3/40]
+    return ξ, w
+end
+
+function barycentric(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
+    ξ, w = barycentric_quadrature(Val(D), Val(N), Val(G))
+    T = eltype(ξ)
+    Nmat = MMatrix{N,G,T}(undef)
+    dNmat = MArray{Tuple{D,N,G},T}(undef)
+    for p in 1:G
+        ξp = SVector(ξ[:, p])
+        Np, dNp, _ = barycentric_shape_functions(Val(D), Val(N), ξp)
+        @inbounds for i in 1:N
+            Nmat[i, p] = Np[i]
         end
-        @inbounds for i in 1:3
-            @inbounds @simd for j in 1:10
-                dN[i, j, p] = dNp[i, j]
+        @inbounds for i in 1:D
+            for j in 1:N
+                dNmat[i, j, p] = dNp[i, j]
             end
         end
     end
-    return SMatrix(N), SArray(dN), w, ξ
+    return SMatrix(Nmat), SArray(dNmat), w, ξ
 end
 
-function lagrangianD1N2(ξ::SVector{1,T}) where {T<:Real}
+function lagrangian_shape_functions(::Val{1}, ::Val{2}, ξ::SVector{1,T}) where {T}
     N = @SVector [0.5 * (1.0 - ξ[1]), 0.5 * (1.0 + ξ[1])]
     dN = @SMatrix [-0.5; 0.5]
     ddN = zeros(SArray{Tuple{1,1,2},T,3})
     return N, dN, ddN
 end
 
-function lagrangianD1N2G1()
-    w = @SVector [2.0]
-    N = MMatrix{2,1,Float64}(undef)
-    dN = MArray{Tuple{1,2,1},Float64}(undef)
-    ξ = @SMatrix [0.0]
-    for p in 1:1
-        Np, dNp, _ = lagrangianD1N2(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:2
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:1
-            @inbounds @simd for j in 1:2
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
-end
-
-function lagrangianD1N2G2()
-    w = @SVector [1.0, 1.0]
-    N = MMatrix{2,2,Float64}(undef)
-    dN = MArray{Tuple{1,2,2},Float64}(undef)
-    g = 1 / sqrt(3)
-    ξ = @SMatrix [-g; g]
-    for p in 1:2
-        Np, dNp, _ = lagrangianD1N2(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:2
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:1
-            @inbounds @simd for j in 1:2
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
-end
-
-function lagrangianD2N4(ξ::SVector{2,T}) where {T<:Real}
+function lagrangian_shape_functions(::Val{2}, ::Val{4}, ξ::SVector{2,T}) where {T}
     r, s = ξ
     ra = @SVector [-1, 1, 1, -1]
     sa = @SVector [-1, -1, 1, 1]
@@ -253,67 +154,18 @@ function lagrangianD2N4(ξ::SVector{2,T}) where {T<:Real}
     dN = MMatrix{2,4,T}(undef)
     ddN = MArray{Tuple{2,2,4},T,3}(undef)
     for p in 1:4
-        N[p] = 0.25 * (1 + ra[p] * r) * (1 + sa[p] * s)
-        dN[1, p] = 0.25 * ra[p] * (1 + sa[p] * s)
-        dN[2, p] = 0.25 * sa[p] * (1 + ra[p] * r)
-        ddN[1, 1, p] = zero(T)
+        N[p] = 0.25 * (1 + ra[p]*r) * (1 + sa[p]*s)
+        dN[1, p] = 0.25 * ra[p] * (1 + sa[p]*s)
+        dN[2, p] = 0.25 * sa[p] * (1 + ra[p]*r)
+        ddN[1, 1, p] = 0
         ddN[1, 2, p] = 0.25 * ra[p] * sa[p]
-        ddN[2, 1, p] = 0.25 * ra[p] * sa[p]
-        ddN[2, 2, p] = zero(T)
+        ddN[2, 1, p] = ddN[1, 2, p]
+        ddN[2, 2, p] = 0
     end
     return SVector(N), SMatrix(dN), SArray(ddN)
 end
 
-function lagrangianD2N4G4()
-    w = @SVector [1.0, 1.0, 1.0, 1.0]
-    N = MMatrix{4,4,Float64}(undef)
-    dN = MArray{Tuple{2,4,4},Float64}(undef)
-    g = 1 / sqrt(3)
-    ξ = @SMatrix [
-        -g g g -g
-        -g -g g g
-    ]
-    for p in 1:4
-        Np, dNp, _ = lagrangianD2N4(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:4
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:2
-            @inbounds @simd for j in 1:4
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
-end
-
-function lagrangianD2N4G9()
-    a = 25 / 81
-    b = 40 / 81
-    c = 64 / 81
-    w = @SVector [a, a, a, a, b, b, b, b, c]
-    N = MMatrix{4,9,Float64}(undef)
-    dN = MArray{Tuple{2,4,9},Float64}(undef)
-    g = sqrt(3 / 5)
-    ξ = @SMatrix [
-        -g g g -g 0 g 0 -g 0
-        -g -g g g -g 0 g 0 0
-    ]
-    for p in 1:9
-        Np, dNp, _ = lagrangianD2N4(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:4
-            N[i, p] = Np[i]
-        end
-        @inbounds for i in 1:2
-            @inbounds @simd for j in 1:4
-                dN[i, j, p] = dNp[i, j]
-            end
-        end
-    end
-    return SMatrix(N), SArray(dN), w, ξ
-end
-
-function lagrangianD3N8(ξ::SVector{3,T}) where {T<:Real}
+function lagrangian_shape_functions(::Val{3}, ::Val{8}, ξ::SVector{3,T}) where {T}
     r, s, t = ξ
     ra = @SVector [-1, 1, 1, -1, -1, 1, 1, -1]
     sa = @SVector [-1, -1, 1, 1, -1, -1, 1, 1]
@@ -340,28 +192,68 @@ function lagrangianD3N8(ξ::SVector{3,T}) where {T<:Real}
     return SVector(N), SMatrix(dN), SArray(ddN)
 end
 
-function lagrangianD3N8G8()
-    w = @SVector [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    N = MMatrix{8,8,Float64}(undef)
-    dN = MArray{Tuple{3,8,8},Float64}(undef)
+function lagrangian_quadrature(::Val{1}, ::Val{2}, ::Val{1})
+    ξ = @SMatrix [0.0]
+    w = @SVector [2.0]
+    return ξ, w
+end
+
+function lagrangian_quadrature(::Val{1}, ::Val{2}, ::Val{2})
+    g = 1 / sqrt(3)
+    ξ = @SMatrix [-g g]
+    w = @SVector [1.0, 1.0]
+    return ξ, w
+end
+
+function lagrangian_quadrature(::Val{2}, ::Val{4}, ::Val{4})
     g = 1 / sqrt(3)
     ξ = @SMatrix [
-        -g g g -g -g g g -g
-        -g -g g g -g -g g g
-        -g -g -g -g g g g g
+        -g  g  g -g
+        -g -g  g  g
     ]
-    for p in 1:8
-        Np, dNp, _ = lagrangianD3N8(SVector(ξ[:, p]))
-        @inbounds @simd for i in 1:8
-            N[i, p] = Np[i]
+    w = @SVector [1.0, 1.0, 1.0, 1.0]
+    return ξ, w
+end
+
+function lagrangian_quadrature(::Val{2}, ::Val{4}, ::Val{9})
+    g = sqrt(3/5)
+    ξ = @SMatrix [
+        -g  g  g -g  0  g  0 -g  0
+        -g -g  g  g -g  0  g  0  0
+    ]
+    w = @SVector [25/81, 25/81, 25/81, 25/81, 40/81, 40/81, 40/81, 40/81, 64/81]
+    return ξ, w
+end
+
+function lagrangian_quadrature(::Val{3}, ::Val{8}, ::Val{8})
+    g = 1 / sqrt(3)
+    ξ = @SMatrix [
+        -g  g  g -g -g  g  g -g
+        -g -g  g  g -g -g  g  g
+        -g -g -g -g  g  g  g  g
+    ]
+    w = @SVector [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    return ξ, w
+end
+
+function lagrangian(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
+    ξ, w = lagrangian_quadrature(Val(D), Val(N), Val(G))
+    T = eltype(ξ)
+    Nmat = MMatrix{N,G,T}(undef)
+    dNmat = MArray{Tuple{D,N,G},T}(undef)
+    for p in 1:G
+        ξp = SVector(ξ[:, p])
+        Np, dNp, _ = lagrangian_shape_functions(Val(D), Val(N), ξp)
+        @inbounds for i in 1:N
+            Nmat[i, p] = Np[i]
         end
-        @inbounds for i in 1:3
-            @inbounds @simd for j in 1:8
-                dN[i, j, p] = dNp[i, j]
+        @inbounds for i in 1:D
+            for j in 1:N
+                dNmat[i, j, p] = dNp[i, j]
             end
         end
     end
-    return SMatrix(N), SArray(dN), w, ξ
+    return SMatrix(Nmat), SArray(dNmat), w, ξ
 end
 
 function default_num_int_pts(element_type::String)
@@ -400,61 +292,44 @@ function get_element_type(dim::Integer, num_nodes::Integer)
     end
 end
 
-#
-# Compute isoparametric interpolation functions, their parametric
-# derivatives, integration weights, and integration point locations
-#
-function isoparametric(element_type::String, num_int::Integer)
-    msg1 = "Invalid number of integration points: "
-    msg2 = " for element type: "
+function get_element_dim_nodes(element_type::String)
     if element_type == "BAR2"
-        if num_int == 1
-            return lagrangianD1N2G1()
-        elseif num_int == 2
-            return lagrangianD1N2G2()
-        else
-            error(msg1, num_int, msg2, element_type)
-        end
+        return 1, 2
     elseif element_type == "TRI3"
-        if num_int == 1
-            return barycentricD2N3G1()
-        elseif num_int == 3
-            return barycentricD2N3G3()
-        else
-            error(msg1, num_int, msg2, element_type)
-        end
+        return 2, 3
     elseif element_type == "QUAD4"
-        if num_int == 4
-            return lagrangianD2N4G4()
-        elseif num_int == 9
-            return lagrangianD2N4G9()
-        else
-            error(msg1, num_int, msg2, element_type)
-        end
+        return 2, 4
     elseif element_type == "TETRA4"
-        if num_int == 1
-            return barycentricD3N4G1()
-        elseif num_int == 4
-            return barycentricD3N4G4()
-        else
-            error(msg1, num_int, msg2, element_type)
-        end
+        return 3, 4
     elseif element_type == "TETRA10"
-        if num_int == 4
-            return barycentricD3N10G4()
-        elseif num_int == 5
-            return barycentricD3N10G5()
-        else
-            error(msg1, num_int, msg2, element_type)
-        end
+        return 3, 10
     elseif element_type == "HEX8"
-        if num_int == 8
-            return lagrangianD3N8G8()
-        else
-            error(msg1, num_int, msg2, element_type)
-        end
+        return 3, 8
     else
-        error("Invalid element type: ", element_type)
+        error("Unsupported element type: ", element_type)
+    end
+end
+
+function is_barycentric(element_type::String)
+    element_type in ("TRI3", "TETRA4", "TETRA10")
+end
+
+function isoparametric(element_type::String, G::Integer)
+    D, N = get_element_dim_nodes(element_type)
+    return if is_barycentric(element_type)
+        barycentric(Val(D), Val(N), Val(G))
+    else
+        lagrangian(Val(D), Val(N), Val(G))
+    end
+end
+
+function interpolate(element_type::String, ξ::AbstractVector{Float64})
+    D, N = get_element_dim_nodes(element_type)
+    ξs = SVector{D}(ξ)
+    if is_barycentric(element_type)
+        return barycentric_shape_functions(Val(D), Val(N), ξs)
+    else
+        return lagrangian_shape_functions(Val(D), Val(N), ξs)
     end
 end
 
@@ -500,24 +375,6 @@ function map_to_parametric(element_type::String, nodes::Matrix{Float64}, point::
         end
     end
     return ξ
-end
-
-function interpolate(element_type::String, ξ::AbstractVector{Float64})
-    if element_type == "BAR2"
-        return lagrangianD1N2(SVector(ξ))
-    elseif element_type == "TRI3"
-        return barycentricD2N3(SVector(ξ))
-    elseif element_type == "QUAD4"
-        return lagrangianD2N4(SVector(ξ))
-    elseif element_type == "TETRA4"
-        return barycentricD3N4(SVector(ξ))
-    elseif element_type == "TETRA10"
-        return barycentricD3N10(SVector(ξ))
-    elseif element_type == "HEX8"
-        return lagrangianD3N8(SVector(ξ))
-    else
-        error("Invalid element type: ", element_type)
-    end
 end
 
 function is_inside_parametric(element_type::String, ξ::AbstractVector{Float64}, tol::Float64=1.0e-06)
