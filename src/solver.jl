@@ -271,30 +271,6 @@ function copy_solution_source_targets(integrator::Newmark, solver::HessianMinimi
     return nothing
 end
 
-function copy_solution_source_targets(solver::HessianMinimizer, model::SolidMechanics, integrator::Newmark)
-    displacement = solver.solution
-    integrator.displacement = displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-
-    if model.inclined_support == true
-        displacement = model.global_transform' * displacement
-        velocity = model.global_transform' * velocity
-        acceleration = model.global_transform' * acceleration
-    end
-
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
-        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-        model.velocity[:, node] = nodal_velocity
-        model.acceleration[:, node] = nodal_acceleration
-    end
-    return nothing
-end
-
 function copy_solution_source_targets(model::SolidMechanics, integrator::Newmark, solver::HessianMinimizer)
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
@@ -322,31 +298,6 @@ function copy_solution_source_targets(integrator::CentralDifference, solver::Exp
     velocity = integrator.velocity
     acceleration = integrator.acceleration
     solver.solution = acceleration
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
-        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
-        if model.inclined_support == true
-            base = 3 * (node - 1) # Block index in global stiffness
-            # Local (integrator) to global (model), use transpose
-            local_transform = model.global_transform[(base + 1):(base + 3), (base + 1):(base + 3)]'
-            nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity = local_transform * nodal_velocity
-            nodal_acceleration = local_transform * nodal_acceleration
-        end
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-        model.velocity[:, node] = nodal_velocity
-        model.acceleration[:, node] = nodal_acceleration
-    end
-    return nothing
-end
-
-function copy_solution_source_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = solver.solution
-    integrator.acceleration = acceleration
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
         nodal_displacement = displacement[(3 * node - 2):(3 * node)]
