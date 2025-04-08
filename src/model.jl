@@ -10,6 +10,7 @@ include("ics_bcs.jl")
 
 using Base.Threads: @threads, threadid, nthreads
 using NPZ
+using PyCall
 
 function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
@@ -80,6 +81,51 @@ function QuadraticOpInfRom(params::Parameters)
         false,
     )
 end
+
+function NeuralNetworkOpInfRom(params::Dict{String,Any})
+    params["mesh smoothing"] = false
+    fom_model = SolidMechanics(params)
+    reference = fom_model.reference
+    opinf_model_file = params["model"]["model-file"]
+
+    basis_file = params["model"]["basis-file"]
+    basis = NPZ.npzread(basis_file)
+    basis = basis["basis"]
+    py""" 
+    import torch
+    def get_model(model_file):
+      return torch.load(model_file)
+    """
+    model = py"get_model"(opinf_model_file)
+    num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
+    num_dofs = reduced_dim
+
+    time = 0.0
+    failed = false
+    null_vec = zeros(num_dofs)
+
+    reduced_state = zeros(num_dofs)
+    reduced_velocity = zeros(num_dofs)
+    reduced_boundary_forcing = zeros(num_dofs)
+    free_dofs = trues(num_dofs)
+    boundary_conditions = Vector{BoundaryCondition}()
+    NeuralNetworkOpInfRom(
+        model,
+        basis,
+        reduced_state,
+        reduced_velocity,
+        reduced_boundary_forcing,
+        null_vec,
+        free_dofs,
+        boundary_conditions,
+        time,
+        failed,
+        fom_model,
+        reference,
+        false 
+    )
+end
+
 
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
@@ -208,6 +254,8 @@ function create_model(params::Parameters)
         return LinearOpInfRom(params)
     elseif model_name == "quadratic opinf rom"
         return QuadraticOpInfRom(params)
+    elseif model_name == "neural network opinf rom"
+        return NeuralNetworkOpInfRom(params)
 
     else
         error("Unknown type of model : ", model_name)
