@@ -38,18 +38,10 @@ function HessianMinimizer(params::Parameters, model::Model)
     converged = false
     failed = false
     step = create_step(solver_params)
-    ls_backtrack_factor = 0.5
-    ls_decrease_factor = 1.0e-04
-    ls_max_iters = 16
-    if haskey(solver_params, "line search backtrack factor")
-        ls_backtrack_factor = solver_params["line search backtrack factor"]
-    end
-    if haskey(solver_params, "line search decrease factor")
-        ls_decrease_factor = solver_params["line search decrease factor"]
-    end
-    if haskey(solver_params, "line search maximum iterations")
-        ls_max_iters = solver_params["line search maximum iterations"]
-    end
+    use_line_search = get(solver_params, "use line search", false)
+    ls_backtrack_factor = get(solver_params, "line search backtrack factor", 0.5)
+    ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
+    ls_max_iters = get(solver_params, "line search maximum iterations", 16)
     line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
     return HessianMinimizer(
         minimum_iterations,
@@ -67,6 +59,7 @@ function HessianMinimizer(params::Parameters, model::Model)
         failed,
         step,
         line_search,
+        use_line_search,
     )
 end
 
@@ -103,15 +96,10 @@ function SteepestDescent(params::Parameters, model::Model)
     ls_backtrack_factor = 0.5
     ls_decrease_factor = 1.0e-04
     ls_max_iters = 16
-    if haskey(solver_params, "line search backtrack factor")
-        ls_backtrack_factor = solver_params["line search backtrack factor"]
-    end
-    if haskey(solver_params, "line search decrease factor")
-        ls_decrease_factor = solver_params["line search decrease factor"]
-    end
-    if haskey(solver_params, "line search maximum iterations")
-        ls_max_iters = solver_params["line search maximum iterations"]
-    end
+    ls_backtrack_factor = get(solver_params, "line search backtrack factor", 0.5)
+    ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
+    ls_max_iters = get(solver_params, "line search maximum iterations", 16)
+    line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
     line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
     return SteepestDescent(
         minimum_iterations,
@@ -271,6 +259,30 @@ function copy_solution_source_targets(integrator::Newmark, solver::HessianMinimi
     return nothing
 end
 
+function copy_solution_source_targets(solver::HessianMinimizer, model::SolidMechanics, integrator::Newmark)
+    displacement = solver.solution
+    integrator.displacement = displacement
+    velocity = integrator.velocity
+    acceleration = integrator.acceleration
+
+    if model.inclined_support == true
+        displacement = model.global_transform' * displacement
+        velocity = model.global_transform' * velocity
+        acceleration = model.global_transform' * acceleration
+    end
+
+    num_nodes = size(model.reference, 2)
+    for node in 1:num_nodes
+        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
+        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
+        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
+        model.current[:, node] = model.reference[:, node] + nodal_displacement
+        model.velocity[:, node] = nodal_velocity
+        model.acceleration[:, node] = nodal_acceleration
+    end
+    return nothing
+end
+
 function copy_solution_source_targets(model::SolidMechanics, integrator::Newmark, solver::HessianMinimizer)
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
@@ -298,6 +310,31 @@ function copy_solution_source_targets(integrator::CentralDifference, solver::Exp
     velocity = integrator.velocity
     acceleration = integrator.acceleration
     solver.solution = acceleration
+    num_nodes = size(model.reference, 2)
+    for node in 1:num_nodes
+        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
+        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
+        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
+        if model.inclined_support == true
+            base = 3 * (node - 1) # Block index in global stiffness
+            # Local (integrator) to global (model), use transpose
+            local_transform = model.global_transform[(base + 1):(base + 3), (base + 1):(base + 3)]'
+            nodal_displacement = local_transform * nodal_displacement
+            nodal_velocity = local_transform * nodal_velocity
+            nodal_acceleration = local_transform * nodal_acceleration
+        end
+        model.current[:, node] = model.reference[:, node] + nodal_displacement
+        model.velocity[:, node] = nodal_velocity
+        model.acceleration[:, node] = nodal_acceleration
+    end
+    return nothing
+end
+
+function copy_solution_source_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
+    displacement = integrator.displacement
+    velocity = integrator.velocity
+    acceleration = solver.solution
+    integrator.acceleration = acceleration
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
         nodal_displacement = displacement[(3 * node - 2):(3 * node)]
@@ -471,7 +508,6 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     return nothing
 end
 
-# Taken from ELASTOPLASITICITY—PART II: GLOBALLY CONVERGENT SCHEMES, Perez-Foguet & Armero, 2002
 function backtrack_line_search(
     integrator::TimeIntegrator, solver::Solver, model::SolidMechanics, direction::Vector{Float64}
 )
@@ -479,30 +515,38 @@ function backtrack_line_search(
     decrease_factor = solver.line_search.decrease_factor
     max_iters = solver.line_search.max_iters
     free = model.free_dofs
-    resid = solver.gradient
-    merit = 0.5 * dot(resid, resid)
-    merit_prime = -2.0 * merit
+    resid = solver.gradient[free]
+    merit_init = 0.5 * dot(resid, resid)
     step_length = solver.step.step_length
     step = step_length * direction
     initial_solution = 1.0 * solver.solution
-    for _ in 1:max_iters
-        merit_old = merit
+    compute_stiffness = model.compute_stiffness
+    compute_mass = model.compute_mass
+    compute_lumped_mass = model.compute_lumped_mass
+    model.compute_stiffness = false
+    model.compute_mass = false
+    model.compute_lumped_mass = false
+    for iter in 1:max_iters
+        @printf("  Line Search Iteration = %d | Step Length = %.3e\n", iter, step_length)
         step = step_length * direction
-        solver.solution[free] = initial_solution[free] + step[free]
+        solver.solution[free] = initial_solution[free] + step
         copy_solution_source_targets(solver, model, integrator)
         evaluate(integrator, solver, model)
         if model.failed == true
             return step
         end
-        resid = solver.gradient
+        resid = solver.gradient[free]
         merit = 0.5 * dot(resid, resid)
-        if merit ≤ (1.0 - 2.0 * decrease_factor * step_length) * merit_old
+        if merit ≤ merit_init + decrease_factor * step_length * dot(resid, direction)
             break
         end
-        step_length =
-            max(backtrack_factor * step_length, -0.5 * step_length * step_length * merit_prime) /
-            (merit - merit_old - step_length * merit_prime)
+        step_length *= backtrack_factor
     end
+    solver.solution = initial_solution
+    copy_solution_source_targets(solver, model, integrator)
+    model.compute_stiffness = compute_stiffness
+    model.compute_mass = compute_mass
+    model.compute_lumped_mass = compute_lumped_mass
     return step
 end
 
@@ -510,14 +554,24 @@ function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64})
     return cg(A, b)
 end
 
-function compute_step(_::QuasiStatic, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
+function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    return -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    if solver.use_line_search == true
+        return backtrack_line_search(integrator, solver, model, step)
+    else
+        return step
+    end
 end
 
-function compute_step(_::Newmark, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
+function compute_step(integrator::Newmark, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    return -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    if solver.use_line_search == true
+        return backtrack_line_search(integrator, solver, model, step)
+    else
+        return step
+    end
 end
 
 function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
@@ -531,8 +585,12 @@ end
 
 function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, _::SteepestDescentStep)
     free = model.free_dofs
-    step = backtrack_line_search(integrator, solver, model, -solver.gradient)
-    return step[free]
+    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    if solver.use_line_search == true
+        return backtrack_line_search(integrator, solver, model, step)
+    else
+        return step
+    end
 end
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
@@ -606,8 +664,11 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     end
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
+    if is_explicit_dynamic == false
+        @printf(" |R| = %.3e | Initial Residual\n", norm_residual)
+    end
     solver.initial_norm = norm_residual
-    iteration_number = 0
+    iteration_number = 1
     solver.failed = solver.failed || model.failed
     step_type = solver.step
     while true
@@ -621,11 +682,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         residual = solver.gradient
         norm_residual = norm(residual[model.free_dofs])
         if is_explicit_dynamic == false
-            if iteration_number == 0
-                @printf(" |R| = %.3e | Initial Residual\n", norm_residual)
-            else
-                @printf(" |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number)
-            end
+            @printf(" |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number)
         end
         update_solver_convergence_criterion(solver, norm_residual)
         iteration_number += 1
