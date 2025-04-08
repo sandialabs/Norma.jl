@@ -23,7 +23,7 @@ end
 function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
-    if isa(expression, AbstractVector)
+    if expression isa AbstractVector
         if (length(expression) != 3)
             error("Vectorized function must have 3 elements.")
         end

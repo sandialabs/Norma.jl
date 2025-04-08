@@ -184,7 +184,7 @@ function create_time_integrator(params::Parameters, model::Model)
 end
 
 function is_static(integrator::TimeIntegrator)
-    return typeof(integrator) == QuasiStatic
+    return integrator isa QuasiStatic
 end
 
 function is_dynamic(integrator::TimeIntegrator)
@@ -223,6 +223,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomMod
             end
         end
     end
+    return nothing
 end
 
 function predict(integrator::Newmark, solver::Solver, model::RomModel)
@@ -236,7 +237,8 @@ function predict(integrator::Newmark, solver::Solver, model::RomModel)
             1.0 / 2.0 * dt * dt * (1.0 - 2.0 * beta) * integrator.acceleration
     integrator.velo_pre[:] = integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
     solver.solution[:] = integrator.displacement[:]
-    return model.reduced_state[:] = integrator.displacement[:]
+    model.reduced_state[:] = integrator.displacement[:]
+    return nothing
 end
 
 function correct(integrator::Newmark, solver::Solver, model::RomModel)
@@ -246,7 +248,8 @@ function correct(integrator::Newmark, solver::Solver, model::RomModel)
     integrator.displacement[:] = solver.solution[:]
     integrator.acceleration[:] = (solver.solution - integrator.disp_pre) / (beta * dt * dt)
     integrator.velocity[:] = integrator.velo_pre + dt * gamma * integrator.acceleration[:]
-    return model.reduced_state[:] = solver.solution[:]
+    model.reduced_state[:] = solver.solution[:]
+    return nothing
 end
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
@@ -257,14 +260,17 @@ function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechani
             error("Finite element model failed to establish initial equlibrium")
         end
     end
+    return nothing
 end
 
 function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    return copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_targets(model, integrator, solver)
+    return nothing
 end
 
 function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    return copy_solution_source_targets(solver, model, integrator)
+    copy_solution_source_targets(solver, model, integrator)
+    return nothing
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
@@ -286,7 +292,8 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     integrator.kinetic_energy = kinetic_energy
     integrator.stored_energy = model.strain_energy
     integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free])
-    return copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
 end
 
 function predict(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
@@ -305,7 +312,8 @@ function predict(integrator::Newmark, solver::HessianMinimizer, model::SolidMech
     vᵖʳᵉ[free] = v[free] += (1.0 - γ) * Δt * a[free]
     uᵖʳᵉ[fixed] = u[fixed]
     vᵖʳᵉ[fixed] = v[fixed]
-    return copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
 end
 
 function correct(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
@@ -318,7 +326,8 @@ function correct(integrator::Newmark, solver::HessianMinimizer, model::SolidMech
     vᵖʳᵉ = integrator.velo_pre
     integrator.acceleration[free] = (u[free] - uᵖʳᵉ[free]) / β / Δt / Δt
     integrator.velocity[free] = vᵖʳᵉ[free] + γ * Δt * integrator.acceleration[free]
-    return copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
 end
 
 function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
@@ -341,7 +350,8 @@ function initialize(integrator::CentralDifference, solver::ExplicitSolver, model
     integrator.stored_energy = model.strain_energy
     inertial_force = external_force - internal_force
     integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
-    return copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
 end
 
 function predict(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
@@ -355,7 +365,8 @@ function predict(integrator::CentralDifference, solver::ExplicitSolver, model::S
     a = integrator.acceleration
     u[free] += Δt * v[free] + 0.5 * Δt * Δt * a[free]
     v[free] += (1.0 - γ) * Δt * a[free]
-    return copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
 end
 
 function correct(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
@@ -364,11 +375,13 @@ function correct(integrator::CentralDifference, solver::ExplicitSolver, model::S
     a = integrator.acceleration = solver.solution
     free = model.free_dofs
     integrator.velocity[free] += γ * Δt * a[free]
-    return copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
 end
 
 function initialize_writing(params::Parameters, integrator::DynamicTimeIntegrator, model::RomModel)
-    return initialize_writing(params, integrator, model.fom_model)
+    initialize_writing(params, integrator, model.fom_model)
+    return nothing
 end
 
 function initialize_writing(params::Parameters, integrator::TimeIntegrator, _::SolidMechanics)
@@ -425,7 +438,8 @@ function finalize_writing(params::Parameters)
     input_mesh = params["input_mesh"]
     Exodus.close(input_mesh)
     output_mesh = params["output_mesh"]
-    return Exodus.close(output_mesh)
+    Exodus.close(output_mesh)
+    return nothing
 end
 
 function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
@@ -435,6 +449,7 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
             println(io, join(nodal_array[:, col], ","))
         end
     end
+    return nothing
 end
 
 function write_step(params::Parameters, integrator::TimeIntegrator, model::Model)
@@ -454,6 +469,7 @@ function write_step(params::Parameters, integrator::TimeIntegrator, model::Model
             write_sideset_step_csv(integrator, model, sim_id)
         end
     end
+    return nothing
 end
 
 function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_id::Integer)
@@ -482,6 +498,7 @@ function write_step_csv(integrator::TimeIntegrator, model::SolidMechanics, sim_i
         kinetic_filename = sim_id_string * "kinetic" * index_string * ".csv"
         writedlm(kinetic_filename, integrator.kinetic_energy, '\n')
     end
+    return nothing
 end
 
 function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidMechanics, sim_id::Integer)
@@ -527,6 +544,7 @@ function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidM
             )
         end
     end
+    return nothing
 end
 
 function write_step_csv(integrator::DynamicTimeIntegrator, model::RomModel, sim_id::Integer)
@@ -535,7 +553,8 @@ function write_step_csv(integrator::DynamicTimeIntegrator, model::RomModel, sim_
     sim_id_string = string(sim_id; pad=2) * "-"
     reduced_states_filename = sim_id_string * "reduced_states" * index_string * ".csv"
     writedlm(reduced_states_filename, model.reduced_state)
-    return write_step_csv(integrator, model.fom_model, sim_id)
+    write_step_csv(integrator, model.fom_model, sim_id)
+    return nothing
 end
 
 function write_step_exodus(params::Parameters, integrator::DynamicTimeIntegrator, model::RomModel)
@@ -566,7 +585,8 @@ function write_step_exodus(params::Parameters, integrator::DynamicTimeIntegrator
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
     end
-    return write_step_exodus(params, integrator, model.fom_model)
+    write_step_exodus(params, integrator, model.fom_model)
+    return nothing
 end
 
 function write_step_exodus(params::Parameters, integrator::TimeIntegrator, model::SolidMechanics)
@@ -660,4 +680,5 @@ function write_step_exodus(params::Parameters, integrator::TimeIntegrator, model
             output_mesh, ElementVariable, time_index, Int64(blk_id), "stored_energy", block_stored_energy
         )
     end
+    return nothing
 end
