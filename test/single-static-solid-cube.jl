@@ -25,7 +25,7 @@
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
 end
 
-@testset "Single Static Solid Cube Line Search                                 " begin
+@testset "Single Static Solid Cube Line Search                      " begin
     cp("../examples/single/static-solid/cube/cube-line-search.yaml", "cube-line-search.yaml"; force=true)
     cp("../examples/single/static-solid/cube/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube-line-search.yaml")
