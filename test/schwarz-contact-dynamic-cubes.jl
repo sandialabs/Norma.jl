@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz Contact Implicit Cubes Tied                       " begin
+@testset "Schwarz Contact Implicit Cubes Tied" begin
     cp("../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
@@ -49,7 +49,7 @@ using YAML
     end
 end
 
-@testset "Schwarz Contact Explicit Cubes Tied                       " begin
+@testset "Schwarz Contact Explicit Cubes Tied" begin
     cp("../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
     cp("../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
@@ -90,7 +90,7 @@ end
     end
 end
 
-@testset "Schwarz Contact Inclined Explicit Cubes                   " begin
+@testset "Schwarz Contact Inclined Explicit Cubes" begin
     model_fine = nothing
     model_coarse = nothing
 
@@ -144,7 +144,7 @@ end
     end
 end
 
-@testset "Schwarz Contact Inclined Implicit Cubes                   " begin
+@testset "Schwarz Contact Inclined Implicit Cubes" begin
     model_fine = nothing
     model_coarse = nothing
 

@@ -5,7 +5,7 @@
 # top-level Norma.jl directory.
 using YAML
 
-@testset "Static Sphere Inclined Disp                               " begin
+@testset "Static Sphere Inclined Disp" begin
     cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
     cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
     input_file = "sphere.yaml"
@@ -64,7 +64,7 @@ using YAML
     @test avg_stress[6] ≈ 0.0 atol = 3.0
 end
 
-@testset "Implicit Dynamic Sphere Inclined Disp                     " begin
+@testset "Implicit Dynamic Sphere Inclined Disp" begin
     cp("../examples/single/implicit-dynamic-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
     cp("../examples/single/implicit-dynamic-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
     input_file = "sphere.yaml"
@@ -123,7 +123,7 @@ end
     @test avg_stress[6] ≈ 0.0 atol = 3.0
 end
 
-@testset "Quasi Static Inclined Support                             " begin
+@testset "Quasi Static Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp("../examples/single/static-solid/cube-inclined-support/cube-test$i.yaml", "cube-test$i.yaml"; force=true)
@@ -246,7 +246,7 @@ end
     end
 end
 
-@testset "Newark Inclined Support                                   " begin
+@testset "Newark Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(
@@ -373,7 +373,7 @@ end
     end
 end
 
-@testset "Explicit Dynamics Inclined Support                        " begin
+@testset "Explicit Dynamics Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(

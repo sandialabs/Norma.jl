@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz Contact Static Cubes Hex8                         " begin
+@testset "Schwarz Contact Static Cubes Hex8" begin
     cp("../examples/contact/static/cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/static/cubes/cube-1.yaml", "cube-1.yaml"; force=true)
     cp("../examples/contact/static/cubes/cube-2.yaml", "cube-2.yaml"; force=true)
@@ -55,7 +55,7 @@ using YAML
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-04
 end
 
-@testset "Schwarz Contact Static Cubes Tied                         " begin
+@testset "Schwarz Contact Static Cubes Tied" begin
     cp("../examples/contact/static/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/static/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
     cp("../examples/contact/static/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
@@ -95,7 +95,7 @@ end
     end
 end
 
-@testset "Schwarz Contact Inclined Static Cubes                     " begin
+@testset "Schwarz Contact Inclined Static Cubes" begin
     model_fine = nothing
     model_coarse = nothing
 

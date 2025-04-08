@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "Quadratic Opinf Schwarz Overlap Static Cuboid Hex8 Same St" begin
+@testset "Quad Opinf Schwarz Overlap Static Cuboid Hex8 Same Step" begin
     cp("../examples/ahead/overlap/cuboid/dynamic-quadratic-opinf-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-quadratic-opinf-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-quadratic-opinf-rom/cuboids.yaml", "cuboids.yaml"; force=true)

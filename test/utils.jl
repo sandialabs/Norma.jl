@@ -6,8 +6,8 @@
 using Test
 using Logging
 
-@testset "Utils Tests                                               " begin
-    @testset "Format_time                                               " begin
+@testset "Utils Tests" begin
+    @testset "Format Time" begin
         @test Norma.format_time(0.0) == "0.0s"
         @test Norma.format_time(59.9) == "59.9s"
         @test Norma.format_time(60.0) == "1m 0.0s"
@@ -16,7 +16,7 @@ using Logging
         @test Norma.format_time(90061.5) == "1d 1h 1m 1.5s"
     end
 
-    @testset "Configure_logger                                          " begin
+    @testset "Configure Logger" begin
         # Save current ENV
         original_debug = get(ENV, "JULIA_DEBUG", nothing)
 
@@ -37,7 +37,7 @@ using Logging
         end
     end
 
-    @testset "Enable_fpe_traps                                          " begin
+    @testset "Enable Fpe Traps" begin
         # This is platform-specific and side-effect prone
         # So we test only that it runs without error
         try
@@ -48,7 +48,7 @@ using Logging
         end
     end
 
-    @testset "Parse_args                                                " begin
+    @testset "Parse Args" begin
         # We'll simulate ARGS in local scope by overriding Base.ARGS
         let saved_args = copy(ARGS)
             try

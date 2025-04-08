@@ -16,7 +16,7 @@ function finite_difference(material::Solid, F::Matrix{Float64}, dF::Matrix{Float
     ) / (12 * h)
 end
 
-@testset "Constitutive Model Energy Gradient                        " begin
+@testset "Constitutive Model Energy Gradient" begin
     Random.seed!(0)
 
     base_params = Parameters("elastic modulus" => 1.0, "Poisson's ratio" => 0.3, "density" => 1.0)

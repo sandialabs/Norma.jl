@@ -11,8 +11,8 @@ using StaticArrays
 include("../src/minitensor.jl")
 using Main.MiniTensor
 
-@testset "Minitensor                                                " begin
-    @testset "Skew And Symm                                             " begin
+@testset "Minitensor" begin
+    @testset "Skew And Symm" begin
         A = randn(3, 3)
         S = MiniTensor.skew(A)
         Sym = MiniTensor.symm(A)
@@ -21,7 +21,7 @@ using Main.MiniTensor
         @test isapprox(A, S + Sym; atol=1e-14)
     end
 
-    @testset "Hat And Vee                                               " begin
+    @testset "Hat And Vee" begin
         v = @SVector randn(3)
         W = MiniTensor.hat(v)
         v2 = MiniTensor.vee(W)
@@ -30,7 +30,7 @@ using Main.MiniTensor
         @test isapprox(W * w, cross(v, w); atol=1e-14)
     end
 
-    @testset "Quaternion Round Trip                                     " begin
+    @testset "Quaternion Round Trip" begin
         w = @SVector [0.1, -0.2, 0.3]
         R = MiniTensor.rt_of_rv(w)
         w2 = MiniTensor.rv_of_rt(R)
@@ -47,7 +47,7 @@ using Main.MiniTensor
         @test isapprox(q2, q; atol=1e-12) || isapprox(q2, -q; atol=1e-12)
     end
 
-    @testset "Rv_continue                                               " begin
+    @testset "Rv Continue" begin
         w = @SVector [π, 0.0, 0.0]
         w_prev = @SVector [-π, 0.0, 0.0]
         w_cont = MiniTensor.rv_continue(w, w_prev)
@@ -55,7 +55,7 @@ using Main.MiniTensor
         @test dot(w_cont, w_prev) < 0.0  # same direction as previous
     end
 
-    @testset "Bch Identity (approximate Exp(log(exp(x)exp(y))))         " begin
+    @testset "Bch Identity (approximate Exp(log(exp(x)exp(y))))" begin
         x = randn(3, 3)
         y = randn(3, 3)
         x = MiniTensor.skew(x)

@@ -5,7 +5,7 @@
 # top-level Norma.jl directory.
 using YAML
 
-@testset "Schwarz Contact Dynamic Bars Hex8                         " begin
+@testset "Schwarz Contact Dynamic Bars Hex8" begin
     cp("../examples/contact/implicit-dynamic/2-bars/bars.yaml", "bars.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/2-bars/bar-1.yaml", "bar-1.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/2-bars/bar-2.yaml", "bar-2.yaml"; force=true)

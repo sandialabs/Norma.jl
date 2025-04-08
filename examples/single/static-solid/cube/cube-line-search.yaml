@@ -36,6 +36,9 @@ solver:
   type: Hessian minimizer
   step: full Newton
   use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-12

@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "Schwarz Nonoverlap Static Cuboid Hex8 Same Step           " begin
+@testset "Schwarz Nonoverlap Static Cuboid Hex8 Same Step" begin
     cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
     cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/nonoverlap/static-same-time-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
@@ -48,12 +48,12 @@
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-01
 end
 
-# @testset "Schwarz Nonoverlap Static Cuboid Hex8 Different Steps     " begin
-#     cp("../examples/nonoverlap/static-different-steps/cuboids.yaml", "cuboids.yaml", force=true)
-#     cp("../examples/nonoverlap/static-different-steps/cuboid-1.yaml", "cuboid-1.yaml", force=true)
-#     cp("../examples/nonoverlap/static-different-steps/cuboid-2.yaml", "cuboid-2.yaml", force=true)
-#     cp("../examples/nonoverlap/static-different-steps/cuboid-1.g", "cuboid-1.g", force=true)
-#     cp("../examples/nonoverlap/static-different-steps/cuboid-2.g", "cuboid-2.g", force=true)
+# @testset "Schwarz Nonoverlap Static Cuboid Hex8 Different Steps" begin
+#     cp("../examples/nonoverlap/static-different-steps/cuboids.yaml","cuboids.yaml", force=true)
+#     cp("../examples/nonoverlap/static-different-steps/cuboid-1.yaml","cuboid-1.yaml", force=true)
+#     cp("../examples/nonoverlap/static-different-steps/cuboid-2.yaml","cuboid-2.yaml", force=true)
+#     cp("../examples/nonoverlap/static-different-steps/cuboid-1.g","cuboid-1.g", force=true)
+#     cp("../examples/nonoverlap/static-different-steps/cuboid-2.g","cuboid-2.g", force=true)
 #     sim = Norma.run("cuboids.yaml")
 #     subsims = sim.subsims
 #     model_fine = subsims[1].model

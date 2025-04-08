@@ -6,8 +6,8 @@
 using LinearAlgebra: norm
 using StaticArrays
 
-@testset "Elastic Constants                                         " begin
-    @testset "Given E And Ν                                            " begin
+@testset "Elastic Constants" begin
+    @testset "Given E And Ν" begin
         params = Norma.Parameters("elastic modulus" => 210e9, "Poisson's ratio" => 0.3)
         E, ν, κ, λ, μ = Norma.elastic_constants(params)
         @test isapprox(E, 210e9)
@@ -17,7 +17,7 @@ using StaticArrays
         @test isapprox(μ, E / 2(1 + ν))
     end
 
-    @testset "Given E And Κ                                            " begin
+    @testset "Given E And Κ" begin
         E = 210e9
         κ = 175e9
         params = Norma.Parameters("elastic modulus" => E, "bulk modulus" => κ)
@@ -29,7 +29,7 @@ using StaticArrays
         @test isapprox(μ, 3κ * E / (9κ - E))
     end
 
-    @testset "Given E And Λ                                            " begin
+    @testset "Given E And Λ" begin
         E = 210e9
         λ = 121e9
         params = Norma.Parameters("elastic modulus" => E, "Lamé's first constant" => λ)
@@ -39,7 +39,7 @@ using StaticArrays
         @test isapprox(μ, (E - 3λ + sqrt(E^2 + 9λ^2 + 2E * λ)) / 4)
     end
 
-    @testset "Given E And Μ                                            " begin
+    @testset "Given E And Μ" begin
         E = 210e9
         μ = 80.77e9
         params = Norma.Parameters("elastic modulus" => E, "shear modulus" => μ)
@@ -49,7 +49,7 @@ using StaticArrays
         @test isapprox(ν, E / (2μ) - 1)
     end
 
-    @testset "Given Ν And Κ                                           " begin
+    @testset "Given Ν And Κ" begin
         ν = 0.3
         κ = 150e9
         params = Norma.Parameters("Poisson's ratio" => ν, "bulk modulus" => κ)
@@ -59,7 +59,7 @@ using StaticArrays
         @test isapprox(E, 3κ * (1 - 2ν))
     end
 
-    @testset "Given Ν And Λ                                           " begin
+    @testset "Given Ν And Λ" begin
         ν = 0.3
         λ = 121e9
         params = Norma.Parameters("Poisson's ratio" => ν, "Lamé's first constant" => λ)
@@ -68,7 +68,7 @@ using StaticArrays
         @test isapprox(λ2, λ)
     end
 
-    @testset "Given Ν And Μ                                           " begin
+    @testset "Given Ν And Μ" begin
         ν = 0.3
         μ = 80e9
         params = Norma.Parameters("Poisson's ratio" => ν, "shear modulus" => μ)
@@ -77,7 +77,7 @@ using StaticArrays
         @test isapprox(ν2, ν)
     end
 
-    @testset "Given Κ And Λ                                           " begin
+    @testset "Given Κ And Λ" begin
         κ = 150e9
         λ = 90e9
         params = Norma.Parameters("bulk modulus" => κ, "Lamé's first constant" => λ)
@@ -86,7 +86,7 @@ using StaticArrays
         @test isapprox(λ2, λ)
     end
 
-    @testset "Given Κ And Μ                                           " begin
+    @testset "Given Κ And Μ" begin
         κ = 150e9
         μ = 50e9
         params = Norma.Parameters("bulk modulus" => κ, "shear modulus" => μ)
@@ -95,7 +95,7 @@ using StaticArrays
         @test isapprox(μ2, μ)
     end
 
-    @testset "Given Λ And Μ                                           " begin
+    @testset "Given Λ And Μ" begin
         λ = 100e9
         μ = 80e9
         params = Norma.Parameters("Lamé's first constant" => λ, "shear modulus" => μ)
@@ -104,7 +104,7 @@ using StaticArrays
         @test isapprox(μ2, μ)
     end
 
-    @testset "Failure Cases                                             " begin
+    @testset "Failure Cases" begin
         @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("elastic modulus" => 200e9))
         @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("Poisson's ratio" => 0.25))
         @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("bulk modulus" => 180e9))
@@ -116,10 +116,10 @@ end
 
 const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
 
-@testset "Constitutive() For All Solids At Identity Deformation     " begin
+@testset "Constitutive() For All Solids At Identity Deformation" begin
     F = I3
 
-    @testset "Saint Venant Kirchhoff                                    " begin
+    @testset "Saint Venant Kirchhoff" begin
         params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
         mat = Norma.SaintVenant_Kirchhoff(params)
         W, P, AA = Norma.constitutive(mat, F)
@@ -128,7 +128,7 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
         @test size(AA) == (3, 3, 3, 3)
     end
 
-    @testset "Linear Elastic                                            " begin
+    @testset "Linear Elastic" begin
         params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
         mat = Norma.Linear_Elastic(params)
         W, σ, CC = Norma.constitutive(mat, F)
@@ -137,7 +137,7 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
         @test size(CC) == (3, 3, 3, 3)
     end
 
-    @testset "Neohookean                                                " begin
+    @testset "Neohookean" begin
         params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
         mat = Norma.Neohookean(params)
         W, P, AA = Norma.constitutive(mat, F)
@@ -146,7 +146,7 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
         @test size(AA) == (3, 3, 3, 3)
     end
 
-    @testset "Seth Hill                                                 " begin
+    @testset "Seth Hill" begin
         params = Norma.Parameters(
             "elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0, "m" => 1, "n" => 1
         )
@@ -158,7 +158,7 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
     end
 end
 
-@testset "J2 Stress                                                 " begin
+@testset "J2 Stress" begin
     E = 200.0e+09
     nu = 0.25
     rho = 7800.0
