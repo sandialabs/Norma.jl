@@ -55,12 +55,16 @@ using Main.MiniTensor
         @test dot(w_cont, w_prev) < 0.0  # same direction as previous
     end
 
-    @testset "Bch Identity (approximate Exp(log(exp(x)exp(y))))" begin
-        x = randn(3, 3)
-        y = randn(3, 3)
-        x = MiniTensor.skew(x)
-        y = MiniTensor.skew(y)
-        z = MiniTensor.bch(x, y)
-        @test isapprox(exp(z), exp(x) * exp(y); atol=0.5)
+    @testset "BCH Identity (approximate Exp(log(exp(x)exp(y))))" begin
+        xv = @SVector [π / 2, 0, 0]
+        yv = @SVector [0, π / 2, 0]
+        x = MiniTensor.hat(xv)
+        y = MiniTensor.hat(yv)
+        X = exp(x)
+        Y = exp(y)
+        Z = X * Y
+        w = MiniTensor.bch(x, y)
+        W = exp(w)
+        @test isapprox(W, Z; atol=0.12)
     end
 end
