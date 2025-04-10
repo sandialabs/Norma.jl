@@ -1,11 +1,11 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 using YAML
 
-@testset "schwarz-contact-dynamic-bars-hex8" begin
+@testset "Schwarz Contact Dynamic Bars Hex8" begin
     cp("../examples/contact/implicit-dynamic/2-bars/bars.yaml", "bars.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/2-bars/bar-1.yaml", "bar-1.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/2-bars/bar-2.yaml", "bar-2.yaml"; force=true)

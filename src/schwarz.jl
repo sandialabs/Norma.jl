@@ -159,11 +159,11 @@ function save_stop_solutions(sim::SingleDomainSimulation)
         sim.controller.stop_velo = global_transform_T * sim.integrator.velocity
         sim.controller.stop_acce = global_transform_T * sim.integrator.acceleration
     else
-        sim.controller.stop_disp = deepcopy(sim.integrator.displacement)
-        sim.controller.stop_velo = deepcopy(sim.integrator.velocity)
-        sim.controller.stop_acce = deepcopy(sim.integrator.acceleration)
+        sim.controller.stop_disp = copy(sim.integrator.displacement)
+        sim.controller.stop_velo = copy(sim.integrator.velocity)
+        sim.controller.stop_acce = copy(sim.integrator.acceleration)
     end
-    return sim.controller.stop_∂Ω_f = deepcopy(sim.model.internal_force)
+    return sim.controller.stop_∂Ω_f = copy(sim.model.internal_force)
 end
 
 function save_stop_solutions(sim::MultiDomainSimulation)
@@ -178,11 +178,11 @@ function save_stop_solutions(sim::MultiDomainSimulation)
             schwarz_controller.stop_velo[i] = global_transform_T * subsim.integrator.velocity
             schwarz_controller.stop_acce[i] = global_transform_T * subsim.integrator.acceleration
         else
-            schwarz_controller.stop_disp[i] = deepcopy(subsim.integrator.displacement)
-            schwarz_controller.stop_velo[i] = deepcopy(subsim.integrator.velocity)
-            schwarz_controller.stop_acce[i] = deepcopy(subsim.integrator.acceleration)
+            schwarz_controller.stop_disp[i] = copy(subsim.integrator.displacement)
+            schwarz_controller.stop_velo[i] = copy(subsim.integrator.velocity)
+            schwarz_controller.stop_acce[i] = copy(subsim.integrator.acceleration)
         end
-        schwarz_controller.stop_∂Ω_f[i] = deepcopy(subsim.model.internal_force)
+        schwarz_controller.stop_∂Ω_f[i] = copy(subsim.model.internal_force)
     end
 end
 
@@ -196,11 +196,11 @@ function restore_stop_solutions(sim::SingleDomainSimulation)
         sim.integrator.velocity = global_transform * sim.controller.stop_velo
         sim.integrator.acceleration = global_transform * sim.controller.stop_acce
     else
-        sim.integrator.displacement = deepcopy(sim.controller.stop_disp)
-        sim.integrator.velocity = deepcopy(sim.controller.stop_velo)
-        sim.integrator.acceleration = deepcopy(sim.controller.stop_acce)
+        sim.integrator.displacement = copy(sim.controller.stop_disp)
+        sim.integrator.velocity = copy(sim.controller.stop_velo)
+        sim.integrator.acceleration = copy(sim.controller.stop_acce)
     end
-    sim.model.internal_force = deepcopy(sim.controller.stop_∂Ω_f)
+    sim.model.internal_force = copy(sim.controller.stop_∂Ω_f)
     return copy_solution_source_targets(sim.integrator, sim.solver, sim.model)
 end
 
@@ -216,11 +216,11 @@ function restore_stop_solutions(sim::MultiDomainSimulation)
             subsim.integrator.velocity = global_transform * schwarz_controller.stop_velo[i]
             subsim.integrator.acceleration = global_transform * schwarz_controller.stop_acce[i]
         else
-            subsim.integrator.displacement = deepcopy(schwarz_controller.stop_disp[i])
-            subsim.integrator.velocity = deepcopy(schwarz_controller.stop_velo[i])
-            subsim.integrator.acceleration = deepcopy(schwarz_controller.stop_acce[i])
+            subsim.integrator.displacement = copy(schwarz_controller.stop_disp[i])
+            subsim.integrator.velocity = copy(schwarz_controller.stop_velo[i])
+            subsim.integrator.acceleration = copy(schwarz_controller.stop_acce[i])
         end
-        subsim.model.internal_force = deepcopy(schwarz_controller.stop_∂Ω_f[i])
+        subsim.model.internal_force = copy(schwarz_controller.stop_∂Ω_f[i])
         copy_solution_source_targets(subsim.integrator, subsim.solver, subsim.model)
     end
 end
@@ -233,9 +233,9 @@ function save_schwarz_solutions(sim::MultiDomainSimulation)
         # Note: Integrator values are not rotated due to inclined support as the 
         # schwarz variables are only used for Schwarz convergence which are compared
         # to simulation integrator values.
-        schwarz_controller.schwarz_disp[i] = deepcopy(subsim.integrator.displacement)
-        schwarz_controller.schwarz_velo[i] = deepcopy(subsim.integrator.velocity)
-        schwarz_controller.schwarz_acce[i] = deepcopy(subsim.integrator.acceleration)
+        schwarz_controller.schwarz_disp[i] = copy(subsim.integrator.displacement)
+        schwarz_controller.schwarz_velo[i] = copy(subsim.integrator.velocity)
+        schwarz_controller.schwarz_acce[i] = copy(subsim.integrator.acceleration)
     end
 end
 
@@ -310,10 +310,10 @@ function resize_histories(sim::MultiDomainSimulation)
         schwarz_controller.∂Ω_f_hist[i] = Vector{Vector{Float64}}(undef, num_stops)
         for stop in 1:num_stops
             schwarz_controller.time_hist[i][stop] = schwarz_controller.prev_time + (stop - 1) * Δt
-            schwarz_controller.disp_hist[i][stop] = deepcopy(schwarz_controller.stop_disp[i])
-            schwarz_controller.velo_hist[i][stop] = deepcopy(schwarz_controller.stop_velo[i])
-            schwarz_controller.acce_hist[i][stop] = deepcopy(schwarz_controller.stop_acce[i])
-            schwarz_controller.∂Ω_f_hist[i][stop] = deepcopy(schwarz_controller.stop_∂Ω_f[i])
+            schwarz_controller.disp_hist[i][stop] = copy(schwarz_controller.stop_disp[i])
+            schwarz_controller.velo_hist[i][stop] = copy(schwarz_controller.stop_velo[i])
+            schwarz_controller.acce_hist[i][stop] = copy(schwarz_controller.stop_acce[i])
+            schwarz_controller.∂Ω_f_hist[i][stop] = copy(schwarz_controller.stop_∂Ω_f[i])
         end
     end
 end
@@ -321,10 +321,11 @@ end
 function save_history_snapshot(
     schwarz_controller::SchwarzController, sims::Vector{SingleDomainSimulation}, subsim_index::Int64, stop_index::Int64
 )
-    schwarz_controller.disp_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.displacement)
-    schwarz_controller.velo_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.velocity)
-    schwarz_controller.acce_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].integrator.acceleration)
-    return schwarz_controller.∂Ω_f_hist[subsim_index][stop_index] = deepcopy(sims[subsim_index].model.internal_force)
+    schwarz_controller.disp_hist[subsim_index][stop_index] = copy(sims[subsim_index].integrator.displacement)
+    schwarz_controller.velo_hist[subsim_index][stop_index] = copy(sims[subsim_index].integrator.velocity)
+    schwarz_controller.acce_hist[subsim_index][stop_index] = copy(sims[subsim_index].integrator.acceleration)
+    schwarz_controller.∂Ω_f_hist[subsim_index][stop_index] = copy(sims[subsim_index].model.internal_force)
+    return nothing
 end
 
 function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
@@ -412,7 +413,7 @@ function initialize_transfer_operators(sim::MultiDomainSimulation)
             if typeof(bc) ≠ SMContactSchwarzBC && typeof(bc) ≠ SMNonOverlapSchwarzBC
                 continue
             end
-            update_transfer_operator(subsim.model, bc)
+            compute_transfer_operator(subsim.model, bc)
         end
     end
 end
@@ -426,7 +427,7 @@ function update_transfer_operators(sim::MultiDomainSimulation)
                 continue
             end
             if is_contact == true || subsim.model.kinematics == Infinitesimal
-                update_transfer_operator(subsim.model, bc)
+                compute_transfer_operator(subsim.model, bc)
             end
         end
     end

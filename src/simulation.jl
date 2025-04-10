@@ -7,6 +7,7 @@
 using Printf
 using YAML
 
+include("interpolation_types.jl")
 include("simulation_types.jl")
 include("model.jl")
 include("time_integrator.jl")
@@ -38,7 +39,7 @@ end
 function create_bcs(sim::SingleDomainSimulation)
     boundary_conditions = create_bcs(sim.params)
     for bc in boundary_conditions
-        if isa(bc, SMDirichletInclined) || isa(bc, SMContactSchwarzBC)
+        if bc isa SMDirichletInclined || bc isa SMContactSchwarzBC
             sim.model.inclined_support = true
             break
         end

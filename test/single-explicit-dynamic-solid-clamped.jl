@@ -1,9 +1,9 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "single-explicit-dynamic-solid-clamped" begin
+@testset "Single Explicit Dynamic Solid Clamped" begin
     cp("../examples/single/explicit-dynamic-solid/clamped/clamped.yaml", "clamped.yaml"; force=true)
     cp("../examples/single/explicit-dynamic-solid/clamped/clamped.g", "clamped.g"; force=true)
     simulation = Norma.run("clamped.yaml")

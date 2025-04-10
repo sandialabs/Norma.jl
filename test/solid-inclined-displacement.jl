@@ -1,11 +1,11 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 using YAML
 
-@testset "static-sphere-inclined-disp" begin
+@testset "Static Sphere Inclined Disp" begin
     cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
     cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
     input_file = "sphere.yaml"
@@ -64,7 +64,7 @@ using YAML
     @test avg_stress[6] ≈ 0.0 atol = 3.0
 end
 
-@testset "implicit-dynamic-sphere-inclined-disp" begin
+@testset "Implicit Dynamic Sphere Inclined Disp" begin
     cp("../examples/single/implicit-dynamic-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
     cp("../examples/single/implicit-dynamic-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
     input_file = "sphere.yaml"
@@ -123,7 +123,7 @@ end
     @test avg_stress[6] ≈ 0.0 atol = 3.0
 end
 
-@testset "quasi-static-inclined-support" begin
+@testset "Quasi Static Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp("../examples/single/static-solid/cube-inclined-support/cube-test$i.yaml", "cube-test$i.yaml"; force=true)
@@ -246,7 +246,7 @@ end
     end
 end
 
-@testset "newark-inclined-support" begin
+@testset "Newark Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(
@@ -373,7 +373,7 @@ end
     end
 end
 
-@testset "explicit-dynamics-inclined-support" begin
+@testset "Explicit Dynamics Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
         cp(

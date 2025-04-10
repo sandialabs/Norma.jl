@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -16,7 +16,7 @@ function finite_difference(material::Solid, F::Matrix{Float64}, dF::Matrix{Float
     ) / (12 * h)
 end
 
-@testset "constitutive-model-energy-gradient" begin
+@testset "Constitutive Model Energy Gradient" begin
     Random.seed!(0)
 
     base_params = Parameters("elastic modulus" => 1.0, "Poisson's ratio" => 0.3, "density" => 1.0)

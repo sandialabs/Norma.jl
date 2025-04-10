@@ -1,4 +1,4 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "schwarz-contact-implicit-cubes-tied" begin
+@testset "Schwarz Contact Implicit Cubes Tied" begin
     cp("../examples/contact/implicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
     cp("../examples/contact/implicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
@@ -49,7 +49,7 @@ using YAML
     end
 end
 
-@testset "schwarz-contact-explicit-cubes-tied" begin
+@testset "Schwarz Contact Explicit Cubes Tied" begin
     cp("../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
     cp("../examples/contact/explicit-dynamic/friction-cubes/cube-2.yaml", "cube-2.yaml"; force=true)
@@ -90,7 +90,7 @@ end
     end
 end
 
-@testset "schwarz-contact-inclined-explicit-cubes" begin
+@testset "Schwarz Contact Inclined Explicit Cubes" begin
     model_fine = nothing
     model_coarse = nothing
 
@@ -144,7 +144,7 @@ end
     end
 end
 
-@testset "schwarz-contact-inclined-implicit-cubes" begin
+@testset "Schwarz Contact Inclined Implicit Cubes" begin
     model_fine = nothing
     model_coarse = nothing
 

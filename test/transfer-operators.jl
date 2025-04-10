@@ -1,9 +1,9 @@
-# Norma.jl 1.0: Copyright 2025 National Technology & Engineering Solutions of
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "transfer-operators" begin
+@testset "Transfer Operators" begin
     cp("../examples/contact/transfer-operators/transfer.yaml", "transfer.yaml"; force=true)
     cp("../examples/contact/transfer-operators/src.yaml", "src.yaml"; force=true)
     cp("../examples/contact/transfer-operators/dst.yaml", "dst.yaml"; force=true)

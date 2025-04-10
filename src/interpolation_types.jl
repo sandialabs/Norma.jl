@@ -4,11 +4,11 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-include("minitensor.jl")
-
-using LinearAlgebra
-using .MiniTensor
-
-abstract type Material end
-abstract type Solid <: Material end
-abstract type Thermal <: Material end
+@enum ElementType begin
+    BAR2
+    TRI3
+    QUAD4
+    TETRA4
+    TETRA10
+    HEX8
+end

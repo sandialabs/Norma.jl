@@ -33,6 +33,7 @@ mutable struct HessianMinimizer <: Minimizer
     failed::Bool
     step::Step
     line_search::BackTrackLineSearch
+    use_line_search::Bool
 end
 
 mutable struct ExplicitSolver <: Solver
