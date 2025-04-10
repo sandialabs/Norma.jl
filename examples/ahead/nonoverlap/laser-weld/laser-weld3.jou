@@ -145,11 +145,11 @@ compress ids
 
 #  Make cuts for Shwarz ----------------------------------------------------------------------------
 
-#{nElementsThroughThickness = 4}
+#{nElementsThroughThickness = 6}
 
 #{sizeElementCoarse = (specimen_thickness) / (nElementsThroughThickness)}
 
-#{widthRegionWeld = 8.0 * sizeElementCoarse}
+#{widthRegionWeld = 12.0 * sizeElementCoarse}
 
 webcut volume 1 with plane yplane offset {widthRegionWeld}
 
@@ -225,6 +225,7 @@ block 7 name "holder_1"
 # --------------------------------------------------------------------------------------------------
 
 ##{ratioSizeCoarseFine = 9} #IKT 11/5/2024: this was orig resolution
+##{ratioSizeCoarseFine = 2}
 #{ratioSizeCoarseFine = 2}
 #{sizeElementFine = (sizeElementCoarse) / (ratioSizeCoarseFine)}
 ##{ratioSizeCoarseMedium = 3} #IKT 11/5/2024: this was orig resolution
@@ -275,7 +276,7 @@ export mesh "holder-1.g" dimension 3 block 7 overwrite
 #IKT 11/24/2024: the following is a hack.  For some reason, I can't seem to set 
 #sidesets correctly in the above code
 reset
-import mesh geometry "holder-0.g"
+import mesh geometry "holder-0.g" 
 nodeset 1 surface 6
 nodeset 1 name "nodeset_negative_y"
 nodeset 2 surface 2 
@@ -286,7 +287,7 @@ sideset 1 surface 6
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 3
 sideset 2 name "sideset_positive_y"
-refine volume all numsplit 1 
+#refine volume all numsplit 1
 block all element type HEX8
 export mesh "holder-0.g" block all overwrite
 
@@ -302,7 +303,7 @@ sideset 1 surface 2
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 6
 sideset 2 name "sideset_positive_y" 
-refine volume all numsplit 1 
+#refine volume all numsplit 1
 block all element type HEX8
 export mesh "holder-1.g" block all overwrite
 
@@ -314,10 +315,13 @@ nodeset 2 surface 2 9 13
 nodeset 2 name "nodeset_negative_z"  
 sideset 1 surface 18 
 sideset 1 name "sideset_negative_y" 
-sideset 2 surface 1 
+sideset 2 surface 2
 sideset 2 name "sideset_positive_y" 
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
+
+
+
 
 
 
