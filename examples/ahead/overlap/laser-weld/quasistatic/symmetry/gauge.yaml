@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../gauge.g
+input mesh file: ../../gauge.g
 output mesh file: gauge.e
 model:
   type: solid mechanics
@@ -17,10 +17,10 @@ time integrator:
   type: quasi static
 boundary conditions:
   Dirichlet:
-    - node set: nodeset_negative_y
+    - node set: nodeset_negative_x
       component: x
       function: "0.0"
-    - node set: nodeset_negative_y
+    - node set: nodeset_negative_z
       component: z
       function: "0.0"
   Schwarz overlap:
