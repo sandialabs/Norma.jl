@@ -8,19 +8,6 @@ using IterativeSolvers
 using LinearAlgebra
 using Printf
 
-function create_step(solver_params::Parameters)
-    step_name = solver_params["step"]
-    if step_name == "full Newton"
-        return NewtonStep(solver_params)
-    elseif step_name == "explicit"
-        return ExplicitStep(solver_params)
-    elseif step_name == "steepest descent"
-        return SteepestDescentStep(solver_params)
-    else
-        error("Unknown type of solver step: ", step_name)
-    end
-end
-
 function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
@@ -119,6 +106,20 @@ function SteepestDescent(params::Parameters, model::Model)
     )
 end
 
+function create_solver(params::Parameters, model::Model)
+    solver_params = params["solver"]
+    solver_name = solver_params["type"]
+    if solver_name == "Hessian minimizer"
+        return HessianMinimizer(params, model)
+    elseif solver_name == "explicit solver"
+        return ExplicitSolver(params, model)
+    elseif solver_name == "steepest descent"
+        return SteepestDescent(params, model)
+    else
+        error("Unknown type of solver : ", solver_name)
+    end
+end
+
 function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
@@ -146,17 +147,16 @@ function SteepestDescentStep(params::Parameters)
     return SteepestDescentStep(step_length)
 end
 
-function create_solver(params::Parameters, model::Model)
-    solver_params = params["solver"]
-    solver_name = solver_params["type"]
-    if solver_name == "Hessian minimizer"
-        return HessianMinimizer(params, model)
-    elseif solver_name == "explicit solver"
-        return ExplicitSolver(params, model)
-    elseif solver_name == "steepest descent"
-        return SteepestDescent(params, model)
+function create_step(solver_params::Parameters)
+    step_name = solver_params["step"]
+    if step_name == "full Newton"
+        return NewtonStep(solver_params)
+    elseif step_name == "explicit"
+        return ExplicitStep(solver_params)
+    elseif step_name == "steepest descent"
+        return SteepestDescentStep(solver_params)
     else
-        error("Unknown type of solver : ", solver_name)
+        error("Unknown type of solver step: ", step_name)
     end
 end
 
@@ -583,14 +583,10 @@ function compute_step(_::CentralDifference, model::SolidMechanics, solver::Expli
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
 end
 
-function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, _::SteepestDescentStep)
+function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, sd_step::SteepestDescentStep)
     free = model.free_dofs
-    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
-    if solver.use_line_search == true
-        return backtrack_line_search(integrator, solver, model, step)
-    else
-        return step
-    end
+    direction = -sd_step.step_length * solver.gradient[free]
+    return backtrack_line_search(integrator, solver, model, direction)
 end
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
@@ -665,7 +661,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
     if is_explicit_dynamic == false
-        @printf(" |R| = %.3e | Initial Residual\n", norm_residual)
+        @printf(" |R| = %.3e |r| = %.3e | Initial Residual\n", norm_residual, 1.0)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -681,10 +677,10 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         end
         residual = solver.gradient
         norm_residual = norm(residual[model.free_dofs])
-        if is_explicit_dynamic == false
-            @printf(" |R| = %.3e | Solver Iteration = %d\n", norm_residual, iteration_number)
-        end
         update_solver_convergence_criterion(solver, norm_residual)
+        if is_explicit_dynamic == false
+            @printf(" |R| = %.3e |r| = %.3e | Solver Iteration %d\n", solver.absolute_error, solver.relative_error, iteration_number)
+        end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
             break

@@ -139,7 +139,7 @@ function schwarz(sim::MultiDomainSimulation)
             sim.schwarz_controller.convergence_hist[iteration_number - 1, 1] = ΔX
             sim.schwarz_controller.convergence_hist[iteration_number - 1, 2] = Δx
         end
-        @printf(" Schwarz Criterion |ΔX| = %.3e | |ΔX|/|X| = %.3e\n", ΔX, Δx)
+        @printf("Schwarz Criterion |ΔX| = %.3e |ΔX|/|X| = %.3e\n", ΔX, Δx)
         if stop_schwarz(sim, iteration_number) == true
             @printf("Performed %d Schwarz iterations\n", iteration_number - 1)
             break
