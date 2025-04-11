@@ -583,7 +583,9 @@ function compute_step(_::CentralDifference, model::SolidMechanics, solver::Expli
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
 end
 
-function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, sd_step::SteepestDescentStep)
+function compute_step(
+    integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, sd_step::SteepestDescentStep
+)
     free = model.free_dofs
     direction = -sd_step.step_length * solver.gradient[free]
     return backtrack_line_search(integrator, solver, model, direction)
@@ -679,7 +681,12 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         norm_residual = norm(residual[model.free_dofs])
         update_solver_convergence_criterion(solver, norm_residual)
         if is_explicit_dynamic == false
-            @printf(" |R| = %.3e |r| = %.3e | Solver Iteration %d\n", solver.absolute_error, solver.relative_error, iteration_number)
+            @printf(
+                " |R| = %.3e |r| = %.3e | Solver Iteration %d\n",
+                solver.absolute_error,
+                solver.relative_error,
+                iteration_number
+            )
         end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true

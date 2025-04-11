@@ -132,21 +132,19 @@ function bch_term5(x::AbstractMatrix{T}, y::AbstractMatrix{T}) where {T<:Number}
            x * x * y * x * y / 120 - x * x * y * y * x / 120 +
            x * x * y * y * y / 180 +
            x * y * x * x * x / 180 - x * y * x * x * y / 120 + x * y * x * y * x / 30 - x * y * x * y * y / 120 -
-           x * y * y * x * x / 120 - x * y * y * x * y / 120
-    +x * y * y * y * x / 180 - x * y * y * y * y / 720 - y * x * x * x * x / 720 + y * x * x * x * y / 180 -
-    y * x * x * y * x / 120 - y * x * x * y * y / 120 - y * x * y * x * x / 120 + y * x * y * x * y / 30 -
-    y * x * y * y * x / 120
-    return +y * x * y * y * y / 180 + y * y * x * x * x / 180 - y * y * x * x * y / 120 - y * y * x * y * x / 120 -
-           y * y * x * y * y / 120 +
+           x * y * y * x * x / 120 - x * y * y * x * y / 120 + x * y * y * y * x / 180 - x * y * y * y * y / 720 -
+           y * x * x * x * x / 720 + y * x * x * x * y / 180 - y * x * x * y * x / 120 - y * x * x * y * y / 120 -
+           y * x * y * x * x / 120 + y * x * y * x * y / 30 - y * x * y * y * x / 120 +
+           y * x * y * y * y / 180 +
+           y * y * x * x * x / 180 - y * y * x * x * y / 120 - y * y * x * y * x / 120 - y * y * x * y * y / 120 +
            y * y * y * x * x / 180 +
            y * y * y * x * y / 180 - y * y * y * y * x / 720
 end
 
 function bch_term6(x::AbstractMatrix{T}, y::AbstractMatrix{T}) where {T<:Number}
     return -x * x * x * x * y * y / 1440 + x * x * x * y * x * y / 360 + x * x * x * y * y * y / 360 -
-           x * x * y * x * x * y / 240
-    return -x * x * y * x * y * y / 240 - x * x * y * y * x * y / 240 - x * x * y * y * y * y / 1440 +
-           x * y * x * x * x * y / 360 - x * y * x * x * y * y / 240 +
+           x * x * y * x * x * y / 240 - x * x * y * x * y * y / 240 - x * x * y * y * x * y / 240 -
+           x * x * y * y * y * y / 1440 + x * y * x * x * x * y / 360 - x * y * x * x * y * y / 240 +
            x * y * x * y * x * y / 60 +
            x * y * x * y * y * y / 360 - x * y * y * x * x * y / 240 - x * y * y * x * y * y / 240 +
            x * y * y * y * x * y / 360 - y * x * x * x * y * x / 360 +
