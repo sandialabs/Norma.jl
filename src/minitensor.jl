@@ -4,7 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-module MiniTensor
 using LinearAlgebra
 using LinearAlgebra: norm, tr, dot, normalize
 using StaticArrays
@@ -485,6 +484,4 @@ function rv_continue(old::SVector{3,Float64}, prev::SVector{3,Float64})::SVector
     end
     proj = 2.0 * kk * π + norm_old
     return proj * unit
-end
-
 end

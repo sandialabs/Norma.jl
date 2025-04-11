@@ -324,7 +324,7 @@ function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
         θ = angle_btwn > π / 2 ? π - asin(s) : asin(s)
         m = normalize(w)
         rv = θ * m
-        return MiniTensor.rt_of_rv(rv)
+        return rt_of_rv(rv)
     end
 end
 

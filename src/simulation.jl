@@ -9,6 +9,7 @@ using YAML
 
 include("interpolation_types.jl")
 include("simulation_types.jl")
+include("minitensor.jl")
 include("model.jl")
 include("time_integrator.jl")
 include("solver.jl")
