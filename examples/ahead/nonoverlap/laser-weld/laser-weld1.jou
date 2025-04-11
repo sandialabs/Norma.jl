@@ -310,12 +310,17 @@ nodeset 1 surface 6 10 14
 nodeset 1 name "nodeset_negative_x"
 nodeset 2 surface 2 9 13
 nodeset 2 name "nodeset_negative_z"  
+nodeset 3 surface 17 
+nodeset 3 name "nodeset_negative_y" 
+nodeset 4 surface 1 
+nodeset 4 name "nodeset_positive_y" 
 sideset 1 surface 17 
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 1 
 sideset 2 name "sideset_positive_y" 
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
+
 
 
 

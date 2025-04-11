@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../gauge.g
+input mesh file: ../../gauge.g
 output mesh file: gauge.e
 model:
   type: solid mechanics

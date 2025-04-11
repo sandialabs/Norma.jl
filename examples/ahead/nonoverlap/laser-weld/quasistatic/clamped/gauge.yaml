@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../gauge.g
+input mesh file: ../../gauge.g
 output mesh file: gauge.e
 model:
   type: solid mechanics
@@ -28,6 +28,10 @@ boundary conditions:
 solver:
   type: Hessian minimizer
   step: full Newton
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
   minimum iterations: 1
   maximum iterations: 96
   relative tolerance: 1.0e-10

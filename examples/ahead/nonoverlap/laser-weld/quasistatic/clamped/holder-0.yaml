@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../holder-0.g
+input mesh file: ../../holder-0.g
 output mesh file: holder-0.e
 model:
   type: solid mechanics
@@ -32,6 +32,10 @@ boundary conditions:
 solver:
   type: Hessian minimizer
   step: full Newton
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
   minimum iterations: 1
   maximum iterations: 96
   relative tolerance: 1.0e-10

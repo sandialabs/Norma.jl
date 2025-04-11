@@ -255,18 +255,6 @@ mesh volume 1 2 4 5 6
 
 reset nodeset
 
-nodeset 1 surface 41 20 8 26 37
-nodeset 1 name "nodeset_negative_x"
-
-nodeset 2 surface 29
-nodeset 2 name "nodeset_negative_y"
-
-nodeset 3 surface 39
-nodeset 3 name "nodeset_positive_y"
-
-nodeset 4 surface 42 21 5 25 38 
-nodeset 4 name "nodeset_negative_z" 
-
 set large exodus file on
 export mesh "gauge.g" dimension 3 block 1 2 5 overwrite
 
@@ -343,12 +331,17 @@ export mesh "holder-1.g" block 7 overwrite
 
 reset
 import mesh geometry "gauge.g" 
-sideset 1 surface 2 
+nodeset 1 surface 18 
+nodeset 1 name "nodeset_negative_y" 
+nodeset 2 surface 6
+nodeset 2 name "nodeset_positive_y" 
+sideset 1 surface 18 
 sideset 1 name "sideset_negative_y" 
-sideset 2 surface 3 
+sideset 2 surface 6
 sideset 2 name "sideset_positive_y" 
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
+
 
 
 

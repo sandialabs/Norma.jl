@@ -313,6 +313,10 @@ nodeset 1 surface 6 10 14
 nodeset 1 name "nodeset_negative_x"
 nodeset 2 surface 2 9 13
 nodeset 2 name "nodeset_negative_z"  
+nodeset 3 surface 18 
+nodeset 3 name "nodeset_negative_y" 
+nodeset 4 surface 2 
+nodeset 4 name "nodeset_positive_y" 
 sideset 1 surface 18 
 sideset 1 name "sideset_negative_y" 
 sideset 2 surface 2

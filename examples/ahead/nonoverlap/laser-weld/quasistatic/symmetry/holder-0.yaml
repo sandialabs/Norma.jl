@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../holder-0.g
+input mesh file: ../../holder-0.g
 output mesh file: holder-0.e
 model:
   type: solid mechanics
