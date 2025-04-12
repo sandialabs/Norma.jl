@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../gauge.g
+input mesh file: ../../gauge.g
 output mesh file: gauge.e
 CSV output interval: 1
 CSV write sidesets: true
@@ -20,13 +20,6 @@ time integrator:
   β: 0.25
   γ: 0.5
 boundary conditions:
-  Dirichlet:
-    - node set: nodeset_negative_y
-      component: x
-      function: "0.0"
-    - node set: nodeset_negative_y
-      component: z
-      function: "0.0"
   Schwarz overlap:
     - side set: sideset_negative_y
       source: holder-0.yaml

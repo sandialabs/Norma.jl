@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../holder-0.g
+input mesh file: ../../holder-0.g
 output mesh file: holder-0.e
 model:
   type: solid mechanics
@@ -26,7 +26,7 @@ boundary conditions:
     - node set: nodeset_negative_y
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz overlap:
     - side set: sideset_positive_y
       source: gauge.yaml
       source block: region_weld_0

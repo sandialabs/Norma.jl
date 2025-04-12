@@ -1,13 +1,13 @@
 type: single
-input mesh file: ../holder-1.g
-output mesh file: holder-1.e
+input mesh file: ../../holder-0.g
+output mesh file: holder-0.e
 CSV output interval: 1
 CSV write sidesets: true
 model:
   type: solid mechanics
   material:
     blocks:
-      holder_1: hyperelastic
+      holder_0: hyperelastic
     hyperelastic:
       model: linear elastic
       elastic modulus: 1.0e+09
@@ -19,20 +19,20 @@ time integrator:
   γ: 0.5
 boundary conditions:
   Dirichlet:
-    - node set: nodeset_positive_y
+    - node set: nodeset_negative_y
       component: x
       function: "0.0"
-    - node set: nodeset_positive_y
+    - node set: nodeset_negative_y
       component: y
-      function: "0.1 * t"
-    - node set: nodeset_positive_y
+      function: "-0.1 * t"
+    - node set: nodeset_negative_y
       component: z
       function: "0.0"
   Schwarz overlap:
-    - side set: sideset_negative_y
+    - side set: sideset_positive_y
       source: gauge.yaml
-      source block: region_weld_1
-      source side set: sideset_positive_y
+      source block: region_weld_0
+      source side set: sideset_negative_y
 solver:
   type: Hessian minimizer
   step: full Newton

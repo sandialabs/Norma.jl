@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../laser-weld.g
+input mesh file: ../../laser-weld.g
 output mesh file: laser-weld.e
 Exodus output interval: 1
 CSV output interval: 0
