@@ -18,7 +18,8 @@ function run(input_file::String)
     end
     evolve(sim)
     elapsed_time = time() - start_time
-    println("Simulation completed in ", format_time(elapsed_time))
+    println("🎉 Simulation Complete")
+    println("✅ Total Time = ", format_time(elapsed_time))
     return sim
 end
 
@@ -30,7 +31,8 @@ function run(params::Parameters, name::String)
     end
     evolve(sim)
     elapsed_time = time() - start_time
-    println("Simulation completed in ", format_time(elapsed_time))
+    println("🎉 Simulation Complete")
+    println("✅ Total Time = ", format_time(elapsed_time))
     return sim
 end
 

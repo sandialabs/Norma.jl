@@ -527,7 +527,7 @@ function backtrack_line_search(
     model.compute_mass = false
     model.compute_lumped_mass = false
     for iter in 1:max_iters
-        @printf("  Line Search Iteration = %d | Step Length = %.3e\n", iter, step_length)
+        @printf("  📏 Line Search [%d] |ΔX| = %.3e\n", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
         copy_solution_source_targets(solver, model, integrator)
@@ -663,7 +663,10 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
     if is_explicit_dynamic == false
-        @printf(" |R| = %.3e |r| = %.3e | Initial Residual\n", norm_residual, 1.0)
+        report_iteration_progress(" 🔧 Solver", 0,
+        "|R|", norm_residual,
+        "|r|", 1.0,
+        false)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -681,12 +684,10 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         norm_residual = norm(residual[model.free_dofs])
         update_solver_convergence_criterion(solver, norm_residual)
         if is_explicit_dynamic == false
-            @printf(
-                " |R| = %.3e |r| = %.3e | Solver Iteration %d\n",
-                solver.absolute_error,
-                solver.relative_error,
-                iteration_number
-            )
+            report_iteration_progress(" 🔧 Solver", iteration_number,
+            "|R|", solver.absolute_error,
+            "|r|", solver.relative_error,
+            solver.converged)
         end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true

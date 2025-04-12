@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 using Logging
 using Printf
+using Unicode
 
 # Enable debugging for a specific module in the environment variable JULIA_DEBUG (all for all modules)
 function configure_logger()
@@ -69,6 +70,35 @@ function format_time(seconds::Float64)::String
     push!(time_str, @sprintf("%.1fs", seconds))
 
     return join(time_str, " ")
+end
+
+function report_iteration_start(kind::AbstractString, iteration::Int)
+    println("🔁 $kind Iteration $iteration")
+end
+
+function report_iteration_progress(
+    kind::AbstractString,
+    iteration::Int,
+    abs_label::AbstractString,
+    abs_error::Float64,
+    rel_label::AbstractString,
+    rel_error::Float64,
+    converged::Bool
+)
+    status = converged ? "✅" : "⏳"
+    @printf(
+        "%s [%d] %s = %.3e : %s = %.3e : %s\n",
+        kind,
+        iteration,
+        abs_label, abs_error,
+        rel_label, rel_error,
+        status
+    )
+end
+
+function report_iteration_final(kind::AbstractString, iterations::Int)
+    plural = iterations == 1 ? "" : "s"
+    println("✔️  Performed $iterations $kind Iteration$plural")
 end
 
 function parse_args()

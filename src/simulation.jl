@@ -32,7 +32,7 @@ function create_simulation(params::Parameters, name::String)
 end
 
 function create_simulation(input_file::String)
-    @printf("Reading Simulation File: %s\n", input_file)
+    @printf("📄 Simulation %s\n", input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     return create_simulation(params, input_file)
 end
@@ -87,8 +87,9 @@ function MultiDomainSimulation(params::Parameters)
     csv_interval = get(params, "CSV output interval", 0)
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
+    println(" 🧩 Subdomains:")
     for domain_name in domain_names
-        @printf("Reading Subsimulation File: %s\n", domain_name)
+        @printf("  • %s\n", domain_name)
         subparams = YAML.load_file(domain_name; dicttype=Parameters)
         subparams["name"] = domain_name
         subparams["time integrator"]["initial time"] = initial_time

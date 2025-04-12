@@ -12,11 +12,10 @@ function SolidSchwarzController(params::Parameters)
     relative_tolerance = params["absolute tolerance"]
     initial_time = params["initial time"]
     final_time = params["final time"]
-    time_step = params["time step"]
-    @printf("Requested Time Step: %.4e\n", time_step)
-    num_stops = round(Int64, (final_time - initial_time) / time_step) + 1
+    input_time_step = params["time step"]
+    num_stops = round(Int64, (final_time - initial_time) / input_time_step) + 1
     time_step = (final_time - initial_time) / (num_stops - 1)
-    @printf("Adjusted Time Step: %.4e | Stops: %d\n", time_step, num_stops)
+    @printf("🕒 Time Step = %.4e : Adjusted = %.4e : Total Stops = %d\n", input_time_step, time_step, num_stops)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
     same_step = get(params, "same time step for domains", false)
@@ -129,21 +128,24 @@ function schwarz(sim::MultiDomainSimulation)
     end
 
     while true
-        @printf("Schwarz Iteration = %d\n", iteration_number)
+        report_iteration_start("Schwarz", iteration_number)
         sim.schwarz_controller.iteration_number = iteration_number
         synchronize(sim)
         subcycle(sim, is_schwarz)
-        iteration_number += 1
-        ΔX, Δx = update_schwarz_convergence_criterion(sim)
+        ΔU, Δu = update_schwarz_convergence_criterion(sim)
         if csv_interval > 0
-            sim.schwarz_controller.convergence_hist[iteration_number - 1, 1] = ΔX
-            sim.schwarz_controller.convergence_hist[iteration_number - 1, 2] = Δx
+            sim.schwarz_controller.convergence_hist[iteration_number, 1] = ΔU
+            sim.schwarz_controller.convergence_hist[iteration_number, 2] = Δu
         end
-        @printf("Schwarz Criterion |ΔX| = %.3e |ΔX|/|X| = %.3e\n", ΔX, Δx)
-        if stop_schwarz(sim, iteration_number) == true
-            @printf("Performed %d Schwarz iterations\n", iteration_number - 1)
+        report_iteration_progress("🍲 Schwarz", iteration_number,
+        "|ΔU|", ΔU,
+        "|ΔU|/|U|", Δu,
+        sim.schwarz_controller.converged)
+        if stop_schwarz(sim, iteration_number + 1) == true
+            report_iteration_final("Schwarz", iteration_number)
             break
         end
+        iteration_number += 1
         save_schwarz_solutions(sim)
         restore_stop_solutions(sim)
     end
@@ -268,7 +270,7 @@ end
 function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
     subsim_index = 1
     for subsim in sim.subsims
-        @printf(" Subcycle: %s\n", subsim.name)
+        @printf(" 🧩 %s\n", subsim.name)
         stop_index = 1
         while true
             advance_time(subsim)
@@ -467,7 +469,7 @@ function detect_contact(sim::MultiDomainSimulation)
         end
     end
     if sim.schwarz_controller.active_contact == true
-        println("Contact Detected")
+        println("📌 Contact Detected")
     end
     resize!(sim.schwarz_controller.contact_hist, sim.schwarz_controller.stop + 1)
     sim.schwarz_controller.contact_hist[sim.schwarz_controller.stop + 1] = sim.schwarz_controller.active_contact
