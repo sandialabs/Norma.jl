@@ -663,10 +663,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
     if is_explicit_dynamic == false
-        report_iteration_progress(" 🔧 Solver", 0,
-        "|R|", norm_residual,
-        "|r|", 1.0,
-        false)
+        report_iteration_progress(" 🔧 Solver", 0, "|R|", norm_residual, "|r|", 1.0, false)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -684,10 +681,15 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         norm_residual = norm(residual[model.free_dofs])
         update_solver_convergence_criterion(solver, norm_residual)
         if is_explicit_dynamic == false
-            report_iteration_progress(" 🔧 Solver", iteration_number,
-            "|R|", solver.absolute_error,
-            "|r|", solver.relative_error,
-            solver.converged)
+            report_iteration_progress(
+                " 🔧 Solver",
+                iteration_number,
+                "|R|",
+                solver.absolute_error,
+                "|r|",
+                solver.relative_error,
+                solver.converged,
+            )
         end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true

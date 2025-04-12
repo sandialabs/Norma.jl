@@ -410,10 +410,7 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
     integrator.stable_time_step = stable_time_step
     if stable_time_step < integrator.user_time_step
         println(
-            "Warning: Estimated stable time step: ",
-            stable_time_step,
-            " < provided time step: ",
-            integrator.user_time_step,
+            "❗ Provided Δt = $(integrator.user_time_step) exceeds stable step = $(stable_time_step) — using stable step instead.",
         )
     end
     return integrator.time_step = min(stable_time_step, integrator.user_time_step)

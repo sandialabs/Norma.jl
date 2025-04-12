@@ -74,6 +74,7 @@ end
 
 function report_iteration_start(kind::AbstractString, iteration::Int)
     println("🔁 $kind Iteration $iteration")
+    return nothing
 end
 
 function report_iteration_progress(
@@ -83,22 +84,17 @@ function report_iteration_progress(
     abs_error::Float64,
     rel_label::AbstractString,
     rel_error::Float64,
-    converged::Bool
+    converged::Bool,
 )
     status = converged ? "✅" : "⏳"
-    @printf(
-        "%s [%d] %s = %.3e : %s = %.3e : %s\n",
-        kind,
-        iteration,
-        abs_label, abs_error,
-        rel_label, rel_error,
-        status
-    )
+    @printf("%s [%d] %s = %.3e : %s = %.3e : %s\n", kind, iteration, abs_label, abs_error, rel_label, rel_error, status)
+    return nothing
 end
 
 function report_iteration_final(kind::AbstractString, iterations::Int)
     plural = iterations == 1 ? "" : "s"
     println("✔️  Performed $iterations $kind Iteration$plural")
+    return nothing
 end
 
 function parse_args()

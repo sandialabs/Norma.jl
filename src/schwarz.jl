@@ -137,10 +137,9 @@ function schwarz(sim::MultiDomainSimulation)
             sim.schwarz_controller.convergence_hist[iteration_number, 1] = ΔU
             sim.schwarz_controller.convergence_hist[iteration_number, 2] = Δu
         end
-        report_iteration_progress("🍲 Schwarz", iteration_number,
-        "|ΔU|", ΔU,
-        "|ΔU|/|U|", Δu,
-        sim.schwarz_controller.converged)
+        report_iteration_progress(
+            "🍲 Schwarz", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, sim.schwarz_controller.converged
+        )
         if stop_schwarz(sim, iteration_number + 1) == true
             report_iteration_final("Schwarz", iteration_number)
             break
