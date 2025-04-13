@@ -4,7 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-function SolidSchwarzController(params::Parameters)
+function SolidMultiDomainController(params::Parameters)
     num_domains = length(params["domains"])
     minimum_iterations = params["minimum iterations"]
     maximum_iterations = params["maximum iterations"]
@@ -58,7 +58,7 @@ function SolidSchwarzController(params::Parameters)
     else
         convergence_hist = Array{Float64}(undef, 0, 0)
     end
-    return SolidSchwarzController(
+    return SolidMultiDomainController(
         num_domains,
         minimum_iterations,
         maximum_iterations,
@@ -101,7 +101,7 @@ function SolidSchwarzController(params::Parameters)
 end
 
 function create_schwarz_controller(params::Parameters)
-    return SolidSchwarzController(params)
+    return SolidMultiDomainController(params)
 end
 
 function advance_independent(sim::MultiDomainSimulation)
@@ -320,7 +320,7 @@ function resize_histories(sim::MultiDomainSimulation)
 end
 
 function save_history_snapshot(
-    schwarz_controller::SchwarzController, sims::Vector{SingleDomainSimulation}, subsim_index::Int64, stop_index::Int64
+    schwarz_controller::MultiDomainController, sims::Vector{SingleDomainSimulation}, subsim_index::Int64, stop_index::Int64
 )
     schwarz_controller.disp_hist[subsim_index][stop_index] = copy(sims[subsim_index].integrator.displacement)
     schwarz_controller.velo_hist[subsim_index][stop_index] = copy(sims[subsim_index].integrator.velocity)

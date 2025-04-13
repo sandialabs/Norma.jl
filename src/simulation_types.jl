@@ -27,7 +27,7 @@ end
 mutable struct MultiDomainSimulation <: Simulation
     name::String
     params::Parameters
-    schwarz_controller::SchwarzController
+    schwarz_controller::MultiDomainController
     subsims::Vector{SingleDomainSimulation}
     subsim_name_index_map::Dict{String,Int64}
     failed::Bool
