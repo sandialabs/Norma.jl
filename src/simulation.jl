@@ -107,9 +107,9 @@ function MultiDomainSimulation(params::Parameters)
         subsim_index += 1
     end
     params["same time step for domains"] = same_step
-    schwarz_controller = create_schwarz_controller(params)
+    controller = create_controller(params)
     failed = false
-    sim = MultiDomainSimulation(name, params, schwarz_controller, subsims, subsim_name_index_map, failed)
+    sim = MultiDomainSimulation(name, params, controller, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
         subsim.params["global_simulation"] = sim
     end

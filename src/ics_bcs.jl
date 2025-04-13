@@ -497,12 +497,12 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
-    schwarz_controller = global_sim.schwarz_controller
-    if typeof(bc) == SMContactSchwarzBC && schwarz_controller.active_contact == false
+    controller = global_sim.controller
+    if typeof(bc) == SMContactSchwarzBC && controller.active_contact == false
         return nothing
     end
-    empty_history = length(global_sim.schwarz_controller.time_hist) == 0
-    same_step = schwarz_controller.same_step == true
+    empty_history = length(global_sim.controller.time_hist) == 0
+    same_step = controller.same_step == true
     if empty_history == true
         apply_bc_detail(model, bc)
         return nothing
@@ -515,36 +515,36 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     time = model.time
     coupled_name = bc.coupled_subsim.name
     coupled_index = global_sim.subsim_name_index_map[coupled_name]
-    time_hist = global_sim.schwarz_controller.time_hist[coupled_index]
-    disp_hist = global_sim.schwarz_controller.disp_hist[coupled_index]
-    velo_hist = global_sim.schwarz_controller.velo_hist[coupled_index]
-    acce_hist = global_sim.schwarz_controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = global_sim.schwarz_controller.∂Ω_f_hist[coupled_index]
+    time_hist = global_sim.controller.time_hist[coupled_index]
+    disp_hist = global_sim.controller.disp_hist[coupled_index]
+    velo_hist = global_sim.controller.velo_hist[coupled_index]
+    acce_hist = global_sim.controller.acce_hist[coupled_index]
+    ∂Ω_f_hist = global_sim.controller.∂Ω_f_hist[coupled_index]
     interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
     interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
     interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
     interp_∂Ω_f = same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
     bc.coupled_subsim.model.internal_force = interp_∂Ω_f
     if typeof(bc) == SMContactSchwarzBC || typeof(bc) == SMNonOverlapSchwarzBC
-        relaxation_parameter = global_sim.schwarz_controller.relaxation_parameter
-        schwarz_iteration = global_sim.schwarz_controller.iteration_number
+        relaxation_parameter = global_sim.controller.relaxation_parameter
+        schwarz_iteration = global_sim.controller.iteration_number
         if schwarz_iteration == 1
             lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
             lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
             lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
         else
-            lambda_dispᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_acce[coupled_index]
+            lambda_dispᵖʳᵉᵛ = global_sim.controller.lambda_disp[coupled_index]
+            lambda_veloᵖʳᵉᵛ = global_sim.controller.lambda_velo[coupled_index]
+            lambda_acceᵖʳᵉᵛ = global_sim.controller.lambda_acce[coupled_index]
         end
         bc.coupled_subsim.integrator.displacement =
-            global_sim.schwarz_controller.lambda_disp[coupled_index] =
+            global_sim.controller.lambda_disp[coupled_index] =
                 relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
         bc.coupled_subsim.integrator.velocity =
-            global_sim.schwarz_controller.lambda_velo[coupled_index] =
+            global_sim.controller.lambda_velo[coupled_index] =
                 relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
         bc.coupled_subsim.integrator.acceleration =
-            global_sim.schwarz_controller.lambda_acce[coupled_index] =
+            global_sim.controller.lambda_acce[coupled_index] =
                 relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
     else
         bc.coupled_subsim.integrator.displacement = interp_disp
@@ -562,12 +562,12 @@ end
 
 function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
-    schwarz_controller = global_sim.schwarz_controller
-    if typeof(bc) == SMContactSchwarzBC && schwarz_controller.active_contact == false
+    controller = global_sim.controller
+    if typeof(bc) == SMContactSchwarzBC && controller.active_contact == false
         return nothing
     end
-    empty_history = length(global_sim.schwarz_controller.time_hist) == 0
-    same_step = schwarz_controller.same_step == true
+    empty_history = length(global_sim.controller.time_hist) == 0
+    same_step = controller.same_step == true
     if empty_history == true
         apply_bc_detail(model, bc)
         return nothing
@@ -580,11 +580,11 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     time = model.time
     coupled_name = bc.coupled_subsim.name
     coupled_index = global_sim.subsim_name_index_map[coupled_name]
-    time_hist = global_sim.schwarz_controller.time_hist[coupled_index]
-    disp_hist = global_sim.schwarz_controller.disp_hist[coupled_index]
-    velo_hist = global_sim.schwarz_controller.velo_hist[coupled_index]
-    acce_hist = global_sim.schwarz_controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = global_sim.schwarz_controller.∂Ω_f_hist[coupled_index]
+    time_hist = global_sim.controller.time_hist[coupled_index]
+    disp_hist = global_sim.controller.disp_hist[coupled_index]
+    velo_hist = global_sim.controller.velo_hist[coupled_index]
+    acce_hist = global_sim.controller.acce_hist[coupled_index]
+    ∂Ω_f_hist = global_sim.controller.∂Ω_f_hist[coupled_index]
     interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
     interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
     interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
@@ -596,25 +596,25 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     end
 
     if typeof(bc) == SMContactSchwarzBC || typeof(bc) == SMNonOverlapSchwarzBC
-        relaxation_parameter = global_sim.schwarz_controller.relaxation_parameter
-        schwarz_iteration = global_sim.schwarz_controller.iteration_number
+        relaxation_parameter = global_sim.controller.relaxation_parameter
+        schwarz_iteration = global_sim.controller.iteration_number
         if schwarz_iteration == 1
             lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
             lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
             lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
         else
-            lambda_dispᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = global_sim.schwarz_controller.lambda_acce[coupled_index]
+            lambda_dispᵖʳᵉᵛ = global_sim.controller.lambda_disp[coupled_index]
+            lambda_veloᵖʳᵉᵛ = global_sim.controller.lambda_velo[coupled_index]
+            lambda_acceᵖʳᵉᵛ = global_sim.controller.lambda_acce[coupled_index]
         end
         bc.coupled_subsim.integrator.displacement =
-            global_sim.schwarz_controller.lambda_disp[coupled_index] =
+            global_sim.controller.lambda_disp[coupled_index] =
                 relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
         bc.coupled_subsim.integrator.velocity =
-            global_sim.schwarz_controller.lambda_velo[coupled_index] =
+            global_sim.controller.lambda_velo[coupled_index] =
                 relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
         bc.coupled_subsim.integrator.acceleration =
-            global_sim.schwarz_controller.lambda_acce[coupled_index] =
+            global_sim.controller.lambda_acce[coupled_index] =
                 relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
     else
         bc.coupled_subsim.integrator.displacement = interp_disp
@@ -839,7 +839,7 @@ function create_bcs(params::Parameters)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
                 sim = params["global_simulation"]
-                sim.schwarz_controller.schwarz_contact = true
+                sim.controller.schwarz_contact = true
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
