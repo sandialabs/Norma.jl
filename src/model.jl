@@ -409,8 +409,9 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
     end
     integrator.stable_time_step = stable_time_step
     if stable_time_step < integrator.user_time_step
-        @printf("❗ Δt = %.3e exceeds stable Δt = %.3e — using stable step.\n",
-        integrator.user_time_step, stable_time_step)
+        @printf(
+            "❗ Δt = %.3e exceeds stable Δt = %.3e — using stable step.\n", integrator.user_time_step, stable_time_step
+        )
     end
     integrator.time_step = min(stable_time_step, integrator.user_time_step)
     return nothing

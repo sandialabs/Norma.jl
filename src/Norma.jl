@@ -11,23 +11,22 @@ include("simulation.jl")
 include("evolve.jl")
 
 function run(input_file::String)
-    run(create_simulation(input_file))
+    return run(create_simulation(input_file))
 end
 
 function run(params::Parameters)
-    run(create_simulation(params))
+    return run(create_simulation(params))
 end
 
 function run(sim::Simulation)
     start_time = time()
-    println("📐 Norma.jl")
     if get(sim.params, "enable FPE", false) == true
         enable_fpe_traps()
     end
     evolve(sim)
     elapsed_time = time() - start_time
     println("⏹️  Simulation Complete")
-    println("⌚️ Total Time = ", format_time(elapsed_time))
+    println("⌚️ Run Time = ", format_time(elapsed_time))
     return sim
 end
 

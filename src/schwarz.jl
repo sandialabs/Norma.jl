@@ -141,7 +141,7 @@ function schwarz(sim::MultiDomainSimulation)
         @printf("⏫️ Schwarz [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
         if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
-            println("⏺️  Performed $iteration_number Schwarz Iteration$plural")
+            println("⏺️  Performed ", iteration_number, " Schwarz Iteration", plural)
             break
         end
         iteration_number += 1

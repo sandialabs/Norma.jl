@@ -16,7 +16,8 @@ include("solver.jl")
 include("schwarz.jl")
 
 function create_simulation(input_file::String)
-    @printf("📝 Simulation %s\n", input_file)
+    println("📐 Norma.jl")
+    println("📝 Simulation ", input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     params["name"] = input_file
     return create_simulation(params)
