@@ -61,6 +61,80 @@ function SMOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,A
     )
 end
 
+
+function SMOpInfCouplingSchwarzBC(
+    subsim::SingleDomainSimulation,
+    coupled_subsim::SingleDomainSimulation,
+    input_mesh::ExodusDatabase,
+    bc_type::String,
+    bc_params::Parameters,
+)
+    fom_bc = SMCouplingSchwarzBC(subsim,coupled_subsim,input_mesh,bc_type,bc_params)
+    side_set_name = bc_params["side set"]
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    _, _, side_set_node_indices = get_side_set_local_from_global_map(input_mesh, side_set_id)
+    coupled_block_name = bc_params["source block"]
+    if typeof(coupled_subsim.model) <: RomModel
+        coupled_mesh = coupled_subsim.model.fom_model.mesh
+    else
+        coupled_mesh = coupled_subsim.model.mesh
+    end
+    coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
+    element_type = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
+    coupled_side_set_name = bc_params["source side set"]
+    coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
+    coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
+    interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
+    tol = 1.0e-06
+    if haskey(bc_params, "search tolerance") == true
+        tol = bc_params["search tolerance"]
+    end
+    side_set_node_indices = unique(side_set_node_indices)
+    for node_index in side_set_node_indices
+        point = subsim.model.reference[:, node_index]
+        node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
+        if found == false
+            error("Could not find subdomain ", subsim.name, " point ", point, " in subdomain ", coupled_subsim.name)
+        end
+        N = interpolate(element_type, ξ)[1]
+        push!(coupled_nodes_indices, node_indices)
+        push!(interpolation_function_values, N)
+    end
+    is_dirichlet = true
+    swap_bcs = false
+
+    opinf_model_file = bc_params["model-file"]
+    py""" 
+    import torch
+    def get_model(model_file):
+      return torch.load(model_file)
+    """
+    model = py"get_model"(opinf_model_file)
+
+    opinf_model_file = bc_params["model-file"]
+    basis_file = bc_params["basis-file"]
+    basis = NPZ.npzread(basis_file)
+    basis = basis["basis"]
+
+    if bc_type == "OpInf Schwarz overlap"
+        SMOpInfOverlapSchwarzBC(
+            side_set_name,
+            side_set_node_indices,
+            coupled_nodes_indices,
+            interpolation_function_values,
+            coupled_subsim,
+            subsim,
+            is_dirichlet,
+            swap_bcs,
+            model,
+            basis
+        )
+    else
+        error("Unknown boundary condition type : ", bc_type)
+    end
+end
+
+
 function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
@@ -932,6 +1006,17 @@ function create_bcs(params::Parameters)
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
                 boundary_condition = SMCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "OpInf Schwarz overlap"
+                sim = params["global_simulation"]
+                subsim_name = params["name"]
+                subdomain_index = sim.subsim_name_index_map[subsim_name]
+                subsim = sim.subsims[subdomain_index]
+                coupled_subsim_name = bc_setting_params["source"]
+                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
+                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                boundary_condition = SMOpInfCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
+
             else
                 error("Unknown boundary condition type : ", bc_type)
             end
