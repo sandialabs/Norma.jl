@@ -412,7 +412,8 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         @printf("❗ Δt = %.3e exceeds stable Δt = %.3e — using stable step.\n",
         integrator.user_time_step, stable_time_step)
     end
-    return integrator.time_step = min(stable_time_step, integrator.user_time_step)
+    integrator.time_step = min(stable_time_step, integrator.user_time_step)
+    return nothing
 end
 
 function voigt_cauchy_from_stress(_::Solid, P::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9}, J::Float64)

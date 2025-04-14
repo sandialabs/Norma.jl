@@ -128,7 +128,7 @@ function schwarz(sim::MultiDomainSimulation)
     end
 
     while true
-        println("⏬️ Schwarz Iteration $iteration_number")
+        println("⏬️ Schwarz Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
         synchronize(sim)
         subcycle(sim, is_schwarz)

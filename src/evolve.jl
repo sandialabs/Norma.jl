@@ -187,29 +187,25 @@ end
 
 using Printf
 
-function sync_time(sim::SingleDomainSimulation)
-    synchronize(sim)
-    stop = sim.integrator.stop
-    initial_time = sim.integrator.prev_time
-    final_time = sim.integrator.time
-    if stop == 0
-        @printf("▶️  Stop 0 : Time = %.4e\n", final_time)
-    else
-        Δt = final_time - initial_time
-        @printf("⏭️  Stop %d : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
-    end
+function get_time_controller(sim::SingleDomainSimulation)
+    return sim.integrator
 end
 
-function sync_time(sim::MultiDomainSimulation)
+function get_time_controller(sim::MultiDomainSimulation)
+    return sim.controller
+end
+
+function sync_time(sim)
     synchronize(sim)
-    stop = sim.controller.stop
-    initial_time = sim.controller.prev_time
-    final_time = sim.controller.time
+    ctrl = get_time_controller(sim)
+    stop = ctrl.stop
+    initial_time = ctrl.prev_time
+    final_time = ctrl.time
     if stop == 0
-        @printf("▶️  Stop 0 : Time = %.4e\n", final_time)
+        @printf("▶️  Stop [0] : Time = %.4e\n", final_time)
     else
         Δt = final_time - initial_time
-        @printf("⏭️  Stop %d : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
+        @printf("⏭️  Stop [%d] : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
     end
 end
 
