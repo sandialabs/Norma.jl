@@ -18,7 +18,7 @@ function SolidMultiDomainController(params::Parameters)
     @printf("🕒 Time Step = %.4e : Adjusted = %.4e : Total Stops = %d\n", input_time_step, time_step, num_stops)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
-    same_step = get(params, "same time step for domains", false)
+    same_step = true
     stop = 0
     converged = false
     iteration_number = 0
@@ -269,7 +269,8 @@ end
 function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
     subsim_index = 1
     for subsim in sim.subsims
-        @printf(" 🧩 %s\n", subsim.name)
+        @printf("  🧩 %s\n", subsim.name)
+        @printf("  ▶️  Time = %.4e\n", subsim.integrator.time)
         stop_index = 1
         while true
             advance_time(subsim)
@@ -278,6 +279,7 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
             end
             subsim.model.time = subsim.integrator.time
             advance(subsim)
+            @printf("  ⏭️  Time = %.4e : Δt = %.4e\n", subsim.integrator.time, subsim.integrator.time_step)
             if sim.controller.active_contact == true && sim.controller.naive_stabilized == true
                 apply_naive_stabilized_bcs(subsim)
             end

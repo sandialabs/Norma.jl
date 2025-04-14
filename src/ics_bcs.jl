@@ -502,7 +502,7 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
         return nothing
     end
     empty_history = length(global_sim.controller.time_hist) == 0
-    same_step = controller.same_step == true
+    same_step = controller.same_step
     if empty_history == true
         apply_bc_detail(model, bc)
         return nothing
@@ -567,7 +567,7 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
         return nothing
     end
     empty_history = length(global_sim.controller.time_hist) == 0
-    same_step = controller.same_step == true
+    same_step = controller.same_step
     if empty_history == true
         apply_bc_detail(model, bc)
         return nothing

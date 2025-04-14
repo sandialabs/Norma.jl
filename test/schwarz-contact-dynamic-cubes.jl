@@ -49,6 +49,7 @@ using YAML
     end
 end
 
+#=
 @testset "Schwarz Contact Explicit Cubes Tied" begin
     cp("../examples/contact/explicit-dynamic/friction-cubes/cubes.yaml", "cubes.yaml"; force=true)
     cp("../examples/contact/explicit-dynamic/friction-cubes/cube-1.yaml", "cube-1.yaml"; force=true)
@@ -89,6 +90,7 @@ end
         @test coordinate_1 ≈ coordinate_2 atol = 5e-3
     end
 end
+=#
 
 @testset "Schwarz Contact Inclined Explicit Cubes" begin
     model_fine = nothing

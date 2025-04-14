@@ -87,14 +87,16 @@ function MultiDomainSimulation(params::Parameters)
     csv_interval = get(params, "CSV output interval", 0)
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
-    println(" 🧩 Subdomains:")
+    println("  🟩 Subdomains:")
     for domain_name in domain_names
-        @printf("  • %s\n", domain_name)
+        @printf("  🧩 %s\n", domain_name)
         subparams = YAML.load_file(domain_name; dicttype=Parameters)
         subparams["name"] = domain_name
-        subparams["time integrator"]["initial time"] = initial_time
-        subparams["time integrator"]["final time"] = final_time
-        subparams["time integrator"]["time step"] = time_step
+        ti_params = subparams["time integrator"]
+        subsim_time_step = get(ti_params, "time step", time_step)
+        ti_params["initial time"] = initial_time
+        ti_params["final time"] = final_time
+        ti_params["time step"] = subsim_time_step
         subparams["Exodus output interval"] = exodus_interval
         subparams["CSV output interval"] = csv_interval
         subsim = SingleDomainSimulation(subparams)
@@ -106,8 +108,8 @@ function MultiDomainSimulation(params::Parameters)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
-    params["same time step for domains"] = same_step
     controller = create_controller(params)
+    controller.same_step = same_step
     failed = false
     sim = MultiDomainSimulation(name, params, controller, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
