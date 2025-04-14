@@ -128,7 +128,7 @@ function schwarz(sim::MultiDomainSimulation)
     end
 
     while true
-        report_iteration_start("Schwarz", iteration_number)
+        println("⏬️ Schwarz Iteration $iteration_number")
         sim.controller.iteration_number = iteration_number
         synchronize(sim)
         subcycle(sim, is_schwarz)
@@ -137,9 +137,11 @@ function schwarz(sim::MultiDomainSimulation)
             sim.controller.convergence_hist[iteration_number, 1] = ΔU
             sim.controller.convergence_hist[iteration_number, 2] = Δu
         end
-        report_iteration_progress("🍲 Schwarz", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, sim.controller.converged)
+        status = sim.controller.converged ? "✅" : "⏳"
+        @printf("⏫️ Schwarz [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
         if stop_schwarz(sim, iteration_number + 1) == true
-            report_iteration_final("Schwarz", iteration_number)
+            plural = iteration_number == 1 ? "" : "s"
+            println("⏺️  Performed $iteration_number Schwarz Iteration$plural")
             break
         end
         iteration_number += 1

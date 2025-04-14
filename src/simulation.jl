@@ -32,7 +32,7 @@ function create_simulation(params::Parameters, name::String)
 end
 
 function create_simulation(input_file::String)
-    @printf("📄 Simulation %s\n", input_file)
+    @printf("📝 Simulation %s\n", input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     return create_simulation(params, input_file)
 end

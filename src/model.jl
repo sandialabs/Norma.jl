@@ -705,12 +705,12 @@ function evaluate(integrator::TimeIntegrator, model::SolidMechanics)
                 dNdX = dXdξ \ dNdξ
                 F = SMatrix{3,3,Float64,9}(dNdX * element_current_position')
                 J = det(F)
-                if J ≤ 0.0
+                if J ≤ 0.0 || isfinite(J) == false
                     model.failed = true
                     model.compute_stiffness = model.compute_mass = model.compute_lumped_mass = true
-                    @info "Non-positive Jacobian detected!"
-                    @info "This may indicate element distortion."
-                    @info "Attempting to recover by adjusting time step size..."
+                    println("⛔️ Non-positive Jacobian detected!")
+                    println("⛔️ This may indicate element distortion.")
+                    println("⏮️  Attempting to recover...")
                     return nothing
                 end
                 W, P, A = constitutive(material, F)

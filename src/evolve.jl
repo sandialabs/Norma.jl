@@ -55,7 +55,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
         error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
-    @info "Time step failure. Decreasing time step." time_step new_time_step
+    @printf("🔽 Time step failure. Decreasing time step. (Δt = %.3e → %.3e)\n", time_step, new_time_step)
 end
 
 function increase_time_step(sim::SingleDomainSimulation)
@@ -66,7 +66,7 @@ function increase_time_step(sim::SingleDomainSimulation)
         new_time_step = min(increase_factor * time_step, maximum_time_step)
         if new_time_step > time_step
             sim.integrator.time_step = new_time_step
-            @info "Time step success. Increasing time step." time_step new_time_step
+            @printf("🔼 Time step success. Increasing time step. (Δt = %.3e → %.3e)\n", time_step, new_time_step)
         end
     end
 end
@@ -193,10 +193,10 @@ function sync_time(sim::SingleDomainSimulation)
     initial_time = sim.integrator.prev_time
     final_time = sim.integrator.time
     if stop == 0
-        @printf("🚀 Stop 0 : Time = %.4e\n", final_time)
+        @printf("▶️  Stop 0 : Time = %.4e\n", final_time)
     else
         Δt = final_time - initial_time
-        @printf("⏩ Stop %d : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
+        @printf("⏭️  Stop %d : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
     end
 end
 
@@ -206,10 +206,10 @@ function sync_time(sim::MultiDomainSimulation)
     initial_time = sim.controller.prev_time
     final_time = sim.controller.time
     if stop == 0
-        @printf("🚀 Stop 0 : Time = %.4e\n", final_time)
+        @printf("▶️  Stop 0 : Time = %.4e\n", final_time)
     else
         Δt = final_time - initial_time
-        @printf("⏩ Stop %d : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
+        @printf("⏭️  Stop %d : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
     end
 end
 
