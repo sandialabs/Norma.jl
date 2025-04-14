@@ -682,7 +682,15 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         update_solver_convergence_criterion(solver, norm_residual)
         if is_explicit_dynamic == false
             status = solver.converged ? "✅" : "⏳"
-            @printf(" 🔧 Solver [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|R|", solver.absolute_error, "|r|", solver.relative_error, status)
+            @printf(
+                " 🔧 Solver [%d] %s = %.3e : %s = %.3e : %s\n",
+                iteration_number,
+                "|R|",
+                solver.absolute_error,
+                "|r|",
+                solver.relative_error,
+                status
+            )
         end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
