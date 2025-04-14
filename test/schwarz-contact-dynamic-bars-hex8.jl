@@ -15,7 +15,8 @@ using YAML
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = -1.0e-06
     params["final time"] = 1.0e-06
-    sim = Norma.run(params, input_file)
+    params["name"] = input_file
+    sim = Norma.run(params)
     subsims = sim.subsims
     model_fine = subsims[1].model
     integrator_fine = subsims[1].integrator

@@ -24,10 +24,10 @@ function run(input_file::String)
     return sim
 end
 
-function run(params::Parameters, name::String)
+function run(params::Parameters)
     start_time = time()
     println("📐 Norma.jl")
-    sim = create_simulation(params, name)
+    sim = create_simulation(params)
     if get(sim.params, "enable FPE", false) == true
         enable_fpe_traps()
     end

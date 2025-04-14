@@ -16,8 +16,8 @@ using YAML
     params["time integrator"]["final time"] = time
 
     params["model"]["material"]["elastic"]["model"] = "Saint-Venant Kirchhoff"
-
-    simulation = Norma.run(params, input_file)
+    params["name"] = input_file
+    simulation = Norma.run(params)
     velocity = 0.0005
     E = 200e9
     ν = 0.27
@@ -75,8 +75,8 @@ end
     params["time integrator"]["final time"] = time
 
     params["model"]["material"]["elastic"]["model"] = "Saint-Venant Kirchhoff"
-
-    simulation = Norma.run(params, input_file)
+    params["name"] = input_file
+    simulation = Norma.run(params)
     velocity = 0.01
     E = 200e9
     ν = 0.27

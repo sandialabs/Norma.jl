@@ -17,7 +17,8 @@ using YAML
     params["initial time"] = -1.0e-06
     params["time step"] = 1e-6
     params["final time"] = 4e-6
-    sim = Norma.run(params, input_file)
+    params["name"] = input_file
+    sim = Norma.run(params)
     subsims = sim.subsims
     model_1 = subsims[1].model
     model_2 = subsims[2].model
@@ -61,7 +62,8 @@ end
     params["initial time"] = -1.0e-06
     params["time step"] = 1e-6
     params["final time"] = 4e-6
-    sim = Norma.run(params, input_file)
+    params["name"] = input_file
+    sim = Norma.run(params)
     subsims = sim.subsims
     model_1 = subsims[1].model
     model_2 = subsims[2].model
@@ -107,7 +109,8 @@ end
         params = YAML.load_file(input_file; dicttype=Norma.Parameters)
         params["initial time"] = -1.0e-06
         params["final time"] = 1.0e-5
-        sim = Norma.run(params, input_file)
+        params["name"] = input_file
+        sim = Norma.run(params)
         subsim_temp = sim.subsims
         model_fine_temp = subsim_temp[1].model.current
         model_coarse_temp = subsim_temp[2].model.current
@@ -162,7 +165,8 @@ end
         params["initial time"] = -1.0e-06
         params["time step"] = 1e-6
         params["final time"] = 4e-6
-        sim = Norma.run(params, input_file)
+        params["name"] = input_file
+        sim = Norma.run(params)
         subsim_temp = sim.subsims
         model_fine_temp = subsim_temp[1].model.current
         model_coarse_temp = subsim_temp[2].model.current
