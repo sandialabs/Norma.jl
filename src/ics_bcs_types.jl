@@ -87,6 +87,21 @@ mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
     swap_bcs::Bool
 end
 
+mutable struct SMOpInfOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
+    side_set_name::String
+    side_set_node_indices::Vector{Int64}
+    coupled_nodes_indices::Vector{Vector{Int64}}
+    interpolation_function_values::Vector{Vector{Float64}}
+    coupled_subsim::Simulation
+    subsim::Simulation
+    is_dirichlet::Bool
+    swap_bcs::Bool
+    fom_bc::SMOverlapSchwarzBC
+    nn_model::Any
+    basis::Any
+end
+
+
 mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
