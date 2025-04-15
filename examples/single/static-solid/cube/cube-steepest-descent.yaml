@@ -35,7 +35,7 @@ boundary conditions:
 solver:
   type: steepest descent
   step: steepest descent
-  step length: 1.0e-04
+  step length: 1.0
   minimum iterations: 1
   maximum iterations: 1024
   relative tolerance: 1.0e-15

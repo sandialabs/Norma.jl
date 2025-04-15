@@ -583,11 +583,9 @@ function compute_step(_::CentralDifference, model::SolidMechanics, solver::Expli
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
 end
 
-function compute_step(
-    integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, sd_step::SteepestDescentStep
-)
+function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, _::SteepestDescentStep)
     free = model.free_dofs
-    direction = -sd_step.step_length * solver.gradient[free]
+    direction = -solver.gradient[free] ./ model.diag_stiffness[free]
     return backtrack_line_search(integrator, solver, model, direction)
 end
 
