@@ -427,7 +427,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
     end
@@ -445,7 +445,7 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
 end
 
 function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::SolidMechanics)
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
     end
@@ -457,7 +457,7 @@ function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::Solid
 end
 
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
     end
@@ -483,7 +483,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
 end
 
 function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
     end
