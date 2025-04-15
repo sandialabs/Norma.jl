@@ -15,9 +15,8 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-
-    basis_file = params["model"]["basis-file"]
+    opinf_model_directory = params["model"]["model-directory"]
+    basis_file = opinf_model_directory * "/nn-opinf-basis.npz"
     basis = NPZ.npzread(basis_file)
     basis = basis["basis"]
     py""" 
@@ -25,7 +24,12 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     def get_model(model_file):
       return torch.load(model_file)
     """
-    model = py"get_model"(opinf_model_file)
+    ensemble_size = params["model"]["ensemble-size"]
+    model = []
+    for i in 1:ensemble_size
+      tmp =  py"get_model"(opinf_model_directory * "/stiffness-" * string(i-1) * ".pt")
+      push!(model,tmp)
+    end
     num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
     num_dofs = reduced_dim
 
