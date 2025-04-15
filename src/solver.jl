@@ -435,9 +435,19 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::NeuralNe
         return inputs
     """
     model_inputs = py"setup_inputs"(solver.solution)
-    Kx,K = model.nn_model.forward(model_inputs,return_stiffness=true)
+    ensemble_size = size(model.nn_model)[1] 
+    stiffness = zeros( num_dof,num_dof )
+    #Kx,K = model.nn_model[1].forward(model_inputs,return_stiffness=true)
+    #K = K.detach().numpy()[1,:,:]
+    for i in 1:ensemble_size
+      Kxt,Kt = model.nn_model[i].forward(model_inputs,return_stiffness=true)
+      #Kx += Kxt
+      Kt = Kt.detach().numpy()[1,:,:]
+      stiffness += Kt
 
-    LHS = I / (dt*dt*beta) - K.detach().numpy()[1,:,:] 
+    end
+    stiffness = stiffness./ensemble_size
+    LHS = I / (dt*dt*beta) - stiffness 
     RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
 
     residual = RHS - LHS * solver.solution 
