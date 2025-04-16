@@ -622,9 +622,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     is_dynamic = is_implicit_dynamic || is_explicit_dynamic
     is_implicit = is_implicit_dynamic || is_implicit_static
     is_hessian_opt = solver isa HessianMinimizer
-    is_cg_like = solver isa SteepestDescent
-    need_diag_stiffness = is_implicit == true && is_cg_like == true
-    need_lumped_mass = is_explicit_dynamic == true || (is_implicit_dynamic == true && is_cg_like == true)
+    is_matrix_free = solver isa SteepestDescent
+    need_diag_stiffness = is_implicit == true && is_matrix_free == true
+    need_lumped_mass = is_explicit_dynamic == true || (is_implicit_dynamic == true && is_matrix_free == true)
     need_stiffness = is_implicit == true && is_hessian_opt == true
     need_mass = is_dynamic == true && is_hessian_opt == true
     compute_diag_stiffness = need_diag_stiffness == true && model.compute_diag_stiffness == true
