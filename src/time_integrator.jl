@@ -193,7 +193,7 @@ end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
     # Compute initial accelerations
-    evaluate(integrator, model.fom_model)
+    evaluate(model.fom_model, integrator, solver)
     free = model.fom_model.free_dofs
     internal_force = model.fom_model.internal_force
     external_force = model.fom_model.body_force + model.fom_model.boundary_force
@@ -277,7 +277,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     @printf("🏁 Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         error("Finite element model failed to initialize")
     end
@@ -296,7 +296,30 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     return nothing
 end
 
-function predict(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
+function initialize(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
+    @printf("🏁 Computing Initial Acceleration...\n")
+    copy_solution_source_targets(model, integrator, solver)
+    free = model.free_dofs
+    evaluate(model, integrator, solver)
+    if model.failed == true
+        error("Finite element model failed to initialize")
+    end
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
+    if model.inclined_support == true
+        external_force = model.global_transform * external_force
+        internal_force = model.global_transform * internal_force
+    end
+    inertial_force = external_force - internal_force
+    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
+    integrator.kinetic_energy = kinetic_energy
+    integrator.stored_energy = model.strain_energy
+    integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
+    copy_solution_source_targets(integrator, solver, model)
+    return nothing
+end
+
+function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     fixed = .!free
@@ -316,7 +339,7 @@ function predict(integrator::Newmark, solver::HessianMinimizer, model::SolidMech
     return nothing
 end
 
-function correct(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
+function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
     free = model.free_dofs
     Δt = integrator.time_step
     β = integrator.β
@@ -335,7 +358,7 @@ function initialize(integrator::CentralDifference, solver::ExplicitSolver, model
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         error("The finite element model has failed to initialize")
     end

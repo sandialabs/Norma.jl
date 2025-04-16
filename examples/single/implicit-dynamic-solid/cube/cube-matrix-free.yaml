@@ -14,29 +14,21 @@ model:
       Poisson's ratio: 0.25
       density: 1000.0
 time integrator:
-  type: quasi static
+  type: Newmark
   initial time: 0.0
   final time: 1.0
   time step: 0.1
-boundary conditions:
-  Dirichlet:
-    - node set: nsx-
-      component: x
-      function: "0.0"
-    - node set: nsy-
-      component: y
-      function: "0.0"
-    - node set: nsz-
+  β: 0.25
+  γ: 0.5
+initial conditions:
+  velocity:
+    - node set: nsall
       component: z
-      function: "0.0"
-    - node set: nsz+
-      component: z
-      function: "1.0 * t"
+      function: "1.0"
 solver:
   type: steepest descent
   step: steepest descent
-  step length: 1.0
   minimum iterations: 1
-  maximum iterations: 1024
-  relative tolerance: 1.0e-15
-  absolute tolerance: 1.0e-08
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06
