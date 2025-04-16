@@ -4,10 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-include("minitensor.jl")
-
 using LinearAlgebra
-using .MiniTensor
 
 abstract type Material end
 abstract type Solid <: Material end

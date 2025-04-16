@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 using Logging
 using Printf
+using Unicode
 
 # Enable debugging for a specific module in the environment variable JULIA_DEBUG (all for all modules)
 function configure_logger()
@@ -35,7 +36,8 @@ Warns that parser behavior may break due to this setting.
 """
 function enable_fpe_traps()
     if Sys.islinux() && Sys.ARCH == :x86_64
-        @warn "Enabling FPE traps can break Julia's parser if done too early (e.g., before Meta.parse())."
+        @warn "Enabling FPE traps can break Julia's parser if done too early"
+        @warn "(e.g., before Meta.parse())."
         mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
         ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
         @info "Floating-point exceptions enabled (invalid, div-by-zero, overflow)"

@@ -5,9 +5,9 @@
 # top-level Norma.jl directory.
 
 abstract type SingleController end
-abstract type SchwarzController end
+abstract type MultiDomainController end
 
-mutable struct SolidSchwarzController <: SchwarzController
+mutable struct SolidMultiDomainController <: MultiDomainController
     num_domains::Int64
     minimum_iterations::Int64
     maximum_iterations::Int64

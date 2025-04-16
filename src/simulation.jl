@@ -9,13 +9,21 @@ using YAML
 
 include("interpolation_types.jl")
 include("simulation_types.jl")
+include("minitensor.jl")
 include("model.jl")
 include("time_integrator.jl")
 include("solver.jl")
 include("schwarz.jl")
 
-function create_simulation(params::Parameters, name::String)
-    params["name"] = name
+function create_simulation(input_file::String)
+    println("📐 Norma.jl")
+    println("📝 Simulation ", input_file)
+    params = YAML.load_file(input_file; dicttype=Parameters)
+    params["name"] = input_file
+    return create_simulation(params)
+end
+
+function create_simulation(params::Parameters)
     sim_type = params["type"]
     if sim_type == "single"
         sim = SingleDomainSimulation(params)
@@ -28,12 +36,6 @@ function create_simulation(params::Parameters, name::String)
     else
         error("Unknown type of simulation: ", sim_type)
     end
-end
-
-function create_simulation(input_file::String)
-    @printf("Reading Simulation File: %s\n", input_file)
-    params = YAML.load_file(input_file; dicttype=Parameters)
-    return create_simulation(params, input_file)
 end
 
 function create_bcs(sim::SingleDomainSimulation)
@@ -86,13 +88,16 @@ function MultiDomainSimulation(params::Parameters)
     csv_interval = get(params, "CSV output interval", 0)
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
+    println("  🟩 Subdomains:")
     for domain_name in domain_names
-        @printf("Reading Subsimulation File: %s\n", domain_name)
+        @printf("  🧩 %s\n", domain_name)
         subparams = YAML.load_file(domain_name; dicttype=Parameters)
         subparams["name"] = domain_name
-        subparams["time integrator"]["initial time"] = initial_time
-        subparams["time integrator"]["final time"] = final_time
-        subparams["time integrator"]["time step"] = time_step
+        ti_params = subparams["time integrator"]
+        subsim_time_step = get(ti_params, "time step", time_step)
+        ti_params["initial time"] = initial_time
+        ti_params["final time"] = final_time
+        ti_params["time step"] = subsim_time_step
         subparams["Exodus output interval"] = exodus_interval
         subparams["CSV output interval"] = csv_interval
         subsim = SingleDomainSimulation(subparams)
@@ -104,10 +109,10 @@ function MultiDomainSimulation(params::Parameters)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
-    params["same time step for domains"] = same_step
-    schwarz_controller = create_schwarz_controller(params)
+    controller = create_controller(params)
+    controller.same_step = same_step
     failed = false
-    sim = MultiDomainSimulation(name, params, schwarz_controller, subsims, subsim_name_index_map, failed)
+    sim = MultiDomainSimulation(name, params, controller, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
         subsim.params["global_simulation"] = sim
     end

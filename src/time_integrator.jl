@@ -193,7 +193,7 @@ end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
     # Compute initial accelerations
-    evaluate(integrator, model.fom_model)
+    evaluate(model.fom_model, integrator, solver)
     free = model.fom_model.free_dofs
     internal_force = model.fom_model.internal_force
     external_force = model.fom_model.body_force + model.fom_model.boundary_force
@@ -254,7 +254,7 @@ end
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
-        @printf("Establishing Initial Equilibrium...\n")
+        @printf("🧱 Establishing Initial Equilibrium...\n")
         solve(integrator, solver, model)
         if model.failed == true
             error("Finite element model failed to establish initial equlibrium")
@@ -274,10 +274,10 @@ function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    @printf("Computing Initial Acceleration...\n")
+    @printf("🏁 Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         error("Finite element model failed to initialize")
     end
@@ -331,11 +331,11 @@ function correct(integrator::Newmark, solver::HessianMinimizer, model::SolidMech
 end
 
 function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    @printf("Computing Initial Acceleration...\n")
+    @printf("🏁 Computing Initial Acceleration...\n")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
-    evaluate(integrator, model)
+    evaluate(model, integrator, solver)
     if model.failed == true
         error("The finite element model has failed to initialize")
     end

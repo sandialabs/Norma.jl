@@ -3,7 +3,7 @@
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE.md)
 [![Julia version](https://img.shields.io/badge/Julia-1.11-blueviolet)](https://julialang.org/downloads/)
 
-# **Norma.jl**
+# **📐 Norma.jl**
 
 **Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
 
