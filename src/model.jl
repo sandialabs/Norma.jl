@@ -611,6 +611,19 @@ function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
     return coo_matrices
 end
 
+function add_diag_stiff!(
+    k::AbstractVector{T},
+    grad_op::SMatrix{9,M,T},
+    C::SMatrix{9,9,T},
+    dV::T,
+) where {M,T}
+    @inbounds for i = 1:M
+        g = grad_op[:, i]
+        k[i] += dV * dot(g, C * g)
+    end
+    return nothing
+end
+
 function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
     return SVector{N,T}(sum(A; dims=2)[:, 1])
 end
@@ -749,7 +762,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
                 if compute_diag_stiffness == true
                     moduli = second_from_fourth(A)
-                    @einsum element_diag_stiffness[i] += grad_op[m, i] * moduli[m, n] * grad_op[n, i] * dvol
+                    add_diag_stiff!(element_diag_stiffness, grad_op, moduli, dvol)
                 end
                 if compute_lumped_mass == true
                     Nξ = N[:, point]
