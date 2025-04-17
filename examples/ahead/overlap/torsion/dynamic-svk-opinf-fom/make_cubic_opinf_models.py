@@ -62,7 +62,7 @@ if __name__ == "__main__":
         else: 
             reduced_stacked_sideset_snapshots = np.append(reduced_stacked_sideset_snapshots,reduced_sideset_snapshots[sideset],axis=0)
     
-    my_energy_truncater = romtools.vector_space.utils.BasisSizeTruncater(20)
+    my_energy_truncater = romtools.vector_space.utils.BasisSizeTruncater(30)
     
     # Create trial space for displacement vector
     # Note again that I construct a separate basis for each x,y,z component. This isn't necessary 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
    
     # Construct an opinf "AB" model (linear in the state and linear in the exogenous inputs)
     #   Note: I don't construct a cAB ROM in this example since I know there is no forcing vector
-    l2solver = opinf.lstsq.L2Solver(regularizer=1e-6)
+    l2solver = opinf.lstsq.L2Solver(regularizer=5e-3)
     #opinf_model = opinf.models.ContinuousModel("AHB",solver=l2solver)
     #opinf_model = opinf.models.ContinuousModel("GB",solver=l2solver)
     opinf_model = opinf.models.ContinuousModel("AHGB",solver=l2solver)
