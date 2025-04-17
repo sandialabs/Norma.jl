@@ -1,4 +1,4 @@
-CSV output interval: 8
+CSV output interval: 1
 Exodus output interval: 1
 absolute tolerance: 1.0e-07
 domains:
@@ -11,5 +11,5 @@ minimum iterations: 1
 naive stabilized: false
 relative tolerance: 1.0e-08
 relaxation parameter: 1.0
-time step: 2.5e-09
+time step: 7.071067811865475e-09
 type: multi

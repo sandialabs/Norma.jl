@@ -9,7 +9,7 @@ boundary conditions:
 initial conditions:
   displacement:
   - component: x
-    function: "-100.0 * t"
+    function: "-10 * t"
     node set: nsall
 input mesh file: bar-2.g
 model:
@@ -19,7 +19,7 @@ model:
     elastic:
       Poisson's ratio: 0.25
       density: 1000.0
-      elastic modulus: 1000000000.0
+      elastic modulus: 1000000000
       model: linear elastic
   type: solid mechanics
 output mesh file: bar-2.e

@@ -9,7 +9,7 @@ boundary conditions:
 initial conditions:
   displacement:
   - component: x
-    function: "100.0 * t"
+    function: "10 * t"
     node set: nsall
 input mesh file: bar-1.g
 model:
@@ -19,15 +19,19 @@ model:
     elastic:
       Poisson's ratio: 0.25
       density: 1000.0
-      elastic modulus: 1000000000.0
+      elastic modulus: 1000000000
       model: linear elastic
   type: solid mechanics
 output mesh file: bar-1.e
 solver:
-  step: explicit
-  type: explicit solver
+  absolute tolerance: 1.0e-06
+  maximum iterations: 16
+  minimum iterations: 1
+  relative tolerance: 1.0e-10
+  step: full Newton
+  type: Hessian minimizer
 time integrator:
-  CFL: 0.1
-  type: central difference
+  type: Newmark
+  β: 0.25
   γ: 0.5
 type: single
