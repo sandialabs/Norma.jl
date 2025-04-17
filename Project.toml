@@ -1,6 +1,6 @@
 name = "Norma"
 uuid = "b933802f-98f0-4369-86cc-558227202cec"
-authors = ["Alejandro Mota <amota@sandia.gov>", "Daria Koliesnikova <daria.koliesnikova@cea.fr>"]
+authors = ["Alejandro Mota <amota@sandia.gov>"]
 version = "0.1.0"
 
 [deps]

@@ -611,35 +611,25 @@ function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
     return coo_matrices
 end
 
-function add_diag_stiff!(
-    k::MVector{M, T},
-    grad_op::SMatrix{9,M,T},
-    C::SMatrix{9,9,T},
-    dV::T,
-) where {M,T}
-    @inbounds for i = 1:M
+function add_diag_stiff!(k::MVector{M,T}, grad_op::SMatrix{9,M,T}, C::SMatrix{9,9,T}, dV::T) where {M,T}
+    @inbounds for i in 1:M
         g = grad_op[:, i]
         k[i] += dV * dot(g, C * g)
     end
     return nothing
 end
 
-function add_lumped_mass!(
-    M::MVector{R,T},
-    Nξ::SVector{N,T},
-    density::T,
-    dV::T,
-) where {R,N,T}
+function add_lumped_mass!(M::MVector{R,T}, Nξ::SVector{N,T}, density::T, dV::T) where {R,N,T}
     @assert R == 3N
-    s  = sum(Nξ)                         # scalar
-    w  = (density*dV) .* Nξ .* s         # SVector{N}
+    s = sum(Nξ)
+    w = (density * dV) .* Nξ .* s
 
-    @inbounds for a in 1:N               # node index
-        idx = 3*(a-1) + 1                # first DOF of this node
-        m   = w[a]
-        M[idx    ] += m         # x‑DOF
-        M[idx + 1] += m         # y‑DOF
-        M[idx + 2] += m         # z‑DOF
+    @inbounds for a in 1:N
+        idx = 3 * (a - 1) + 1
+        m = w[a]
+        M[idx] += m
+        M[idx + 1] += m
+        M[idx + 2] += m
     end
     return nothing
 end
