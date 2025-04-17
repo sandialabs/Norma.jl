@@ -13,6 +13,8 @@ include("time_integrator.jl")
 include("solver.jl")
 include("schwarz.jl")
 
+include("opinf/opinf_model.jl")
+
 function create_simulation(params::Parameters, name::String)
     params["name"] = name
     sim_type = params["type"]

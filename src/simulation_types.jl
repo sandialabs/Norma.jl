@@ -13,6 +13,8 @@ include("model_types.jl")
 include("time_integrator_types.jl")
 include("solver_types.jl")
 include("schwarz_types.jl")
+include("opinf/opinf_model_types.jl")
+
 
 mutable struct SingleDomainSimulation <: Simulation
     name::String
