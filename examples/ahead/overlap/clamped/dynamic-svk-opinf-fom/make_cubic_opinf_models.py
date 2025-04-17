@@ -62,7 +62,7 @@ if __name__ == "__main__":
         else: 
             reduced_stacked_sideset_snapshots = np.append(reduced_stacked_sideset_snapshots,reduced_sideset_snapshots[sideset],axis=0)
     
-    my_energy_truncater = romtools.vector_space.utils.BasisSizeTruncater(60)
+    my_energy_truncater = romtools.vector_space.utils.BasisSizeTruncater(20)
 
     # Create trial space for displacement vector
     # Note again that I construct a separate basis for each x,y,z component. This isn't necessary 
