@@ -90,3 +90,4 @@ mutable struct MultiDomainSimulation <: Simulation
     subsim_name_index_map::Dict{String,Int64}
     failed::Bool
 end
+

@@ -321,6 +321,7 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     return copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
 end
 
+
 function apply_bcs(model::RomModel)
     model.reduced_boundary_forcing[:] .= 0.0
     for boundary_condition in model.boundary_conditions

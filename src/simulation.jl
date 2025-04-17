@@ -16,6 +16,7 @@ include("solver.jl")
 include("schwarz.jl")
 include("opinf/opinf_model.jl")
 
+
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
