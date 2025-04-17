@@ -416,10 +416,6 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::CubicOpI
     x2 = kron(solver.solution, I)
     Hprime = H * x1 + H * x2
     xsqr = kron(solver.solution, solver.solution)
-    #println("H size = ", size(H)) 
-    #println("x1 size = ", size(x1)) 
-    #println("Hprime size = ", size(Hprime))
-    #println("xsqr size = ", size(xsqr)) 
     # Create tangent stiffness for cubic operator
     G = model.opinf_rom["G"]
     x3 = kron(I, solver.solution, solver.solution)
@@ -427,12 +423,6 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::CubicOpI
     x5 = kron(solver.solution, solver.solution, I)
     Gprime = G * x3 + G * x4 + G * x5 
     xcub = kron(solver.solution, solver.solution, solver.solution)
-    #println("I size = ", size(I)) 
-    #println("solver.solution size = ", size(solver.solution)) 
-    #println("G size = ", size(G)) 
-    #println("x3 size = ", size(x3)) 
-    #println("Gprime size = ", size(Gprime)) 
-    #println("xcub size = ", size(xcub)) 
     # Create LHSs
     LHS_linear = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
     LHS_nonlinear = Hprime + Gprime 
