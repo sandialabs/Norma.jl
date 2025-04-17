@@ -612,7 +612,7 @@ function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
 end
 
 function add_diag_stiff!(
-    k::AbstractVector{T},
+    k::MVector{M, T},
     grad_op::SMatrix{9,M,T},
     C::SMatrix{9,9,T},
     dV::T,
@@ -620,6 +620,26 @@ function add_diag_stiff!(
     @inbounds for i = 1:M
         g = grad_op[:, i]
         k[i] += dV * dot(g, C * g)
+    end
+    return nothing
+end
+
+function add_lumped_mass!(
+    M::MVector{R,T},
+    Nξ::SVector{N,T},
+    density::T,
+    dV::T,
+) where {R,N,T}
+    @assert R == 3N
+    s  = sum(Nξ)                         # scalar
+    w  = (density*dV) .* Nξ .* s         # SVector{N}
+
+    @inbounds for a in 1:N               # node index
+        idx = 3*(a-1) + 1                # first DOF of this node
+        m   = w[a]
+        M[idx    ] += m         # x‑DOF
+        M[idx + 1] += m         # y‑DOF
+        M[idx + 2] += m         # z‑DOF
     end
     return nothing
 end
@@ -766,8 +786,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 end
                 if compute_lumped_mass == true
                     Nξ = N[:, point]
-                    reduced_mass = Nξ * Nξ' * density * dvol
-                    element_lumped_mass[1:3:end] += row_sum_lump(reduced_mass)
+                    add_lumped_mass!(element_lumped_mass, Nξ, density, dvol)
                 end
                 if compute_stiffness == true
                     moduli = second_from_fourth(A)
