@@ -6,6 +6,8 @@
 
 abstract type Solver end
 abstract type Minimizer <: Solver end
+abstract type MatrixFree <: Solver end
+abstract type Explicit <: Solver end
 abstract type Step end
 abstract type LineSearch end
 
@@ -36,7 +38,7 @@ mutable struct HessianMinimizer <: Minimizer
     use_line_search::Bool
 end
 
-mutable struct ExplicitSolver <: Solver
+mutable struct ExplicitSolver <: Explicit
     value::Float64
     gradient::Vector{Float64}
     lumped_hessian::Vector{Float64}
@@ -47,7 +49,7 @@ mutable struct ExplicitSolver <: Solver
     step::Step
 end
 
-mutable struct SteepestDescent <: Solver
+mutable struct SteepestDescent <: MatrixFree
     minimum_iterations::Int64
     maximum_iterations::Int64
     absolute_tolerance::Float64
@@ -56,6 +58,7 @@ mutable struct SteepestDescent <: Solver
     relative_error::Float64
     value::Float64
     gradient::Vector{Float64}
+    lumped_hessian::Vector{Float64}
     solution::Vector{Float64}
     initial_norm::Float64
     converged::Bool

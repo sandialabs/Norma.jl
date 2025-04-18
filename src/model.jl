@@ -611,6 +611,29 @@ function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
     return coo_matrices
 end
 
+function add_diag_stiff!(k::MVector{M,T}, grad_op::SMatrix{9,M,T}, C::SMatrix{9,9,T}, dV::T) where {M,T}
+    @inbounds for i in 1:M
+        g = grad_op[:, i]
+        k[i] += dV * dot(g, C * g)
+    end
+    return nothing
+end
+
+function add_lumped_mass!(M::MVector{R,T}, Nξ::SVector{N,T}, density::T, dV::T) where {R,N,T}
+    @assert R == 3N
+    s = sum(Nξ)
+    w = (density * dV) .* Nξ .* s
+
+    @inbounds for a in 1:N
+        idx = 3 * (a - 1) + 1
+        m = w[a]
+        M[idx] += m
+        M[idx + 1] += m
+        M[idx + 2] += m
+    end
+    return nothing
+end
+
 function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
     return SVector{N,T}(sum(A; dims=2)[:, 1])
 end
@@ -622,9 +645,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     is_dynamic = is_implicit_dynamic || is_explicit_dynamic
     is_implicit = is_implicit_dynamic || is_implicit_static
     is_hessian_opt = solver isa HessianMinimizer
-    is_cg_like = solver isa SteepestDescent
-    need_diag_stiffness = is_implicit == true && is_cg_like == true
-    need_lumped_mass = is_explicit_dynamic == true || (is_implicit_dynamic == true && is_cg_like == true)
+    is_matrix_free = solver isa SteepestDescent
+    need_diag_stiffness = is_implicit == true && is_matrix_free == true
+    need_lumped_mass = is_explicit_dynamic == true || (is_implicit_dynamic == true && is_matrix_free == true)
     need_stiffness = is_implicit == true && is_hessian_opt == true
     need_mass = is_dynamic == true && is_hessian_opt == true
     compute_diag_stiffness = need_diag_stiffness == true && model.compute_diag_stiffness == true
@@ -749,12 +772,11 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
                 if compute_diag_stiffness == true
                     moduli = second_from_fourth(A)
-                    @einsum element_diag_stiffness[i] += grad_op[m, i] * moduli[m, n] * grad_op[n, i] * dvol
+                    add_diag_stiff!(element_diag_stiffness, grad_op, moduli, dvol)
                 end
                 if compute_lumped_mass == true
                     Nξ = N[:, point]
-                    reduced_mass = Nξ * Nξ' * density * dvol
-                    element_lumped_mass[1:3:end] += row_sum_lump(reduced_mass)
+                    add_lumped_mass!(element_lumped_mass, Nξ, density, dvol)
                 end
                 if compute_stiffness == true
                     moduli = second_from_fourth(A)
