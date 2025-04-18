@@ -82,11 +82,9 @@ if __name__ == "__main__":
     u_ddots = normaopinf.calculus.d2dx2(displacement_snapshots,times)
     uhat_ddots = romtools.rom.optimal_l2_projection(u_ddots*1.,trial_space)
    
-    # Construct an opinf "AB" model (linear in the state and linear in the exogenous inputs)
+    # Construct an opinf "AHGB" model (linear in the state and linear in the exogenous inputs)
     #   Note: I don't construct a cAB ROM in this example since I know there is no forcing vector
     l2solver = opinf.lstsq.L2Solver(regularizer=5e-3)
-    #opinf_model = opinf.models.ContinuousModel("AHB",solver=l2solver)
-    #opinf_model = opinf.models.ContinuousModel("GB",solver=l2solver)
     opinf_model = opinf.models.ContinuousModel("AHGB",solver=l2solver)
     opinf_model.fit(states=uhat, ddts=uhat_ddots,inputs=reduced_stacked_sideset_snapshots)
 
