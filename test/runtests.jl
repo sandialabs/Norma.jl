@@ -34,6 +34,7 @@ const test_files = [
     "solid-inclined-displacement.jl",
     "opinf-schwarz-overlap-cuboid-hex8.jl",
     "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
+    "cubic-opinf-schwarz-overlap-cuboid-hex8.jl",
     "adaptive-time-stepping.jl",
     # Must go last for now due to FPE trapping
     "utils.jl",
