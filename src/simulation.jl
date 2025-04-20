@@ -80,9 +80,10 @@ function MultiDomainSimulation(params::Parameters)
     name = params["name"]
     domain_names = params["domains"]
     subsims = Vector{SingleDomainSimulation}()
-    initial_time = params["initial time"]
-    final_time = params["final time"]
-    time_step = params["time step"]
+    controller = create_controller(params)
+    initial_time = controller.initial_time
+    final_time = controller.final_time
+    time_step = controller.time_step
     same_step = true
     exodus_interval = get(params, "Exodus output interval", 1)
     csv_interval = get(params, "CSV output interval", 0)
@@ -95,6 +96,7 @@ function MultiDomainSimulation(params::Parameters)
         subparams["name"] = domain_name
         ti_params = subparams["time integrator"]
         subsim_time_step = get(ti_params, "time step", time_step)
+        subsim_time_step = min(subsim_time_step, time_step)
         ti_params["initial time"] = initial_time
         ti_params["final time"] = final_time
         ti_params["time step"] = subsim_time_step
@@ -109,7 +111,6 @@ function MultiDomainSimulation(params::Parameters)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
-    controller = create_controller(params)
     controller.same_step = same_step
     failed = false
     sim = MultiDomainSimulation(name, params, controller, subsims, subsim_name_index_map, failed)
