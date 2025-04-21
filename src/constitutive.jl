@@ -379,19 +379,15 @@ function ox(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
 end
 
 function oxI(A::SMatrix{3,3,Float64,9})
-    C = MArray{Tuple{3,3,3,3},Float64}(undef)
+    C = zeros(MArray{Tuple{3,3,3,3},Float64})
     for a in 1:3
-        for b in 1:3
-            for c in 1:3
-                C[a, b, c, c] = A[a, b]  # Only fill diagonal blocks
-            end
-        end
+        C[:, :, a, a] .= A  # Fill diagonal blocks directly
     end
     return SArray{Tuple{3,3,3,3}}(C)
 end
 
 function Iox(B::SMatrix{3,3,Float64,9})
-    C = MArray{Tuple{3,3,3,3},Float64}(undef)
+    C = zeros(MArray{Tuple{3,3,3,3},Float64})
     for a in 1:3
         C[a, a, :, :] .= B  # Fill diagonal blocks directly
     end
