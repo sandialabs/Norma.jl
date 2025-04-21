@@ -529,7 +529,7 @@ function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidM
     index_string = "-" * string(stop; pad=4)
     sim_id_string = string(sim_id; pad=2) * "-"
     for bc in model.boundary_conditions
-        if (typeof(bc) == SMDirichletBC)
+        if bc isa SMDirichletBC
             node_set_name = bc.node_set_name
             offset = bc.offset
             if offset == 1
@@ -553,7 +553,7 @@ function write_sideset_step_csv(integrator::DynamicTimeIntegrator, model::SolidM
                 model.current[bc.offset, bc.node_set_node_indices] -
                 model.reference[bc.offset, bc.node_set_node_indices],
             )
-        elseif (typeof(bc) == SMOverlapSchwarzBC)
+        elseif bc isa SMOverlapSchwarzBC
             side_set_name = bc.side_set_name
             curr_filename = sim_id_string * side_set_name * "-curr" * index_string * ".csv"
             disp_filename = sim_id_string * side_set_name * "-disp" * index_string * ".csv"

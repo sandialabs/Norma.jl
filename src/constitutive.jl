@@ -591,13 +591,13 @@ function create_material(params::Parameters)
 end
 
 function get_kinematics(material::Solid)
-    if typeof(material) == Linear_Elastic
+    if material isa Linear_Elastic
         return Infinitesimal
-    elseif typeof(material) == SaintVenant_Kirchhoff
+    elseif material isa SaintVenant_Kirchhoff
         return Finite
-    elseif typeof(material) == Neohookean
+    elseif material isa Neohookean
         return Finite
-    elseif typeof(material) == SethHill
+    elseif material isa SethHill
         return Finite
     end
     return error("Unknown material model : ", typeof(material))
