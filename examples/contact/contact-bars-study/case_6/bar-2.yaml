@@ -5,11 +5,14 @@ boundary conditions:
     source: bar-1.yaml
     source block: fine
     source side set: ssx+
-    swap BC types: false
 initial conditions:
   displacement:
   - component: x
-    function: "-100 * t"
+    function: "1.0e-04"
+    node set: nsall
+  velocity:
+  - component: x
+    function: "-100.0"
     node set: nsall
 input mesh file: bar-2.g
 model:
@@ -19,19 +22,15 @@ model:
     elastic:
       Poisson's ratio: 0.25
       density: 1000.0
-      elastic modulus: 1000000000
+      elastic modulus: 1000000000.0
       model: linear elastic
   type: solid mechanics
 output mesh file: bar-2.e
 solver:
-  absolute tolerance: 1.0e-06
-  maximum iterations: 16
-  minimum iterations: 1
-  relative tolerance: 1.0e-10
-  step: full Newton
-  type: Hessian minimizer
+  step: explicit
+  type: explicit solver
 time integrator:
-  type: Newmark
-  β: 0.25
+  CFL: 0.1
+  type: central difference
   γ: 0.5
 type: single

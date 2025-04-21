@@ -29,3 +29,6 @@ Manifest.toml
 **/convergence-*.csv
 **/iterations-*.csv
 **/convergence_values-*.csv
+
+# Output from .ipynbs
+examples/*.html

@@ -1,0 +1,33 @@
+boundary conditions:
+  Schwarz contact:
+  - friction type: frictionless
+    side set: ssx+
+    source: bar-2.yaml
+    source block: coarse
+    source side set: ssx-
+    swap BC types: false
+initial conditions:
+  displacement:
+  - component: x
+    function: "5.1359 * t"
+    node set: nsall
+input mesh file: bar-1.g
+model:
+  material:
+    blocks:
+      fine: elastic
+    elastic:
+      Poisson's ratio: 0.25
+      density: 7844.1
+      elastic modulus: 206840000000.0
+      model: linear elastic
+  type: solid mechanics
+output mesh file: bar-1.e
+solver:
+  step: explicit
+  type: explicit solver
+time integrator:
+  CFL: 0.1
+  type: central difference
+  γ: 0.5
+type: single

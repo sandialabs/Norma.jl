@@ -1,0 +1,15 @@
+CSV output interval: 2
+Exodus output interval: 1
+absolute tolerance: 1.0e-08
+domains:
+- bar-2.yaml
+- bar-1.yaml
+final time: 3.0e-06
+initial time: -1.0e-06
+maximum iterations: 16
+minimum iterations: 1
+naive stabilized: false
+relative tolerance: 1.0e-12
+relaxation parameter: 1.0
+time step: 1.0e-08
+type: multi
