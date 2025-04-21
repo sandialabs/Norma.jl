@@ -172,7 +172,7 @@ function SMCouplingSchwarzBC(
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     _, _, side_set_node_indices = get_side_set_local_from_global_map(input_mesh, side_set_id)
     coupled_block_name = bc_params["source block"]
-    if typeof(coupled_subsim.model) <: RomModel
+    if coupled_subsim.model isa RomModel
         coupled_mesh = coupled_subsim.model.fom_model.mesh
     else
         coupled_mesh = coupled_subsim.model.mesh
@@ -426,7 +426,7 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
 end
 
 function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition)
-    if (typeof(bc.coupled_subsim.model) == SolidMechanics)
+    if bc.coupled_subsim.model isa SolidMechanics
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
@@ -447,7 +447,7 @@ function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition
 end
 
 function apply_sm_schwarz_coupling_dirichlet(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
-    if (typeof(bc.coupled_subsim.model) == SolidMechanics)
+    if bc.coupled_subsim.model isa SolidMechanics
         for i in 1:length(bc.side_set_node_indices)
             node_index = bc.side_set_node_indices[i]
             coupled_node_indices = bc.coupled_nodes_indices[i]
@@ -464,7 +464,7 @@ function apply_sm_schwarz_coupling_dirichlet(model::SolidMechanics, bc::Coupling
             dof_index = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
             model.free_dofs[dof_index] .= false
         end
-    elseif (typeof(bc.coupled_subsim.model) <: RomModel)
+    elseif bc.coupled_subsim.model isa RomModel
         for i in 1:length(bc.side_set_node_indices)
             node_index = bc.side_set_node_indices[i]
             coupled_node_indices = bc.coupled_nodes_indices[i]
@@ -498,10 +498,10 @@ end
 function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
     controller = global_sim.controller
-    if typeof(bc) == SMContactSchwarzBC && controller.active_contact == false
+    if bc isa SMContactSchwarzBC && controller.active_contact == false
         return nothing
     end
-    empty_history = length(global_sim.controller.time_hist) == 0
+    empty_history = length(controller.time_hist) == 0
     same_step = controller.same_step
     if empty_history == true
         apply_bc_detail(model, bc)
@@ -515,36 +515,36 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     time = model.time
     coupled_name = bc.coupled_subsim.name
     coupled_index = global_sim.subsim_name_index_map[coupled_name]
-    time_hist = global_sim.controller.time_hist[coupled_index]
-    disp_hist = global_sim.controller.disp_hist[coupled_index]
-    velo_hist = global_sim.controller.velo_hist[coupled_index]
-    acce_hist = global_sim.controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = global_sim.controller.∂Ω_f_hist[coupled_index]
+    time_hist = controller.time_hist[coupled_index]
+    disp_hist = controller.disp_hist[coupled_index]
+    velo_hist = controller.velo_hist[coupled_index]
+    acce_hist = controller.acce_hist[coupled_index]
+    ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
     interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
     interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
     interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
     interp_∂Ω_f = same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
     bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    if typeof(bc) == SMContactSchwarzBC || typeof(bc) == SMNonOverlapSchwarzBC
-        relaxation_parameter = global_sim.controller.relaxation_parameter
-        schwarz_iteration = global_sim.controller.iteration_number
+    if bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC
+        relaxation_parameter = controller.relaxation_parameter
+        schwarz_iteration = controller.iteration_number
         if schwarz_iteration == 1
             lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
             lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
             lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
         else
-            lambda_dispᵖʳᵉᵛ = global_sim.controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = global_sim.controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = global_sim.controller.lambda_acce[coupled_index]
+            lambda_dispᵖʳᵉᵛ = controller.lambda_disp[coupled_index]
+            lambda_veloᵖʳᵉᵛ = controller.lambda_velo[coupled_index]
+            lambda_acceᵖʳᵉᵛ = controller.lambda_acce[coupled_index]
         end
         bc.coupled_subsim.integrator.displacement =
-            global_sim.controller.lambda_disp[coupled_index] =
+            controller.lambda_disp[coupled_index] =
                 relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
         bc.coupled_subsim.integrator.velocity =
-            global_sim.controller.lambda_velo[coupled_index] =
+            controller.lambda_velo[coupled_index] =
                 relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
         bc.coupled_subsim.integrator.acceleration =
-            global_sim.controller.lambda_acce[coupled_index] =
+            controller.lambda_acce[coupled_index] =
                 relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
     else
         bc.coupled_subsim.integrator.displacement = interp_disp
@@ -563,10 +563,10 @@ end
 function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     global_sim = bc.coupled_subsim.params["global_simulation"]
     controller = global_sim.controller
-    if typeof(bc) == SMContactSchwarzBC && controller.active_contact == false
+    if bc isa SMContactSchwarzBC && controller.active_contact == false
         return nothing
     end
-    empty_history = length(global_sim.controller.time_hist) == 0
+    empty_history = length(controller.time_hist) == 0
     same_step = controller.same_step
     if empty_history == true
         apply_bc_detail(model, bc)
@@ -580,41 +580,41 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     time = model.time
     coupled_name = bc.coupled_subsim.name
     coupled_index = global_sim.subsim_name_index_map[coupled_name]
-    time_hist = global_sim.controller.time_hist[coupled_index]
-    disp_hist = global_sim.controller.disp_hist[coupled_index]
-    velo_hist = global_sim.controller.velo_hist[coupled_index]
-    acce_hist = global_sim.controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = global_sim.controller.∂Ω_f_hist[coupled_index]
+    time_hist = controller.time_hist[coupled_index]
+    disp_hist = controller.disp_hist[coupled_index]
+    velo_hist = controller.velo_hist[coupled_index]
+    acce_hist = controller.acce_hist[coupled_index]
+    ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
     interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
     interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
     interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
     interp_∂Ω_f = same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
-    if typeof(bc.coupled_subsim.model) == SolidMechanics
+    if bc.coupled_subsim.model isa SolidMechanics
         bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    elseif typeof(bc.coupled_subsim.model) <: RomModel
+    elseif bc.coupled_subsim.model isa RomModel
         bc.coupled_subsim.model.fom_model.internal_force = interp_∂Ω_f
     end
 
-    if typeof(bc) == SMContactSchwarzBC || typeof(bc) == SMNonOverlapSchwarzBC
-        relaxation_parameter = global_sim.controller.relaxation_parameter
-        schwarz_iteration = global_sim.controller.iteration_number
+    if bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC
+        relaxation_parameter = controller.relaxation_parameter
+        schwarz_iteration = controller.iteration_number
         if schwarz_iteration == 1
             lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
             lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
             lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
         else
-            lambda_dispᵖʳᵉᵛ = global_sim.controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = global_sim.controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = global_sim.controller.lambda_acce[coupled_index]
+            lambda_dispᵖʳᵉᵛ = controller.lambda_disp[coupled_index]
+            lambda_veloᵖʳᵉᵛ = controller.lambda_velo[coupled_index]
+            lambda_acceᵖʳᵉᵛ = controller.lambda_acce[coupled_index]
         end
         bc.coupled_subsim.integrator.displacement =
-            global_sim.controller.lambda_disp[coupled_index] =
+            controller.lambda_disp[coupled_index] =
                 relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
         bc.coupled_subsim.integrator.velocity =
-            global_sim.controller.lambda_velo[coupled_index] =
+            controller.lambda_velo[coupled_index] =
                 relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
         bc.coupled_subsim.integrator.acceleration =
-            global_sim.controller.lambda_acce[coupled_index] =
+            controller.lambda_acce[coupled_index] =
                 relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
     else
         bc.coupled_subsim.integrator.displacement = interp_disp
@@ -678,7 +678,7 @@ end
 function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
     bcs = subsim.model.boundary_conditions
     for bc in bcs
-        if typeof(bc) == SMContactSchwarzBC
+        if bc isa SMContactSchwarzBC
             side_set_node_indices = unique(bc.side_set_node_indices)
             for node_index in side_set_node_indices
                 subsim.model.acceleration[:, node_index] = zeros(3)
@@ -1016,7 +1016,7 @@ function pair_bc(name::String, bc::ContactSchwarzBoundaryCondition)
 end
 
 function pair_bc(name::String, bc::CouplingSchwarzBoundaryCondition)
-    if typeof(bc) == SMNonOverlapSchwarzBC
+    if bc isa SMNonOverlapSchwarzBC
         coupled_model = bc.coupled_subsim.model
         coupled_bcs = coupled_model.boundary_conditions
         for coupled_bc in coupled_bcs

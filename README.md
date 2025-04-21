@@ -2,6 +2,7 @@
 [![codecov](https://codecov.io/gh/sandialabs/Norma.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/sandialabs/Norma.jl)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE.md)
 [![Julia version](https://img.shields.io/badge/Julia-1.11-blueviolet)](https://julialang.org/downloads/)
+[![Julia version](https://img.shields.io/badge/Julia-1.10-blue)](https://julialang.org/downloads/)
 
 # **📐 Norma.jl**
 

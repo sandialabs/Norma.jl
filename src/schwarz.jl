@@ -258,7 +258,7 @@ end
 
 function swap_swappable_bcs(sim::SingleDomainSimulation)
     for bc in sim.model.boundary_conditions
-        if typeof(bc) == ContactSchwarzBoundaryCondition || typeof(bc) == CouplingSchwarzBoundaryCondition
+        if bc isa ContactSchwarzBoundaryCondition || bc isa CouplingSchwarzBoundaryCondition
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
@@ -413,7 +413,7 @@ function initialize_transfer_operators(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if typeof(bc) ≠ SMContactSchwarzBC && typeof(bc) ≠ SMNonOverlapSchwarzBC
+            if !(bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC)
                 continue
             end
             compute_transfer_operator(subsim.model, bc)
@@ -426,7 +426,7 @@ function update_transfer_operators(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if typeof(bc) ≠ SMContactSchwarzBC && typeof(bc) ≠ SMNonOverlapSchwarzBC
+            if !(bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC)
                 continue
             end
             if is_contact == true || subsim.model.kinematics == Infinitesimal
@@ -448,7 +448,7 @@ function detect_contact(sim::MultiDomainSimulation)
         mesh = subsim.params["input_mesh"]
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if typeof(bc) == SMContactSchwarzBC
+            if bc isa SMContactSchwarzBC
                 if persistence == true
                     compression = check_compression(mesh, subsim.model, bc)
                     contact_domain[domain] = compression == true
@@ -464,7 +464,7 @@ function detect_contact(sim::MultiDomainSimulation)
         subsim = sim.subsims[domain]
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if typeof(bc) == SMContactSchwarzBC
+            if bc isa SMContactSchwarzBC
                 bc.active_contact = sim.controller.active_contact
             end
         end
