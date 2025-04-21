@@ -195,7 +195,7 @@ function get_time_controller(sim::MultiDomainSimulation)
     return sim.controller
 end
 
-function sync_time(sim)
+function sync_time(sim::Simulation)
     synchronize(sim)
     ctrl = get_time_controller(sim)
     stop = ctrl.stop

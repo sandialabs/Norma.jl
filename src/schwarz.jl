@@ -13,7 +13,7 @@ function SolidMultiDomainController(params::Parameters)
     initial_time = params["initial time"]
     final_time = params["final time"]
     input_time_step = params["time step"]
-    num_stops = round(Int64, (final_time - initial_time) / input_time_step) + 1
+    num_stops = max(round(Int64, (final_time - initial_time) / input_time_step) + 1, 2)
     time_step = (final_time - initial_time) / (num_stops - 1)
     @printf("🕒 Time Step = %.4e : Adjusted = %.4e : Total Stops = %d\n", input_time_step, time_step, num_stops)
     absolute_error = relative_error = 0.0
