@@ -21,12 +21,9 @@ function evolve(sim::Simulation)
     return finalize_writing(sim)
 end
 
-function stop_evolve(sim::SingleDomainSimulation)
-    return sim.integrator.time > sim.integrator.final_time
-end
-
-function stop_evolve(sim::MultiDomainSimulation)
-    return sim.controller.time > sim.controller.final_time
+function stop_evolve(sim::Simulation)
+    ctrl = get_time_controller(sim)
+    return ctrl.time > ctrl.final_time
 end
 
 function solve_contact(sim::MultiDomainSimulation)
