@@ -411,8 +411,10 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     if bc.is_dirichlet == true
+        println("Applying dirichlet BCs.")
         apply_sm_schwarz_contact_dirichlet(model, bc)
     else
+        println("Applying Neumann BCs.")
         apply_sm_schwarz_contact_neumann(model, bc)
     end
 end

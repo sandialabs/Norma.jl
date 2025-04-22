@@ -130,6 +130,14 @@ function schwarz(sim::MultiDomainSimulation)
     while true
         println("⏬️ Schwarz Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
+        
+        even_iteration = iteration_number % 2 == 0
+        if even_iteration == true
+            force_subsims_bc(sim, false)
+        else
+            force_subsims_bc(sim, true)
+        end
+
         synchronize(sim)
         subcycle(sim, is_schwarz)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
@@ -139,7 +147,7 @@ function schwarz(sim::MultiDomainSimulation)
         end
         status = sim.controller.converged ? "✅" : "⏳"
         @printf("⏫️ Schwarz [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
-        if stop_schwarz(sim, iteration_number + 1) == true
+        if stop_schwarz(sim, iteration_number + 1) == true && even_iteration == true
             plural = iteration_number == 1 ? "" : "s"
             println("⏺️  Performed ", iteration_number, " Schwarz Iteration", plural)
             break
@@ -262,6 +270,19 @@ function swap_swappable_bcs(sim::SingleDomainSimulation)
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
+        end
+    end
+end
+
+function force_subsims_bc(sim::MultiDomainSimulation, is_dirichlet::Bool)
+    for subsim in sim.subsims
+        force_subsims_bc(subsim, is_dirichlet::Bool)
+    end
+end
+function force_subsims_bc(sim::SingleDomainSimulation, is_dirichlet::Bool)
+    for bc in sim.model.boundary_conditions
+        if bc isa ContactSchwarzBoundaryCondition || bc isa CouplingSchwarzBoundaryCondition
+                bc.is_dirichlet = is_dirichlet
         end
     end
 end
