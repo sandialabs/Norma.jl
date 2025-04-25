@@ -28,6 +28,22 @@ mutable struct COOMatrix
     len::Int64 # logical length
 end
 
+struct EvaluationFlags
+    is_dynamic::Bool
+    is_implicit::Bool
+    is_hessian_opt::Bool
+    is_matrix_free::Bool
+    need_diag_stiffness::Bool
+    need_lumped_mass::Bool
+    need_stiffness::Bool
+    need_mass::Bool
+    compute_diag_stiffness::Bool
+    compute_lumped_mass::Bool
+    compute_stiffness::Bool
+    compute_mass::Bool
+    mesh_smoothing::Bool
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}

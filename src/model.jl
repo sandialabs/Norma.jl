@@ -634,11 +634,7 @@ function add_lumped_mass!(M::MVector{R,T}, Nξ::SVector{N,T}, density::T, dV::T)
     return nothing
 end
 
-function row_sum_lump(A::SMatrix{N,N,T}) where {N,T}
-    return SVector{N,T}(sum(A; dims=2)[:, 1])
-end
-
-function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
+function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     is_implicit_dynamic = integrator isa Newmark
     is_explicit_dynamic = integrator isa CentralDifference
     is_implicit_static = integrator isa QuasiStatic
@@ -646,41 +642,61 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     is_implicit = is_implicit_dynamic || is_implicit_static
     is_hessian_opt = solver isa HessianMinimizer
     is_matrix_free = solver isa SteepestDescent
-    need_diag_stiffness = is_implicit == true && is_matrix_free == true
-    need_lumped_mass = is_explicit_dynamic == true || (is_implicit_dynamic == true && is_matrix_free == true)
-    need_stiffness = is_implicit == true && is_hessian_opt == true
-    need_mass = is_dynamic == true && is_hessian_opt == true
-    compute_diag_stiffness = need_diag_stiffness == true && model.compute_diag_stiffness == true
-    compute_lumped_mass = need_lumped_mass == true && model.compute_lumped_mass == true
-    compute_stiffness = need_stiffness == true && model.compute_stiffness == true
-    compute_mass = need_mass == true && model.compute_mass == true
+    need_diag_stiffness = is_implicit && is_matrix_free
+    need_lumped_mass = is_explicit_dynamic || (is_implicit_dynamic && is_matrix_free)
+    need_stiffness = is_implicit && is_hessian_opt
+    need_mass = is_dynamic && is_hessian_opt
+    compute_diag_stiffness = need_diag_stiffness && model.compute_diag_stiffness
+    compute_lumped_mass = need_lumped_mass && model.compute_lumped_mass
+    compute_stiffness = need_stiffness && model.compute_stiffness
+    compute_mass = need_mass && model.compute_mass
+    mesh_smoothing = model.mesh_smoothing
+
+    return EvaluationFlags(
+        is_dynamic,
+        is_implicit,
+        is_hessian_opt,
+        is_matrix_free,
+        need_diag_stiffness,
+        need_lumped_mass,
+        need_stiffness,
+        need_mass,
+        compute_diag_stiffness,
+        compute_lumped_mass,
+        compute_stiffness,
+        compute_mass,
+        mesh_smoothing,
+    )
+end
+
+function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
+    flags = compute_flags(model, integrator, solver)
     materials = model.materials
     input_mesh = model.mesh
-    mesh_smoothing = model.mesh_smoothing
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
     energy_tl = zeros(nthreads())
     internal_force_tl = create_threadlocal_coo_vectors(num_dofs)
-    if compute_diag_stiffness == true
+    if flags.compute_diag_stiffness == true
         diag_stiffness_tl = create_threadlocal_coo_vectors(num_dofs)
         if model.kinematics == Infinitesimal
             model.compute_diag_stiffness = false
         end
     end
-    if compute_lumped_mass == true
+    if flags.compute_lumped_mass == true
         lumped_mass_tl = create_threadlocal_coo_vectors(num_dofs)
         model.compute_lumped_mass = false
     end
-    if compute_stiffness == true || compute_mass == true
+    if flags.compute_stiffness == true || flags.compute_mass == true
         coo_matrix_nnz = count_coo_matrix_nnz(model)
     end
-    if compute_stiffness == true
+    if flags.compute_stiffness == true
         stiffness_tl = create_threadlocal_coo_matrices(coo_matrix_nnz)
         if model.kinematics == Infinitesimal
             model.compute_stiffness = false
         end
     end
-    if compute_mass == true
+    if flags.compute_mass == true
         mass_tl = create_threadlocal_coo_matrices(coo_matrix_nnz)
         model.compute_mass = false
     end
@@ -689,7 +705,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     num_blocks = length(blocks)
     for block_index in 1:num_blocks
         material = materials[block_index]
-        if is_dynamic == true
+        if flags.is_dynamic == true
             density = material.ρ
         end
         block = blocks[block_index]
@@ -702,16 +718,16 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         num_block_elements, num_element_nodes = size(element_block_conn)
         element_dofs_tl = create_threadlocal_element_vectors(Int64, Val(num_element_nodes))
         element_internal_force_tl = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-        if compute_diag_stiffness == true
+        if flags.compute_diag_stiffness == true
             element_diag_stiffness_tl = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
         end
-        if compute_lumped_mass == true
+        if flags.compute_lumped_mass == true
             element_lumped_mass_tl = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
         end
-        if compute_stiffness == true
+        if flags.compute_stiffness == true
             element_stiffness_tl = create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
         end
-        if compute_mass == true
+        if flags.compute_mass == true
             element_mass_tl = create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
         end
         @threads for block_element_index in 1:num_block_elements
@@ -720,25 +736,25 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             element_dofs = element_dofs_tl[t]
             element_internal_force = element_internal_force_tl[t]
             fill!(element_internal_force, 0.0)
-            if compute_diag_stiffness == true
+            if flags.compute_diag_stiffness == true
                 element_diag_stiffness = element_diag_stiffness_tl[t]
                 fill!(element_diag_stiffness, 0.0)
             end
-            if compute_lumped_mass == true
+            if flags.compute_lumped_mass == true
                 element_lumped_mass = element_lumped_mass_tl[t]
                 fill!(element_lumped_mass, 0.0)
             end
-            if compute_stiffness == true
+            if flags.compute_stiffness == true
                 element_stiffness = element_stiffness_tl[t]
                 fill!(element_stiffness, 0.0)
             end
-            if compute_mass == true
+            if flags.compute_mass == true
                 element_mass = element_mass_tl[t]
                 fill!(element_mass, 0.0)
             end
             conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_conn[conn_indices]
-            if mesh_smoothing == true
+            if flags.mesh_smoothing == true
                 element_reference_position = create_smooth_reference(
                     model.smooth_reference, element_type, model.reference[:, node_indices]
                 )
@@ -770,19 +786,19 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 element_energy += W * dvol
                 grad_op = create_gradient_operator(dNdX)
                 @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
-                if compute_diag_stiffness == true
+                if flags.compute_diag_stiffness == true
                     moduli = second_from_fourth(A)
                     add_diag_stiff!(element_diag_stiffness, grad_op, moduli, dvol)
                 end
-                if compute_lumped_mass == true
+                if flags.compute_lumped_mass == true
                     Nξ = N[:, point]
                     add_lumped_mass!(element_lumped_mass, Nξ, density, dvol)
                 end
-                if compute_stiffness == true
+                if flags.compute_stiffness == true
                     moduli = second_from_fourth(A)
                     element_stiffness += grad_op' * moduli * grad_op * dvol
                 end
-                if compute_mass == true
+                if flags.compute_mass == true
                     Nξ = N[:, point]
                     reduced_mass = Nξ * Nξ' * density * dvol
                     element_mass[1:3:end, 1:3:end] += reduced_mass
@@ -790,25 +806,25 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[block_index][block_element_index][point] = voigt_cauchy
             end
-            if compute_lumped_mass == true
+            if flags.compute_lumped_mass == true
                 element_lumped_mass[3:3:end] .= element_lumped_mass[2:3:end] .= element_lumped_mass[1:3:end]
             end
-            if compute_mass == true
+            if flags.compute_mass == true
                 element_mass[3:3:end, 3:3:end] .= element_mass[2:3:end, 2:3:end] .= element_mass[1:3:end, 1:3:end]
             end
             energy_tl[t] += element_energy
             model.stored_energy[block_index][block_element_index] = element_energy
             assemble!(internal_force_tl[t], element_internal_force, element_dofs)
-            if compute_diag_stiffness == true
+            if flags.compute_diag_stiffness == true
                 assemble!(diag_stiffness_tl[t], element_diag_stiffness, element_dofs)
             end
-            if compute_lumped_mass == true
+            if flags.compute_lumped_mass == true
                 assemble!(lumped_mass_tl[t], element_lumped_mass, element_dofs)
             end
-            if compute_stiffness == true
+            if flags.compute_stiffness == true
                 assemble!(stiffness_tl[t], element_stiffness, element_dofs)
             end
-            if compute_mass == true
+            if flags.compute_mass == true
                 assemble!(mass_tl[t], element_mass, element_dofs)
             end
         end
@@ -816,19 +832,19 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     model.strain_energy = sum(energy_tl)
     model.body_force = body_force_vector
     model.internal_force = merge_threadlocal_coo_vectors(internal_force_tl, num_dofs)
-    if compute_diag_stiffness == true
+    if flags.compute_diag_stiffness == true
         model.diag_stiffness = merge_threadlocal_coo_vectors(diag_stiffness_tl, num_dofs)
     end
-    if compute_lumped_mass == true
+    if flags.compute_lumped_mass == true
         model.lumped_mass = merge_threadlocal_coo_vectors(lumped_mass_tl, num_dofs)
     end
-    if compute_stiffness == true
+    if flags.compute_stiffness == true
         model.stiffness = merge_threadlocal_coo_matrices(stiffness_tl, num_dofs)
     end
-    if compute_mass == true
+    if flags.compute_mass == true
         model.mass = merge_threadlocal_coo_matrices(mass_tl, num_dofs)
     end
-    if mesh_smoothing == true
+    if flags.mesh_smoothing == true
         model.internal_force -= integrator.velocity
     end
     return nothing
