@@ -611,10 +611,14 @@ function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
     return coo_matrices
 end
 
-function add_diag_stiff!(k::MVector{M,T}, grad_op::SMatrix{9,M,T}, C::SMatrix{9,9,T}, dV::T) where {M,T}
+function add_internal_force!(Fi::MVector{M,T}, grad_op::SMatrix{9,M,T}, stress::SVector{9,T}, dV::T) where {M,T}
+    @einsum Fi[i] += grad_op[j, i] * stress[j] * dV
+end
+
+function add_diag_stiff!(K::MVector{M,T}, grad_op::SMatrix{9,M,T}, C::SMatrix{9,9,T}, dV::T) where {M,T}
     @inbounds for i in 1:M
         g = grad_op[:, i]
-        k[i] += dV * dot(g, C * g)
+        K[i] += dV * dot(g, C * g)
     end
     return nothing
 end
@@ -669,45 +673,194 @@ function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver
     )
 end
 
+function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags)
+    num_nodes = size(model.reference, 2)
+    num_dofs = 3 * num_nodes
+    energy = zeros(nthreads())
+    internal_force = create_threadlocal_coo_vectors(num_dofs)
+
+    diag_stiffness =
+        flags.compute_diag_stiffness ? create_threadlocal_coo_vectors(num_dofs) : Vector{COOVector}(undef, nthreads())
+    if flags.compute_diag_stiffness && model.kinematics == Infinitesimal
+        model.compute_diag_stiffness = false
+    end
+
+    lumped_mass =
+        flags.compute_lumped_mass ? create_threadlocal_coo_vectors(num_dofs) : Vector{COOVector}(undef, nthreads())
+    if flags.compute_lumped_mass
+        model.compute_lumped_mass = false
+    end
+
+    if flags.compute_stiffness || flags.compute_mass
+        coo_matrix_nnz = count_coo_matrix_nnz(model)
+    else
+        coo_matrix_nnz = 0
+    end
+
+    stiffness =
+        flags.compute_stiffness ? create_threadlocal_coo_matrices(coo_matrix_nnz) : Vector{COOMatrix}(undef, nthreads())
+    if flags.compute_stiffness && model.kinematics == Infinitesimal
+        model.compute_stiffness = false
+    end
+
+    mass = flags.compute_mass ? create_threadlocal_coo_matrices(coo_matrix_nnz) : Vector{COOMatrix}(undef, nthreads())
+    if flags.compute_mass
+        model.compute_mass = false
+    end
+    return SMThreadLocalArrays(energy, internal_force, diag_stiffness, lumped_mass, stiffness, mass)
+end
+
+function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
+    energy = zeros(nthreads())
+    dofs = create_threadlocal_element_vectors(Int64, Val(num_element_nodes))
+    internal_force = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
+
+    diag_stiffness = if flags.compute_diag_stiffness
+        create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
+    else
+        Vector{typeof(create_element_vector(Float64, Val(num_element_nodes)))}(undef, nthreads())
+    end
+
+    lumped_mass = if flags.compute_lumped_mass
+        create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
+    else
+        Vector{typeof(create_element_vector(Float64, Val(num_element_nodes)))}(undef, nthreads())
+    end
+
+    stiffness = if flags.compute_stiffness
+        create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
+    else
+        Vector{typeof(create_element_matrix(Float64, Val(num_element_nodes)))}(undef, nthreads())
+    end
+
+    mass = if flags.compute_mass
+        create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
+    else
+        Vector{typeof(create_element_matrix(Float64, Val(num_element_nodes)))}(undef, nthreads())
+    end
+
+    return SMElementThreadLocalArrays(energy, dofs, internal_force, diag_stiffness, lumped_mass, stiffness, mass)
+end
+
+function reset_element_threadlocal_arrays!(
+    element_arrays_tl::SMElementThreadLocalArrays,
+    element_block_conn::Matrix{<:Integer},
+    block_element_index::Integer,
+    flags::EvaluationFlags,
+)
+    t = threadid()
+    num_element_nodes = size(element_block_conn, 2)
+    conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+    node_indices = element_block_conn[conn_indices]
+    element_arrays_tl.dofs[t] = reshape(3 .* node_indices' .- [2, 1, 0], :)
+    element_arrays_tl.energy[t] = 0.0
+    fill!(element_arrays_tl.internal_force[t], 0.0)
+    if flags.compute_diag_stiffness == true
+        fill!(element_arrays_tl.diag_stiffness[t], 0.0)
+    end
+    if flags.compute_lumped_mass == true
+        fill!(element_arrays_tl.lumped_mass[t], 0.0)
+    end
+    if flags.compute_stiffness == true
+        fill!(element_arrays_tl.stiffness[t], 0.0)
+    end
+    if flags.compute_mass == true
+        fill!(element_arrays_tl.mass[t], 0.0)
+    end
+    return node_indices
+end
+
+function compute_element_threadlocal_arrays!(
+    element_arrays_tl::SMElementThreadLocalArrays,
+    Np::SVector{N,T},
+    dNdX::SMatrix{3,N,T},
+    W::T,
+    P::SMatrix{3,3,T,9},
+    AA::SArray{Tuple{3,3,3,3},T},
+    density::T,
+    dvol::T,
+    flags::EvaluationFlags,
+) where {T,N}
+    t = threadid()
+    grad_op = create_gradient_operator(dNdX)
+    stress = SVector{9,Float64}(P)
+    element_arrays_tl.energy[t] += W * dvol
+    add_internal_force!(element_arrays_tl.internal_force[t], grad_op, stress, dvol)
+    if flags.compute_diag_stiffness == true
+        moduli = second_from_fourth(AA)
+        add_diag_stiff!(element_arrays_tl.diag_stiffness[t], grad_op, moduli, dvol)
+    end
+    if flags.compute_lumped_mass == true
+        add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
+    end
+    if flags.compute_stiffness == true
+        moduli = second_from_fourth(AA)
+        element_arrays_tl.stiffness[t] += grad_op' * moduli * grad_op * dvol
+    end
+    if flags.compute_mass == true
+        reduced_mass = Np * Np' * density * dvol
+        mass = element_arrays_tl.mass[t]
+        for i in 1:3
+            mass[i:3:end, i:3:end] .+= reduced_mass
+        end
+    end
+    return nothing
+end
+
+function assemble_element_threadlocal_arrays!(
+    arrays_tl::SMThreadLocalArrays, element_arrays_tl::SMElementThreadLocalArrays, flags::EvaluationFlags
+)
+    t = threadid()
+    arrays_tl.energy[t] += element_arrays_tl.energy[t]
+    assemble!(arrays_tl.internal_force[t], element_arrays_tl.internal_force[t], element_arrays_tl.dofs[t])
+    if flags.compute_diag_stiffness == true
+        assemble!(arrays_tl.diag_stiffness[t], element_arrays_tl.diag_stiffness[t], element_arrays_tl.dofs[t])
+    end
+    if flags.compute_lumped_mass == true
+        assemble!(arrays_tl.lumped_mass[t], element_arrays_tl.lumped_mass[t], element_arrays_tl.dofs[t])
+    end
+    if flags.compute_stiffness == true
+        assemble!(arrays_tl.stiffness[t], element_arrays_tl.stiffness[t], element_arrays_tl.dofs[t])
+    end
+    if flags.compute_mass == true
+        assemble!(arrays_tl.mass[t], element_arrays_tl.mass[t], element_arrays_tl.dofs[t])
+    end
+    return nothing
+end
+
+function merge_threadlocal_arrays(
+    model::SolidMechanics, arrays_tl::SMThreadLocalArrays, num_dofs::Int64, flags::EvaluationFlags
+)
+    model.strain_energy = sum(arrays_tl.energy)
+    model.internal_force = merge_threadlocal_coo_vectors(arrays_tl.internal_force, num_dofs)
+    if flags.compute_diag_stiffness == true
+        model.diag_stiffness = merge_threadlocal_coo_vectors(arrays_tl.diag_stiffness, num_dofs)
+    end
+    if flags.compute_lumped_mass == true
+        model.lumped_mass = merge_threadlocal_coo_vectors(arrays_tl.lumped_mass, num_dofs)
+    end
+    if flags.compute_stiffness == true
+        model.stiffness = merge_threadlocal_coo_matrices(arrays_tl.stiffness, num_dofs)
+    end
+    if flags.compute_mass == true
+        model.mass = merge_threadlocal_coo_matrices(arrays_tl.mass, num_dofs)
+    end
+    return nothing
+end
+
 function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     flags = compute_flags(model, integrator, solver)
+    arrays_tl = create_threadlocal_arrays(model, flags)
     materials = model.materials
     input_mesh = model.mesh
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
-    energy_tl = zeros(nthreads())
-    internal_force_tl = create_threadlocal_coo_vectors(num_dofs)
-    if flags.compute_diag_stiffness == true
-        diag_stiffness_tl = create_threadlocal_coo_vectors(num_dofs)
-        if model.kinematics == Infinitesimal
-            model.compute_diag_stiffness = false
-        end
-    end
-    if flags.compute_lumped_mass == true
-        lumped_mass_tl = create_threadlocal_coo_vectors(num_dofs)
-        model.compute_lumped_mass = false
-    end
-    if flags.compute_stiffness == true || flags.compute_mass == true
-        coo_matrix_nnz = count_coo_matrix_nnz(model)
-    end
-    if flags.compute_stiffness == true
-        stiffness_tl = create_threadlocal_coo_matrices(coo_matrix_nnz)
-        if model.kinematics == Infinitesimal
-            model.compute_stiffness = false
-        end
-    end
-    if flags.compute_mass == true
-        mass_tl = create_threadlocal_coo_matrices(coo_matrix_nnz)
-        model.compute_mass = false
-    end
     body_force_vector = zeros(num_dofs)
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blocks = length(blocks)
     for block_index in 1:num_blocks
         material = materials[block_index]
-        if flags.is_dynamic == true
-            density = material.ρ
-        end
+        density = material.ρ
         block = blocks[block_index]
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
@@ -716,44 +869,11 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_conn = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_conn)
-        element_dofs_tl = create_threadlocal_element_vectors(Int64, Val(num_element_nodes))
-        element_internal_force_tl = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-        if flags.compute_diag_stiffness == true
-            element_diag_stiffness_tl = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-        end
-        if flags.compute_lumped_mass == true
-            element_lumped_mass_tl = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-        end
-        if flags.compute_stiffness == true
-            element_stiffness_tl = create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
-        end
-        if flags.compute_mass == true
-            element_mass_tl = create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
-        end
+        element_arrays_tl = create_element_threadlocal_arrays(num_element_nodes, flags)
         @threads for block_element_index in 1:num_block_elements
-            t = threadid()
-            element_energy = 0.0
-            element_dofs = element_dofs_tl[t]
-            element_internal_force = element_internal_force_tl[t]
-            fill!(element_internal_force, 0.0)
-            if flags.compute_diag_stiffness == true
-                element_diag_stiffness = element_diag_stiffness_tl[t]
-                fill!(element_diag_stiffness, 0.0)
-            end
-            if flags.compute_lumped_mass == true
-                element_lumped_mass = element_lumped_mass_tl[t]
-                fill!(element_lumped_mass, 0.0)
-            end
-            if flags.compute_stiffness == true
-                element_stiffness = element_stiffness_tl[t]
-                fill!(element_stiffness, 0.0)
-            end
-            if flags.compute_mass == true
-                element_mass = element_mass_tl[t]
-                fill!(element_mass, 0.0)
-            end
-            conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-            node_indices = element_block_conn[conn_indices]
+            node_indices = reset_element_threadlocal_arrays!(
+                element_arrays_tl, element_block_conn, block_element_index, flags
+            )
             if flags.mesh_smoothing == true
                 element_reference_position = create_smooth_reference(
                     model.smooth_reference, element_type, model.reference[:, node_indices]
@@ -762,8 +882,8 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 element_reference_position = model.reference[:, node_indices]
             end
             element_current_position = model.current[:, node_indices]
-            element_dofs = reshape(3 .* node_indices' .- [2, 1, 0], :)
             for point in 1:num_points
+                Np = N[:, point]
                 dNdξ = dN[:, :, point]
                 dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
                 dNdX = dXdξ \ dNdξ
@@ -778,72 +898,21 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     println("⏮️  Attempting to recover...")
                     return nothing
                 end
-                W, P, A = constitutive(material, F)
-                stress = SVector{9,Float64}(P)
+                W, P, AA = constitutive(material, F)
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)
                 dvol = det_dXdξ * ip_weight
-                element_energy += W * dvol
-                grad_op = create_gradient_operator(dNdX)
-                @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
-                if flags.compute_diag_stiffness == true
-                    moduli = second_from_fourth(A)
-                    add_diag_stiff!(element_diag_stiffness, grad_op, moduli, dvol)
-                end
-                if flags.compute_lumped_mass == true
-                    Nξ = N[:, point]
-                    add_lumped_mass!(element_lumped_mass, Nξ, density, dvol)
-                end
-                if flags.compute_stiffness == true
-                    moduli = second_from_fourth(A)
-                    element_stiffness += grad_op' * moduli * grad_op * dvol
-                end
-                if flags.compute_mass == true
-                    Nξ = N[:, point]
-                    reduced_mass = Nξ * Nξ' * density * dvol
-                    element_mass[1:3:end, 1:3:end] += reduced_mass
-                end
+                compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags)
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[block_index][block_element_index][point] = voigt_cauchy
             end
-            if flags.compute_lumped_mass == true
-                element_lumped_mass[3:3:end] .= element_lumped_mass[2:3:end] .= element_lumped_mass[1:3:end]
-            end
-            if flags.compute_mass == true
-                element_mass[3:3:end, 3:3:end] .= element_mass[2:3:end, 2:3:end] .= element_mass[1:3:end, 1:3:end]
-            end
-            energy_tl[t] += element_energy
-            model.stored_energy[block_index][block_element_index] = element_energy
-            assemble!(internal_force_tl[t], element_internal_force, element_dofs)
-            if flags.compute_diag_stiffness == true
-                assemble!(diag_stiffness_tl[t], element_diag_stiffness, element_dofs)
-            end
-            if flags.compute_lumped_mass == true
-                assemble!(lumped_mass_tl[t], element_lumped_mass, element_dofs)
-            end
-            if flags.compute_stiffness == true
-                assemble!(stiffness_tl[t], element_stiffness, element_dofs)
-            end
-            if flags.compute_mass == true
-                assemble!(mass_tl[t], element_mass, element_dofs)
-            end
+            t = threadid()
+            model.stored_energy[block_index][block_element_index] = element_arrays_tl.energy[t]
+            assemble_element_threadlocal_arrays!(arrays_tl, element_arrays_tl, flags)
         end
     end
-    model.strain_energy = sum(energy_tl)
+    merge_threadlocal_arrays(model, arrays_tl, num_dofs, flags)
     model.body_force = body_force_vector
-    model.internal_force = merge_threadlocal_coo_vectors(internal_force_tl, num_dofs)
-    if flags.compute_diag_stiffness == true
-        model.diag_stiffness = merge_threadlocal_coo_vectors(diag_stiffness_tl, num_dofs)
-    end
-    if flags.compute_lumped_mass == true
-        model.lumped_mass = merge_threadlocal_coo_vectors(lumped_mass_tl, num_dofs)
-    end
-    if flags.compute_stiffness == true
-        model.stiffness = merge_threadlocal_coo_matrices(stiffness_tl, num_dofs)
-    end
-    if flags.compute_mass == true
-        model.mass = merge_threadlocal_coo_matrices(mass_tl, num_dofs)
-    end
     if flags.mesh_smoothing == true
         model.internal_force -= integrator.velocity
     end

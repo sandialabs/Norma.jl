@@ -44,6 +44,25 @@ struct EvaluationFlags
     mesh_smoothing::Bool
 end
 
+struct SMThreadLocalArrays{V,M}
+    energy::Vector{Float64}
+    internal_force::Vector{V}
+    diag_stiffness::Vector{V}
+    lumped_mass::Vector{V}
+    stiffness::Vector{M}
+    mass::Vector{M}
+end
+
+struct SMElementThreadLocalArrays{T,EIV,EV,EM}
+    energy::Vector{T}
+    dofs::Vector{EIV}
+    internal_force::Vector{EV}
+    diag_stiffness::Vector{EV}
+    lumped_mass::Vector{EV}
+    stiffness::Vector{EM}
+    mass::Vector{EM}
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
