@@ -127,6 +127,12 @@ function schwarz(sim::MultiDomainSimulation)
         sim.controller.convergence_hist .= 0.0
     end
 
+    for subsim in sim.subsims
+        subsim.model.previous_current_schwarz .= subsim.model.current
+        subsim.model.previous_velocity_schwarz .= subsim.model.velocity
+        subsim.model.previous_internal_force_schwarz .= subsim.model.internal_force
+    end
+
     while true
         println("⏬️ Schwarz Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
@@ -138,6 +144,8 @@ function schwarz(sim::MultiDomainSimulation)
             force_subsims_bc(sim, true)
         end
 
+
+
         synchronize(sim)
         subcycle(sim, is_schwarz)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
@@ -147,7 +155,7 @@ function schwarz(sim::MultiDomainSimulation)
         end
         status = sim.controller.converged ? "✅" : "⏳"
         @printf("⏫️ Schwarz [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
-        if stop_schwarz(sim, iteration_number + 1) == true && even_iteration == true
+        if stop_schwarz(sim, iteration_number + 1) == true #&& even_iteration == true
             plural = iteration_number == 1 ? "" : "s"
             println("⏺️  Performed ", iteration_number, " Schwarz Iteration", plural)
             break
@@ -289,6 +297,13 @@ end
 
 function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
     subsim_index = 1
+    # Save pre-Schwarz forces and internal forces 
+    # for subsim in sim.subsims
+    #     subsim.model.previous_current_schwarz .= subsim.model.current
+    #     subsim.model.previous_velocity_schwarz .= subsim.model.velocity
+    #     subsim.model.previous_internal_force_schwarz .= subsim.model.internal_force
+    # end
+
     for subsim in sim.subsims
         @printf("  🧩 %s\n", subsim.name)
         @printf("  ▶️  Time = %.4e\n", subsim.integrator.time)
@@ -310,7 +325,18 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
             end
         end
         subsim_index += 1
+
+
     end
+
+    for subsim in sim.subsims
+        # # Update the subcycled dirichlet and neumann values
+        subsim.model.previous_current_schwarz .= subsim.model.current
+        subsim.model.previous_velocity_schwarz .= subsim.model.velocity
+        subsim.model.previous_internal_force_schwarz .= subsim.model.internal_force
+        println("Completed Subcycle with Internal Force of: ", subsim.model.internal_force)
+    end
+
 end
 
 function resize_histories(sim::MultiDomainSimulation)

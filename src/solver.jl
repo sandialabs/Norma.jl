@@ -485,6 +485,10 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
         stiffness = global_transform * stiffness * global_transform'
     end
     solver.hessian = stiffness + model.mass / β / Δt / Δt
+    println("Evaluate Forces Internal ", internal_force)
+    println("Evaluate Forces External ", external_force)
+    println("Evaluate Forces Interia ", inertial_force)
+
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     return nothing
@@ -591,6 +595,7 @@ end
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
     step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    println("Computed Step:", step)
     if solver.use_line_search == true
         return backtrack_line_search(integrator, solver, model, step)
     else
@@ -610,7 +615,9 @@ end
 
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
-    return -solver.gradient[free] ./ solver.lumped_hessian[free]
+    step = -solver.gradient[free] ./ solver.lumped_hessian[free]
+    println("Computed Step:", step)
+    return step
 end
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)

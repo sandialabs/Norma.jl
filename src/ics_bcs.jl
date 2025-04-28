@@ -641,36 +641,59 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
 end
 
 function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContactSchwarzBC)
+    use_previous = true
     side_set_node_indices = unique(bc.side_set_node_indices)
     for node_index in side_set_node_indices
-        point = model.current[:, node_index]
-        new_point, ξ, _, closest_face_node_indices, closest_normal, _ = project_point_to_side_set(
-            point, bc.coupled_subsim.model, bc.coupled_side_set_id
+        x1 = model.current[:, node_index]
+        v1 = model.velocity[:, node_index]
+        x2, ξ, _, closest_face_node_indices, n2, _ = project_point_to_side_set(
+            x1, bc.coupled_subsim.model, bc.coupled_side_set_id,
+            use_previous
         )
-        axis = SVector{3,Float64}(-normalize(closest_normal))
+        n1 = -n2
+        axis = SVector{3,Float64}(-normalize(n2))
         bc.rotation_matrix = compute_rotation_matrix(axis)
-        model.current[:, node_index] = new_point
+
         num_nodes = length(closest_face_node_indices)
         element_type = get_element_type(2, num_nodes)
         N, _, _ = interpolate(element_type, ξ)
-        source_velo = bc.coupled_subsim.model.velocity[:, closest_face_node_indices] * N
-        source_acce = bc.coupled_subsim.model.acceleration[:, closest_face_node_indices] * N
+
+        v2 = bc.coupled_subsim.model.previous_velocity_schwarz[:, closest_face_node_indices] * N
+        a2 = bc.coupled_subsim.model.acceleration[:, closest_face_node_indices] * N
+        
+        v = (v1 + v2)/2
+
+            if bc.friction_type == 0
+                if ( dot(v1,n1) + dot(v2,n2) ) > eps()
+                    alpha = dot(v1,n1) / ( dot(v1,n1) + dot(v2,n2) )
+                else
+                    alpha = 0.5
+                end
+            elseif bc.friction_type == 1   
+                if (norm(v1) + norm(v2)) > eps()
+                    alpha = norm(v1)/(norm(v1) + norm(v2))
+                else
+                    alpha = 0.5
+                end
+            else
+                error("Unknown or not implemented friction type.")
+            end
+
+        new_point = alpha*x1 + (1-alpha)*x2
+
+        model.current[:, node_index] = new_point
+
         model.free_dofs[[3 * node_index - 2]] .= false
         model.free_dofs[[3 * node_index - 1]] .= true
         model.free_dofs[[3 * node_index]] .= true
-        if bc.friction_type == 0
-            model.velocity[:, node_index] = transfer_normal_component(
-                source_velo, model.velocity[:, node_index], closest_normal
-            )
-            model.acceleration[:, node_index] = transfer_normal_component(
-                source_acce, model.acceleration[:, node_index], closest_normal
-            )
-        elseif bc.friction_type == 1
-            model.velocity[:, node_index] = source_velo
-            model.acceleration[:, node_index] = source_acce
-        else
-            error("Unknown or not implemented friction type.")
-        end
+
+        model.velocity[:, node_index] = v
+        println("alpha", alpha)
+        println("new_point", new_point)
+        println("v", v1, v2, v)
+        println("x", x1, x2, x1+x2)
+        model.acceleration[:, node_index] .= 0
+
         global_base = 3 * (node_index - 1) # Block index in global stiffness
         model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
             bc.rotation_matrix
@@ -691,8 +714,9 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
 end
 
 function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSchwarzBC)
-    schwarz_tractions = get_dst_traction(bc)
-    normals = compute_normal(model.mesh, bc.side_set_id, model)
+    use_previous = true
+    schwarz_tractions = get_dst_traction(bc, use_previous) #+ get_dst_inertia(bc)
+    normals = compute_normal(model.mesh, bc.side_set_id, model, use_previous)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
     num_local_nodes = length(global_from_local_map)
     for local_node in 1:num_local_nodes
@@ -700,9 +724,12 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
         node_tractions = schwarz_tractions[:, local_node]
         normal = normals[:, local_node]
         if bc.friction_type == 0
-            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += transfer_normal_component(
+            proposed_normal_transfer = transfer_normal_component(
                 node_tractions, model.boundary_force[(3 * global_node - 2):(3 * global_node)], normal
             )
+            println("Proposed Neumann Transfer", proposed_normal_transfer)
+            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += proposed_normal_transfer
+            model.acceleration[(3 * global_node - 2):(3 * global_node)] .= 0
         elseif bc.friction_type == 1
             model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
         else
@@ -734,10 +761,14 @@ function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBou
     return nothing
 end
 
-function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
+function get_dst_traction(dst_bc::SchwarzBoundaryCondition, use_previous::Bool=false)
     src_mesh = dst_bc.coupled_subsim.model.mesh
     src_side_set_id = dst_bc.coupled_side_set_id
-    src_global_force = -dst_bc.coupled_subsim.model.internal_force
+    if use_previous == false
+        src_global_force = -dst_bc.coupled_subsim.model.internal_force
+    else
+        src_global_force = -dst_bc.coupled_subsim.model.previous_internal_force_schwarz
+    end
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
     num_dst_nodes = size(dst_bc.transfer_operator, 1)
     dst_traction = zeros(3, num_dst_nodes)
@@ -746,6 +777,21 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     dst_traction[3, :] = dst_bc.transfer_operator * src_local_traction[3, :]
     return dst_traction
 end
+
+# function get_dst_inertia(dst_bc::SchwarzBoundaryCondition)
+#     src_mesh = dst_bc.coupled_subsim.model.mesh
+#     src_side_set_id = dst_bc.coupled_side_set_id
+
+#     src_global_force = dst_bc.coupled_subsim.model.mass * dst_bc.coupled_subsim.integrator.acceleration
+
+#     src_local_inertia = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
+#     num_dst_nodes = size(dst_bc.transfer_operator, 1)
+#     dst_inertia = zeros(3, num_dst_nodes)
+#     dst_inertia[1, :] = dst_bc.transfer_operator * src_local_inertia[1, :]
+#     dst_inertia[2, :] = dst_bc.transfer_operator * src_local_inertia[2, :]
+#     dst_inertia[3, :] = dst_bc.transfer_operator * src_local_inertia[3, :]
+#     return dst_inertia
+# end
 
 function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)
     node_set_names = Exodus.read_names(mesh, NodeSet)

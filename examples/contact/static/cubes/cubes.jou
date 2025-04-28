@@ -1,7 +1,7 @@
 ${side = 1.0}
 ${length = 1.0}
 ${separation = 0.0}
-${nel_fine = 2}
+${nel_fine = 1}
 ${nel_coarse = 1}
 ${h_fine = length / nel_fine}
 ${h_coarse = length / nel_coarse}

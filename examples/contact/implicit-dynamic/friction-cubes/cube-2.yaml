@@ -10,27 +10,35 @@ model:
       model: linear elastic
       elastic modulus: 1.0e+09
       Poisson's ratio: 0.25
-      density: 1000.0
+      density: 2000.0
 time integrator:
-  type: Newmark
-  β: 0.25
+  # type: Newmark
+  # β: 0.25
+  # γ: 0.5
+  type: central difference
+  initial time: 0.0
+  final time: 1
+  time step: 0.01
+  CFL: 0.1
   γ: 0.5
 initial conditions:
   displacement:
     - node set: nsall
       component: x
-      function: "-0.5099 - 100.0 * t"
+      function: "-100.0 * t"
 boundary conditions:
   Schwarz contact:
     - side set: ssx-
       source: "cube-1.yaml"
       source block: fine
       source side set: ssx+
-      friction type: tied
+      friction type: frictionless
 solver:
-  type: Hessian minimizer
-  step: full Newton
-  minimum iterations: 1
-  maximum iterations: 16
-  relative tolerance: 1.0e-07
-  absolute tolerance: 1.0e-03
+  type: explicit solver
+  step: explicit
+  # type: Hessian minimizer
+  # step: full Newton
+  # minimum iterations: 1
+  # maximum iterations: 16
+  # relative tolerance: 1.0e-07
+  # absolute tolerance: 1.0e-03

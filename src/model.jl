@@ -89,11 +89,15 @@ function SolidMechanics(params::Parameters)
     reference = Matrix{Float64}(undef, 3, num_nodes)
     current = Matrix{Float64}(undef, 3, num_nodes)
     velocity = Matrix{Float64}(undef, 3, num_nodes)
+    previous_current_schwarz = Matrix{Float64}(undef, 3, num_nodes)
+    previous_velocity_schwarz = Matrix{Float64}(undef, 3, num_nodes)
     acceleration = Matrix{Float64}(undef, 3, num_nodes)
     for node in 1:num_nodes
         reference[:, node] = coords[:, node]
         current[:, node] = coords[:, node]
+        previous_current_schwarz[:, node] = coords[:, node]
         velocity[:, node] = [0.0, 0.0, 0.0]
+        previous_velocity_schwarz[:, node] = [0.0, 0.0, 0.0]
         acceleration[:, node] = [0.0, 0.0, 0.0]
     end
     material_params = model_params["material"]
@@ -140,6 +144,7 @@ function SolidMechanics(params::Parameters)
     time = 0.0
     failed = false
     internal_force = zeros(3 * num_nodes)
+    previous_internal_force_schwarz = zeros(3 * num_nodes) 
     boundary_force = zeros(3 * num_nodes)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
@@ -214,6 +219,9 @@ function SolidMechanics(params::Parameters)
         inclined_support,
         global_transform,
         kinematics,
+        previous_current_schwarz,
+        previous_velocity_schwarz,
+        previous_internal_force_schwarz,
     )
 end
 
@@ -770,6 +778,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 element_energy += W * dvol
                 grad_op = create_gradient_operator(dNdX)
                 @einsum element_internal_force[i] += grad_op[j, i] * stress[j] * dvol
+                #println("Element Internal Force", element_internal_force)
                 if compute_diag_stiffness == true
                     moduli = second_from_fourth(A)
                     add_diag_stiff!(element_diag_stiffness, grad_op, moduli, dvol)
@@ -816,6 +825,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     model.strain_energy = sum(energy_tl)
     model.body_force = body_force_vector
     model.internal_force = merge_threadlocal_coo_vectors(internal_force_tl, num_dofs)
+    #println("After Element Model Int Force", model.internal_force)
     if compute_diag_stiffness == true
         model.diag_stiffness = merge_threadlocal_coo_vectors(diag_stiffness_tl, num_dofs)
     end
