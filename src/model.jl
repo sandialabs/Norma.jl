@@ -446,23 +446,11 @@ end
     end
 end
 
-@generated function create_reduced_element_matrix(::Type{T}, ::Val{N}) where {T,N}
-    quote
-        MMatrix{$N,$N,$T}(undef)
-    end
-end
-
 @generated function create_element_vector(::Type{T}, ::Val{N}) where {T,N}
     dof_per_node = 3
     total_dofs = dof_per_node * N
     quote
         MVector{$total_dofs,$T}(undef)
-    end
-end
-
-@generated function create_reduced_element_vector(::Type{T}, ::Val{N}) where {T,N}
-    quote
-        MVector{$N,$T}(undef)
     end
 end
 
@@ -679,14 +667,12 @@ function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags
     energy = zeros(nthreads())
     internal_force = create_threadlocal_coo_vectors(num_dofs)
 
-    diag_stiffness =
-        flags.compute_diag_stiffness ? create_threadlocal_coo_vectors(num_dofs) : Vector{COOVector}(undef, nthreads())
+    diag_stiffness = create_threadlocal_coo_vectors(flags.compute_diag_stiffness ? num_dofs : 0)
     if flags.compute_diag_stiffness && model.kinematics == Infinitesimal
         model.compute_diag_stiffness = false
     end
 
-    lumped_mass =
-        flags.compute_lumped_mass ? create_threadlocal_coo_vectors(num_dofs) : Vector{COOVector}(undef, nthreads())
+    lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
     if flags.compute_lumped_mass
         model.compute_lumped_mass = false
     end
@@ -697,13 +683,12 @@ function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags
         coo_matrix_nnz = 0
     end
 
-    stiffness =
-        flags.compute_stiffness ? create_threadlocal_coo_matrices(coo_matrix_nnz) : Vector{COOMatrix}(undef, nthreads())
+    stiffness = create_threadlocal_coo_matrices(flags.compute_stiffness ? coo_matrix_nnz : 0)
     if flags.compute_stiffness && model.kinematics == Infinitesimal
         model.compute_stiffness = false
     end
 
-    mass = flags.compute_mass ? create_threadlocal_coo_matrices(coo_matrix_nnz) : Vector{COOMatrix}(undef, nthreads())
+    mass = create_threadlocal_coo_matrices(flags.compute_mass ? coo_matrix_nnz : 0)
     if flags.compute_mass
         model.compute_mass = false
     end
@@ -711,34 +696,14 @@ function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags
 end
 
 function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
+    valN = Val(num_element_nodes)
     energy = zeros(nthreads())
-    dofs = create_threadlocal_element_vectors(Int64, Val(num_element_nodes))
-    internal_force = create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-
-    diag_stiffness = if flags.compute_diag_stiffness
-        create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-    else
-        Vector{typeof(create_element_vector(Float64, Val(num_element_nodes)))}(undef, nthreads())
-    end
-
-    lumped_mass = if flags.compute_lumped_mass
-        create_threadlocal_element_vectors(Float64, Val(num_element_nodes))
-    else
-        Vector{typeof(create_element_vector(Float64, Val(num_element_nodes)))}(undef, nthreads())
-    end
-
-    stiffness = if flags.compute_stiffness
-        create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
-    else
-        Vector{typeof(create_element_matrix(Float64, Val(num_element_nodes)))}(undef, nthreads())
-    end
-
-    mass = if flags.compute_mass
-        create_threadlocal_element_matrices(Float64, Val(num_element_nodes))
-    else
-        Vector{typeof(create_element_matrix(Float64, Val(num_element_nodes)))}(undef, nthreads())
-    end
-
+    dofs = create_threadlocal_element_vectors(Int64, valN)
+    internal_force = create_threadlocal_element_vectors(Float64, valN)
+    diag_stiffness = create_threadlocal_element_vectors(Float64, flags.compute_diag_stiffness ? valN : Val(0))
+    lumped_mass = create_threadlocal_element_vectors(Float64, flags.compute_lumped_mass ? valN : Val(0))
+    stiffness = create_threadlocal_element_matrices(Float64, flags.compute_stiffness ? valN : Val(0))
+    mass = create_threadlocal_element_matrices(Float64, flags.compute_mass ? valN : Val(0))
     return SMElementThreadLocalArrays(energy, dofs, internal_force, diag_stiffness, lumped_mass, stiffness, mass)
 end
 

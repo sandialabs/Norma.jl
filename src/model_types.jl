@@ -53,14 +53,14 @@ struct SMThreadLocalArrays{V,M}
     mass::Vector{M}
 end
 
-struct SMElementThreadLocalArrays{T,EIV,EV,EM}
+struct SMElementThreadLocalArrays{T,DOFV,IFV,DSV,LMV,SM,MM}
     energy::Vector{T}
-    dofs::Vector{EIV}
-    internal_force::Vector{EV}
-    diag_stiffness::Vector{EV}
-    lumped_mass::Vector{EV}
-    stiffness::Vector{EM}
-    mass::Vector{EM}
+    dofs::Vector{DOFV}
+    internal_force::Vector{IFV}
+    diag_stiffness::Vector{DSV}
+    lumped_mass::Vector{LMV}
+    stiffness::Vector{SM}
+    mass::Vector{MM}
 end
 
 mutable struct SolidMechanics <: Model
