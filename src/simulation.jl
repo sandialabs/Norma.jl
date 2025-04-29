@@ -66,7 +66,7 @@ function SingleDomainSimulation(params::Parameters)
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
     controller = SolidSingleController(
-        0.0, 0.0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
+        0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
     )
     model = create_model(params)
     integrator = create_time_integrator(params, model)
@@ -118,8 +118,94 @@ function MultiDomainSimulation(params::Parameters)
     return sim
 end
 
-function get_block_connectivity(mesh::ExodusDatabase, blk_id::Integer)
-    _, num_elems, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(blk_id))
-    conn = Exodus.read_block_connectivity(mesh, Int32(blk_id), num_elems * num_nodes)
-    return reshape(conn, (num_elems, num_nodes))
+function SolidMultiDomainController(params::Parameters)
+    num_domains = length(params["domains"])
+    minimum_iterations = params["minimum iterations"]
+    maximum_iterations = params["maximum iterations"]
+    absolute_tolerance = params["relative tolerance"]
+    relative_tolerance = params["absolute tolerance"]
+    initial_time = params["initial time"]
+    final_time = params["final time"]
+    input_time_step = params["time step"]
+    num_stops = max(round(Int64, (final_time - initial_time) / input_time_step) + 1, 2)
+    time_step = (final_time - initial_time) / (num_stops - 1)
+    norma_logf(0, :time, "Time Step = %.4e : Adjusted = %.4e : Total Stops = %d", input_time_step, time_step, num_stops)
+    absolute_error = relative_error = 0.0
+    time = prev_time = initial_time
+    same_step = true
+    stop = 0
+    converged = false
+    iteration_number = 0
+    stop_disp = Vector{Vector{Float64}}(undef, num_domains)
+    stop_velo = Vector{Vector{Float64}}(undef, num_domains)
+    stop_acce = Vector{Vector{Float64}}(undef, num_domains)
+    stop_∂Ω_f = Vector{Vector{Float64}}(undef, num_domains)
+    schwarz_disp = Vector{Vector{Float64}}(undef, num_domains)
+    schwarz_velo = Vector{Vector{Float64}}(undef, num_domains)
+    schwarz_acce = Vector{Vector{Float64}}(undef, num_domains)
+    time_hist = Vector{Vector{Float64}}()
+    disp_hist = Vector{Vector{Vector{Float64}}}()
+    velo_hist = Vector{Vector{Vector{Float64}}}()
+    acce_hist = Vector{Vector{Vector{Float64}}}()
+    ∂Ω_f_hist = Vector{Vector{Vector{Float64}}}()
+    relaxation_parameter = get(params, "relaxation parameter", 1.0)
+    naive_stabilized = get(params, "naive stabilized", false)
+    lambda_disp = Vector{Vector{Float64}}(undef, num_domains)
+    lambda_velo = Vector{Vector{Float64}}(undef, num_domains)
+    lambda_acce = Vector{Vector{Float64}}(undef, num_domains)
+    schwarz_contact = false
+    active_contact = false
+    contact_hist = Vector{Bool}()
+
+    csv_interval = get(params, "CSV output interval", 0)
+    if csv_interval > 0
+        iterations = params["maximum iterations"]
+        convergence_hist = zeros(Float64, iterations, 2)
+    else
+        convergence_hist = Array{Float64}(undef, 0, 0)
+    end
+    return SolidMultiDomainController(
+        num_domains,
+        minimum_iterations,
+        maximum_iterations,
+        absolute_tolerance,
+        relative_tolerance,
+        absolute_error,
+        relative_error,
+        initial_time,
+        final_time,
+        time_step,
+        time,
+        prev_time,
+        same_step,
+        num_stops,
+        stop,
+        converged,
+        iteration_number,
+        stop_disp,
+        stop_velo,
+        stop_acce,
+        stop_∂Ω_f,
+        schwarz_disp,
+        schwarz_velo,
+        schwarz_acce,
+        time_hist,
+        disp_hist,
+        velo_hist,
+        acce_hist,
+        ∂Ω_f_hist,
+        relaxation_parameter,
+        naive_stabilized,
+        lambda_disp,
+        lambda_velo,
+        lambda_acce,
+        schwarz_contact,
+        active_contact,
+        contact_hist,
+        convergence_hist,
+    )
+end
+
+function create_controller(params::Parameters)
+    return SolidMultiDomainController(params)
 end

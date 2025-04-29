@@ -881,3 +881,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     end
     return nothing
 end
+
+function get_block_connectivity(mesh::ExodusDatabase, blk_id::Integer)
+    _, num_elems, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(blk_id))
+    conn = Exodus.read_block_connectivity(mesh, Int32(blk_id), num_elems * num_nodes)
+    return reshape(conn, (num_elems, num_nodes))
+end
