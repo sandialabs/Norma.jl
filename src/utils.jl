@@ -5,7 +5,6 @@
 # top-level Norma.jl directory.
 using Logging
 using Printf
-using Unicode
 
 const NORMA_COLOR_OUTPUT = stdout isa Base.TTY && get(ENV, "NORMA_NO_COLOR", "false") != "true"
 
