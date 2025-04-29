@@ -100,7 +100,7 @@ mutable struct SaintVenant_Kirchhoff <: Solid
     ρ::Float64
     function SaintVenant_Kirchhoff(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
+        ρ = get(params, "density", 0.0)
         return new(E, ν, κ, λ, μ, ρ)
     end
 end
@@ -114,7 +114,7 @@ mutable struct Linear_Elastic <: Solid
     ρ::Float64
     function Linear_Elastic(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
+        ρ = get(params, "density", 0.0)
         return new(E, ν, κ, λ, μ, ρ)
     end
 end
@@ -128,7 +128,7 @@ mutable struct Neohookean <: Solid
     ρ::Float64
     function Neohookean(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
+        ρ = get(params, "density", 0.0)
         return new(E, ν, κ, λ, μ, ρ)
     end
 end
@@ -144,7 +144,7 @@ mutable struct SethHill <: Solid
     n::Int
     function SethHill(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
+        ρ = get(params, "density", 0.0)
         return new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
     end
 end
@@ -169,8 +169,8 @@ mutable struct J2 <: Solid
     M::Float64
     function J2(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        Y₀ = params["yield stress"]
+        ρ = get(params, "density", 0.0)
+        Y₀ = get(params, "yield stress", 0.0)
         n = get(params, "hardening exponent", 0.0)
         ε₀ = get(params, "reference plastic strain", 0.0)
         Sᵥᵢₛ₀ = get(params, "reference viscoplastic stress", 0.0)
@@ -327,7 +327,7 @@ function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, 
         rma_iter += 1
     end
     if rma_converged == false
-        println("❗ J2 stress update did not converge to specified tolerance")
+        norma_log(2, :warning, "J2 stress update did not converge to specified tolerance")
     end
 
     Nᵖ = σᵛᵐ > 0.0 ? 1.5 * Mᵈᵉᵛ / σᵛᵐ : zeros(3, 3)

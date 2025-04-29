@@ -39,12 +39,18 @@ const test_files = [
     "utils.jl",
 ]
 
+start_time = time()
+Norma.norma_log(0, :norma, "BEGIN TESTS")
 @testset verbose = true "Norma.jl Test Suite" begin
     for file in test_files
-        println("▶ \e[1;32mRunning $file...\e[0m")
+        Norma.norma_log(0, :test, "Running $file...")
         include(file)
     end
 end
+elapsed_time = time() - start_time
+Norma.norma_log(0, :done, "Tests Complete")
+Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
+Norma.norma_log(0, :norma, "END TESTS")
 
 # WARNING: Do not leave output, meshes or inputs here.
 # They will be removed.

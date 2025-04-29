@@ -298,7 +298,7 @@ is_barycentric(::Val{TETRA10}) = true
 is_barycentric(::Val{HEX8}) = false
 is_barycentric(et::ElementType) = is_barycentric(Val(et))
 
-get_element_type(dim::Integer, num_nodes::Integer) = begin
+function get_element_type(dim::Integer, num_nodes::Integer)
     if dim == 1 && num_nodes == 2
         return BAR2
     elseif dim == 2 && num_nodes == 3
