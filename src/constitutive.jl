@@ -327,7 +327,7 @@ function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, 
         rma_iter += 1
     end
     if rma_converged == false
-        println("❗ J2 stress update did not converge to specified tolerance")
+        println("[WARN] J2 stress update did not converge to specified tolerance")
     end
 
     Nᵖ = σᵛᵐ > 0.0 ? 1.5 * Mᵈᵉᵛ / σᵛᵐ : zeros(3, 3)

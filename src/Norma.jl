@@ -25,8 +25,8 @@ function run(sim::Simulation)
     end
     evolve(sim)
     elapsed_time = time() - start_time
-    println("⏹️  Simulation Complete")
-    println("⌚️ Run Time = ", format_time(elapsed_time))
+    println("[DONE] Simulation Complete")
+    println("[TIME] Run Time = ", format_time(elapsed_time))
     return sim
 end
 
