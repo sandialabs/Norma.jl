@@ -7,6 +7,66 @@ using Logging
 using Printf
 using Unicode
 
+const NORMA_COLOR_OUTPUT = stdout isa Base.TTY && get(ENV, "NORMA_NO_COLOR", "false") != "true"
+
+const NORMA_COLORS = Dict(
+    :acceleration => :blue,
+    :advance => :green,
+    :contact => :light_yellow,
+    :domain => :light_blue,
+    :done => :green,
+    :equilibrium => :blue,
+    :error => :red,
+    :info => :cyan,
+    :initial => :blue,
+    :input => :cyan,
+    :linesearch => :cyan,
+    :norma => :light_red,
+    :recover => :yellow,
+    :schwarz => :light_blue,
+    :setup => :magenta,
+    :solve => :cyan,
+    :step => :green,
+    :stop => :green,
+    :summary => :magenta,
+    :time => :light_cyan,
+    :warn => :yellow,
+)
+
+function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
+    indent = " "^level
+    keyword_str = uppercase(string(keyword))[1:min(end, 7)]
+    bracketed = "[" * keyword_str * "]"
+    padded = rpad(bracketed, 9)
+
+    if NORMA_COLOR_OUTPUT
+        color = get(NORMA_COLORS, keyword, :default)
+        print(indent)
+        printstyled(padded * " "; color=color, bold=true)
+        println(msg)
+    else
+        println(indent, padded, " ", msg)
+    end
+end
+
+function norma_logf(level::Int, keyword::Symbol, fmt::AbstractString, args...)
+    indent = " "^level
+    fstr = Printf.Format(fmt)
+    buf = Printf.format(fstr, args...)
+    keyword_str = uppercase(string(keyword))[1:min(end, 7)]
+    bracketed = "[" * keyword_str * "]"
+    padded = rpad(bracketed, 9)
+
+    if NORMA_COLOR_OUTPUT
+        color = get(NORMA_COLORS, keyword, :default)
+        print(indent)
+        printstyled(padded * " "; color=color, bold=true)
+        println(buf)
+    else
+        println(indent, padded, " ", buf)
+    end
+end
+
 # Enable debugging for a specific module in the environment variable JULIA_DEBUG (all for all modules)
 function configure_logger()
     debug_level = get(ENV, "JULIA_DEBUG", "")
@@ -14,7 +74,7 @@ function configure_logger()
     if debug_level != ""
         # Enable debug logging
         global_logger(ConsoleLogger(stderr, Logging.Debug))
-        @info "Debugging enabled for: $debug_level"
+        norma_log(0, :info, "Debugging enabled for: $debug_level")
     else
         # Default to Info level
         global_logger(ConsoleLogger(stderr, Logging.Info))
@@ -36,13 +96,13 @@ Warns that parser behavior may break due to this setting.
 """
 function enable_fpe_traps()
     if Sys.islinux() && Sys.ARCH == :x86_64
-        @warn "Enabling FPE traps can break Julia's parser if done too early"
-        @warn "(e.g., before Meta.parse())."
+        norma_log(0, :warn, "Enabling FPE traps can break Julia's parser if done too early")
+        norma_log(0, :warn, "(e.g., before Meta.parse()).")
         mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
         ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
-        @info "Floating-point exceptions enabled (invalid, div-by-zero, overflow)"
+        norma_log(0, :info, "Floating-point exceptions enabled (invalid, div-by-zero, overflow)")
     else
-        @warn "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)"
+        norma_log(0, :warn, "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)")
     end
     return nothing
 end
@@ -78,4 +138,14 @@ function parse_args()
         error("Usage: julia Norma.jl <input_file>")
     end
     return ARGS[1]
+end
+
+function colored_status(status::String)
+    if status == "[WAIT]"
+        return NORMA_COLOR_OUTPUT ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
+    elseif status == "[DONE]"
+        return NORMA_COLOR_OUTPUT ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
+    else
+        return status  # fallback (no color)
+    end
 end

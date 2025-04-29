@@ -52,7 +52,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
         error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
-    @printf("[STEP] Failure. Decrease Δt. (Δt = %.3e → %.3e)\n", time_step, new_time_step)
+    norma_logf(0, :step, "Failure. Decrease Δt. (Δt = %.3e → %.3e)", time_step, new_time_step)
 end
 
 function increase_time_step(sim::SingleDomainSimulation)
@@ -63,7 +63,7 @@ function increase_time_step(sim::SingleDomainSimulation)
         new_time_step = min(increase_factor * time_step, maximum_time_step)
         if new_time_step > time_step
             sim.integrator.time_step = new_time_step
-            @printf("[STEP] Success. Increase Δt. (Δt = %.3e → %.3e)\n", time_step, new_time_step)
+            norma_logf(0, :step, "Success. Increase Δt. (Δt = %.3e → %.3e)", time_step, new_time_step)
         end
     end
 end
@@ -97,9 +97,9 @@ function advance(sim::MultiDomainSimulation)
     detect_contact(sim)
     if sim.controller.active_contact ≠ was_in_contact
         if was_in_contact == true
-            println("[CONTACT] Released — reattempting control step.")
+            norma_log(0, :contact, "Released — reattempting control step.")
         else
-            println("[CONTACT] Initiated — reattempting control step.")
+            norma_log(0, :contact, "Initiated — reattempting control step.")
         end
         restore_stop_solutions(sim)
         solve_contact(sim)
@@ -199,10 +199,10 @@ function sync_time(sim::Simulation)
     initial_time = ctrl.prev_time
     final_time = ctrl.time
     if stop == 0
-        @printf("[INITIAL] Stop [0] : Time = %.4e\n", final_time)
+        norma_logf(0, :initial, "Stop [0] : Time = %.4e", final_time)
     else
         Δt = final_time - initial_time
-        @printf("[ADVANCE] Stop [%d] : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
+        norma_logf(0, :advance, "Stop [%d] : Time = %.4e : Δt = %.4e", stop, final_time, Δt)
     end
 end
 

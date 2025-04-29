@@ -16,8 +16,7 @@ include("solver.jl")
 include("schwarz.jl")
 
 function create_simulation(input_file::String)
-    println("[NORMA]")
-    println("[SETUP] Simulation ", input_file)
+    norma_log(0, :setup, "Reading from " * input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     params["name"] = input_file
     return create_simulation(params)
@@ -89,9 +88,8 @@ function MultiDomainSimulation(params::Parameters)
     csv_interval = get(params, "CSV output interval", 0)
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
-    println("  [SUBDOMAINS]")
     for domain_name in domain_names
-        @printf("  [SUBDOMAIN] %s\n", domain_name)
+        norma_log(4, :domain, domain_name)
         subparams = YAML.load_file(domain_name; dicttype=Parameters)
         subparams["name"] = domain_name
         ti_params = subparams["time integrator"]

@@ -15,7 +15,7 @@ function SolidMultiDomainController(params::Parameters)
     input_time_step = params["time step"]
     num_stops = max(round(Int64, (final_time - initial_time) / input_time_step) + 1, 2)
     time_step = (final_time - initial_time) / (num_stops - 1)
-    @printf("[TIME] Time Step = %.4e : Adjusted = %.4e : Total Stops = %d\n", input_time_step, time_step, num_stops)
+    norma_logf(0, :time, "Time Step = %.4e : Adjusted = %.4e : Total Stops = %d", input_time_step, time_step, num_stops)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
     same_step = true
@@ -128,7 +128,7 @@ function schwarz(sim::MultiDomainSimulation)
     end
 
     while true
-        println("[SCHWARZ] Iteration [$iteration_number]")
+        norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
         synchronize(sim)
         subcycle(sim, is_schwarz)
@@ -137,11 +137,12 @@ function schwarz(sim::MultiDomainSimulation)
             sim.controller.convergence_hist[iteration_number, 1] = ΔU
             sim.controller.convergence_hist[iteration_number, 2] = Δu
         end
-        status = sim.controller.converged ? "[DONE]" : "[WAIT]"
-        @printf("[SCHWARZ] Convergence [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
-        if stop_schwarz(sim, iteration_number + 1) == true
+        raw_status = sim.controller.converged ? "[DONE]" : "[WAIT]"
+        status = colored_status(raw_status)
+        norma_logf(0, :schwarz, "Convergence [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
+                if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
-            println("[SCHWARZ] Performed ", iteration_number, " Schwarz Iteration", plural)
+            norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
             break
         end
         iteration_number += 1
@@ -269,8 +270,8 @@ end
 function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
     subsim_index = 1
     for subsim in sim.subsims
-        @printf("  [SUBDOMAIN] %s\n", subsim.name)
-        @printf("  [INITIAL] Time = %.4e\n", subsim.integrator.time)
+        norma_log(4, :domain, subsim.name)
+        norma_logf(4, :initial, "Time = %.4e", subsim.integrator.time)
         stop_index = 1
         while true
             advance_time(subsim)
@@ -279,7 +280,7 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
             end
             subsim.model.time = subsim.integrator.time
             advance(subsim)
-            @printf("  [ADVANCE] Time = %.4e : Δt = %.4e\n", subsim.integrator.time, subsim.integrator.time_step)
+            norma_logf(4, :advance, "Time = %.4e : Δt = %.4e", subsim.integrator.time, subsim.integrator.time_step)
             if sim.controller.active_contact == true && sim.controller.naive_stabilized == true
                 apply_naive_stabilized_bcs(subsim)
             end
@@ -470,7 +471,7 @@ function detect_contact(sim::MultiDomainSimulation)
         end
     end
     if sim.controller.active_contact == true
-        println("[CONTACT] Detected")
+        norma_log(0, :contact, "Detected")
     end
     resize!(sim.controller.contact_hist, sim.controller.stop + 1)
     sim.controller.contact_hist[sim.controller.stop + 1] = sim.controller.active_contact

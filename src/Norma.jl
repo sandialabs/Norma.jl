@@ -11,10 +11,12 @@ include("simulation.jl")
 include("evolve.jl")
 
 function run(input_file::String)
+    norma_log(0, :norma, "BEGIN")
     return run(create_simulation(input_file))
 end
 
 function run(params::Parameters)
+    norma_log(0, :norma, "BEGIN")
     return run(create_simulation(params))
 end
 
@@ -25,8 +27,9 @@ function run(sim::Simulation)
     end
     evolve(sim)
     elapsed_time = time() - start_time
-    println("[DONE] Simulation Complete")
-    println("[TIME] Run Time = ", format_time(elapsed_time))
+    norma_log(0, :done, "Simulation Complete")
+    norma_log(0, :time, "Run Time = " * format_time(elapsed_time))
+    norma_log(0, :norma, "END")
     return sim
 end
 

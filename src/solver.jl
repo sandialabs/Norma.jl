@@ -561,7 +561,7 @@ function backtrack_line_search(
     model.compute_mass = false
     model.compute_lumped_mass = false
     for iter in 1:max_iters
-        @printf("  [LINESEARCH] Line Search [%d] |ΔX| = %.3e\n", iter, step_length)
+        norma_logf(4, :linesearch, "Line Search [%d] |ΔX| = %.3e", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
         copy_solution_source_targets(solver, model, integrator)
@@ -685,7 +685,9 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
     if is_explicit_dynamic == false
-        @printf("  [SOLVE] Iteration [%d] %s = %.3e : %s = %.3e : %s\n", 0, "|R|", norm_residual, "|r|", 1.0, "[WAIT]")
+        raw_status = "[WAIT]"
+        status = colored_status(raw_status)
+    norma_logf(4, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -703,9 +705,10 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         norm_residual = norm(residual[model.free_dofs])
         update_solver_convergence_criterion(solver, norm_residual)
         if is_explicit_dynamic == false
-            status = solver.converged ? "[DONE]" : "[WAIT]"
-            @printf("  [SOLVE] Iteration [%d] %s = %.3e : %s = %.3e : %s\n", iteration_number, "|R|", solver.absolute_error, "|r|", solver.relative_error, status)
-        end
+            raw_status = solver.converged ? "[DONE]" : "[WAIT]"
+            status = colored_status(raw_status)
+            norma_logf(4, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|R|", solver.absolute_error, "|r|", solver.relative_error, status)
+                    end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
             break
