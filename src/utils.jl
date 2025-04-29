@@ -21,7 +21,7 @@ const NORMA_COLORS = Dict(
     :initial => :blue,
     :input => :cyan,
     :linesearch => :cyan,
-    :norma => :light_red,
+    :norma => :magenta,
     :recover => :yellow,
     :schwarz => :light_blue,
     :setup => :magenta,
@@ -29,8 +29,9 @@ const NORMA_COLORS = Dict(
     :step => :green,
     :stop => :green,
     :summary => :magenta,
+    :test => :light_green,
     :time => :light_cyan,
-    :warn => :yellow,
+    :warning => :yellow,
 )
 
 function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
@@ -96,13 +97,13 @@ Warns that parser behavior may break due to this setting.
 """
 function enable_fpe_traps()
     if Sys.islinux() && Sys.ARCH == :x86_64
-        norma_log(0, :warn, "Enabling FPE traps can break Julia's parser if done too early")
-        norma_log(0, :warn, "(e.g., before Meta.parse()).")
+        norma_log(0, :warning, "Enabling FPE traps can break Julia's parser if done too early")
+        norma_log(0, :warning, "(e.g., before Meta.parse()).")
         mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
         ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
         norma_log(0, :info, "Floating-point exceptions enabled (invalid, div-by-zero, overflow)")
     else
-        norma_log(0, :warn, "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)")
+        norma_log(0, :warning, "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)")
     end
     return nothing
 end
