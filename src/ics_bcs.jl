@@ -397,7 +397,6 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
     end
 end
 
-
 function apply_sm_schwarz_coupling_dirichlet(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     if bc.coupled_subsim.model isa SolidMechanics
         for i in 1:length(bc.side_set_node_indices)
