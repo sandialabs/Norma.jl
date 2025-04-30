@@ -124,10 +124,8 @@ function SolidMultiDomainController(params::Parameters)
     relative_tolerance = params["absolute tolerance"]
     initial_time = params["initial time"]
     final_time = params["final time"]
-    input_time_step = params["time step"]
-    num_stops = max(round(Int64, (final_time - initial_time) / input_time_step) + 1, 2)
-    time_step = (final_time - initial_time) / (num_stops - 1)
-    norma_logf(0, :time, "Time Step = %.4e : Adjusted = %.4e : Total Stops = %d", input_time_step, time_step, num_stops)
+    time_step = params["time step"]
+    num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
     same_step = true
