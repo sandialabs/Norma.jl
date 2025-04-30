@@ -95,23 +95,6 @@ mutable struct SolidMechanics <: Model
     kinematics::Kinematics
 end
 
-# TODO: Add potential energy as in the above
-mutable struct HeatConduction <: Model
-    mesh::ExodusDatabase
-    materials::Vector{Thermal}
-    reference::Matrix{Float64}
-    temperature::Vector{Float64}
-    rate::Vector{Float64}
-    internal_heat_flux::Vector{Float64}
-    boundary_heat_flux::Vector{Float64}
-    boundary_conditions::Vector{BoundaryCondition}
-    flux::Vector{Vector{Vector{Vector{Float64}}}}
-    stored_energy::Vector{Vector{Float64}}
-    free_dofs::BitVector
-    time::Float64
-    failed::Bool
-end
-
 mutable struct QuadraticOpInfRom <: OpInfModel
     opinf_rom::Dict{Any,Any}
     basis::Array{Float64}

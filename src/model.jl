@@ -102,17 +102,7 @@ function SolidMechanics(params::Parameters)
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blks = length(blocks)
     if num_blks_params ≠ num_blks
-        error(
-            "number of blocks in mesh ",
-            model_params["mesh"],
-            " (",
-            num_blks,
-            ") must be equal to number of blocks in materials file ",
-            model_params["material"],
-            " (",
-            num_blks_params,
-            ")",
-        )
+        error("number of blocks in mesh ", model_params["mesh"], " (", num_blks, ") must be equal to number of blocks in materials ", model_params["material"], " (", num_blks_params, ")")
     end
     elem_blk_names = Exodus.read_names(input_mesh, Block)
     materials = Vector{Solid}(undef, 0)
@@ -125,14 +115,7 @@ function SolidMechanics(params::Parameters)
             kinematics = get_kinematics(material_model)
         else
             if kinematics ≠ get_kinematics(material_model)
-                error(
-                    "Material ",
-                    typeof(material_model),
-                    " has inconsistent kinematics ",
-                    get_kinematics(material_model),
-                    " than previous materials of type ",
-                    kinematics,
-                )
+                error("Material ", typeof(material_model), " has inconsistent kinematics ", get_kinematics(material_model), " than previous materials of type ", kinematics)
             end
         end
         push!(materials, material_model)
@@ -174,12 +157,8 @@ function SolidMechanics(params::Parameters)
     compute_diag_stiffness = true
     compute_mass = true
     compute_lumped_mass = true
-    mesh_smoothing = params["mesh smoothing"]
-    if mesh_smoothing == true
-        smooth_reference = model_params["smooth reference"]
-    else
-        smooth_reference = ""
-    end
+    mesh_smoothing = get(params, "mesh smoothing", false)
+    smooth_reference = get(model_params, "smooth reference", "")
     inclined_support = false
     num_dofs = 3 * num_nodes
     global_transform = sparse(I, num_dofs, num_dofs)
@@ -217,100 +196,14 @@ function SolidMechanics(params::Parameters)
     )
 end
 
-function HeatConduction(params::Parameters)
-    input_mesh = params["input_mesh"]
-    model_params = params["model"]
-    coords = read_coordinates(input_mesh)
-    num_nodes = Exodus.num_nodes(input_mesh.init)
-    reference = Matrix{Float64}(undef, 3, num_nodes)
-    temperature = Vector{Float64}(undef, num_nodes)
-    rate = Vector{Float64}(undef, num_nodes)
-    for node in 1:num_nodes
-        reference[:, node] = coords[:, node]
-        temperature[node] = 0.0
-        rate[node] = 0.0
-    end
-    material_params = model_params["material"]
-    material_blocks = material_params["blocks"]
-    num_blks_params = length(material_blocks)
-    blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(blocks)
-    if num_blks_params ≠ num_blks
-        error(
-            "number of blocks in mesh ",
-            model_params["mesh"],
-            " (",
-            num_blks,
-            ") must be equal to number of blocks in materials file ",
-            model_params["material"],
-            " (",
-            num_blks_params,
-            ")",
-        )
-    end
-    elem_blk_names = Exodus.read_names(input_mesh, Block)
-    materials = Vector{Thermal}(undef, 0)
-    for elem_blk_name in elem_blk_names
-        material_name = material_blocks[elem_blk_name]
-        material_props = material_params[material_name]
-        material_model = create_material(material_props)
-        push!(materials, material_model)
-    end
-    time = 0.0
-    failed = false
-    internal_heat_flux = zeros(num_nodes)
-    boundary_heat_flux = zeros(num_nodes)
-    boundary_conditions = Vector{BoundaryCondition}()
-    free_dofs = trues(num_nodes)
-    flux = Vector{Vector{Vector{Vector{Float64}}}}()
-    stored_energy = Vector{Vector{Float64}}()
-    for block in blocks
-        blk_id = block.id
-        element_type_string, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, blk_id)
-        element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
-        block_flux = Vector{Vector{Vector{Float64}}}()
-        block_stored_energy = Vector{Float64}()
-        for _ in 1:num_blk_elems
-            element_flux = Vector{Vector{Float64}}()
-            for _ in 1:num_points
-                push!(element_flux, zeros(3))
-            end
-            push!(block_flux, element_flux)
-            element_stored_energy = 0.0
-            push!(block_stored_energy, element_stored_energy)
-        end
-        push!(flux, block_flux)
-        push!(stored_energy, block_stored_energy)
-    end
-    return HeatConduction(
-        input_mesh,
-        materials,
-        reference,
-        temperature,
-        rate,
-        internal_heat_flux,
-        boundary_heat_flux,
-        boundary_conditions,
-        flux,
-        stored_energy,
-        free_dofs,
-        time,
-        failed,
-    )
-end
-
 function create_model(params::Parameters)
     model_params = params["model"]
     model_name = model_params["type"]
     if model_name == "solid mechanics"
-        params["mesh smoothing"] = false
         return SolidMechanics(params)
     elseif model_name == "mesh smoothing"
         params["mesh smoothing"] = true
         return SolidMechanics(params)
-    elseif model_name == "heat conduction"
-        return HeatConduction(params)
     elseif model_name == "linear opinf rom"
         return LinearOpInfRom(params)
     elseif model_name == "quadratic opinf rom"

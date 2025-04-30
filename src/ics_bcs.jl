@@ -867,7 +867,7 @@ function create_bcs(params::Parameters)
     # BRP: do not support applying multiple inclined support BCs to a single node
     duplicate_inclined_support_conditions = length(unique(inclined_support_nodes)) < length(inclined_support_nodes)
     if duplicate_inclined_support_conditions
-        throw(error("Cannot apply multiple inclined BCs to a single node."))
+        error("Cannot apply multiple inclined BCs to a single node.")
     end
     return boundary_conditions
 end
@@ -894,18 +894,7 @@ function assign_velocity!(
     velocity_already_defined = !(current_val ≈ 0.0)
     dissimilar_velocities = !(current_val ≈ velo_val)
     if velocity_already_defined && dissimilar_velocities
-        error(
-            "Inconsistent velocity initial conditions (ICs) for node ",
-            node_index,
-            ": attempted to assign velocity ",
-            context,
-            " (v = ",
-            velo_val,
-            ")",
-            " which conflicts with an already assigned value (v = ",
-            current_val,
-            ").",
-        )
+        error("Inconsistent velocity initial conditions (ICs) for node ", node_index, ": attempted to assign velocity ", context, " (v = ", velo_val, ")", " which conflicts with an already assigned value (v = ", current_val, ").")
     else
         velocity[offset, node_index] = velo_val
     end

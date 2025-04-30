@@ -39,13 +39,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     minimum_time_step = sim.integrator.minimum_time_step
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
-        error(
-            "Cannot adapt time step ",
-            time_step,
-            " because decrease factor is ",
-            decrease_factor,
-            ". Enable adaptive time stepping.",
-        )
+        error("Cannot adapt time step ", time_step, " because decrease factor is ", decrease_factor, ". Enable adaptive time stepping.")
     end
     new_time_step = decrease_factor * time_step
     if new_time_step < minimum_time_step

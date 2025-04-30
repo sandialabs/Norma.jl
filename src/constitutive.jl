@@ -584,6 +584,7 @@ function create_material(params::Parameters)
     else
         error("Unknown material model : ", model_name)
     end
+    return nothing
 end
 
 function get_kinematics(material::Solid)
@@ -596,7 +597,8 @@ function get_kinematics(material::Solid)
     elseif material isa SethHill
         return Finite
     end
-    return error("Unknown material model : ", typeof(material))
+    error("Unknown material model : ", typeof(material))
+    return nothing
 end
 
 function get_p_wave_modulus(material::Solid)
