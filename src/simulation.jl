@@ -65,9 +65,7 @@ function SingleDomainSimulation(params::Parameters)
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
-    controller = SolidSingleController(
-        0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
-    )
+    controller = create_controller(params)
     model = create_model(params)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
@@ -206,6 +204,40 @@ function SolidMultiDomainController(params::Parameters)
     )
 end
 
+function SolidSingleController(params::Parameters)
+    ti_params = params["time integrator"]
+    initial_time = ti_params["initial time"]
+    final_time = ti_params["final time"]
+    time_step = ti_params["time step"]
+    num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
+    time = prev_time = initial_time
+    stop = 0
+    stop_disp = Vector{Float64}()
+    stop_velo = Vector{Float64}()
+    stop_acce = Vector{Float64}()
+    stop_∂Ω_f = Vector{Float64}()
+    return SolidSingleController(
+        initial_time,
+        final_time,
+        time_step,
+        time,
+        prev_time,
+        num_stops,
+        stop,
+        stop_disp,
+        stop_velo,
+        stop_acce,
+        stop_∂Ω_f,
+    )
+end
+
 function create_controller(params::Parameters)
-    return SolidMultiDomainController(params)
+    sim_type = params["type"]
+    if sim_type == "single"
+        return SolidSingleController(params)
+    elseif sim_type == "multi"
+        return SolidMultiDomainController(params)
+    else
+        error("Unknown type of simulation: ", sim_type)
+    end
 end
