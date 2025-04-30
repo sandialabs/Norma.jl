@@ -12,7 +12,7 @@ using Test
 include("../src/Norma.jl")
 include("helpers.jl")
 
-const test_files = [
+const all_test_files = [
     "minitensor.jl",
     "interpolation.jl",
     "constitutive.jl",
@@ -39,21 +39,38 @@ const test_files = [
     "utils.jl",
 ]
 
+const indexed_test_files = collect(enumerate(all_test_files))
+
+# Display test options
+Norma.norma_log(0, :info, "Available tests (e.g. ./runtests.jl 2 4 7):")
+for (i, file) in indexed_test_files
+    Norma.norma_log(0, :info, rpad("[$i]", 5) * file)
+end
+
+# Parse command-line arguments as indices (if any)
+selected_test_indices = parse.(Int, ARGS)
+
+# Determine which tests to run
+test_files_to_run = isempty(selected_test_indices) ? indexed_test_files :
+    filter(t -> t[1] in selected_test_indices, indexed_test_files)
+
+# Start test run
 start_time = time()
 Norma.norma_log(0, :norma, "BEGIN TESTS")
+
 @testset verbose = true "Norma.jl Test Suite" begin
-    for file in test_files
-        Norma.norma_log(0, :test, "Running $file...")
+    for (i, file) in test_files_to_run
+        Norma.norma_log(0, :test, "[$i] Running $file...")
         include(file)
     end
 end
+
 elapsed_time = time() - start_time
 Norma.norma_log(0, :done, "Tests Complete")
 Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
 Norma.norma_log(0, :norma, "END TESTS")
 
-# WARNING: Do not leave output, meshes or inputs here.
-# They will be removed.
+# Cleanup: WARNING — Do not leave files here!
 for ext in ["yaml", "e", "g", "csv"]
     for file in filter(f -> endswith(f, ".$ext"), readdir())
         rm(file; force=true)
