@@ -22,18 +22,38 @@ function SMOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,A
     velo_num = expand_derivatives(D(disp_num))
     acce_num = expand_derivatives(D(velo_num))
 
-    opinf_model_file = bc_params["model-file"]
+    opinf_model_directory = bc_params["model-directory"]
     py""" 
     import torch
     def get_model(model_file):
+      import os
+      print(model_file) 
+      assert os.path.isfile(model_file) ,  print(model_file + " cannot be found" )
       return torch.load(model_file)
     """
-    model = py"get_model"(opinf_model_file)
+    ensemble_size = bc_params["ensemble-size"]
 
-    opinf_model_file = bc_params["model-file"]
-    basis_file = bc_params["basis-file"]
+    if offset == 1
+        offset_name = "x"
+    end
+    if offset == 2
+        offset_name = "y"
+    end
+    if offset == 3
+        offset_name = "z"
+    end
+
+
+    model = []
+    for i in 1:ensemble_size
+      tmp =  py"get_model"(opinf_model_directory * "/BC-" * node_set_name * "-" * offset_name * "-" * string(i-1) * ".pt")
+      push!(model,tmp)
+    end
+
+    basis_file = bc_params["model-directory"] * "/nn-opinf-basis-" * node_set_name * "-" * offset_name * ".npz" 
     basis = NPZ.npzread(basis_file)
     basis = basis["basis"]
+
 
     SMOpInfDirichletBC(
         node_set_name,
@@ -68,7 +88,8 @@ function SMOpInfCouplingSchwarzBC(
         coupled_mesh = coupled_subsim.model.mesh
     end
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
-    element_type = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
+    element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
+    element_type = element_type_from_string(element_type_string)
     coupled_side_set_name = bc_params["source side set"]
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
