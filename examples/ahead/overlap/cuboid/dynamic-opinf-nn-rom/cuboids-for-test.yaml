@@ -1,0 +1,11 @@
+type: multi
+domains: ["cuboid-1-for-test.yaml", "cuboid-2-for-test.yaml"]
+Exodus output interval: 1
+CSV output interval: 1
+initial time: 0.0
+final time: 0.01
+time step: 0.01
+minimum iterations: 1
+maximum iterations: 1
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08
