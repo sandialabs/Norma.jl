@@ -24,5 +24,6 @@
     for file in readdir("neural-network-model")
       rm(joinpath("neural-network-model", file); force=true)  # Remove each file/directory
     end
+
     rm("neural-network-model"; force=true)
 end
