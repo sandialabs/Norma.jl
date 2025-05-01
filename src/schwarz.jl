@@ -27,6 +27,12 @@ function schwarz(sim::MultiDomainSimulation)
         sim.controller.convergence_hist .= 0.0
     end
 
+    for subsim in sim.subsims
+        subsim.model.previous_current_schwarz .= subsim.model.current
+        subsim.model.previous_velocity_schwarz .= subsim.model.velocity
+        subsim.model.previous_internal_force_schwarz .= subsim.model.internal_force
+    end
+
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number

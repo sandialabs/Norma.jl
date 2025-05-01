@@ -417,7 +417,7 @@ function in_bounding_box(nodes::Matrix{Float64}, point::Vector{Float64}, tol::Fl
     return true
 end
 
-function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
+function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer, use_previous::Bool=false)
     mesh = model.mesh
     num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     ss_node_index = 1
@@ -426,7 +426,11 @@ function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, si
     minimum_nodal_distance = Inf
     for num_nodes_side in num_nodes_per_sides
         face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
-        face_nodes = model.current[:, face_node_indices]
+        if use_previous == true
+            face_nodes = model.previous_current_schwarz[:, face_node_indices]
+        else
+            face_nodes = model.current[:, face_node_indices]
+        end
         nodal_distance = get_minimum_distance_to_nodes(face_nodes, point)
         if nodal_distance < minimum_nodal_distance
             minimum_nodal_distance = nodal_distance
@@ -442,8 +446,8 @@ end
 # and then project the point that closest face in the side set.
 # This is done in place of a strict search because the contact surfaces may be deformed
 # and not match each other exactly. We assume that we know the contact surfaces in advance
-function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
-    face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
+function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer, use_previous::Bool=false)
+    face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id, use_previous)
     new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end
@@ -555,14 +559,18 @@ function get_rectangular_projection_matrix(
     return rectangular_projection_matrix
 end
 
-function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
+function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics, use_previous::Bool=false)
     local_from_global_map, num_nodes_sides, side_set_node_indices = get_side_set_local_from_global_map(
         mesh, side_set_id
     )
     if model.kinematics == Finite
         coords = model.reference
     else
-        coords = model.current
+        if use_previous == true
+            coords = model.previous_current_schwarz
+        else
+            coords = model.current
+        end
     end
     num_nodes = length(local_from_global_map)
     space_dim, _ = size(coords)

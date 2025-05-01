@@ -93,6 +93,9 @@ mutable struct SolidMechanics <: Model
     inclined_support::Bool
     global_transform::SparseMatrixCSC{Float64,Int64}
     kinematics::Kinematics
+    previous_current_schwarz::Matrix{Float64}
+    previous_velocity_schwarz::Matrix{Float64}
+    previous_internal_force_schwarz::Vector{Float64}
 end
 
 mutable struct QuadraticOpInfRom <: OpInfModel
