@@ -26,6 +26,19 @@ mutable struct SMDirichletBC <: RegularBoundaryCondition
     acce_num::Num
 end
 
+mutable struct SMOpInfDirichletBC <: RegularBoundaryCondition 
+    node_set_name::String
+    offset::Int64
+    node_set_id::Int64
+    node_set_node_indices::Vector{Int64}
+    disp_num::Num
+    velo_num::Num
+    acce_num::Num
+    fom_bc::SMDirichletBC
+    nn_model::Any
+    basis::Any
+end
+
 mutable struct SMDirichletInclined <: RegularBoundaryCondition
     node_set_name::String
     node_set_id::Int64
@@ -73,6 +86,21 @@ mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
     is_dirichlet::Bool
     swap_bcs::Bool
 end
+
+mutable struct SMOpInfOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
+    side_set_name::String
+    side_set_node_indices::Vector{Int64}
+    coupled_nodes_indices::Vector{Vector{Int64}}
+    interpolation_function_values::Vector{Vector{Float64}}
+    coupled_subsim::Simulation
+    subsim::Simulation
+    is_dirichlet::Bool
+    swap_bcs::Bool
+    fom_bc::SMOverlapSchwarzBC
+    nn_model::Any
+    basis::Any
+end
+
 
 mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     side_set_id::Int64

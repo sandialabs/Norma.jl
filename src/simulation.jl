@@ -14,6 +14,9 @@ include("model.jl")
 include("time_integrator.jl")
 include("solver.jl")
 include("schwarz.jl")
+# For OpInf models
+include("opinf/opinf_model.jl")
+
 
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)

@@ -12,6 +12,7 @@ include("ics_bcs_types.jl")
 include("model_types.jl")
 include("time_integrator_types.jl")
 include("solver_types.jl")
+include("opinf/opinf_model_types.jl")
 
 abstract type SingleController end
 abstract type MultiDomainController end
@@ -89,3 +90,4 @@ mutable struct MultiDomainSimulation <: Simulation
     subsim_name_index_map::Dict{String,Int64}
     failed::Bool
 end
+

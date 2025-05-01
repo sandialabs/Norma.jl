@@ -3,6 +3,8 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+using PyCall
+import NPZ
 
 @variables t, x, y, z
 D = Differential(t)
@@ -242,32 +244,6 @@ function SMCouplingSchwarzBC(
     end
 end
 
-function apply_bc(model::OpInfModel, bc::SMDirichletBC)
-    model.fom_model.time = model.time
-    apply_bc(model.fom_model, bc)
-    bc_vector = zeros(0)
-    for node_index in bc.node_set_node_indices
-        disp_val = model.fom_model.current[bc.offset, node_index] - model.fom_model.reference[bc.offset, node_index]
-        push!(bc_vector, disp_val)
-    end
-
-    offset = bc.offset
-    if offset == 1
-        offset_name = "x"
-    end
-    if offset == 2
-        offset_name = "y"
-    end
-    if offset == 3
-        offset_name = "z"
-    end
-
-    op_name = "B_" * bc.node_set_name * "-" * offset_name
-    bc_operator = model.opinf_rom[op_name]
-    # SM Dirichlet BC are only defined on a single x,y,z
-    return model.reduced_boundary_forcing[:] += bc_operator[1, :, :] * bc_vector
-end
-
 function apply_bc(model::SolidMechanics, bc::SMDirichletBC)
     for node_index in bc.node_set_node_indices
         values = Dict(
@@ -404,10 +380,6 @@ function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, blk_i
     return node_indices, ξ, found
 end
 
-function find_point_in_mesh(point::Vector{Float64}, model::RomModel, blk_id::Int, tol::Float64)
-    node_indices, ξ, found = find_point_in_mesh(point, model.fom_model, blk_id, tol)
-    return node_indices, ξ, found
-end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     if bc.is_dirichlet == true
@@ -422,27 +394,6 @@ function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondi
         apply_sm_schwarz_coupling_dirichlet(model, bc)
     else
         apply_sm_schwarz_coupling_neumann(model, bc)
-    end
-end
-
-function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics
-        ## Apply BC to the FOM vector
-        apply_bc_detail(model.fom_model, bc)
-
-        # populate our own BC vector
-        bc_vector = zeros(3, length(bc.side_set_node_indices))
-        for i in 1:length(bc.side_set_node_indices)
-            node_index = bc.side_set_node_indices[i]
-            bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
-        end
-        op_name = "B_" * bc.side_set_name
-        bc_operator = model.opinf_rom[op_name]
-        for i in 1:3
-            model.reduced_boundary_forcing[:] += bc_operator[i, :, :] * bc_vector[i, :]
-        end
-    else
-        throw("ROM-ROM coupling not supported yet")
     end
 end
 
@@ -557,78 +508,6 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     bc.coupled_subsim.integrator.velocity = saved_velo
     bc.coupled_subsim.integrator.acceleration = saved_acce
     bc.coupled_subsim.model.internal_force = saved_∂Ω_f
-    return copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
-end
-
-function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
-    global_sim = bc.coupled_subsim.params["global_simulation"]
-    controller = global_sim.controller
-    if bc isa SMContactSchwarzBC && controller.active_contact == false
-        return nothing
-    end
-    empty_history = length(controller.time_hist) == 0
-    same_step = controller.same_step
-    if empty_history == true
-        apply_bc_detail(model, bc)
-        return nothing
-    end
-    # Save solution of coupled simulation
-    saved_disp = bc.coupled_subsim.integrator.displacement
-    saved_velo = bc.coupled_subsim.integrator.velocity
-    saved_acce = bc.coupled_subsim.integrator.acceleration
-    saved_∂Ω_f = bc.coupled_subsim.model.internal_force
-    time = model.time
-    coupled_name = bc.coupled_subsim.name
-    coupled_index = global_sim.subsim_name_index_map[coupled_name]
-    time_hist = controller.time_hist[coupled_index]
-    disp_hist = controller.disp_hist[coupled_index]
-    velo_hist = controller.velo_hist[coupled_index]
-    acce_hist = controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
-    interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
-    interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
-    interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
-    interp_∂Ω_f = same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
-    if bc.coupled_subsim.model isa SolidMechanics
-        bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    elseif bc.coupled_subsim.model isa RomModel
-        bc.coupled_subsim.model.fom_model.internal_force = interp_∂Ω_f
-    end
-
-    if bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC
-        relaxation_parameter = controller.relaxation_parameter
-        schwarz_iteration = controller.iteration_number
-        if schwarz_iteration == 1
-            lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
-            lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
-            lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
-        else
-            lambda_dispᵖʳᵉᵛ = controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = controller.lambda_acce[coupled_index]
-        end
-        bc.coupled_subsim.integrator.displacement =
-            controller.lambda_disp[coupled_index] =
-                relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.velocity =
-            controller.lambda_velo[coupled_index] =
-                relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.acceleration =
-            controller.lambda_acce[coupled_index] =
-                relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
-    else
-        bc.coupled_subsim.integrator.displacement = interp_disp
-        bc.coupled_subsim.integrator.velocity = interp_velo
-        bc.coupled_subsim.integrator.acceleration = interp_acce
-    end
-    # Copies from integrator to model
-    copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
-    apply_bc_detail(model, bc)
-    bc.coupled_subsim.integrator.displacement = saved_disp
-    bc.coupled_subsim.integrator.velocity = saved_velo
-    bc.coupled_subsim.integrator.acceleration = saved_acce
-    bc.coupled_subsim.model.internal_force = saved_∂Ω_f
-    # Copy from integrator to model
     return copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
 end
 
@@ -834,6 +713,9 @@ function create_bcs(params::Parameters)
             if bc_type == "Dirichlet"
                 boundary_condition = SMDirichletBC(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "OpInf Dirichlet" 
+                boundary_condition = SMOpInfDirichletBC(input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Neumann"
                 boundary_condition = SMNeumannBC(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
@@ -859,6 +741,17 @@ function create_bcs(params::Parameters)
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
                 boundary_condition = SMCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "OpInf Schwarz overlap"
+                sim = params["global_simulation"]
+                subsim_name = params["name"]
+                subdomain_index = sim.subsim_name_index_map[subsim_name]
+                subsim = sim.subsims[subdomain_index]
+                coupled_subsim_name = bc_setting_params["source"]
+                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
+                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                boundary_condition = SMOpInfCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
+
             else
                 error("Unknown boundary condition type : ", bc_type)
             end
@@ -875,13 +768,6 @@ end
 function apply_bcs(model::SolidMechanics)
     model.boundary_force .= 0.0
     model.free_dofs .= true
-    for boundary_condition in model.boundary_conditions
-        apply_bc(model, boundary_condition)
-    end
-end
-
-function apply_bcs(model::RomModel)
-    model.reduced_boundary_forcing[:] .= 0.0
     for boundary_condition in model.boundary_conditions
         apply_bc(model, boundary_condition)
     end
@@ -945,34 +831,6 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                 if ic_type == "velocity"
                     assign_velocity!(model.velocity, offset, node_index, velo_val, "directly from velocity IC")
                 end
-            end
-        end
-    end
-end
-
-function apply_ics(params::Parameters, model::RomModel)
-    apply_ics(params, model.fom_model)
-
-    if haskey(params, "initial conditions") == false
-        return nothing
-    end
-    n_var, n_node, n_mode = model.basis.size
-    n_var_fom, n_node_fom = size(model.fom_model.current)
-
-    # Make sure basis is the right size
-    if n_var != n_var_fom || n_node != n_node_fom
-        throw("Basis is wrong size")
-    end
-
-    # project onto basis
-    for k in 1:n_mode
-        model.reduced_state[k] = 0.0
-        model.reduced_velocity[k] = 0.0
-        for j in 1:n_node
-            for n in 1:n_var
-                model.reduced_state[k] +=
-                    model.basis[n, j, k] * (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
-                model.reduced_velocity[k] += model.basis[n, j, k] * (model.fom_model.velocity[n, j])
             end
         end
     end
