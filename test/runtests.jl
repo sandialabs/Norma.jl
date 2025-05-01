@@ -33,6 +33,7 @@ const all_test_files = [
     "schwarz-contact-dynamic-cubes.jl",
     "solid-inclined-displacement.jl",
     "opinf-schwarz-overlap-cuboid-hex8.jl",
+    "nnopinf-schwarz-overlap-cuboid-hex8.jl",
     "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
     "adaptive-time-stepping.jl",
     # Must go last for now due to FPE trapping
