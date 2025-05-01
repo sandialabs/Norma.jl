@@ -410,13 +410,11 @@ function find_point_in_mesh(point::Vector{Float64}, model::RomModel, blk_id::Int
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
-    if bc.is_dirichlet == true
-        println("Applying dirichlet BCs.")
-        apply_sm_schwarz_contact_dirichlet(model, bc)
-    else
-        println("Applying Neumann BCs.")
-        apply_sm_schwarz_contact_neumann(model, bc)
-    end
+    #if bc.is_dirichlet == true
+    apply_sm_schwarz_contact_dirichlet(model, bc)
+    #else
+    apply_sm_schwarz_contact_neumann(model, bc)
+    #end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
@@ -643,9 +641,10 @@ end
 function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContactSchwarzBC)
     use_previous = true
     side_set_node_indices = unique(bc.side_set_node_indices)
+    println("MY Side Set", side_set_node_indices)
     for node_index in side_set_node_indices
-        x1 = model.current[:, node_index]
-        v1 = model.velocity[:, node_index]
+        x1 = model.previous_current_schwarz[:, node_index]
+        v1 = model.previous_velocity_schwarz[:, node_index]
         x2, ξ, _, closest_face_node_indices, n2, _ = project_point_to_side_set(
             x1, bc.coupled_subsim.model, bc.coupled_side_set_id,
             use_previous
@@ -657,7 +656,9 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
         num_nodes = length(closest_face_node_indices)
         element_type = get_element_type(2, num_nodes)
         N, _, _ = interpolate(element_type, ξ)
-
+        println("Other Velocity Subsin: ", bc.coupled_subsim.model.previous_velocity_schwarz)
+        println("Closest Nodes Indices: ", closest_face_node_indices)
+        println("Velocity at Indices: ", bc.coupled_subsim.model.previous_velocity_schwarz[:,closest_face_node_indices])
         v2 = bc.coupled_subsim.model.previous_velocity_schwarz[:, closest_face_node_indices] * N
         a2 = bc.coupled_subsim.model.acceleration[:, closest_face_node_indices] * N
         
@@ -683,9 +684,9 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
 
         model.current[:, node_index] = new_point
 
-        model.free_dofs[[3 * node_index - 2]] .= false
-        model.free_dofs[[3 * node_index - 1]] .= true
-        model.free_dofs[[3 * node_index]] .= true
+        # model.free_dofs[[3 * node_index - 2]] .= false
+        # model.free_dofs[[3 * node_index - 1]] .= true
+        # model.free_dofs[[3 * node_index]] .= true
 
         model.velocity[:, node_index] = v
         println("alpha", alpha)

@@ -335,6 +335,7 @@ function subcycle(sim::MultiDomainSimulation, is_schwarz::Bool)
         subsim.model.previous_current_schwarz .= subsim.model.current
         subsim.model.previous_velocity_schwarz .= subsim.model.velocity
         subsim.model.previous_internal_force_schwarz .= subsim.model.internal_force
+        println("Set Previous Velocity: ", subsim.model.velocity)
         println("Completed Subcycle with Internal Force of: ", subsim.model.internal_force)
     end
 
