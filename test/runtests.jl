@@ -12,7 +12,7 @@ using Test
 include("../src/Norma.jl")
 include("helpers.jl")
 
-const all_test_files = [
+all_test_files = [
     "minitensor.jl",
     "interpolation.jl",
     "constitutive.jl",
@@ -33,12 +33,21 @@ const all_test_files = [
     "schwarz-contact-dynamic-cubes.jl",
     "solid-inclined-displacement.jl",
     "opinf-schwarz-overlap-cuboid-hex8.jl",
-    "nnopinf-schwarz-overlap-cuboid-hex8.jl",
     "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
     "adaptive-time-stepping.jl",
-    # Must go last for now due to FPE trapping
-    "utils.jl",
 ]
+
+nn_opinf_test_files = [
+    "nnopinf-schwarz-overlap-cuboid-hex8.jl",
+]
+
+if "run-nn-opinf-tests" in ARGS
+   append!(all_test_files,nn_opinf_test_files)
+end
+
+# Must go last for now due to FPE trapping
+"utils.jl",
+push!(all_test_files,"utils.jl")
 
 const indexed_test_files = collect(enumerate(all_test_files))
 
@@ -49,8 +58,9 @@ for (i, file) in indexed_test_files
 end
 
 # Parse command-line arguments as indices (if any)
-selected_test_indices = parse.(Int, ARGS)
 
+selected_test_indices = parse.(Int, filter(arg-> arg!= "run-nn-opinf-tests",ARGS))
+       
 # Determine which tests to run
 test_files_to_run = isempty(selected_test_indices) ? indexed_test_files :
     filter(t -> t[1] in selected_test_indices, indexed_test_files)
