@@ -27,7 +27,6 @@ function SMOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,A
     import torch
     def get_model(model_file):
       import os
-      print(model_file) 
       assert os.path.isfile(model_file) ,  print(model_file + " cannot be found" )
       return torch.load(model_file)
     """
@@ -196,7 +195,6 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SMOpInfDirichletBC)
     """
 
     reduced_bc_vector = bc.basis[1,:,:]' * bc_vector 
-    print(size(reduced_bc_vector),size(bc.basis),size(bc_vector))
     model_inputs = py"setup_inputs"(reduced_bc_vector)
     ensemble_size = size(bc.nn_model)[1]
     for i in 1:ensemble_size
