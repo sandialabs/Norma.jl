@@ -254,7 +254,7 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::CouplingSchwarzBounda
         end  
         model_inputs = py"setup_inputs"(reduced_bc_vector)
         ensemble_size = size(bc.nn_model)[1]
-        local_reduced_forcing = zeros(model.reduced_boundary_forcing.size[1])
+        local_reduced_forcing = zeros(size(model.reduced_boundary_forcing)[1])
         for i in 1:ensemble_size
           reduced_forcing = bc.nn_model[i].forward(model_inputs)
           reduced_forcing = reduced_forcing.detach().numpy()[1,:]
@@ -354,7 +354,7 @@ function apply_ics(params::Parameters, model::RomModel)
     if haskey(params, "initial conditions") == false
         return nothing
     end
-    n_var, n_node, n_mode = model.basis.size
+    n_var, n_node, n_mode = size(model.basis)
     n_var_fom, n_node_fom = size(model.fom_model.current)
 
     # Make sure basis is the right size
