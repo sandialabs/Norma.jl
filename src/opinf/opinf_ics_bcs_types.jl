@@ -26,7 +26,7 @@ mutable struct SMOpInfDirichletBC <: RegularBoundaryCondition
     acce_num::Num
     fom_bc::SMDirichletBC
     nn_model::Any
-    basis::Any
+    basis::Array{Float64}
 end
 
 
@@ -41,7 +41,7 @@ mutable struct SMOpInfOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
     swap_bcs::Bool
     fom_bc::SMOverlapSchwarzBC
     nn_model::Any
-    basis::Any
+    basis::Array{Float64}
 end
 
 

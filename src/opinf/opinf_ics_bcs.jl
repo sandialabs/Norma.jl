@@ -248,7 +248,7 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::CouplingSchwarzBounda
             return inputs
         """
 
-        reduced_bc_vector = zeros(bc.basis.size[3])
+        reduced_bc_vector = zeros(size(bc.basis)[3])
         for i in 1:3
             reduced_bc_vector[:] += bc.basis[i,:,:]' * bc_vector[i,:] 
         end  
