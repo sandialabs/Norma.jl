@@ -22,6 +22,45 @@ function SMDirichletBC(input_mesh::ExodusDatabase, bc_params::Parameters)
     return SMDirichletBC(node_set_name, offset, node_set_id, node_set_node_indices, disp_num, velo_num, acce_num)
 end
 
+function SMOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
+    fom_bc = SMDirichletBC(input_mesh,bc_params)
+    node_set_name = bc_params["node set"]
+    expression = bc_params["function"]
+    offset = component_offset_from_string(bc_params["component"])
+    node_set_id = node_set_id_from_name(node_set_name, input_mesh)
+    node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
+    # expression is an arbitrary function of t, x, y, z in the input file
+    disp_num = eval(Meta.parse(expression))
+    velo_num = expand_derivatives(D(disp_num))
+    acce_num = expand_derivatives(D(velo_num))
+
+    opinf_model_file = bc_params["model-file"]
+    py""" 
+    import torch
+    def get_model(model_file):
+      return torch.load(model_file)
+    """
+    model = py"get_model"(opinf_model_file)
+
+    opinf_model_file = bc_params["model-file"]
+    basis_file = bc_params["basis-file"]
+    basis = NPZ.npzread(basis_file)
+    basis = basis["basis"]
+
+    SMOpInfDirichletBC(
+        node_set_name,
+        offset,
+        node_set_id,
+        node_set_node_indices,
+        disp_num,
+        velo_num,
+        acce_num,
+        fom_bc,
+        model,
+        basis,
+    )
+end
+
 function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
