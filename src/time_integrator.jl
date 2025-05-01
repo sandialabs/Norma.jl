@@ -15,9 +15,7 @@ function adaptive_stepping_parameters(integrator_params::Parameters)
     has_any = has_minimum || has_decrease || has_maximum || has_increase
     has_all = has_minimum && has_decrease && has_maximum && has_increase
     if has_any == true && has_all == false
-        error(
-            "Adaptive time stepping requires 4 parameters: minimum and maximum time steps and decrease and increase factors",
-        )
+        error("Adaptive time stepping requires 4 parameters: minimum and maximum time steps and decrease and increase factors")
     elseif has_any == true && has_all == true
         minimum_time_step = integrator_params["minimum time step"]
         decrease_factor = integrator_params["decrease factor"]
@@ -254,7 +252,7 @@ end
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
-        @printf("🧱 Establishing Initial Equilibrium...\n")
+        norma_log(0, :equilibrium, "Establishing Initial Equilibrium...")
         solve(integrator, solver, model)
         if model.failed == true
             error("Finite element model failed to establish initial equlibrium")
@@ -274,7 +272,7 @@ function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    @printf("🏁 Computing Initial Acceleration...\n")
+    norma_log(0, :acceleration, "Computing Initial Acceleration...")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     evaluate(model, integrator, solver)
@@ -297,7 +295,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
 end
 
 function initialize(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
-    @printf("🏁 Computing Initial Acceleration...\n")
+    norma_log(0, :acceleration, "Computing Initial Acceleration...")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     evaluate(model, integrator, solver)
@@ -354,7 +352,7 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
 end
 
 function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    @printf("🏁 Computing Initial Acceleration...\n")
+    norma_log(0, :acceleration, "Computing Initial Acceleration...")
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)

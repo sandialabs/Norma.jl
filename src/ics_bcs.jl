@@ -108,6 +108,11 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
         swap_bcs = bc_params["swap BC types"]
     end
 
+    use_DDNN = false
+    if haskey(bc_params, "use DDNN") == true
+        use_DDNN = bc_params["use DDNN"]
+    end
+
     friction_type_string = bc_params["friction type"]
     if friction_type_string == "frictionless"
         friction_type = 0
@@ -132,6 +137,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
         active_contact,
         swap_bcs,
         friction_type,
+        use_DDNN,
     )
 end
 
@@ -410,10 +416,14 @@ function find_point_in_mesh(point::Vector{Float64}, model::RomModel, blk_id::Int
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
-    if bc.is_dirichlet == true
-        apply_sm_schwarz_contact_dirichlet(model, bc)
+    if bc.use_DDNN == true
+        apply_sm_schwarz_contact_DDNN(model, bc)
     else
-        apply_sm_schwarz_contact_neumann(model, bc)
+        if bc.is_dirichlet == true
+            apply_sm_schwarz_contact_dirichlet(model, bc)
+        else
+            apply_sm_schwarz_contact_neumann(model, bc)
+        end
     end
 end
 
@@ -709,6 +719,82 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
     end
 end
 
+function apply_sm_schwarz_contact_DDNN(model::SolidMechanics, bc::SMContactSchwarzBC)
+    side_set_node_indices = unique(bc.side_set_node_indices)
+    use_previous = true
+    schwarz_tractions = get_dst_traction(bc, use_previous) #+ get_dst_inertia(bc)
+    normals = compute_normal(model.mesh, bc.side_set_id, model, use_previous)
+    global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
+    num_local_nodes = length(global_from_local_map)
+
+    # Apply Dirichlet, but do not constrain
+    for node_index in side_set_node_indices
+        x1 = model.previous_current_schwarz[:, node_index]
+        v1 = model.previous_velocity_schwarz[:, node_index]
+        x2, ξ, _, closest_face_node_indices, n2, _ = project_point_to_side_set(
+            x1, bc.coupled_subsim.model, bc.coupled_side_set_id,
+            use_previous
+        )
+        n1 = -n2
+        axis = SVector{3,Float64}(-normalize(n2))
+        bc.rotation_matrix = compute_rotation_matrix(axis)
+
+        num_nodes = length(closest_face_node_indices)
+        element_type = get_element_type(2, num_nodes)
+        N, _, _ = interpolate(element_type, ξ)
+        # println("Other Velocity Subsin: ", bc.coupled_subsim.model.previous_velocity_schwarz)
+        # println("Closest Nodes Indices: ", closest_face_node_indices)
+        # println("Velocity at Indices: ", bc.coupled_subsim.model.previous_velocity_schwarz[:,closest_face_node_indices])
+        v2 = bc.coupled_subsim.model.previous_velocity_schwarz[:, closest_face_node_indices] * N
+
+        v = (v1 + v2)/2
+
+            if bc.friction_type == 0
+                if ( dot(v1,n1) + dot(v2,n2) ) > eps()
+                    alpha = dot(v1,n1) / ( dot(v1,n1) + dot(v2,n2) )
+                else
+                    alpha = 0.5
+                end
+            elseif bc.friction_type == 1   
+                if (norm(v1) + norm(v2)) > eps()
+                    alpha = norm(v1)/(norm(v1) + norm(v2))
+                else
+                    alpha = 0.5
+                end
+            else
+                error("Unknown or not implemented friction type.")
+            end
+
+        new_point = alpha*x1 + (1-alpha)*x2
+
+        model.current[:, node_index] = new_point
+
+        model.velocity[:, node_index] = v
+
+        model.acceleration[:, node_index] .= 0
+
+        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
+            bc.rotation_matrix
+    end
+    # Apply Neumann
+    for local_node in 1:num_local_nodes
+        global_node = global_from_local_map[local_node]
+        node_tractions = schwarz_tractions[:, local_node]
+        normal = normals[:, local_node]
+        if bc.friction_type == 0
+            proposed_normal_transfer = transfer_normal_component(
+                node_tractions, model.boundary_force[(3 * global_node - 2):(3 * global_node)], normal
+            )
+            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += proposed_normal_transfer
+        elseif bc.friction_type == 1
+            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
+        else
+            error("Unknown or not implemented friction type.")
+        end
+    end
+end
+
 function local_traction_from_global_force(mesh::ExodusDatabase, side_set_id::Integer, global_force::Vector{Float64})
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     num_local_nodes = length(global_from_local_map)
@@ -732,10 +818,14 @@ function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBou
     return nothing
 end
 
-function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
+function get_dst_traction(dst_bc::SchwarzBoundaryCondition, use_previous::Bool=false)
     src_mesh = dst_bc.coupled_subsim.model.mesh
     src_side_set_id = dst_bc.coupled_side_set_id
-    src_global_force = -dst_bc.coupled_subsim.model.internal_force
+    if use_previous == false
+        src_global_force = -dst_bc.coupled_subsim.model.internal_force
+    else
+        src_global_force = -dst_bc.coupled_subsim.model.previous_internal_force_schwarz
+    end
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
     num_dst_nodes = size(dst_bc.transfer_operator, 1)
     dst_traction = zeros(3, num_dst_nodes)
@@ -867,7 +957,7 @@ function create_bcs(params::Parameters)
     # BRP: do not support applying multiple inclined support BCs to a single node
     duplicate_inclined_support_conditions = length(unique(inclined_support_nodes)) < length(inclined_support_nodes)
     if duplicate_inclined_support_conditions
-        throw(error("Cannot apply multiple inclined BCs to a single node."))
+        error("Cannot apply multiple inclined BCs to a single node.")
     end
     return boundary_conditions
 end
@@ -894,18 +984,7 @@ function assign_velocity!(
     velocity_already_defined = !(current_val ≈ 0.0)
     dissimilar_velocities = !(current_val ≈ velo_val)
     if velocity_already_defined && dissimilar_velocities
-        error(
-            "Inconsistent velocity initial conditions (ICs) for node ",
-            node_index,
-            ": attempted to assign velocity ",
-            context,
-            " (v = ",
-            velo_val,
-            ")",
-            " which conflicts with an already assigned value (v = ",
-            current_val,
-            ").",
-        )
+        error("Inconsistent velocity initial conditions (ICs) for node ", node_index, ": attempted to assign velocity ", context, " (v = ", velo_val, ")", " which conflicts with an already assigned value (v = ", current_val, ").")
     else
         velocity[offset, node_index] = velo_val
     end

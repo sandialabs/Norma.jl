@@ -61,6 +61,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     active_contact::Bool
     swap_bcs::Bool
     friction_type::Int64
+    use_DDNN::Bool
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition

@@ -39,20 +39,14 @@ function decrease_time_step(sim::SingleDomainSimulation)
     minimum_time_step = sim.integrator.minimum_time_step
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
-        error(
-            "Cannot adapt time step ",
-            time_step,
-            " because decrease factor is ",
-            decrease_factor,
-            ". Enable adaptive time stepping.",
-        )
+        error("Cannot adapt time step ", time_step, " because decrease factor is ", decrease_factor, ". Enable adaptive time stepping.")
     end
     new_time_step = decrease_factor * time_step
     if new_time_step < minimum_time_step
         error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
-    @printf("🔽 Time step failure. Decreasing time step. (Δt = %.3e → %.3e)\n", time_step, new_time_step)
+    norma_logf(0, :step, "Failure. Decrease Δt. (Δt = %.3e → %.3e)", time_step, new_time_step)
 end
 
 function increase_time_step(sim::SingleDomainSimulation)
@@ -63,7 +57,7 @@ function increase_time_step(sim::SingleDomainSimulation)
         new_time_step = min(increase_factor * time_step, maximum_time_step)
         if new_time_step > time_step
             sim.integrator.time_step = new_time_step
-            @printf("🔼 Time step success. Increasing time step. (Δt = %.3e → %.3e)\n", time_step, new_time_step)
+            norma_logf(0, :step, "Success. Increase Δt. (Δt = %.3e → %.3e)", time_step, new_time_step)
         end
     end
 end
@@ -97,9 +91,9 @@ function advance(sim::MultiDomainSimulation)
     detect_contact(sim)
     if sim.controller.active_contact ≠ was_in_contact
         if was_in_contact == true
-            println("🟢 Contact released — reattempting control step.")
+            norma_log(0, :contact, "Released — reattempting control step.")
         else
-            println("🔴 Contact initiated — reattempting control step.")
+            norma_log(0, :contact, "Initiated — reattempting control step.")
         end
         restore_stop_solutions(sim)
         solve_contact(sim)
@@ -199,10 +193,10 @@ function sync_time(sim::Simulation)
     initial_time = ctrl.prev_time
     final_time = ctrl.time
     if stop == 0
-        @printf("▶️  Stop [0] : Time = %.4e\n", final_time)
+        norma_logf(0, :initial, "Stop [0] : Time = %.4e", final_time)
     else
         Δt = final_time - initial_time
-        @printf("⏭️  Stop [%d] : Time = %.4e : Δt = %.4e\n", stop, final_time, Δt)
+        norma_logf(0, :advance, "Stop [%d] : Time = %.4e : Δt = %.4e", stop, final_time, Δt)
     end
 end
 
@@ -226,7 +220,8 @@ function advance_time(sim::SingleDomainSimulation)
     sim.integrator.prev_time = sim.integrator.time
     next_time = round(sim.integrator.time + sim.integrator.time_step; digits=12)
     sim.integrator.time = sim.model.time = next_time
-    return sim.integrator.stop += 1
+    sim.integrator.stop += 1
+    return nothing
 end
 
 function advance_time(sim::MultiDomainSimulation)
@@ -237,11 +232,13 @@ function advance_time(sim::MultiDomainSimulation)
     num_stops = sim.controller.num_stops
     next_time = round((final_time - initial_time) * Float64(stop) / Float64(num_stops - 1) + initial_time; digits=12)
     sim.controller.time = next_time
-    return sim.controller.stop = stop
+    sim.controller.stop = stop
+    return nothing
 end
 
 function start_runtimer(sim::SingleDomainSimulation)
-    return sim.integrator.runtime_step = time()
+    sim.integrator.runtime_step = time()
+    return nothing
 end
 
 function start_runtimer(sim::MultiDomainSimulation)
@@ -251,7 +248,8 @@ function start_runtimer(sim::MultiDomainSimulation)
 end
 
 function end_runtimer(sim::SingleDomainSimulation)
-    return sim.integrator.runtime_step = time() - sim.integrator.runtime_step
+    sim.integrator.runtime_step = time() - sim.integrator.runtime_step
+    return nothing
 end
 
 function end_runtimer(sim::MultiDomainSimulation)
