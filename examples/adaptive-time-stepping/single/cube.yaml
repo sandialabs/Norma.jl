@@ -16,11 +16,11 @@ model:
 time integrator:
   type: quasi static
   initial time: 0.0
-  final time: 1.0
+  final time: 2.0
   time step: 1.0
   maximum time step: 1.0
   minimum time step: 0.01
-  increase factor: 1.0
+  increase factor: 1.1
   decrease factor: 0.5
 boundary conditions:
   Dirichlet:
@@ -35,7 +35,7 @@ boundary conditions:
       function: "0.0"
     - node set: nsz+
       component: z
-      function: "-0.5 * t"
+      function: "0.5 * (abs(t - 1.0) - 1.0)"
 solver:
   type: Hessian minimizer
   step: full Newton

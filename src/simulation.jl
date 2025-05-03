@@ -13,6 +13,7 @@ include("minitensor.jl")
 include("model.jl")
 include("time_integrator.jl")
 include("solver.jl")
+include("io.jl")
 
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
@@ -254,7 +255,9 @@ function evolve(sim::Simulation)
 end
 
 function stop_evolve(sim::Simulation)
-    return sim.controller.time >= sim.controller.final_time
+    time = sim.controller.time
+    final_time = sim.controller.final_time
+    return isapprox(time, final_time; rtol=1e-9, atol=1e-12) || time > final_time
 end
 
 function solve_contact(sim::MultiDomainSimulation)
@@ -266,6 +269,7 @@ function solve_contact(sim::MultiDomainSimulation)
 end
 
 function decrease_time_step(sim::SingleDomainSimulation)
+    norma_log(0, :recover, "Attempting to recover by decreasing time step...")
     time_step = sim.integrator.time_step
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
@@ -277,7 +281,6 @@ function decrease_time_step(sim::SingleDomainSimulation)
         error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
-    norma_logf(0, :step, "Failure. Decrease Δt. (Δt = %.3e → %.3e)", time_step, new_time_step)
     return nothing
 end
 
@@ -289,7 +292,6 @@ function increase_time_step(sim::SingleDomainSimulation)
             new_time_step = min(increase_factor * time_step, maximum_time_step)
         if new_time_step > time_step
             sim.integrator.time_step = new_time_step
-            norma_logf(0, :step, "Success. Increase Δt. (Δt = %.4e → %.4e)", time_step, new_time_step)
         end
     end
     return nothing
@@ -311,7 +313,6 @@ function advance_one_step(sim::SingleDomainSimulation)
         restore_prev_state(sim)
         decrease_time_step(sim)
         advance_time(sim)
-        set_initial_subcycle_time(sim)
         sim.failed = sim.model.failed = sim.solver.failed = false
     end
     return nothing
@@ -370,6 +371,7 @@ function initialize(sim::SingleDomainSimulation)
     apply_ics(sim)
     apply_bcs(sim)
     initialize(sim.integrator, sim.solver, sim.model)
+    save_curr_state(sim)
     return nothing
 end
 
@@ -379,6 +381,7 @@ function initialize(sim::MultiDomainSimulation)
     apply_bcs(sim)
     for subsim in sim.subsims
         initialize(subsim.integrator, subsim.solver, subsim.model)
+        save_curr_state(subsim)
     end
     return detect_contact(sim)
 end
@@ -391,15 +394,6 @@ end
 function initialize_writing(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         initialize_writing(subsim)
-    end
-end
-
-function write_stop(sim::MultiDomainSimulation)
-    stop = sim.controller.stop
-    time = sim.controller.time
-    norma_logf(0, :stop, "[%d] : Time = %.4e", stop, time)
-    for subsim in sim.subsims
-        write_stop(subsim)
     end
 end
 
@@ -454,14 +448,12 @@ function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64, eps::Fl
     t_next = t + dt
     gap = t_stop - t
     tol = eps * dt
-    if isapprox(t_next, t_stop; rtol=1e-9, atol=1e-12)
-        return gap
-    elseif t_next > t_stop
-        return gap
+    return if isapprox(t_next, t_stop; rtol=1e-9, atol=1e-12) || t_next > t_stop
+        gap
     elseif t_next ≥ t_stop - tol
-        return gap / 2
+        gap / 2
     else
-        return dt
+        dt
     end
 end
 

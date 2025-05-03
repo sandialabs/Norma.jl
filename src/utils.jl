@@ -22,6 +22,7 @@ const NORMA_COLORS = Dict(
     :input => :cyan,
     :linesearch => :cyan,
     :norma => :magenta,
+    :output => :cyan,
     :recover => :yellow,
     :schwarz => :light_blue,
     :setup => :magenta,
