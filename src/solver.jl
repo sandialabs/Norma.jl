@@ -584,13 +584,13 @@ function backtrack_line_search(
     return step
 end
 
-function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64})
-    return cg(A, b)
+function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, reltol::Float64)
+    return cg(A, b; reltol=reltol)
 end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    step = -solve_linear(solver.hessian[free, free], solver.gradient[free], solver.relative_tolerance)
     if solver.use_line_search == true
         return backtrack_line_search(integrator, solver, model, step)
     else
@@ -605,7 +605,7 @@ function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver:
 end
 
 function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
-    return -solve_linear(solver.hessian, solver.gradient)
+    return -solve_linear(solver.hessian, solver.gradient, solver.relative_tolerance)
 end
 
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)

@@ -23,11 +23,11 @@ boundary conditions:
       function: "0.0"
   Schwarz nonoverlap:
     - side set: ssz-
-      source: cuboid-1.yaml
+      source: cuboid-1
       source block: fine
       source side set: ssz+
     - side set: ssz+
-      source: cuboid-3.yaml
+      source: cuboid-3
       source block: coarse
       source side set: ssz-
 solver:

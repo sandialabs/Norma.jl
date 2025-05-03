@@ -39,7 +39,7 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: ssz-
-      source: clamped-1.yaml
+      source: clamped-1
       source block: coarse
       source side set: ssz+
 solver:

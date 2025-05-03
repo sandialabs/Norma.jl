@@ -27,7 +27,7 @@ boundary conditions:
       function: "-0.0 * t"
   Schwarz nonoverlap:
     - side set: ssz+
-      source: cuboid-2.yaml
+      source: cuboid-2
       source block: coarse
       source side set: ssz-
       default BC type: Neumann 

@@ -496,8 +496,8 @@ function apply_sm_schwarz_coupling_neumann(model::SolidMechanics, bc::CouplingSc
 end
 
 function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
-    global_sim = bc.coupled_subsim.params["global_simulation"]
-    controller = global_sim.controller
+    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    controller = parent_sim.controller
     if bc isa SMContactSchwarzBC && controller.active_contact == false
         return nothing
     end
@@ -514,7 +514,7 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
     saved_∂Ω_f = bc.coupled_subsim.model.internal_force
     time = model.time
     coupled_name = bc.coupled_subsim.name
-    coupled_index = global_sim.subsim_name_index_map[coupled_name]
+    coupled_index = parent_sim.subsim_name_index_map[coupled_name]
     time_hist = controller.time_hist[coupled_index]
     disp_hist = controller.disp_hist[coupled_index]
     velo_hist = controller.velo_hist[coupled_index]
@@ -561,8 +561,8 @@ function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
 end
 
 function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
-    global_sim = bc.coupled_subsim.params["global_simulation"]
-    controller = global_sim.controller
+    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    controller = parent_sim.controller
     if bc isa SMContactSchwarzBC && controller.active_contact == false
         return nothing
     end
@@ -579,7 +579,7 @@ function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
     saved_∂Ω_f = bc.coupled_subsim.model.internal_force
     time = model.time
     coupled_name = bc.coupled_subsim.name
-    coupled_index = global_sim.subsim_name_index_map[coupled_name]
+    coupled_index = parent_sim.subsim_name_index_map[coupled_name]
     time_hist = controller.time_hist[coupled_index]
     disp_hist = controller.disp_hist[coupled_index]
     velo_hist = controller.velo_hist[coupled_index]
@@ -838,7 +838,7 @@ function create_bcs(params::Parameters)
                 boundary_condition = SMNeumannBC(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
-                sim = params["global_simulation"]
+                sim = params["parent_simulation"]
                 sim.controller.schwarz_contact = true
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
@@ -850,7 +850,7 @@ function create_bcs(params::Parameters)
                 append!(inclined_support_nodes, boundary_condition.node_set_node_indices)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz nonoverlap"
-                sim = params["global_simulation"]
+                sim = params["parent_simulation"]
                 subsim_name = params["name"]
                 subdomain_index = sim.subsim_name_index_map[subsim_name]
                 subsim = sim.subsims[subdomain_index]

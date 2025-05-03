@@ -27,7 +27,7 @@ boundary conditions:
       function: "1.0 * t"
   Schwarz overlap:
     - side set: ssz-
-      source: cuboid-1.yaml
+      source: cuboid-1
       source block: fine
       source side set: ssz+
 solver:

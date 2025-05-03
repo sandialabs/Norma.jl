@@ -304,11 +304,10 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         blk_stable_time_step = integrator.CFL * minimum_blk_edge_length / wave_speed
         stable_time_step = min(stable_time_step, blk_stable_time_step)
     end
-    integrator.stable_time_step = stable_time_step
-    if stable_time_step < integrator.user_time_step
-        norma_logf(0, :warning, "Δt = %.3e exceeds stable Δt = %.3e — using stable step.", integrator.user_time_step, stable_time_step)
+    if stable_time_step < integrator.time_step
+        norma_logf(0, :warning, "Δt = %.3e exceeds stable Δt = %.3e — using stable step.", integrator.time_step, stable_time_step)
     end
-    integrator.time_step = min(stable_time_step, integrator.user_time_step)
+    integrator.time_step = min(stable_time_step, integrator.time_step)
     return nothing
 end
 

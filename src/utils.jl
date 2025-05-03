@@ -12,6 +12,7 @@ const NORMA_COLORS = Dict(
     :acceleration => :blue,
     :advance => :green,
     :contact => :light_yellow,
+    :debug => :red,
     :domain => :light_blue,
     :done => :green,
     :equilibrium => :blue,
@@ -26,7 +27,7 @@ const NORMA_COLORS = Dict(
     :setup => :magenta,
     :solve => :cyan,
     :step => :green,
-    :stop => :green,
+    :stop => :blue,
     :summary => :magenta,
     :test => :light_green,
     :time => :light_cyan,
@@ -148,4 +149,8 @@ function colored_status(status::String)
     else
         return status  # fallback (no color)
     end
+end
+
+function stripped_name(file::AbstractString)
+    first(splitext(basename(file)))
 end

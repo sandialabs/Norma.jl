@@ -36,7 +36,7 @@ boundary conditions:
       function: "0.0"
   Schwarz contact:
     - side set: ssx-
-      source: "cube-1.yaml"
+      source: cube-1
       source block: fine
       source side set: ssx+
       friction type: tied
