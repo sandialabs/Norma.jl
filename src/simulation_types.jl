@@ -29,7 +29,6 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     time_step::Float64
     time::Float64
     prev_time::Float64
-    same_step::Bool
     num_stops::Int64
     stop::Int64
     converged::Bool

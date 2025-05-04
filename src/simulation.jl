@@ -64,7 +64,6 @@ function MultiDomainSimulation(params::Parameters)
     initial_time = controller.initial_time
     final_time = controller.final_time
     time_step = controller.time_step
-    same_step = true
     exodus_interval = get(params, "Exodus output interval", 1)
     csv_interval = get(params, "CSV output interval", 0)
     subsim_name_index_map = Dict{String,Int64}()
@@ -83,16 +82,12 @@ function MultiDomainSimulation(params::Parameters)
         subparams["Exodus output interval"] = exodus_interval
         subparams["CSV output interval"] = csv_interval
         subsim = SingleDomainSimulation(subparams)
-        if subsim.integrator.time_step ≠ time_step
-            same_step = false
-        end
         params[domain_name] = subsim.params
         push!(subsims, subsim)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
     num_domains = length(subsims)
-    controller.same_step = same_step
     failed = false
     sim = MultiDomainSimulation(basename, params, controller, num_domains, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
@@ -113,7 +108,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
-    same_step = true
     stop = 0
     converged = false
     iteration_number = 0
@@ -158,7 +152,6 @@ function SolidMultiDomainTimeController(params::Parameters)
         time_step,
         time,
         prev_time,
-        same_step,
         num_stops,
         stop,
         converged,
@@ -451,7 +444,7 @@ function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64, eps::Fl
     t_next = t + dt
     gap = t_stop - t
     tol = eps * dt
-    return if isapprox(t_next, t_stop; rtol=1e-9, atol=1e-12) || t_next > t_stop
+    return if isapprox(t_next, t_stop; rtol=1e-6, atol=1e-12) || t_next > t_stop
         gap
     elseif t_next ≥ t_stop - tol
         gap / 2
@@ -517,9 +510,9 @@ function schwarz(sim::MultiDomainSimulation)
             sim.controller.convergence_hist[iteration_number, 1] = ΔU
             sim.controller.convergence_hist[iteration_number, 2] = Δu
         end
-        raw_status = sim.controller.converged ? "[DONE]" : "[WAIT]"
+        raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
         status = colored_status(raw_status)
-        norma_logf(0, :schwarz, "Convergence [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
+        norma_logf(0, :schwarz, "Criterion [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
                 if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
             norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
@@ -639,19 +632,19 @@ function swap_swappable_bcs(sim::SingleDomainSimulation)
 end
 
 function subcycle(sim::MultiDomainSimulation)
+    controller = sim.controller
     num_domains = sim.num_domains
     for subsim_index in 1:num_domains
         subsim = sim.subsims[subsim_index]
         norma_log(4, :domain, subsim.name)
+        reset_history(controller, subsim_index)
         while true
             advance_time(subsim)
             advance_one_step(subsim)
-            if sim.controller.active_contact == true && sim.controller.naive_stabilized == true
+            if controller.active_contact == true && controller.naive_stabilized == true
                 apply_naive_stabilized_bcs(subsim)
             end
-            if sim.controller.is_schwarz == true
-                save_history_snapshot(sim.controller, sim.subsims, subsim_index)
-            end
+            save_history_snapshot(controller, subsim, subsim_index)
             if stop_subcyle(subsim) == true
                 break
             end
@@ -672,28 +665,43 @@ function subcycle(sim::SingleDomainSimulation)
 end
 
 function stop_subcyle(sim::SingleDomainSimulation)
-    return isapprox(sim.integrator.time, sim.controller.time; rtol=1.0e-09, atol=1.0e-12)
+    return isapprox(sim.integrator.time, sim.controller.time; rtol=1.0e-06, atol=1.0e-12)
 end
 
 function reset_histories(sim::MultiDomainSimulation)
     controller = sim.controller
-    num_domains = sim.num_domains
-    for i in 1:num_domains
-        empty!(controller.time_hist[i])
-        empty!(controller.disp_hist[i])
-        empty!(controller.velo_hist[i])
-        empty!(controller.acce_hist[i])
-        empty!(controller.∂Ω_f_hist[i])
+    if controller.is_schwarz == false
+        return nothing
     end
+    num_domains = sim.num_domains
+    for subsim_index in 1:num_domains
+        reset_history(controller, subsim_index)
+    end
+    return nothing
+end
+
+function reset_history(controller::MultiDomainTimeController, subsim_index::Int64)
+    if controller.is_schwarz == false
+        return nothing
+    end
+    empty!(controller.time_hist[subsim_index])
+    empty!(controller.disp_hist[subsim_index])
+    empty!(controller.velo_hist[subsim_index])
+    empty!(controller.acce_hist[subsim_index])
+    empty!(controller.∂Ω_f_hist[subsim_index])
+    return nothing
 end
 
 function save_history_snapshot(
-    controller::MultiDomainTimeController, sims::Vector{SingleDomainSimulation}, subsim_index::Int64)
-    push!(controller.time_hist[subsim_index], sims[subsim_index].integrator.time)
-    push!(controller.disp_hist[subsim_index], copy(sims[subsim_index].integrator.displacement))
-    push!(controller.velo_hist[subsim_index], copy(sims[subsim_index].integrator.velocity))
-    push!(controller.acce_hist[subsim_index], copy(sims[subsim_index].integrator.acceleration))
-    push!(controller.∂Ω_f_hist[subsim_index], copy(sims[subsim_index].model.internal_force))
+    controller::MultiDomainTimeController, sim::SingleDomainSimulation, subsim_index::Int64)
+    if controller.is_schwarz == false
+        return nothing
+    end
+    push!(controller.time_hist[subsim_index], sim.integrator.time)
+    push!(controller.disp_hist[subsim_index], copy(sim.integrator.displacement))
+    push!(controller.velo_hist[subsim_index], copy(sim.integrator.velocity))
+    push!(controller.acce_hist[subsim_index], copy(sim.integrator.acceleration))
+    push!(controller.∂Ω_f_hist[subsim_index], copy(sim.model.internal_force))
     return nothing
 end
 

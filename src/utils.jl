@@ -147,6 +147,10 @@ function colored_status(status::String)
         return NORMA_COLOR_OUTPUT ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
     elseif status == "[DONE]"
         return NORMA_COLOR_OUTPUT ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
+    elseif status == "[CONVERGING]"
+        return NORMA_COLOR_OUTPUT ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
+    elseif status == "[CONVERGED]"
+        return NORMA_COLOR_OUTPUT ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
     else
         return status  # fallback (no color)
     end

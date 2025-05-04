@@ -533,7 +533,6 @@ function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
     # Fetch interpolation inputs
     time         = model.time
     coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    same_step     = controller.same_step
     num_dofs      = length(coupled_subsim.model.free_dofs)
 
     time_hist  = controller.time_hist[coupled_index]
@@ -543,21 +542,16 @@ function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
     ∂Ω_f_hist  = controller.∂Ω_f_hist[coupled_index]
 
     # Interpolate or use fallback
-    if isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
-        interp_disp  = controller.stop_disp[coupled_index]
-        interp_velo  = controller.stop_velo[coupled_index]
-        interp_acce  = controller.stop_acce[coupled_index]
-        interp_∂Ω_f  = controller.stop_∂Ω_f[coupled_index]
-    elseif same_step && !isempty(time_hist)
-        interp_disp  = disp_hist[end]
-        interp_velo  = velo_hist[end]
-        interp_acce  = acce_hist[end]
-        interp_∂Ω_f  = ∂Ω_f_hist[end]
-    elseif !isempty(time_hist)
+    if !isempty(time_hist)
         interp_disp  = interpolate(time_hist, disp_hist, time)
         interp_velo  = interpolate(time_hist, velo_hist, time)
         interp_acce  = interpolate(time_hist, acce_hist, time)
         interp_∂Ω_f  = interpolate(time_hist, ∂Ω_f_hist, time)
+    elseif isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
+        interp_disp  = controller.stop_disp[coupled_index]
+        interp_velo  = controller.stop_velo[coupled_index]
+        interp_acce  = controller.stop_acce[coupled_index]
+        interp_∂Ω_f  = controller.stop_∂Ω_f[coupled_index]
     else
         interp_disp  = zeros(num_dofs)
         interp_velo  = zeros(num_dofs)
