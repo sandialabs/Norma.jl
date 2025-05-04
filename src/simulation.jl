@@ -91,9 +91,10 @@ function MultiDomainSimulation(params::Parameters)
         subsim_name_index_map[domain_name] = subsim_index
         subsim_index += 1
     end
+    num_domains = length(subsims)
     controller.same_step = same_step
     failed = false
-    sim = MultiDomainSimulation(basename, params, controller, subsims, subsim_name_index_map, failed)
+    sim = MultiDomainSimulation(basename, params, controller, num_domains, subsims, subsim_name_index_map, failed)
     for subsim in sim.subsims
         subsim.params["parent_simulation"] = sim
     end
@@ -116,23 +117,23 @@ function SolidMultiDomainTimeController(params::Parameters)
     stop = 0
     converged = false
     iteration_number = 0
-    stop_disp = Vector{Vector{Float64}}(undef, num_domains)
-    stop_velo = Vector{Vector{Float64}}(undef, num_domains)
-    stop_acce = Vector{Vector{Float64}}(undef, num_domains)
-    stop_∂Ω_f = Vector{Vector{Float64}}(undef, num_domains)
-    schwarz_disp = Vector{Vector{Float64}}(undef, num_domains)
-    schwarz_velo = Vector{Vector{Float64}}(undef, num_domains)
-    schwarz_acce = Vector{Vector{Float64}}(undef, num_domains)
-    time_hist = Vector{Vector{Float64}}(undef, num_domains)
-    disp_hist = Vector{Vector{Vector{Float64}}}(undef, num_domains)
-    velo_hist = Vector{Vector{Vector{Float64}}}(undef, num_domains)
-    acce_hist = Vector{Vector{Vector{Float64}}}(undef, num_domains)
-    ∂Ω_f_hist = Vector{Vector{Vector{Float64}}}(undef, num_domains)
+    stop_disp = [Vector{Float64}[] for _ in 1:num_domains]
+    stop_velo = [Vector{Float64}[] for _ in 1:num_domains]
+    stop_acce = [Vector{Float64}[] for _ in 1:num_domains]
+    stop_∂Ω_f = [Vector{Float64}[] for _ in 1:num_domains]
+    schwarz_disp = [Vector{Float64}[] for _ in 1:num_domains]
+    schwarz_velo = [Vector{Float64}[] for _ in 1:num_domains]
+    schwarz_acce = [Vector{Float64}[] for _ in 1:num_domains]
+    time_hist   = [Float64[] for _ in 1:num_domains]
+    disp_hist   = [Vector{Float64}[] for _ in 1:num_domains]
+    velo_hist   = [Vector{Float64}[] for _ in 1:num_domains]
+    acce_hist   = [Vector{Float64}[] for _ in 1:num_domains]
+    ∂Ω_f_hist   = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
     naive_stabilized = get(params, "naive stabilized", false)
-    lambda_disp = Vector{Vector{Float64}}(undef, num_domains)
-    lambda_velo = Vector{Vector{Float64}}(undef, num_domains)
-    lambda_acce = Vector{Vector{Float64}}(undef, num_domains)
+    lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
+    lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
+    lambda_acce = [Vector{Float64}[] for _ in 1:num_domains]
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
@@ -324,8 +325,9 @@ function advance_control(sim::SingleDomainSimulation)
 end
 
 function advance_control(sim::MultiDomainSimulation)
-    update_transfer_operators(sim)
-    if sim.controller.schwarz_contact == false
+    if sim.controller.schwarz_contact == true
+        update_transfer_operators(sim)
+    else
         schwarz(sim)
         return nothing
     end
@@ -383,7 +385,8 @@ function initialize(sim::MultiDomainSimulation)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
     end
-    return detect_contact(sim)
+    detect_contact(sim)
+    return nothing
 end
 
 function solve(sim::SingleDomainSimulation)
@@ -486,7 +489,6 @@ function advance_independent(sim::MultiDomainSimulation)
     sim.controller.iteration_number = 0
     sim.controller.is_schwarz = false
     save_stop_state(sim)
-    set_subcycle_times(sim)
     set_initial_subcycle_time(sim)
     subcycle(sim)
     return nothing
@@ -498,7 +500,6 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
-    set_subcycle_times(sim)
     swap_swappable_bcs(sim)
 
     csv_interval = get(sim.params, "CSV output interval", 0)
@@ -651,7 +652,7 @@ function subcycle(sim::MultiDomainSimulation)
             if sim.controller.is_schwarz == true
                 save_history_snapshot(sim.controller, sim.subsims, subsim_index)
             end
-            if stop_subcyle(sim) == true
+            if stop_subcyle(subsim) == true
                 break
             end
         end
@@ -688,6 +689,7 @@ end
 
 function save_history_snapshot(
     controller::MultiDomainTimeController, sims::Vector{SingleDomainSimulation}, subsim_index::Int64)
+    push!(controller.time_hist[subsim_index], sims[subsim_index].integrator.time)
     push!(controller.disp_hist[subsim_index], copy(sims[subsim_index].integrator.displacement))
     push!(controller.velo_hist[subsim_index], copy(sims[subsim_index].integrator.velocity))
     push!(controller.acce_hist[subsim_index], copy(sims[subsim_index].integrator.acceleration))
@@ -703,10 +705,10 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     norms_diff = zeros(num_domains)
     for i in 1:num_domains
         Δt = controller.time_step
-        xᵖʳᵉᵛ = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
-        xᶜᵘʳʳ = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
-        norms_disp[i] = norm(xᶜᵘʳʳ)
-        norms_diff[i] = norm(xᶜᵘʳʳ - xᵖʳᵉᵛ)
+        x_prev = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
+        x_curr = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
+        norms_disp[i] = norm(x_curr)
+        norms_diff[i] = norm(x_curr - x_prev)
     end
     norm_disp = norm(norms_disp)
     norm_diff = norm(norms_diff)
@@ -839,7 +841,7 @@ function detect_contact(sim::MultiDomainSimulation)
     resize!(sim.controller.contact_hist, sim.controller.stop + 1)
     sim.controller.contact_hist[sim.controller.stop + 1] = sim.controller.active_contact
     write_scharz_params_csv(sim)
-    return sim.controller.active_contact
+    return nothing
 end
 
 function write_scharz_params_csv(sim::MultiDomainSimulation)

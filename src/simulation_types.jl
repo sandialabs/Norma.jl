@@ -82,6 +82,7 @@ mutable struct MultiDomainSimulation <: Simulation
     name::String
     params::Parameters
     controller::MultiDomainTimeController
+    num_domains::Int64
     subsims::Vector{SingleDomainSimulation}
     subsim_name_index_map::Dict{String,Int64}
     failed::Bool

@@ -78,17 +78,18 @@ function write_stop(sim::SingleDomainSimulation)
     params = sim.params
     stop = sim.controller.stop
     time = sim.controller.time
+    name = sim.name
     if haskey(params, "parent_simulation") == false
         norma_logf(0, :stop, "[%d] : Time = %.4e", stop, time)
     end
     exodus_interval = get(params, "Exodus output interval", 1)
     if exodus_interval > 0 && stop % exodus_interval == 0
-        norma_log(0, :output, "Exodus II Database [EXO]")
+        norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
     csv_interval = get(params, "CSV output interval", 0)
     if csv_interval > 0 && stop % csv_interval == 0
-        norma_log(0, :output, "Comma Separated Values [CSV]")
+        norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, model)
         write_sideset = get(params, "CSV write sidesets", false)
         if write_sideset == true

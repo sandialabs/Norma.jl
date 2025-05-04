@@ -495,141 +495,113 @@ function apply_sm_schwarz_coupling_neumann(model::SolidMechanics, bc::CouplingSc
     end
 end
 
-function apply_bc(model::SolidMechanics, bc::SchwarzBoundaryCondition)
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
-    controller = parent_sim.controller
-    if bc isa SMContactSchwarzBC && controller.active_contact == false
-        return nothing
-    end
-    empty_history = length(controller.time_hist) == 0
-    same_step = controller.same_step
-    if empty_history == true
-        apply_bc_detail(model, bc)
-        return nothing
-    end
-    # Save solution of coupled simulation
-    saved_disp = bc.coupled_subsim.integrator.displacement
-    saved_velo = bc.coupled_subsim.integrator.velocity
-    saved_acce = bc.coupled_subsim.integrator.acceleration
-    saved_∂Ω_f = bc.coupled_subsim.model.internal_force
-    time = model.time
-    coupled_name = bc.coupled_subsim.name
-    coupled_index = parent_sim.subsim_name_index_map[coupled_name]
-    time_hist = controller.time_hist[coupled_index]
-    disp_hist = controller.disp_hist[coupled_index]
-    velo_hist = controller.velo_hist[coupled_index]
-    acce_hist = controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
-    interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
-    interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
-    interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
-    interp_∂Ω_f = same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
-    bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    if bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC
-        relaxation_parameter = controller.relaxation_parameter
-        schwarz_iteration = controller.iteration_number
-        if schwarz_iteration == 1
-            lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
-            lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
-            lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
-        else
-            lambda_dispᵖʳᵉᵛ = controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = controller.lambda_acce[coupled_index]
-        end
-        bc.coupled_subsim.integrator.displacement =
-            controller.lambda_disp[coupled_index] =
-                relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.velocity =
-            controller.lambda_velo[coupled_index] =
-                relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.acceleration =
-            controller.lambda_acce[coupled_index] =
-                relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
-    else
-        bc.coupled_subsim.integrator.displacement = interp_disp
-        bc.coupled_subsim.integrator.velocity = interp_velo
-        bc.coupled_subsim.integrator.acceleration = interp_acce
-    end
-    copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
-    apply_bc_detail(model, bc)
-    bc.coupled_subsim.integrator.displacement = saved_disp
-    bc.coupled_subsim.integrator.velocity = saved_velo
-    bc.coupled_subsim.integrator.acceleration = saved_acce
-    bc.coupled_subsim.model.internal_force = saved_∂Ω_f
-    return copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
+function get_internal_force(model::SolidMechanics)
+    return model.internal_force
 end
 
-function apply_bc(model::RomModel, bc::SchwarzBoundaryCondition)
+function get_internal_force(model::RomModel)
+    return model.fom_model.internal_force
+end
+
+function set_internal_force!(model::SolidMechanics, force)
+    model.internal_force = force
+end
+
+function set_internal_force!(model::RomModel, force)
+    model.fom_model.internal_force = force
+end
+
+function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
     parent_sim = bc.coupled_subsim.params["parent_simulation"]
     controller = parent_sim.controller
-    if bc isa SMContactSchwarzBC && controller.active_contact == false
+
+    # Skip application if contact is inactive
+    if bc isa SMContactSchwarzBC && !controller.active_contact
         return nothing
-    end
-    empty_history = length(controller.time_hist) == 0
-    same_step = controller.same_step
-    if empty_history == true
-        apply_bc_detail(model, bc)
-        return nothing
-    end
-    # Save solution of coupled simulation
-    saved_disp = bc.coupled_subsim.integrator.displacement
-    saved_velo = bc.coupled_subsim.integrator.velocity
-    saved_acce = bc.coupled_subsim.integrator.acceleration
-    saved_∂Ω_f = bc.coupled_subsim.model.internal_force
-    time = model.time
-    coupled_name = bc.coupled_subsim.name
-    coupled_index = parent_sim.subsim_name_index_map[coupled_name]
-    time_hist = controller.time_hist[coupled_index]
-    disp_hist = controller.disp_hist[coupled_index]
-    velo_hist = controller.velo_hist[coupled_index]
-    acce_hist = controller.acce_hist[coupled_index]
-    ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
-    interp_disp = same_step == true ? disp_hist[end] : interpolate(time_hist, disp_hist, time)
-    interp_velo = same_step == true ? velo_hist[end] : interpolate(time_hist, velo_hist, time)
-    interp_acce = same_step == true ? acce_hist[end] : interpolate(time_hist, acce_hist, time)
-    interp_∂Ω_f = same_step == true ? ∂Ω_f_hist[end] : interpolate(time_hist, ∂Ω_f_hist, time)
-    if bc.coupled_subsim.model isa SolidMechanics
-        bc.coupled_subsim.model.internal_force = interp_∂Ω_f
-    elseif bc.coupled_subsim.model isa RomModel
-        bc.coupled_subsim.model.fom_model.internal_force = interp_∂Ω_f
     end
 
-    if bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC
-        relaxation_parameter = controller.relaxation_parameter
-        schwarz_iteration = controller.iteration_number
-        if schwarz_iteration == 1
-            lambda_dispᵖʳᵉᵛ = zeros(length(interp_disp))
-            lambda_veloᵖʳᵉᵛ = zeros(length(interp_velo))
-            lambda_acceᵖʳᵉᵛ = zeros(length(interp_acce))
-        else
-            lambda_dispᵖʳᵉᵛ = controller.lambda_disp[coupled_index]
-            lambda_veloᵖʳᵉᵛ = controller.lambda_velo[coupled_index]
-            lambda_acceᵖʳᵉᵛ = controller.lambda_acce[coupled_index]
-        end
-        bc.coupled_subsim.integrator.displacement =
-            controller.lambda_disp[coupled_index] =
-                relaxation_parameter * interp_disp + (1 - relaxation_parameter) * lambda_dispᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.velocity =
-            controller.lambda_velo[coupled_index] =
-                relaxation_parameter * interp_velo + (1 - relaxation_parameter) * lambda_veloᵖʳᵉᵛ
-        bc.coupled_subsim.integrator.acceleration =
-            controller.lambda_acce[coupled_index] =
-                relaxation_parameter * interp_acce + (1 - relaxation_parameter) * lambda_acceᵖʳᵉᵛ
+    coupled_subsim = bc.coupled_subsim
+    integrator     = coupled_subsim.integrator
+    coupled_model  = coupled_subsim.model
+
+    # Save current state
+    saved_disp  = integrator.displacement
+    saved_velo  = integrator.velocity
+    saved_acce  = integrator.acceleration
+    saved_∂Ω_f  = get_internal_force(coupled_model)
+
+    # Fetch interpolation inputs
+    time         = model.time
+    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
+    same_step     = controller.same_step
+    num_dofs      = length(coupled_subsim.model.free_dofs)
+
+    time_hist  = controller.time_hist[coupled_index]
+    disp_hist  = controller.disp_hist[coupled_index]
+    velo_hist  = controller.velo_hist[coupled_index]
+    acce_hist  = controller.acce_hist[coupled_index]
+    ∂Ω_f_hist  = controller.∂Ω_f_hist[coupled_index]
+
+    # Interpolate or use fallback
+    if isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
+        interp_disp  = controller.stop_disp[coupled_index]
+        interp_velo  = controller.stop_velo[coupled_index]
+        interp_acce  = controller.stop_acce[coupled_index]
+        interp_∂Ω_f  = controller.stop_∂Ω_f[coupled_index]
+    elseif same_step && !isempty(time_hist)
+        interp_disp  = disp_hist[end]
+        interp_velo  = velo_hist[end]
+        interp_acce  = acce_hist[end]
+        interp_∂Ω_f  = ∂Ω_f_hist[end]
+    elseif !isempty(time_hist)
+        interp_disp  = interpolate(time_hist, disp_hist, time)
+        interp_velo  = interpolate(time_hist, velo_hist, time)
+        interp_acce  = interpolate(time_hist, acce_hist, time)
+        interp_∂Ω_f  = interpolate(time_hist, ∂Ω_f_hist, time)
     else
-        bc.coupled_subsim.integrator.displacement = interp_disp
-        bc.coupled_subsim.integrator.velocity = interp_velo
-        bc.coupled_subsim.integrator.acceleration = interp_acce
+        interp_disp  = zeros(num_dofs)
+        interp_velo  = zeros(num_dofs)
+        interp_acce  = zeros(num_dofs)
+        interp_∂Ω_f  = zeros(num_dofs)
     end
-    # Copies from integrator to model
-    copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
+
+    # Assign interpolated force
+    set_internal_force!(coupled_model, interp_∂Ω_f)
+
+    # Apply relaxed update if needed
+    if bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC
+        θ = controller.relaxation_parameter
+        iter = controller.iteration_number
+
+        λ_u_prev = iter == 1 ? interp_disp : controller.lambda_disp[coupled_index]
+        λ_v_prev = iter == 1 ? interp_velo : controller.lambda_velo[coupled_index]
+        λ_a_prev = iter == 1 ? interp_acce : controller.lambda_acce[coupled_index]
+
+        controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
+        controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
+        controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+
+        integrator.displacement = controller.lambda_disp[coupled_index]
+        integrator.velocity     = controller.lambda_velo[coupled_index]
+        integrator.acceleration = controller.lambda_acce[coupled_index]
+    else
+        integrator.displacement = interp_disp
+        integrator.velocity     = interp_velo
+        integrator.acceleration = interp_acce
+    end
+
+    # Apply boundary condition detail
+    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
-    bc.coupled_subsim.integrator.displacement = saved_disp
-    bc.coupled_subsim.integrator.velocity = saved_velo
-    bc.coupled_subsim.integrator.acceleration = saved_acce
-    bc.coupled_subsim.model.internal_force = saved_∂Ω_f
-    # Copy from integrator to model
-    return copy_solution_source_targets(bc.coupled_subsim.integrator, bc.coupled_subsim.solver, bc.coupled_subsim.model)
+
+    # Restore previous state
+    integrator.displacement = saved_disp
+    integrator.velocity     = saved_velo
+    integrator.acceleration = saved_acce
+    set_internal_force!(coupled_model, saved_∂Ω_f)
+
+    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    return nothing
 end
 
 function transfer_normal_component(source::Vector{Float64}, target::Vector{Float64}, normal::Vector{Float64})
