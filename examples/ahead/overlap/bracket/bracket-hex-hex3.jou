@@ -1,0 +1,99 @@
+reset
+#left part of Omega 
+brick x 0.2 y 0.2 z 0.01
+#movie volume 1 -2 -2 0
+create Cylinder height 1 radius 0.075
+#move Volume 2 midpoint location curve 9  include_merged 
+subtract volume 2 from volume 1 
+
+
+webcut volume 1 with plane xplane offset 0.03
+
+delete volume 1 
+
+block 1 volume all
+block 1 name 'left'
+
+sideset 1 surface 20 21
+sideset 1 name "left-frontSS"
+
+nodeset 1 surface 4
+nodeset 1 name "left-backNS"
+nodeset 2 surface 20 21
+nodeset 2 name "left-frontNS"
+nodeset 3 volume all
+nodeset 3 name "left-nsall"
+
+surface 22 size 0.003
+surface 22 scheme pave
+
+#volume all scheme Tetmesh
+#volume 4 5 6 size auto factor 7
+#volume all size auto factor 10
+block 1 element type HEX8
+mesh volume all
+#refine volume all numsplit 1 
+export mesh "bracket-1.g" overwrite 
+
+
+
+reset
+#right part of Omega 
+brick x 0.2 y 0.2 z 0.01
+#movie volume 1 -2 -2 0
+create Cylinder height 1 radius 0.075
+#move Volume 2 midpoint location curve 9  include_merged 
+subtract volume 2 from volume 1 
+brick x 0.01 y 0.2 z 0.2
+#move Volume 3 midpoint location curve 8  include_merged 
+volume 3 move -0.1 0 0
+unite volume 1 volume 3
+
+webcut volume 1 with plane xplane offset -0.03
+delete volume 4 
+
+block 1 volume all
+block 1 name 'right'
+
+sideset 1 surface 25 26
+sideset 1 name "right-backSS"
+
+nodeset 1 surface 25 26
+nodeset 1 name "right-backNS"
+nodeset 2 surface 6
+nodeset 2 name "right-frontNS"
+nodeset 3 volume all
+nodeset 3 name "right-nsall"
+
+surface 30 size 0.003
+surface 30 scheme pave
+ 
+#volume all scheme Tetmesh
+#volume all size auto factor 7
+#volume all size auto factor 14
+block 1 element type HEX8
+mesh volume all 
+#refine volume all numsplit 1 
+export mesh "bracket-2.g" overwrite 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
