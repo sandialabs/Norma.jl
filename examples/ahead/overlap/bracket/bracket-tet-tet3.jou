@@ -54,10 +54,10 @@ block 1 volume all
 block 1 name 'right'
 
 
-sideset 1 surface 25
+sideset 1 surface 25 26
 sideset 1 name "right-backSS"
 
-nodeset 1 surface 25
+nodeset 1 surface 25 26
 nodeset 1 name "right-backNS"
 nodeset 2 surface 6
 nodeset 2 name "right-frontNS"
@@ -69,8 +69,9 @@ volume all size auto factor 7
 #volume all size auto factor 14
 block 1 element type TETRA4
 mesh volume all 
-#refine volume all numsplit 1 
+refine volume all numsplit 1 
 export mesh "bracket-2.g" overwrite 
+
 
 
 
