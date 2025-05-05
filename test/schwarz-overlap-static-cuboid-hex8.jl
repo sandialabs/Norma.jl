@@ -4,11 +4,11 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "Schwarz Overlap Static Cuboid Hex8 Same Step" begin
-    cp("../examples/overlap/static-same-time-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp("../examples/overlap/static-same-time-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
-    cp("../examples/overlap/static-same-time-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
-    cp("../examples/overlap/static-same-time-step/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
-    cp("../examples/overlap/static-same-time-step/cuboids/cuboid-2.g", "cuboid-2.g"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-2.g", "cuboid-2.g"; force=true)
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
     model_fine = subsims[1].model
@@ -49,11 +49,11 @@
 end
 
 @testset "Schwarz Overlap Static Cuboid Hex8 Different Steps" begin
-    cp("../examples/overlap/static-different-steps/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp("../examples/overlap/static-different-steps/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
-    cp("../examples/overlap/static-different-steps/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
-    cp("../examples/overlap/static-different-steps/cuboid-1.g", "cuboid-1.g"; force=true)
-    cp("../examples/overlap/static-different-steps/cuboid-2.g", "cuboid-2.g"; force=true)
+    cp("../examples/overlap/static-different-steps/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
+    cp("../examples/overlap/static-different-steps/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp("../examples/overlap/static-different-steps/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp("../examples/overlap/static-different-steps/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
+    cp("../examples/overlap/static-different-steps/cuboids/cuboid-2.g", "cuboid-2.g"; force=true)
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
     model_fine = subsims[1].model

@@ -91,10 +91,6 @@ function write_stop(sim::SingleDomainSimulation)
     if csv_interval > 0 && stop % csv_interval == 0
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)
-        write_sideset = get(params, "CSV write sidesets", false)
-        if write_sideset == true
-            write_sideset_stop_csv(sim, sim.model)
-        end
     end
     return nothing
 end
@@ -134,52 +130,6 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
         writedlm_nodal_array(acce_filename, model.acceleration)
         kinetic_filename = prefix * "kinetic" * index_string * ".csv"
         writedlm(kinetic_filename, integrator.kinetic_energy, '\n')
-    end
-    return nothing
-end
-
-function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
-    stop = sim.controller.stop
-    index_string = "-" * string(stop; pad=4)
-    prefix = sim.name * "-"
-    for bc in model.boundary_conditions
-        if bc isa SMDirichletBC
-            node_set_name = bc.node_set_name
-            offset = bc.offset
-            if offset == 1
-                offset_name = "x"
-            end
-            if offset == 2
-                offset_name = "y"
-            end
-            if offset == 3
-                offset_name = "z"
-            end
-            curr_filename = prefix * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
-            disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
-            velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
-            acce_filename = prefix * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
-            writedlm(curr_filename, model.current[bc.offset, bc.node_set_node_indices])
-            writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
-            writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
-            writedlm(
-                disp_filename,
-                model.current[bc.offset, bc.node_set_node_indices] -
-                model.reference[bc.offset, bc.node_set_node_indices],
-            )
-        elseif bc isa SMOverlapSchwarzBC
-            side_set_name = bc.side_set_name
-            curr_filename = prefix * side_set_name * "-curr" * index_string * ".csv"
-            disp_filename = prefix * side_set_name * "-disp" * index_string * ".csv"
-            velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
-            acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
-            writedlm_nodal_array(curr_filename, model.current[:, bc.side_set_node_indices])
-            writedlm_nodal_array(velo_filename, model.velocity[:, bc.side_set_node_indices])
-            writedlm_nodal_array(acce_filename, model.acceleration[:, bc.side_set_node_indices])
-            writedlm_nodal_array(
-                disp_filename, model.current[:, bc.side_set_node_indices] - model.reference[:, bc.side_set_node_indices]
-            )
-        end
     end
     return nothing
 end
