@@ -90,7 +90,7 @@ function write_stop(sim::SingleDomainSimulation)
     csv_interval = get(params, "CSV output interval", 0)
     if csv_interval > 0 && stop % csv_interval == 0
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
-        write_stop_csv(sim, model)
+        write_stop_csv(sim, sim.model)
         write_sideset = get(params, "CSV write sidesets", false)
         if write_sideset == true
             write_sideset_stop_csv(sim, sim.model)
@@ -110,6 +110,7 @@ end
 
 function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     stop = sim.controller.stop
+    integrator = sim.integrator
     index_string = "-" * string(stop; pad=4)
     prefix = sim.name * "-"
     if stop == 0

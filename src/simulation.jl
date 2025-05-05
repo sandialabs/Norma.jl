@@ -100,8 +100,8 @@ function SolidMultiDomainTimeController(params::Parameters)
     num_domains = length(params["domains"])
     minimum_iterations = params["minimum iterations"]
     maximum_iterations = params["maximum iterations"]
-    absolute_tolerance = params["relative tolerance"]
-    relative_tolerance = params["absolute tolerance"]
+    absolute_tolerance = params["absolute tolerance"]
+    relative_tolerance = params["relative tolerance"]
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
@@ -513,7 +513,7 @@ function schwarz(sim::MultiDomainSimulation)
         raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
         status = colored_status(raw_status)
         norma_logf(0, :schwarz, "Criterion [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
-                if stop_schwarz(sim, iteration_number + 1) == true
+        if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
             norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
             break
