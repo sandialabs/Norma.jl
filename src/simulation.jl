@@ -318,9 +318,7 @@ function advance_control(sim::SingleDomainSimulation)
 end
 
 function advance_control(sim::MultiDomainSimulation)
-    if sim.controller.schwarz_contact == true
-        update_transfer_operators(sim)
-    else
+    if sim.controller.schwarz_contact == false
         schwarz(sim)
         return nothing
     end
@@ -791,21 +789,6 @@ function initialize_transfer_operators(sim::MultiDomainSimulation)
                 continue
             end
             compute_transfer_operator(subsim.model, bc)
-        end
-    end
-end
-
-function update_transfer_operators(sim::MultiDomainSimulation)
-    is_contact = sim.controller.schwarz_contact
-    for subsim in sim.subsims
-        bcs = subsim.model.boundary_conditions
-        for bc in bcs
-            if !(bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC)
-                continue
-            end
-            if is_contact == true || subsim.model.kinematics == Infinitesimal
-                compute_transfer_operator(subsim.model, bc)
-            end
         end
     end
 end

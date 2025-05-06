@@ -481,11 +481,7 @@ function get_square_projection_matrix(model::SolidMechanics, side_set_id::Intege
         mesh, side_set_id
     )
     num_nodes = length(local_from_global_map)
-    if model.kinematics == Finite
-        coords = model.reference
-    else
-        coords = model.current
-    end
+    coords = model.reference
     square_projection_matrix = zeros(num_nodes, num_nodes)
     side_set_node_index = 1
     for num_nodes_side in num_nodes_sides
@@ -521,11 +517,7 @@ function get_rectangular_projection_matrix(
         dst_mesh, dst_side_set_id
     )
     dst_num_nodes = length(dst_local_from_global_map)
-    if dst_model.kinematics == Finite
-        dst_coords = dst_model.reference
-    else
-        dst_coords = dst_model.current
-    end
+    dst_coords = dst_model.reference
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
     for dst_num_nodes_side in dst_num_nodes_sides
