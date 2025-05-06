@@ -1,4 +1,4 @@
-#Please run notched-cylinder.jou first before running this tile 
+#Please run notched-cylinder.jou first before running this tile
 import mesh geometry "notched-cylinder-1.g" feature_angle 135 merge
 delete mesh
 delete mesh volume all

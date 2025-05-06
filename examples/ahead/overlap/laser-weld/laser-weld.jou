@@ -193,7 +193,7 @@ block 1 volume 2
 
 block 1 name "bead_weld"
 
-block 2 volume 5 6 
+block 2 volume 5 6
 
 block 2 name "region_weld_0"
 
@@ -281,8 +281,8 @@ nodeset 2 name "nodeset_negative_y"
 nodeset 3 surface 23
 nodeset 3 name "nodeset_positive_y"
 
-nodeset 4 surface 38 31 
-nodeset 4 name "nodeset_negative_z" 
+nodeset 4 surface 38 31
+nodeset 4 name "nodeset_negative_z"
 
 sideset 1 surface 16
 sideset 1 name "sideset_negative_y"
@@ -311,38 +311,38 @@ nodeset 2 name "nodeset_negative_y"
 nodeset 3 surface 1
 nodeset 3 name "nodeset_positive_y"
 
-nodeset 4 surface 46 42 
-nodeset 4 name "nodeset_negative_z" 
+nodeset 4 surface 46 42
+nodeset 4 name "nodeset_negative_z"
 
 set large exodus file on
 export mesh "holder-1.g" dimension 3 block 7 overwrite
 
-#IKT 11/24/2024: the following is a hack.  For some reason, I can't seem to set 
+#IKT 11/24/2024: the following is a hack.  For some reason, I can't seem to set
 #sideset_negative_y in the above code for holder-1 and gauge even though it should work.
 reset
-import mesh geometry "holder-1.g" 
-sideset 1 surface 2 
-sideset 1 name "sideset_negative_y" 
+import mesh geometry "holder-1.g"
+sideset 1 surface 2
+sideset 1 name "sideset_negative_y"
 sideset 2 surface 11
-sideset 2 name "sideset_positive_y" 
-delete sideset 3 
+sideset 2 name "sideset_positive_y"
+delete sideset 3
 block 7 element type HEX8
 export mesh "holder-1.g" block 7 overwrite
 
 reset
-import mesh geometry "gauge.g" 
-nodeset 1 surface 18 
-nodeset 1 name "nodeset_negative_y" 
+import mesh geometry "gauge.g"
+nodeset 1 surface 18
+nodeset 1 name "nodeset_negative_y"
 nodeset 2 surface 6
-nodeset 2 name "nodeset_positive_y" 
+nodeset 2 name "nodeset_positive_y"
 nodeset 3 surface 14 5 12
-nodeset 3 name "nodeset_negative_x" 
+nodeset 3 name "nodeset_negative_x"
 nodeset 4 surface 13 9 1
-nodeset 4 name "nodeset_negative_z" 
-sideset 1 surface 18 
-sideset 1 name "sideset_negative_y" 
+nodeset 4 name "nodeset_negative_z"
+sideset 1 surface 18
+sideset 1 name "sideset_negative_y"
 sideset 2 surface 6
-sideset 2 name "sideset_positive_y" 
+sideset 2 name "sideset_positive_y"
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
 

@@ -10,7 +10,7 @@ ${refinement_level = 1}
 
 
 create cylinder radius {radius} z {height}
-move volume 1 z {height / 2} 
+move volume 1 z {height / 2}
 webcut volume 1 with plane xplane
 delete volume 2
 webcut volume 1 with plane yplane
@@ -35,8 +35,8 @@ sideset 2 surface 20 #top of domain
 sideset 2 name "+ZSS"
 set large exodus file off
 set duplicate block elements on
-block 1 volume 3 
-block 1 name "fine" 
+block 1 volume 3
+block 1 name "fine"
 export mesh "cylinder.g" block 1 overwrite
 
 

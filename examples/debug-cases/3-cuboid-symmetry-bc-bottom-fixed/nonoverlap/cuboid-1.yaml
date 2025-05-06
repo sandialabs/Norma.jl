@@ -15,7 +15,7 @@ time integrator:
   type: quasi static
 boundary conditions:
   Dirichlet:
-    - node set: nsx- 
+    - node set: nsx-
       component: x
       function: "0.0"
     - node set: nsy-

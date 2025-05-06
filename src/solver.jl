@@ -414,7 +414,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     #e = [x* - x] -> x* = x + e
     #Ax + Ae = b
     #Ax - b = -Ae
-    #Ae = r, r = b - Ax 
+    #Ae = r, r = b - Ax
     ##M uddot + Ku = f
 
     num_dof = length(model.free_dofs)

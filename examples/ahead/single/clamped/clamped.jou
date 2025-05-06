@@ -3,12 +3,12 @@ ${mm = 0.001 * m}
 ${side = 1.0 * mm}
 ${length = 1.0 * m}
 ${h_size_face = 1.0 * mm}
-${intervals = 1000} 
+${intervals = 1000}
 
 create brick x {side} y {side} z {length}
 surface 1 2 size {h_size_face}
 surface 1 2 scheme submap
-mesh surface 1 2 
+mesh surface 1 2
 curve 9 10 11 12 interval {intervals}
 volume all size {h_size}
 mesh volume 1

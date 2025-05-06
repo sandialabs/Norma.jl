@@ -606,7 +606,7 @@ function save_schwarz_state(sim::MultiDomainSimulation)
     num_domains = sim.num_domains
     for i in 1:num_domains
         subsim = subsims[i]
-        # Note: Integrator values are not rotated due to inclined support as the 
+        # Note: Integrator values are not rotated due to inclined support as the
         # schwarz variables are only used for Schwarz convergence which are compared
         # to simulation integrator values.
         controller.schwarz_disp[i] = copy(subsim.integrator.displacement)

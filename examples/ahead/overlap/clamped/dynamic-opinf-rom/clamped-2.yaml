@@ -3,7 +3,7 @@ input mesh file: ../clamped-2.g
 output mesh file: clamped-2.e
 model:
   type: linear opinf rom
-  model-file: opinf-operator.npz 
+  model-file: opinf-operator.npz
   material:
     blocks:
       fine: hyperelastic

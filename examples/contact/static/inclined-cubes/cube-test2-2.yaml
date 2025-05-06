@@ -22,7 +22,7 @@ initial conditions:
       function: "0.9238795325112867 * 0.1 * (abs(t) - 1.0)"
     - node set: nsall
       component: y
-      function: "0.3826834323650898 * 0.1 * (abs(t) - 1.0)"      
+      function: "0.3826834323650898 * 0.1 * (abs(t) - 1.0)"
 boundary conditions:
   Dirichlet:
     - node set: nsx+
