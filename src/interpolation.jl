@@ -481,11 +481,7 @@ function get_square_projection_matrix(model::SolidMechanics, side_set_id::Intege
         mesh, side_set_id
     )
     num_nodes = length(local_from_global_map)
-    if model.kinematics == Finite
-        coords = model.reference
-    else
-        coords = model.current
-    end
+    coords = model.reference
     square_projection_matrix = zeros(num_nodes, num_nodes)
     side_set_node_index = 1
     for num_nodes_side in num_nodes_sides
@@ -521,11 +517,7 @@ function get_rectangular_projection_matrix(
         dst_mesh, dst_side_set_id
     )
     dst_num_nodes = length(dst_local_from_global_map)
-    if dst_model.kinematics == Finite
-        dst_coords = dst_model.reference
-    else
-        dst_coords = dst_model.current
-    end
+    dst_coords = dst_model.reference
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
     for dst_num_nodes_side in dst_num_nodes_sides
@@ -596,11 +588,11 @@ function interpolate(tᵃ::Float64, tᵇ::Float64, xᵃ::Vector{Float64}, xᵇ::
 end
 
 function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, param::Float64)
-    if param < param_hist[1]
-        param = param_hist[1]
+    if param < param_hist[1] || isapprox(param, param_hist[1]; rtol=1.0e-06, atol=1.0e-12)
+        return value_hist[1]
     end
-    if param > param_hist[end]
-        param = param_hist[end]
+    if param > param_hist[end] || isapprox(param, param_hist[end]; rtol=1.0e-06, atol=1.0e-12)
+        return value_hist[end]
     end
     index = 1
     size = length(param_hist)
@@ -613,7 +605,7 @@ function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Floa
     if index == 1
         return value_hist[1]
     elseif index == size
-        return value_hist[size]
+        return value_hist[end]
     else
         return interpolate(param_hist[index], param_hist[index + 1], value_hist[index], value_hist[index + 1], param)
     end

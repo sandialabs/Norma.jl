@@ -12,6 +12,7 @@ using Test
 include("../src/Norma.jl")
 include("helpers.jl")
 
+# List of all test files (ordered)
 const all_test_files = [
     "minitensor.jl",
     "interpolation.jl",
@@ -35,26 +36,74 @@ const all_test_files = [
     "opinf-schwarz-overlap-cuboid-hex8.jl",
     "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
     "adaptive-time-stepping.jl",
-    # Must go last for now due to FPE trapping
+    # Must go last due to FPE traps
     "utils.jl",
 ]
 
 const indexed_test_files = collect(enumerate(all_test_files))
+const default_test_indices =
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
 
-# Display test options
-Norma.norma_log(0, :info, "Available tests (e.g. ./runtests.jl 2 4 7):")
-for (i, file) in indexed_test_files
-    Norma.norma_log(0, :info, rpad("[$i]", 5) * file)
+function print_available_tests()
+    Norma.norma_log(0, :info, "Available tests:")
+    for (i, file) in indexed_test_files
+        Norma.norma_log(0, :info, rpad("[$i]", 5) * file)
+    end
 end
 
-# Parse command-line arguments as indices (if any)
-selected_test_indices = parse.(Int, ARGS)
+function parse_args(args)
+    if "--list" in args
+        print_available_tests()
+        exit(0)
+    end
 
-# Determine which tests to run
-test_files_to_run = isempty(selected_test_indices) ? indexed_test_files :
-    filter(t -> t[1] in selected_test_indices, indexed_test_files)
+    # Extract optional filter string
+    filter_idx = findfirst(isequal("--filter"), args)
+    name_filter = filter_idx !== nothing && filter_idx < length(args) ? lowercase(args[filter_idx + 1]) : ""
 
-# Start test run
+    run_all = "--all" in args
+
+    # Extract indices
+    selected_indices = try
+        parse.(Int, filter(x -> occursin(r"^\d+$", x), args))
+    catch
+        Norma.norma_log(0, :error, "Invalid test index provided.")
+        exit(1)
+    end
+
+    # Determine candidate set
+    candidate_tests = if run_all
+        indexed_test_files
+    elseif !isempty(selected_indices)
+        valid_indices = Set(1:length(all_test_files))
+        for i in selected_indices
+            if i ∉ valid_indices
+                Norma.norma_log(0, :error, "Invalid test index: $i")
+                exit(1)
+            end
+        end
+        filter(t -> t[1] in selected_indices, indexed_test_files)
+    else
+        Norma.norma_log(0, :info, "No tests specified. Running default set.")
+        filter(t -> t[1] in default_test_indices, indexed_test_files)
+    end
+
+    # Apply filter if present
+    if !isempty(name_filter)
+        candidate_tests = filter(t -> occursin(name_filter, lowercase(t[2])), candidate_tests)
+        if isempty(candidate_tests)
+            Norma.norma_log(0, :warn, "No tests match filter \"$name_filter\".")
+            exit(1)
+        end
+    end
+
+    return candidate_tests
+end
+
+# Get test list to run
+test_files_to_run = parse_args(ARGS)
+
+# Run test suite
 start_time = time()
 Norma.norma_log(0, :norma, "BEGIN TESTS")
 
@@ -70,7 +119,7 @@ Norma.norma_log(0, :done, "Tests Complete")
 Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
 Norma.norma_log(0, :norma, "END TESTS")
 
-# Cleanup: WARNING — Do not leave files here!
+# Cleanup artifacts
 for ext in ["yaml", "e", "g", "csv"]
     for file in filter(f -> endswith(f, ".$ext"), readdir())
         rm(file; force=true)

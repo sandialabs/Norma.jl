@@ -46,13 +46,13 @@ block 1 volume 8
 block 1 element type tetra10
 block 1 name "fine"
 nodeset 1 surface 85 # -X
-nodeset 1 name "nodelist_1" 
+nodeset 1 name "nodelist_1"
 nodeset 2 surface 84 # -Y
-nodeset 2 name "nodelist_2" 
+nodeset 2 name "nodelist_2"
 nodeset 3 surface 78 # -Z
 nodeset 3 name "nodelist_3"
 nodeset 4 surface 72 # +Z
-nodeset 4 name "nodelist_4" 
+nodeset 4 name "nodelist_4"
 set large exodus file off
 export mesh "notched-cylinder.g" overwrite
 

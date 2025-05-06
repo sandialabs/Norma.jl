@@ -1,11 +1,11 @@
 type: single
-input mesh file: cuboid-2.g
-output mesh file: cuboid-2.e
+input mesh file: cuboid-1.g
+output mesh file: cuboid-1.e
 model:
   type: solid mechanics
   material:
     blocks:
-      coarse: elastic
+      fine: elastic
     elastic:
       model: linear elastic
       elastic modulus: 1.0e+09
@@ -13,7 +13,10 @@ model:
       density: 1000.0
 time integrator:
   type: quasi static
-  time step: 0.33333333333333333
+  maximum time step: 1.0
+  minimum time step: 1.0e-06
+  increase factor: 1.1
+  decrease factor: 0.5
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -22,14 +25,16 @@ boundary conditions:
     - node set: nsy-
       component: y
       function: "0.0"
-    - node set: nsz+
+    - node set: nsz-
       component: z
-      function: "1.0 * t"
-  Schwarz overlap:
-    - side set: ssz-
-      source: cuboid-1.yaml
-      source block: fine
-      source side set: ssz+
+      function: "t"
+  Schwarz nonoverlap:
+    - side set: ssz+
+      source: cuboid-2
+      source block: coarse
+      source side set: ssz-
+      default BC type: Neumann
+      swap BC types: false
 solver:
   type: Hessian minimizer
   step: full Newton

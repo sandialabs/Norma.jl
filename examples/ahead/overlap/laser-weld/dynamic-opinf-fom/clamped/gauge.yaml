@@ -22,11 +22,11 @@ time integrator:
 boundary conditions:
   Schwarz overlap:
     - side set: sideset_negative_y
-      source: holder-0.yaml
+      source: holder-0
       source block: holder_0
       source side set: sideset_positive_y
     - side set: sideset_positive_y
-      source: holder-1.yaml
+      source: holder-1
       source block: holder_1
       source side set: sideset_negative_y
 solver:

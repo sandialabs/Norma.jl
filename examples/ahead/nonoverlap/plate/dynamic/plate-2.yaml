@@ -29,7 +29,7 @@ initial conditions:
 boundary conditions:
   Schwarz nonoverlap:
     - side set: ssx-
-      source: plate-1.yaml
+      source: plate-1
       source block: fine
       source side set: ssx+
 solver:

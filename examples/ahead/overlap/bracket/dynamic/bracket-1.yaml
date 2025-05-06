@@ -28,7 +28,7 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: left-frontSS
-      source: bracket-2.yaml
+      source: bracket-2
       source block: right
       source side set: right-backSS
 solver:

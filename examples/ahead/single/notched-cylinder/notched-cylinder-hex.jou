@@ -49,13 +49,13 @@ mesh volume 11
 block 1 volume 8 11
 block 1 name "fine"
 nodeset 1 surface 82 75
-nodeset 1 name "nodelist_1" 
-nodeset 2 surface 77 81 
+nodeset 1 name "nodelist_1"
+nodeset 2 surface 77 81
 nodeset 2 name "nodelist_2"
-nodeset 3 surface 80 78 
-nodeset 3 name "nodelist_3" 
+nodeset 3 surface 80 78
+nodeset 3 name "nodelist_3"
 nodeset 4 surface 83 76
-nodeset 4 name "nodelist_4" 
+nodeset 4 name "nodelist_4"
 set large exodus file off
 export mesh "notched-cylinder.g" overwrite
 

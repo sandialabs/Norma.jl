@@ -15,7 +15,7 @@ time integrator:
   type: quasi static
 boundary conditions:
   Dirichlet:
-    - node set: nsx- 
+    - node set: nsx-
       component: x
       function: "0.0"
     - node set: nsy-
@@ -26,7 +26,7 @@ boundary conditions:
       function: "-0.0 * t"
   Schwarz overlap:
     - side set: ssz+
-      source: cuboid-2.yaml
+      source: cuboid-2
       source block: coarse
       source side set: ssz-
 solver:

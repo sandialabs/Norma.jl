@@ -22,7 +22,7 @@ initial conditions:
       function: "6.123233995736766e-17 * 0.1 * (abs(t) - 1.0)"
     - node set: nsall
       component: y
-      function: "1.0 * 0.1 * (abs(t) - 1.0)"      
+      function: "1.0 * 0.1 * (abs(t) - 1.0)"
 boundary conditions:
   Dirichlet:
     - node set: nsx+
@@ -36,7 +36,7 @@ boundary conditions:
       function: "0.0"
   Schwarz contact:
     - side set: ssx-
-      source: "cube-test4-1.yaml"
+      source: cube-test4-1
       source block: fine
       source side set: ssx+
       friction type: frictionless

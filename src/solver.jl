@@ -414,7 +414,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     #e = [x* - x] -> x* = x + e
     #Ax + Ae = b
     #Ax - b = -Ae
-    #Ae = r, r = b - Ax 
+    #Ae = r, r = b - Ax
     ##M uddot + Ku = f
 
     num_dof = length(model.free_dofs)
@@ -561,7 +561,7 @@ function backtrack_line_search(
     model.compute_mass = false
     model.compute_lumped_mass = false
     for iter in 1:max_iters
-        norma_logf(4, :linesearch, "Line Search [%d] |ΔX| = %.3e", iter, step_length)
+        norma_logf(8, :linesearch, "Line Search [%d] |ΔX| = %.3e", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
         copy_solution_source_targets(solver, model, integrator)
@@ -584,13 +584,13 @@ function backtrack_line_search(
     return step
 end
 
-function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64})
-    return cg(A, b)
+function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, reltol::Float64)
+    return cg(A, b; reltol=reltol)
 end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    step = -solve_linear(solver.hessian[free, free], solver.gradient[free], solver.relative_tolerance)
     if solver.use_line_search == true
         return backtrack_line_search(integrator, solver, model, step)
     else
@@ -605,7 +605,7 @@ function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver:
 end
 
 function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
-    return -solve_linear(solver.hessian, solver.gradient)
+    return -solve_linear(solver.hessian, solver.gradient, solver.relative_tolerance)
 end
 
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
@@ -687,7 +687,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     if is_explicit_dynamic == false
         raw_status = "[WAIT]"
         status = colored_status(raw_status)
-    norma_logf(4, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
+    norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -707,7 +707,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         if is_explicit_dynamic == false
             raw_status = solver.converged ? "[DONE]" : "[WAIT]"
             status = colored_status(raw_status)
-            norma_logf(4, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|R|", solver.absolute_error, "|r|", solver.relative_error, status)
+            norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|R|", solver.absolute_error, "|r|", solver.relative_error, status)
                     end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true

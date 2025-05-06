@@ -28,7 +28,7 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: ssx+
-      source: plate-2.yaml
+      source: plate-2
       source block: coarse
       source side set: ssx-
 solver:

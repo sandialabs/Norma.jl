@@ -13,7 +13,6 @@ model:
       density: 1000.0
 time integrator:
   type: quasi static
-  initial equilibrium: true
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -24,14 +23,12 @@ boundary conditions:
       function: "0.0"
     - node set: nsz-
       component: z
-      function: "-0.0 * t"
-  Schwarz nonoverlap:
+      function: "0.0"
+  Schwarz overlap:
     - side set: ssz+
-      source: cuboid-2.yaml
+      source: cuboid-2
       source block: coarse
       source side set: ssz-
-      default BC type: Neumann 
-      swap BC types: false 
 solver:
   type: Hessian minimizer
   step: full Newton
