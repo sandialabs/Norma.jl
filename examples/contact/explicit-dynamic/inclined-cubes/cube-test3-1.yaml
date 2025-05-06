@@ -36,7 +36,7 @@ initial conditions:
 boundary conditions:
   Schwarz contact:
     - side set: ssx+
-      source: "cube-test3-2.yaml"
+      source: cube-test3-2
       source block: coarse
       source side set: ssx-
       friction type: frictionless

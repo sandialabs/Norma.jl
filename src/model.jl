@@ -104,7 +104,13 @@ function SolidMechanics(params::Parameters)
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blks = length(blocks)
     if num_blks_params ≠ num_blks
-        error("number of blocks in mesh ", model_params["mesh"], " (", num_blks, ") must be equal to number of blocks in materials ", model_params["material"], " (", num_blks_params, ")")
+        norma_abortf(
+            "Number of blocks in mesh %s (%d) must be equal to number of blocks in materials %s (%d).",
+            model_params["mesh"],
+            num_blks,
+            model_params["material"],
+            num_blks_params,
+        )
     end
     elem_blk_names = Exodus.read_names(input_mesh, Block)
     materials = Vector{Solid}(undef, 0)
@@ -117,7 +123,12 @@ function SolidMechanics(params::Parameters)
             kinematics = get_kinematics(material_model)
         else
             if kinematics ≠ get_kinematics(material_model)
-                error("Material ", typeof(material_model), " has inconsistent kinematics ", get_kinematics(material_model), " than previous materials of type ", kinematics)
+                norma_abortf(
+                    "Material of type %s has inconsistent kinematics %s compared to previous materials of type %s.",
+                    string(typeof(material_model)),
+                    string(get_kinematics(material_model)),
+                    string(kinematics),
+                )
             end
         end
         push!(materials, material_model)
@@ -216,7 +227,7 @@ function create_model(params::Parameters)
         return QuadraticOpInfRom(params)
 
     else
-        error("Unknown type of model : ", model_name)
+        norma_abort("Unknown type of model : $model_name")
     end
 end
 
@@ -233,7 +244,7 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
         elseif smooth_reference == "max"
             h = max(equal_volume_tet_h(u, v, w), avg_edge_length_tet_h(u, v, w))
         else
-            error("Unknown type of mesh smoothing reference : ", smooth_reference)
+            norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
 
         c = h * 0.5 / sqrt(2.0)
@@ -244,7 +255,7 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
         ]
         return c * A
     else
-        error("Unknown element type")
+        norma_abort("Unknown element type")
     end
 end
 
@@ -278,7 +289,7 @@ function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, element_typ
         edges = [(1, 4), (1, 5), (4, 8), (5, 8), (2, 3), (2, 6), (3, 7), (6, 7), (1, 2), (3, 4), (5, 6), (7, 8)]
         return get_minimum_edge_length(nodal_coordinates, edges)
     else
-        error("Invalid element type: ", element_type)
+        norma_abort("Invalid element type: $element_type")
     end
 end
 
@@ -310,11 +321,16 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         blk_stable_time_step = integrator.CFL * minimum_blk_edge_length / wave_speed
         stable_time_step = min(stable_time_step, blk_stable_time_step)
     end
-    integrator.stable_time_step = stable_time_step
-    if stable_time_step < integrator.user_time_step
-        norma_logf(0, :warning, "Δt = %.3e exceeds stable Δt = %.3e — using stable step.", integrator.user_time_step, stable_time_step)
+    if stable_time_step < integrator.time_step
+        norma_logf(
+            0,
+            :warning,
+            "Δt = %.3e exceeds stable Δt = %.3e — using stable step.",
+            integrator.time_step,
+            stable_time_step,
+        )
     end
-    integrator.time_step = min(stable_time_step, integrator.user_time_step)
+    integrator.time_step = min(stable_time_step, integrator.time_step)
     return nothing
 end
 
@@ -757,7 +773,6 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     model.compute_mass = model.compute_lumped_mass = true
                     norma_log(0, :error, "Non-positive Jacobian detected!")
                     norma_log(0, :error, "This may indicate element distortion.")
-                    norma_log(0, :recover, "Attempting to recover...")
                     return nothing
                 end
                 W, P, AA = constitutive(material, F)

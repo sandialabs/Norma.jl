@@ -18,12 +18,12 @@ time integrator:
 boundary conditions:
   Schwarz contact:
     - side set: ssx-
-      source: "bar-1.yaml"
+      source: bar-1
       source block: block1
       source side set: ssx+
       friction type: frictionless
     - side set: ssx+
-      source: "bar-3.yaml"
+      source: bar-3
       source block: block3
       source side set: ssx-
       friction type: frictionless

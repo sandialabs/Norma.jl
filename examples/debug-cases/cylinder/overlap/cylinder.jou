@@ -14,8 +14,8 @@ ${refinement_level = 1}
 
 # bottom cylinder
 create cylinder radius {radius} z {domain_height}
-move volume 1 z {-offset} 
-#top cylinder 
+move volume 1 z {-offset}
+#top cylinder
 create cylinder radius {radius} z {domain_height}
 move volume 2 z {offset} include_merged
 webcut volume 1 2 with plane xplane
@@ -60,8 +60,8 @@ sideset 6 surface 41 #top of top domain
 sideset 6 name "+Z_topSS"
 set large exodus file off
 set duplicate block elements on
-block 1 volume 5 
-block 1 name "fine" 
+block 1 volume 5
+block 1 name "fine"
 block 2 volume 6
 block 2 name "coarse"
 export mesh "cylinder-1.g" block 1 overwrite

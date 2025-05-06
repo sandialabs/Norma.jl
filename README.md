@@ -45,6 +45,7 @@ Norma.run("input.yaml")
 3. [Running the Code](#running-the-code)
 4. [Testing](#testing)
    - [Selective Test Execution](#selective-test-execution)
+   - [Filtering by Name](#filtering-by-name)
 5. [Examples](#examples)
 6. [Profiling](#profiling)
 7. [Debugging](#debugging)
@@ -144,13 +145,36 @@ julia --project=@/path/to/Norma.jl ./runtests.jl
 
 ### Selective Test Execution
 
-To run only a subset of tests, pass one or more test indices (shown at startup) as arguments:
+You can control which tests to run via command-line arguments.
 
+#### Run Specific Tests by Index
 ```bash
 julia --project=@/path/to/Norma.jl ./runtests.jl 1 3 5
 ```
 
-This will run tests 1, 3, and 5 only. The list of available tests and their corresponding indices is printed automatically at the start of the run.
+#### Run All Tests
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --all
+```
+
+#### List All Available Tests
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --list
+```
+
+### Filtering by Name
+
+To run tests whose filenames contain a string (case-insensitive):
+
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --filter cube
+```
+
+You can combine filters with `--all` or specific indices:
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --all --filter dynamic
+julia --project=@/path/to/Norma.jl ./runtests.jl 2 4 --filter static
+```
 
 ---
 
@@ -234,4 +258,3 @@ Then retry installation.
 ## **License**
 
 Norma.jl is licensed under the BSD 3-Clause License. See [LICENSE.md](LICENSE.md) for details.
-

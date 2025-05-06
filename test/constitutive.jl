@@ -105,12 +105,16 @@ using StaticArrays
     end
 
     @testset "Failure Cases" begin
-        @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("elastic modulus" => 200e9))
-        @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("Poisson's ratio" => 0.25))
-        @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("bulk modulus" => 180e9))
-        @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("Lamé's first constant" => 90e9))
-        @test_throws ErrorException Norma.elastic_constants(Norma.Parameters("shear modulus" => 80e9))
-        @test_throws ErrorException Norma.elastic_constants(Norma.Parameters())
+        Norma.NORMA_TEST_MODE[] = true
+        @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters("elastic modulus" => 200e9))
+        @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters("Poisson's ratio" => 0.25))
+        @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters("bulk modulus" => 180e9))
+        @test_throws Norma.NormaAbortException Norma.elastic_constants(
+            Norma.Parameters("Lamé's first constant" => 90e9)
+        )
+        @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters("shear modulus" => 80e9))
+        @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters())
+        Norma.NORMA_TEST_MODE[] = false
     end
 end
 

@@ -109,8 +109,8 @@ sideset 6 surface 107 114 #top of top domain
 sideset 6 name "+Z_topSS"
 set large exodus file off
 set duplicate block elements on
-block 3 volume 16 14 12 9 
-block 3 name "fine" 
+block 3 volume 16 14 12 9
+block 3 name "fine"
 block 4 volume 15 11
 block 4 name "coarse"
 export mesh "notched-cylinder-1.g" block 3 overwrite

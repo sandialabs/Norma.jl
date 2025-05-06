@@ -33,7 +33,7 @@ initial conditions:
 boundary conditions:
   Schwarz contact:
     - side set: ssx-
-      source: "{input_mesh_file}-1.yaml"
+      source: {input_mesh_file}-1
       source block: fine
       source side set: ssx+
       friction type: frictionless

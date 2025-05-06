@@ -8,7 +8,6 @@ module Norma
 
 include("utils.jl")
 include("simulation.jl")
-include("evolve.jl")
 
 function run(input_file::String)
     norma_log(0, :norma, "BEGIN SIMULATION")

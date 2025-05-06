@@ -1,10 +1,10 @@
 # DO NOT CHANGE h_size WITHOUT CHANGING NODES
 ${h_size = 0.25}
 
-create sphere radius 1 
-webcut volume all with general plane xplane 
-webcut volume all with general plane yplane 
-webcut volume all with general plane zplane 
+create sphere radius 1
+webcut volume all with general plane xplane
+webcut volume all with general plane yplane
+webcut volume all with general plane zplane
 merge volume all
 imprint volume all
 volume all size {h_size}

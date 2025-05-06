@@ -37,6 +37,31 @@ using Logging
         end
     end
 
+    @testset "norma_abort logging" begin
+        @test Norma._norma_abort_message("Testing aborting") === nothing
+        @test Norma._norma_abort_messagef("Testing failure code = %d", 42) === nothing
+    end
+
+    @testset "Parse Args" begin
+        let saved_args = copy(ARGS)
+            try
+                # Success case
+                empty!(ARGS)
+                push!(ARGS, "input.yaml")
+                @test Norma.parse_args() == "input.yaml"
+
+                # Failure case
+                empty!(ARGS)
+                Norma.NORMA_TEST_MODE[] = true
+                @test_throws Norma.NormaAbortException Norma.parse_args()
+            finally
+                empty!(ARGS)
+                append!(ARGS, saved_args)
+                Norma.NORMA_TEST_MODE[] = false
+            end
+        end
+    end
+
     @testset "Enable Fpe Traps" begin
         # This is platform-specific and side-effect prone
         # So we test only that it runs without error
@@ -45,23 +70,6 @@ using Logging
             @test true
         catch e
             @test false
-        end
-    end
-
-    @testset "Parse Args" begin
-        # We'll simulate ARGS in local scope by overriding Base.ARGS
-        let saved_args = copy(ARGS)
-            try
-                empty!(ARGS)
-                push!(ARGS, "input.yaml")
-                @test Norma.parse_args() == "input.yaml"
-
-                empty!(ARGS)
-                @test_throws ErrorException Norma.parse_args()
-            finally
-                empty!(ARGS)
-                append!(ARGS, saved_args)
-            end
         end
     end
 end

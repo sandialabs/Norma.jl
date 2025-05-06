@@ -1,0 +1,37 @@
+${sidexy = 0.2}
+${sidez = 0.03}
+${h_size = 0.01}
+
+create brick x {sidexy} y {sidexy} z {sidez}
+volume all size {h_size}
+mesh volume all
+block 1 volume 1
+block 1 name "plate"
+nodeset 1 surface with x_coord < 0
+nodeset 1 name "nsx-"
+nodeset 2 surface with x_coord > 0
+nodeset 2 name "nsx+"
+nodeset 3 surface with y_coord < 0
+nodeset 3 name "nsy-"
+nodeset 4 surface with y_coord > 0
+nodeset 4 name "nsy+"
+nodeset 5 surface with z_coord < 0
+nodeset 5 name "nsz-"
+nodeset 6 surface with z_coord > 0
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0
+sideset 1 name "ssx-"
+sideset 2 surface with x_coord > 0
+sideset 2 name "ssx+"
+sideset 3 surface with y_coord < 0
+sideset 3 name "ssy-"
+sideset 4 surface with y_coord < 0
+sideset 4 name "ssy+"
+sideset 5 surface with z_coord < 0
+sideset 5 name "ssz-"
+sideset 6 surface with z_coord > 0
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "plate.g" overwrite

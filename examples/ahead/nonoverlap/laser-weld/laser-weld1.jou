@@ -191,13 +191,13 @@ block 1 volume 2
 
 block 1 name "bead_weld"
 
-block 2 volume 5 
+block 2 volume 5
 
 block 2 name "region_weld_0"
 
 block 5 volume 1 4
 
-block 55 volume 1 
+block 55 volume 1
 
 block 55 name "region_weld_1"
 
@@ -208,14 +208,14 @@ block 11 name "gauge"
 
 # Create holder-0 block ----------------------------------------------------------------------------
 
-block 3 volume 3 
+block 3 volume 3
 
 block 3 name "holder_0"
 
 
 # Create holder-1 block ----------------------------------------------------------------------------
 
-block 7 volume 4 
+block 7 volume 4
 
 block 7 name "holder_1"
 
@@ -228,7 +228,7 @@ block 7 name "holder_1"
 #{ratioSizeCoarseFine = 2}
 #{sizeElementFine = (sizeElementCoarse) / (ratioSizeCoarseFine)}
 ##{ratioSizeCoarseMedium = 3} #IKT 11/5/2024: this was orig resolution
-#{ratioSizeCoarseMedium = 1} 
+#{ratioSizeCoarseMedium = 1}
 #{sizeElementMedium = (sizeElementCoarse) / (ratioSizeCoarseMedium)}
 
 # --------------------------------------------------------------------------------------------------
@@ -272,52 +272,52 @@ reset nodeset
 set large exodus file on
 export mesh "holder-1.g" dimension 3 block 7 overwrite
 
-#IKT 11/24/2024: the following is a hack.  For some reason, I can't seem to set 
+#IKT 11/24/2024: the following is a hack.  For some reason, I can't seem to set
 #sidesets correctly in the above code
 reset
-import mesh geometry "holder-0.g" 
+import mesh geometry "holder-0.g"
 nodeset 1 surface 6
 nodeset 1 name "nodeset_negative_y"
-nodeset 2 surface 2 
+nodeset 2 surface 2
 nodeset 2 name "nodeset_negative_x"
-nodeset 3 surface 4 
-nodeset 3 name "nodeset_negative_z" 
+nodeset 3 surface 4
+nodeset 3 name "nodeset_negative_z"
 sideset 1 surface 6
-sideset 1 name "sideset_negative_y" 
+sideset 1 name "sideset_negative_y"
 sideset 2 surface 3
 sideset 2 name "sideset_positive_y"
 block all element type HEX8
 export mesh "holder-0.g" block all overwrite
 
 reset
-import mesh geometry "holder-1.g" 
+import mesh geometry "holder-1.g"
 nodeset 1 surface 6
-nodeset 1 name "nodeset_positive_y" 
+nodeset 1 name "nodeset_positive_y"
 nodeset 2 surface 3
 nodeset 2 name "nodeset_negative_x"
-nodeset 3 surface 4 
-nodeset 3 name "nodeset_negative_z" 
-sideset 1 surface 2 
-sideset 1 name "sideset_negative_y" 
+nodeset 3 surface 4
+nodeset 3 name "nodeset_negative_z"
+sideset 1 surface 2
+sideset 1 name "sideset_negative_y"
 sideset 2 surface 6
-sideset 2 name "sideset_positive_y" 
+sideset 2 name "sideset_positive_y"
 block all element type HEX8
 export mesh "holder-1.g" block all overwrite
 
 reset
 import mesh geometry "gauge.g"
-nodeset 1 surface 6 10 14 
+nodeset 1 surface 6 10 14
 nodeset 1 name "nodeset_negative_x"
 nodeset 2 surface 2 9 13
-nodeset 2 name "nodeset_negative_z"  
-nodeset 3 surface 17 
-nodeset 3 name "nodeset_negative_y" 
-nodeset 4 surface 1 
-nodeset 4 name "nodeset_positive_y" 
-sideset 1 surface 17 
-sideset 1 name "sideset_negative_y" 
-sideset 2 surface 1 
-sideset 2 name "sideset_positive_y" 
+nodeset 2 name "nodeset_negative_z"
+nodeset 3 surface 17
+nodeset 3 name "nodeset_negative_y"
+nodeset 4 surface 1
+nodeset 4 name "nodeset_positive_y"
+sideset 1 surface 17
+sideset 1 name "sideset_negative_y"
+sideset 2 surface 1
+sideset 2 name "sideset_positive_y"
 block all element type HEX8
 export mesh "gauge.g" block all overwrite
 

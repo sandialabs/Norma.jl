@@ -13,11 +13,11 @@ include("model_types.jl")
 include("time_integrator_types.jl")
 include("solver_types.jl")
 
-abstract type SingleController end
-abstract type MultiDomainController end
+abstract type TimeController end
+abstract type SingleTimeController <: TimeController end
+abstract type MultiDomainTimeController <: TimeController end
 
-mutable struct SolidMultiDomainController <: MultiDomainController
-    num_domains::Int64
+mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     minimum_iterations::Int64
     maximum_iterations::Int64
     absolute_tolerance::Float64
@@ -29,7 +29,6 @@ mutable struct SolidMultiDomainController <: MultiDomainController
     time_step::Float64
     time::Float64
     prev_time::Float64
-    same_step::Bool
     num_stops::Int64
     stop::Int64
     converged::Bool
@@ -51,13 +50,14 @@ mutable struct SolidMultiDomainController <: MultiDomainController
     lambda_disp::Vector{Vector{Float64}}
     lambda_velo::Vector{Vector{Float64}}
     lambda_acce::Vector{Vector{Float64}}
+    is_schwarz::Bool
     schwarz_contact::Bool
     active_contact::Bool
     contact_hist::Vector{Bool}
     convergence_hist::Array{Float64}
 end
 
-mutable struct SolidSingleController <: SingleController
+mutable struct SolidSingleDomainTimeController <: SingleTimeController
     initial_time::Float64
     final_time::Float64
     time_step::Float64
@@ -65,16 +65,12 @@ mutable struct SolidSingleController <: SingleController
     prev_time::Float64
     num_stops::Int64
     stop::Int64
-    stop_disp::Vector{Float64}
-    stop_velo::Vector{Float64}
-    stop_acce::Vector{Float64}
-    stop_∂Ω_f::Vector{Float64}
 end
 
 mutable struct SingleDomainSimulation <: Simulation
     name::String
     params::Parameters
-    controller::SolidSingleController
+    controller::SolidSingleDomainTimeController
     integrator::TimeIntegrator
     solver::Solver
     model::Model
@@ -84,7 +80,8 @@ end
 mutable struct MultiDomainSimulation <: Simulation
     name::String
     params::Parameters
-    controller::MultiDomainController
+    controller::MultiDomainTimeController
+    num_domains::Int64
     subsims::Vector{SingleDomainSimulation}
     subsim_name_index_map::Dict{String,Int64}
     failed::Bool

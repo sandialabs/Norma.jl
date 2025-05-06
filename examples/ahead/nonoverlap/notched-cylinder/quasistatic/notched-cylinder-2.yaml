@@ -26,7 +26,7 @@ boundary conditions:
       function: "0.0064 * t"
   Schwarz nonoverlap:
     - side set: -Z_topSS
-      source: notched-cylinder-1.yaml
+      source: notched-cylinder-1
       source side set: +Z_bottomSS
       source block: fine
 solver:

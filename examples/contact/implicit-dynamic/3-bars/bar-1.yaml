@@ -27,7 +27,7 @@ initial conditions:
 boundary conditions:
   Schwarz contact:
     - side set: ssx+
-      source: "bar-2.yaml"
+      source: bar-2
       source block: block2
       source side set: ssx-
       friction type: frictionless

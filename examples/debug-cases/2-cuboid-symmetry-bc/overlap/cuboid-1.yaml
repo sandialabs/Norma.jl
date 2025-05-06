@@ -7,7 +7,7 @@ model:
     blocks:
       fine: hyperelastic
     hyperelastic:
-      model: linear elastic 
+      model: linear elastic
       elastic modulus: 1.0e+09
       Poisson's ratio: 0.25
       density: 1000.0
@@ -26,7 +26,7 @@ boundary conditions:
       function: "-1.0 * t"
   Schwarz overlap:
     - side set: ssz+
-      source: cuboid-2.yaml
+      source: cuboid-2
       source block: coarse
       source side set: ssz-
 solver:

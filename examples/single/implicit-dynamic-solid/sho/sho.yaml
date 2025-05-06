@@ -16,7 +16,7 @@ model:
 time integrator:
   type: Newmark
   initial time: 0.0
-  final time: 1.58
+  final time: 1.5707963267948966
   time step: 0.09817477042468103
   β: 0.25
   γ: 0.5

@@ -33,7 +33,7 @@ boundary conditions:
       function: "0.0"
   Schwarz contact:
     - side set: ssx-
-      source: "src.yaml"
+      source: src
       source block: src
       source side set: ssx+
       friction type: frictionless

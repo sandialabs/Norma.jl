@@ -39,7 +39,7 @@ initial conditions:
 boundary conditions:
   Schwarz overlap:
     - side set: +Z_ss
-      source: torsion-2.yaml
+      source: torsion-2
       source block: top
       source side set: -Z_ss
 solver:
