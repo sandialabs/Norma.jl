@@ -12,7 +12,9 @@ function adaptive_stepping_parameters(integrator_params::Parameters)
     has_any = has_minimum || has_decrease || has_maximum || has_increase
     has_all = has_minimum && has_decrease && has_maximum && has_increase
     if has_any == true && has_all == false
-        error("Adaptive time stepping requires 4 parameters: minimum and maximum time steps and decrease and increase factors")
+        norma_abort(
+            "Adaptive time stepping requires 4 parameters: minimum and maximum time steps and decrease and increase factors",
+        )
     elseif has_any == true && has_all == true
         minimum_time_step = integrator_params["minimum time step"]
         decrease_factor = integrator_params["decrease factor"]
@@ -23,13 +25,15 @@ function adaptive_stepping_parameters(integrator_params::Parameters)
         decrease_factor = increase_factor = 1.0
     end
     if minimum_time_step > maximum_time_step
-        error("Minimum time step ", minimum_time_step, " must be greater or equal than maximum ", maximum_time_step)
+        norma_abortf(
+            "Minimum time step %.4e must be less than or equal to maximum %.4e.", minimum_time_step, maximum_time_step
+        )
     end
     if decrease_factor > 1.0
-        error("Decrease factor ", decrease_factor, " must be less or equal to one.")
+        norma_abortf("Decrease factor %.4e must be less than or equal to one.", decrease_factor)
     end
     if increase_factor < 1.0
-        error("Increase factor ", increase_factor, " must be greater or equal to one.")
+        norma_abortf("Increase factor %.4e must be greater than or equal to one.", increase_factor)
     end
     return minimum_time_step, decrease_factor, maximum_time_step, increase_factor
 end
@@ -167,7 +171,7 @@ function create_time_integrator(params::Parameters, model::Model)
     elseif integrator_name == "central difference"
         return CentralDifference(params, model)
     else
-        error("Unknown type of time integrator : ", integrator_name)
+        norma_abort("Unknown type of time integrator : $integrator_name")
     end
 end
 
@@ -245,7 +249,7 @@ function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechani
         norma_log(0, :equilibrium, "Establishing Initial Equilibrium...")
         solve(integrator, solver, model)
         if model.failed == true
-            error("Finite element model failed to establish initial equlibrium")
+            norma_abort("Finite element model failed to establish initial equlibrium")
         end
     end
     return nothing
@@ -267,7 +271,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     free = model.free_dofs
     evaluate(model, integrator, solver)
     if model.failed == true
-        error("Finite element model failed to initialize")
+        norma_abort("Finite element model failed to initialize")
     end
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
@@ -279,7 +283,9 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     integrator.stored_energy = model.strain_energy
-    integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], solver.relative_tolerance)
+    integrator.acceleration[free] = solve_linear(
+        model.mass[free, free], inertial_force[free], solver.relative_tolerance
+    )
     copy_solution_source_targets(integrator, solver, model)
     return nothing
 end
@@ -290,7 +296,7 @@ function initialize(integrator::Newmark, solver::MatrixFree, model::SolidMechani
     free = model.free_dofs
     evaluate(model, integrator, solver)
     if model.failed == true
-        error("Finite element model failed to initialize")
+        norma_abort("Finite element model failed to initialize")
     end
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
@@ -348,7 +354,7 @@ function initialize(integrator::CentralDifference, solver::ExplicitSolver, model
     set_time_step(integrator, model)
     evaluate(model, integrator, solver)
     if model.failed == true
-        error("The finite element model has failed to initialize")
+        norma_abort("The finite element model has failed to initialize")
     end
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force

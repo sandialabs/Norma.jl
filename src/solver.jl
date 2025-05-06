@@ -118,7 +118,7 @@ function create_solver(params::Parameters, model::Model)
     elseif solver_name == "steepest descent"
         return SteepestDescent(params, model)
     else
-        error("Unknown type of solver : ", solver_name)
+        norma_abort("Unknown type of solver : $solver_name")
     end
 end
 
@@ -158,7 +158,7 @@ function create_step(solver_params::Parameters)
     elseif step_name == "steepest descent"
         return SteepestDescentStep(solver_params)
     else
-        error("Unknown type of solver step: ", step_name)
+        norma_abort("Unknown type of solver step: $step_name")
     end
 end
 
@@ -687,7 +687,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     if is_explicit_dynamic == false
         raw_status = "[WAIT]"
         status = colored_status(raw_status)
-    norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
+        norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -707,8 +707,18 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         if is_explicit_dynamic == false
             raw_status = solver.converged ? "[DONE]" : "[WAIT]"
             status = colored_status(raw_status)
-            norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|R|", solver.absolute_error, "|r|", solver.relative_error, status)
-                    end
+            norma_logf(
+                8,
+                :solve,
+                "Iteration [%d] %s = %.3e : %s = %.3e : %s",
+                iteration_number,
+                "|R|",
+                solver.absolute_error,
+                "|r|",
+                solver.relative_error,
+                status,
+            )
+        end
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
             break

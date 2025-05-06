@@ -25,10 +25,10 @@ function SMDirichletInclined(input_mesh::ExodusDatabase, bc_params::Parameters)
     expression = bc_params["function"]
     if expression isa AbstractVector
         if (length(expression) != 3)
-            error("Vectorized function must have 3 elements.")
+            norma_abort("Vectorized function must have 3 elements.")
         end
         if all(x -> x isa String, expression) == false
-            error("All functions must be strings (including zeros).")
+            norma_abort("All functions must be strings (including zeros).")
         end
         disp_expression = [
             eval(Meta.parse(expression[1])), eval(Meta.parse(expression[2])), eval(Meta.parse(expression[3]))
@@ -114,7 +114,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
     elseif friction_type_string == "tied"
         friction_type = 1
     else
-        error("Unknown or not implemented friction type : ", friction_type_string)
+        norma_abort("Unknown or not implemented friction type : $friction_type_string")
     end
 
     return SMContactSchwarzBC(
@@ -193,7 +193,14 @@ function SMCouplingSchwarzBC(
         point = subsim.model.reference[:, node_index]
         node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
         if found == false
-            error("Could not find subdomain ", subsim.name, " point ", point, " in subdomain ", coupled_subsim.name)
+            norma_abortf(
+                "Could not find subdomain %s point (%.4e, %.4e, %.4e) in subdomain %s",
+                subsim.name,
+                point[1],
+                point[2],
+                point[3],
+                coupled_subsim.name,
+            )
         end
         N = interpolate(element_type, ξ)[1]
         push!(coupled_nodes_indices, node_indices)
@@ -220,7 +227,7 @@ function SMCouplingSchwarzBC(
             elseif default_bc_type == "Neumann"
                 is_dirichlet = false
             else
-                error("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
+                norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
             end
         end
         if haskey(bc_params, "swap BC types") == true
@@ -238,7 +245,7 @@ function SMCouplingSchwarzBC(
             swap_bcs,
         )
     else
-        error("Unknown boundary condition type : ", bc_type)
+        norma_abort("Unknown boundary condition type : $bc_type")
     end
 end
 
@@ -504,11 +511,11 @@ function get_internal_force(model::RomModel)
 end
 
 function set_internal_force!(model::SolidMechanics, force)
-    model.internal_force = force
+    return model.internal_force = force
 end
 
 function set_internal_force!(model::RomModel, force)
-    model.fom_model.internal_force = force
+    return model.fom_model.internal_force = force
 end
 
 function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
@@ -521,42 +528,42 @@ function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
     end
 
     coupled_subsim = bc.coupled_subsim
-    integrator     = coupled_subsim.integrator
-    coupled_model  = coupled_subsim.model
+    integrator = coupled_subsim.integrator
+    coupled_model = coupled_subsim.model
 
     # Save current state
-    saved_disp  = integrator.displacement
-    saved_velo  = integrator.velocity
-    saved_acce  = integrator.acceleration
-    saved_∂Ω_f  = get_internal_force(coupled_model)
+    saved_disp = integrator.displacement
+    saved_velo = integrator.velocity
+    saved_acce = integrator.acceleration
+    saved_∂Ω_f = get_internal_force(coupled_model)
 
     # Fetch interpolation inputs
-    time         = model.time
+    time = model.time
     coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    num_dofs      = length(coupled_subsim.model.free_dofs)
+    num_dofs = length(coupled_subsim.model.free_dofs)
 
-    time_hist  = controller.time_hist[coupled_index]
-    disp_hist  = controller.disp_hist[coupled_index]
-    velo_hist  = controller.velo_hist[coupled_index]
-    acce_hist  = controller.acce_hist[coupled_index]
-    ∂Ω_f_hist  = controller.∂Ω_f_hist[coupled_index]
+    time_hist = controller.time_hist[coupled_index]
+    disp_hist = controller.disp_hist[coupled_index]
+    velo_hist = controller.velo_hist[coupled_index]
+    acce_hist = controller.acce_hist[coupled_index]
+    ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
 
     # Interpolate or use fallback
     if !isempty(time_hist)
-        interp_disp  = interpolate(time_hist, disp_hist, time)
-        interp_velo  = interpolate(time_hist, velo_hist, time)
-        interp_acce  = interpolate(time_hist, acce_hist, time)
-        interp_∂Ω_f  = interpolate(time_hist, ∂Ω_f_hist, time)
+        interp_disp = interpolate(time_hist, disp_hist, time)
+        interp_velo = interpolate(time_hist, velo_hist, time)
+        interp_acce = interpolate(time_hist, acce_hist, time)
+        interp_∂Ω_f = interpolate(time_hist, ∂Ω_f_hist, time)
     elseif isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
-        interp_disp  = controller.stop_disp[coupled_index]
-        interp_velo  = controller.stop_velo[coupled_index]
-        interp_acce  = controller.stop_acce[coupled_index]
-        interp_∂Ω_f  = controller.stop_∂Ω_f[coupled_index]
+        interp_disp = controller.stop_disp[coupled_index]
+        interp_velo = controller.stop_velo[coupled_index]
+        interp_acce = controller.stop_acce[coupled_index]
+        interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
     else
-        interp_disp  = zeros(num_dofs)
-        interp_velo  = zeros(num_dofs)
-        interp_acce  = zeros(num_dofs)
-        interp_∂Ω_f  = zeros(num_dofs)
+        interp_disp = zeros(num_dofs)
+        interp_velo = zeros(num_dofs)
+        interp_acce = zeros(num_dofs)
+        interp_∂Ω_f = zeros(num_dofs)
     end
 
     # Assign interpolated force
@@ -576,11 +583,11 @@ function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
         controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
         integrator.displacement = controller.lambda_disp[coupled_index]
-        integrator.velocity     = controller.lambda_velo[coupled_index]
+        integrator.velocity = controller.lambda_velo[coupled_index]
         integrator.acceleration = controller.lambda_acce[coupled_index]
     else
         integrator.displacement = interp_disp
-        integrator.velocity     = interp_velo
+        integrator.velocity = interp_velo
         integrator.acceleration = interp_acce
     end
 
@@ -590,7 +597,7 @@ function apply_bc(model::Model, bc::SchwarzBoundaryCondition)
 
     # Restore previous state
     integrator.displacement = saved_disp
-    integrator.velocity     = saved_velo
+    integrator.velocity = saved_velo
     integrator.acceleration = saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
 
@@ -633,7 +640,7 @@ function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContact
             model.velocity[:, node_index] = source_velo
             model.acceleration[:, node_index] = source_acce
         else
-            error("Unknown or not implemented friction type.")
+            norma_abort("Unknown or not implemented friction type.")
         end
         global_base = 3 * (node_index - 1) # Block index in global stiffness
         model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
@@ -670,7 +677,7 @@ function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSc
         elseif bc.friction_type == 1
             model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
         else
-            error("Unknown or not implemented friction type.")
+            norma_abort("Unknown or not implemented friction type.")
         end
     end
 end
@@ -722,7 +729,7 @@ function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)
         end
     end
     if node_set_index == 0
-        error("node set ", node_set_name, " cannot be found in mesh")
+        norma_abort("node set $node_set_name cannot be found in mesh")
     end
     node_set_ids = Exodus.read_ids(mesh, NodeSet)
     node_set_id = node_set_ids[node_set_index]
@@ -740,7 +747,7 @@ function side_set_id_from_name(side_set_name::String, mesh::ExodusDatabase)
         end
     end
     if side_set_index == 0
-        error("side set ", side_set_name, " cannot be found in mesh")
+        norma_abort("side set $side_set_name cannot be found in mesh")
     end
     side_set_ids = Exodus.read_ids(mesh, SideSet)
     side_set_id = side_set_ids[side_set_index]
@@ -758,7 +765,7 @@ function block_id_from_name(block_name::String, mesh::ExodusDatabase)
         end
     end
     if block_index == 0
-        error("block ", block_name, " cannot be found in mesh")
+        norma_abort("block $block_name cannot be found in mesh")
     end
     block_ids = Exodus.read_ids(mesh, Block)
     block_id = block_ids[block_index]
@@ -774,7 +781,7 @@ function component_offset_from_string(name::String)
     elseif name == "z"
         offset = 3
     else
-        error("invalid component name ", name)
+        norma_abort("invalid component name $name")
     end
     return offset
 end
@@ -826,14 +833,14 @@ function create_bcs(params::Parameters)
                 boundary_condition = SMCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             else
-                error("Unknown boundary condition type : ", bc_type)
+                norma_abort("Unknown boundary condition type : $bc_type")
             end
         end
     end
     # BRP: do not support applying multiple inclined support BCs to a single node
     duplicate_inclined_support_conditions = length(unique(inclined_support_nodes)) < length(inclined_support_nodes)
     if duplicate_inclined_support_conditions
-        error("Cannot apply multiple inclined BCs to a single node.")
+        norma_abort("Cannot apply multiple inclined BCs to a single node.")
     end
     return boundary_conditions
 end
@@ -860,7 +867,19 @@ function assign_velocity!(
     velocity_already_defined = !(current_val ≈ 0.0)
     dissimilar_velocities = !(current_val ≈ velo_val)
     if velocity_already_defined && dissimilar_velocities
-        error("Inconsistent velocity initial conditions (ICs) for node ", node_index, ": attempted to assign velocity ", context, " (v = ", velo_val, ")", " which conflicts with an already assigned value (v = ", current_val, ").")
+        norma_abortf(
+            "Inconsistent velocity initial conditions for node %d: " *
+            "attempted to assign velocity %s (v = (%.4e, %.4e, %.4e)), " *
+            "which conflicts with an already assigned value (v = (%.4e, %.4e, %.4e)).",
+            node_index,
+            context,
+            velo_val[1],
+            velo_val[2],
+            velo_val[3],
+            current_val[1],
+            current_val[2],
+            current_val[3],
+        )
     else
         velocity[offset, node_index] = velo_val
     end
@@ -890,7 +909,9 @@ function apply_ics(params::Parameters, model::SolidMechanics)
                 disp_num = nothing  # Not needed
                 velo_num = eval(Meta.parse(expression))
             else
-                error("Invalid initial condition type: '$ic_type'. Supported types are: displacement or velocity.")
+                norma_abort(
+                    "Invalid initial condition type: '$ic_type'. Supported types are: displacement or velocity."
+                )
             end
             for node_index in node_set_node_indices
                 values = Dict(

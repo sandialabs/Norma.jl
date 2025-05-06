@@ -34,7 +34,7 @@ function create_simulation(params::Parameters)
         create_bcs(sim)
         return sim
     else
-        error("Unknown type of simulation: ", sim_type)
+        norma_abort("Unknown type of simulation: $sim_type")
     end
 end
 
@@ -118,11 +118,11 @@ function SolidMultiDomainTimeController(params::Parameters)
     schwarz_disp = [Vector{Float64}[] for _ in 1:num_domains]
     schwarz_velo = [Vector{Float64}[] for _ in 1:num_domains]
     schwarz_acce = [Vector{Float64}[] for _ in 1:num_domains]
-    time_hist   = [Float64[] for _ in 1:num_domains]
-    disp_hist   = [Vector{Float64}[] for _ in 1:num_domains]
-    velo_hist   = [Vector{Float64}[] for _ in 1:num_domains]
-    acce_hist   = [Vector{Float64}[] for _ in 1:num_domains]
-    ∂Ω_f_hist   = [Vector{Float64}[] for _ in 1:num_domains]
+    time_hist = [Float64[] for _ in 1:num_domains]
+    disp_hist = [Vector{Float64}[] for _ in 1:num_domains]
+    velo_hist = [Vector{Float64}[] for _ in 1:num_domains]
+    acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
+    ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
@@ -189,15 +189,7 @@ function SolidSingleDomainTimeController(params::Parameters)
     num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     time = prev_time = initial_time
     stop = 0
-    return SolidSingleDomainTimeController(
-        initial_time,
-        final_time,
-        time_step,
-        time,
-        prev_time,
-        num_stops,
-        stop,
-    )
+    return SolidSingleDomainTimeController(initial_time, final_time, time_step, time, prev_time, num_stops, stop)
 end
 
 function create_controller(params::Parameters)
@@ -207,7 +199,7 @@ function create_controller(params::Parameters)
     elseif sim_type == "multi"
         return SolidMultiDomainTimeController(params)
     else
-        error("Unknown type of simulation: ", sim_type)
+        norma_abort("Unknown type of simulation: $sim_type")
     end
 end
 
@@ -267,12 +259,16 @@ function decrease_time_step(sim::SingleDomainSimulation)
     time_step = sim.integrator.time_step
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
-        error("Cannot adapt time step ", time_step, " because decrease factor is ", decrease_factor, ". Enable adaptive time stepping.")
+        norma_abortf(
+            "Cannot adapt time step %.4e because decrease factor is %.4e. Enable adaptive time stepping.",
+            time_step,
+            decrease_factor,
+        )
     end
     new_time_step = decrease_factor * time_step
     minimum_time_step = sim.integrator.minimum_time_step
     if new_time_step < minimum_time_step
-        error("Cannot adapt time step to ", new_time_step, " because minimum is ", minimum_time_step)
+        norma_abortf("Cannot adapt time step to %.4e because minimum is %.4e.", new_time_step, minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
     return nothing
@@ -283,7 +279,7 @@ function increase_time_step(sim::SingleDomainSimulation)
     if increase_factor > 1.0
         time_step = sim.integrator.time_step
         maximum_time_step = sim.integrator.maximum_time_step
-            new_time_step = min(increase_factor * time_step, maximum_time_step)
+        new_time_step = min(increase_factor * time_step, maximum_time_step)
         if new_time_step > time_step
             sim.integrator.time_step = new_time_step
         end
@@ -404,7 +400,7 @@ end
 
 function sync_control_time(sim::MultiDomainSimulation)
     set_initial_subcycle_time(sim)
-    controller= sim.controller
+    controller = sim.controller
     initial_time = controller.initial_time
     final_time = controller.final_time
     time_step = controller.time_step
@@ -438,7 +434,7 @@ function set_initial_subcycle_time(sim::MultiDomainSimulation)
     return nothing
 end
 
-function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64, eps::Float64 = 0.01)::Float64
+function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64, eps::Float64=0.01)::Float64
     t_next = t + dt
     gap = t_stop - t
     tol = eps * dt
@@ -510,7 +506,17 @@ function schwarz(sim::MultiDomainSimulation)
         end
         raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
         status = colored_status(raw_status)
-        norma_logf(0, :schwarz, "Criterion [%d] %s = %.3e : %s = %.3e : %s", iteration_number, "|ΔU|", ΔU, "|ΔU|/|U|", Δu, status)
+        norma_logf(
+            0,
+            :schwarz,
+            "Criterion [%d] %s = %.3e : %s = %.3e : %s",
+            iteration_number,
+            "|ΔU|",
+            ΔU,
+            "|ΔU|/|U|",
+            Δu,
+            status,
+        )
         if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
             norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
@@ -690,8 +696,7 @@ function reset_history(controller::MultiDomainTimeController, subsim_index::Int6
     return nothing
 end
 
-function save_history_snapshot(
-    controller::MultiDomainTimeController, sim::SingleDomainSimulation, subsim_index::Int64)
+function save_history_snapshot(controller::MultiDomainTimeController, sim::SingleDomainSimulation, subsim_index::Int64)
     if controller.is_schwarz == false
         return nothing
     end

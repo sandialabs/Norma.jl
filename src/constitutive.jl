@@ -36,7 +36,7 @@ function elastic_constants(params::Parameters)
             κ = E * μ / 3(3μ - E)
             λ = μ * (E - 2μ) / (3μ - E)
         else
-            error("Two elastic constants are required but only elastic modulus found")
+            norma_abort("Two elastic constants are required but only elastic modulus found")
         end
     elseif haskey(params, "Poisson's ratio") == true
         ν = params["Poisson's ratio"]
@@ -56,7 +56,7 @@ function elastic_constants(params::Parameters)
             κ = 2μ * (1 + ν) / 3(1 - 2ν)
             λ = 2μ * ν / (1 - 2ν)
         else
-            error("Two elastic constants are required but only Poisson's ratio found")
+            norma_abort("Two elastic constants are required but only Poisson's ratio found")
         end
     elseif haskey(params, "bulk modulus") == true
         κ = params["bulk modulus"]
@@ -71,7 +71,7 @@ function elastic_constants(params::Parameters)
             ν = (3κ - 2μ) / 2(3κ + μ)
             λ = κ - 2μ / 3
         else
-            error("Two elastic constants are required but only bulk modulus found")
+            norma_abort("Two elastic constants are required but only bulk modulus found")
         end
     elseif haskey(params, "Lamé's first constant") == true
         λ = params["Lamé's first constant"]
@@ -81,12 +81,12 @@ function elastic_constants(params::Parameters)
             ν = λ / 2(λ + μ)
             κ = λ + 2μ / 3
         else
-            error("Two elastic constants are required but only Lamé's first constant found")
+            norma_abort("Two elastic constants are required but only Lamé's first constant found")
         end
     elseif haskey(params, "shear modulus") == true
-        error("Two elastic constants are required but only shear modulus found")
+        norma_abort("Two elastic constants are required but only shear modulus found")
     else
-        error("Two elastic constants are required but none found")
+        norma_abort("Two elastic constants are required but none found")
     end
     return E, ν, κ, λ, μ
 end
@@ -582,7 +582,7 @@ function create_material(params::Parameters)
     elseif model_name == "seth-hill"
         return SethHill(params)
     else
-        error("Unknown material model : ", model_name)
+        norma_abort("Unknown material model : $model_name")
     end
     return nothing
 end
@@ -597,7 +597,7 @@ function get_kinematics(material::Solid)
     elseif material isa SethHill
         return Finite
     end
-    error("Unknown material model : ", typeof(material))
+    norma_abort("Unknown material model : $(typeof(material))")
     return nothing
 end
 

@@ -6,9 +6,28 @@
 using Logging
 using Printf
 
+function wrap_lines(msg::AbstractString, prefix::AbstractString; width::Int=80)
+    words = split(msg)
+    lines = String[]
+    current = ""
+
+    for word in words
+        if length(current) + length(word) + 1 > width
+            push!(lines, current)
+            current = word
+        else
+            current = isempty(current) ? word : "$current $word"
+        end
+    end
+    push!(lines, current)
+
+    return join([i == 1 ? prefix * line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
+end
+
 const NORMA_COLOR_OUTPUT = stdout isa Base.TTY && get(ENV, "NORMA_NO_COLOR", "false") != "true"
 
 const NORMA_COLORS = Dict(
+    :abort => :light_red,
     :acceleration => :blue,
     :advance => :green,
     :contact => :light_yellow,
@@ -35,19 +54,34 @@ const NORMA_COLORS = Dict(
     :warning => :yellow,
 )
 
+function visible_length(s::AbstractString)
+    return length(replace(s, r"\e\[[0-9;]*m" => ""))
+end
+
 function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     indent = " "^level
     keyword_str = uppercase(string(keyword))[1:min(end, 7)]
     bracketed = "[" * keyword_str * "]"
     padded = rpad(bracketed, 9)
+    prefix = indent * padded
 
     if NORMA_COLOR_OUTPUT
         color = get(NORMA_COLORS, keyword, :default)
         print(indent)
         printstyled(padded * " "; color=color, bold=true)
-        println(msg)
+        if visible_length(prefix * msg) <= 80
+            println(msg)
+        else
+            wrapped = wrap_lines(msg, ""; width=80 - length(prefix))
+            println(wrapped)
+        end
     else
-        println(indent, padded, " ", msg)
+        if visible_length(prefix * msg) <= 80
+            println(prefix, msg)
+        else
+            wrapped = wrap_lines(msg, prefix)
+            println(wrapped)
+        end
     end
 end
 
@@ -58,14 +92,62 @@ function norma_logf(level::Int, keyword::Symbol, fmt::AbstractString, args...)
     keyword_str = uppercase(string(keyword))[1:min(end, 7)]
     bracketed = "[" * keyword_str * "]"
     padded = rpad(bracketed, 9)
+    prefix = indent * padded
 
     if NORMA_COLOR_OUTPUT
         color = get(NORMA_COLORS, keyword, :default)
         print(indent)
         printstyled(padded * " "; color=color, bold=true)
-        println(buf)
+        if visible_length(prefix * buf) <= 80
+            println(buf)
+        else
+            wrapped = wrap_lines(buf, ""; width=80 - length(prefix))
+            println(wrapped)
+        end
     else
-        println(indent, padded, " ", buf)
+        if visible_length(prefix * buf) <= 80
+            println(prefix, buf)
+        else
+            wrapped = wrap_lines(buf, prefix)
+            println(wrapped)
+        end
+    end
+end
+
+# Internal, testable logic
+function _norma_abort_message(msg::AbstractString)
+    norma_log(0, :abort, msg)
+    return norma_log(0, :norma, "SIMULATION ABORTED")
+end
+
+function _norma_abort_messagef(fmt::AbstractString, args...)
+    norma_logf(0, :abort, fmt, args...)
+    return norma_log(0, :norma, "SIMULATION ABORTED")
+end
+
+const NORMA_TEST_MODE = Ref(false)  # top-level constant
+
+struct NormaAbortException <: Exception
+    msg::String
+end
+
+function norma_abort(msg::AbstractString)
+    _norma_abort_message(msg)
+    if NORMA_TEST_MODE[]
+        throw(NormaAbortException(msg))
+    else
+        error("Norma aborted: $msg")
+    end
+end
+
+function norma_abortf(fmt::AbstractString, args...)
+    _norma_abort_messagef(fmt, args...)
+    f = Printf.Format(fmt)
+    msg = Printf.format(f, args...)
+    if NORMA_TEST_MODE[]
+        throw(NormaAbortException(msg))
+    else
+        error("Norma aborted: $msg")
     end
 end
 
@@ -137,7 +219,7 @@ end
 
 function parse_args()
     if length(ARGS) != 1
-        error("Usage: julia Norma.jl <input_file>")
+        norma_abort("Usage: julia Norma.jl <input_file>")
     end
     return ARGS[1]
 end
@@ -157,5 +239,5 @@ function colored_status(status::String)
 end
 
 function stripped_name(file::AbstractString)
-    first(splitext(basename(file)))
+    return first(splitext(basename(file)))
 end

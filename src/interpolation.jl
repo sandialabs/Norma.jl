@@ -270,7 +270,7 @@ function element_type_from_string(s::AbstractString)::ElementType
     elseif s == "HEX8"
         return HEX8
     else
-        error("Unknown element type string: $s")
+        norma_abort("Unknown element type string: $s")
     end
 end
 
@@ -312,7 +312,7 @@ function get_element_type(dim::Integer, num_nodes::Integer)
     elseif dim == 3 && num_nodes == 8
         return HEX8
     else
-        error("Invalid dim=$dim and num_nodes=$num_nodes")
+        norma_abort("Invalid dim = $dim and num_nodes = $num_nodes")
     end
 end
 
@@ -390,7 +390,7 @@ function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Floa
     elseif element_type == HEX8
         return all(-factor .≤ ξ[1:3] .≤ factor)
     else
-        error("Unsupported element type: ", element_type)
+        norma_abort("Unsupported element type: $element_type")
     end
 end
 
@@ -643,7 +643,7 @@ function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
         end
         iteration += 1
         if iteration > max_iterations
-            error("Closest point projection failed to converge")
+            norma_abort("Closest point projection failed to converge")
         end
     end
     _, dN, _ = interpolate(element_type, ξ)
