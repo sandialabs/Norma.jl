@@ -1,0 +1,12 @@
+type: multi
+domains: ["torsion-1.yaml", "torsion-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 1
+CSV write sidesets: true
+initial time: 0.0
+final time: 2.0e-3
+time step: 1.0e-6
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-06
