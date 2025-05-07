@@ -2,19 +2,19 @@
 
 
 
-###Requirements: 
+###Requirements:
 - [noma-opinf](https://gitlab-ex.sandia.gov/ejparis/norma-opinf) python package for data processing and opinf ROM construction
 - Above package links to UT's (Shane's) [OpInf](https://willcox-research-group.github.io/rom-operator-inference-Python3/source/index.html) package along with [rom-tools-and-workflows ](https://github.com/Pressio/rom-tools-and-workflows)
 
 ##OpInf ROM for Schwarz
-This example details how to construct an OpInf ROM for Schrwarz of the form 
+This example details how to construct an OpInf ROM for Schrwarz of the form
 
 $$\ddot{x} + Kx = Bu + f$$
-where $x$ is the state, $u$ are inputs arising, e.g., from BCs, and $K,B$ are the learned matrices. We will work with the cuboid  example. 
+where $x$ is the state, $u$ are inputs arising, e.g., from BCs, and $K,B$ are the learned matrices. We will work with the cuboid  example.
 
 ###1 - Training data generation
 First, we are going to update the cuboids.yaml yaml file to write out to CSV and writeout the CSV sidesets. I plan on adding exodus support, but this is not done yet.
-	
+
 ```yaml
 type: single
 input mesh file: ../laser-weld.g
@@ -38,10 +38,10 @@ The next step is to build the OpInf ROM. Here, we will build the model for domai
 * f: reduced forcing vector
 * basis: basis for *all* DOFs (free and fixed). Fixed DOFs will be overwritten within Norma
 * B\_sideset\_name for all sidesets: sideset matrices where sideset name is:
-	*  Standard Dirichlet BCs: The the name of the sideset + x,y,z component (e.g., 'B\_surface\_negative\_y-y'). 
+	*  Standard Dirichlet BCs: The the name of the sideset + x,y,z component (e.g., 'B\_surface\_negative\_y-y').
 	*  Schwarz DBCs: The name of the sideset. There is no x,y,z component since Schwarz assigns BCs for all components
 
-This operator can be constructed in any manner, and here we will use the norma-opinf tools. In the following snippet, we will load in the displacement csv files, identify which DOFs are free, and build an OpInf ROM for those DOFs. We will additionally load in the sideset DOFs, which are presecribed via BCs, and treat these as exogenous inputs to the model. We perform dimension reduction on them as well for scalibility. rom-tools-and-workflows is used to perform dimension reduction. 
+This operator can be constructed in any manner, and here we will use the norma-opinf tools. In the following snippet, we will load in the displacement csv files, identify which DOFs are free, and build an OpInf ROM for those DOFs. We will additionally load in the sideset DOFs, which are presecribed via BCs, and treat these as exogenous inputs to the model. We perform dimension reduction on them as well for scalibility. rom-tools-and-workflows is used to perform dimension reduction.
 
 ```py
 import numpy as np
@@ -70,12 +70,12 @@ if __name__ == "__main__":
     sidesets = ["nsx--x","nsy--y","ssz-","nsz+-z"]
     sideset_snapshots = normaopinf.readers.load_sideset_displacement_csv_files(solution_directory=cur_dir,sidesets=sidesets,solution_id=solution_id,skip_files=1)
 
-    # Create an energy-based truncater 
+    # Create an energy-based truncater
     tolerance = 1.e-5
     my_energy_truncater = romtools.vector_space.utils.EnergyBasedTruncater(1. - tolerance)
 
     # Now load in sidesets and create reduced spaces
-    # Note that I construct a separate basis for each x,y,z component. This isn't necessary 
+    # Note that I construct a separate basis for each x,y,z component. This isn't necessary
     ss_tspace = {}
     reduced_sideset_snapshots = {}
     for sideset in sidesets:
@@ -100,7 +100,7 @@ if __name__ == "__main__":
           reduced_sideset_snapshots[sideset] = romtools.rom.optimal_l2_projection(sideset_snapshots[sideset],ss_tspace[sideset])
 
 
-    ## Stack sidesets into one matrix for OpInf 
+    ## Stack sidesets into one matrix for OpInf
     reduced_stacked_sideset_snapshots = None
     for sideset in sidesets:
         if reduced_stacked_sideset_snapshots is None:
@@ -109,7 +109,7 @@ if __name__ == "__main__":
             reduced_stacked_sideset_snapshots = np.append(reduced_stacked_sideset_snapshots,reduced_sideset_snapshots[sideset],axis=0)
 
     # Create trial space for displacement vector
-    # Note again that I construct a separate basis for each x,y,z component. This isn't necessary 
+    # Note again that I construct a separate basis for each x,y,z component. This isn't necessary
     trial_spaces = []
     for i in range(0,3):
       trial_space = romtools.VectorSpaceFromPOD(snapshots=displacement_snapshots[i:i+1],
@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
     trial_space = romtools.CompositeVectorSpace(trial_spaces)
 
-    # Compute L2 orthogonal projection onto trial spaces 
+    # Compute L2 orthogonal projection onto trial spaces
     uhat = romtools.rom.optimal_l2_projection(displacement_snapshots,trial_space)
     u_ddots = normaopinf.calculus.d2dx2(displacement_snapshots,times)
     uhat_ddots = romtools.rom.optimal_l2_projection(u_ddots*1.,trial_space)

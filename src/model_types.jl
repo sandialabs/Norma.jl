@@ -28,6 +28,41 @@ mutable struct COOMatrix
     len::Int64 # logical length
 end
 
+struct EvaluationFlags
+    is_dynamic::Bool
+    is_implicit::Bool
+    is_hessian_opt::Bool
+    is_matrix_free::Bool
+    need_diag_stiffness::Bool
+    need_lumped_mass::Bool
+    need_stiffness::Bool
+    need_mass::Bool
+    compute_diag_stiffness::Bool
+    compute_lumped_mass::Bool
+    compute_stiffness::Bool
+    compute_mass::Bool
+    mesh_smoothing::Bool
+end
+
+struct SMThreadLocalArrays{V,M}
+    energy::Vector{Float64}
+    internal_force::Vector{V}
+    diag_stiffness::Vector{V}
+    lumped_mass::Vector{V}
+    stiffness::Vector{M}
+    mass::Vector{M}
+end
+
+struct SMElementThreadLocalArrays{T,DOFV,IFV,DSV,LMV,SM,MM}
+    energy::Vector{T}
+    dofs::Vector{DOFV}
+    internal_force::Vector{IFV}
+    diag_stiffness::Vector{DSV}
+    lumped_mass::Vector{LMV}
+    stiffness::Vector{SM}
+    mass::Vector{MM}
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
@@ -58,23 +93,6 @@ mutable struct SolidMechanics <: Model
     inclined_support::Bool
     global_transform::SparseMatrixCSC{Float64,Int64}
     kinematics::Kinematics
-end
-
-# TODO: Add potential energy as in the above
-mutable struct HeatConduction <: Model
-    mesh::ExodusDatabase
-    materials::Vector{Thermal}
-    reference::Matrix{Float64}
-    temperature::Vector{Float64}
-    rate::Vector{Float64}
-    internal_heat_flux::Vector{Float64}
-    boundary_heat_flux::Vector{Float64}
-    boundary_conditions::Vector{BoundaryCondition}
-    flux::Vector{Vector{Vector{Vector{Float64}}}}
-    stored_energy::Vector{Vector{Float64}}
-    free_dofs::BitVector
-    time::Float64
-    failed::Bool
 end
 
 mutable struct CubicOpInfRom <: OpInfModel

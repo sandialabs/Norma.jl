@@ -5,7 +5,151 @@
 # top-level Norma.jl directory.
 using Logging
 using Printf
-using Unicode
+
+function wrap_lines(msg::AbstractString, prefix::AbstractString; width::Int=80)
+    words = split(msg)
+    lines = String[]
+    current = ""
+
+    for word in words
+        if length(current) + length(word) + 1 > width
+            push!(lines, current)
+            current = word
+        else
+            current = isempty(current) ? word : "$current $word"
+        end
+    end
+    push!(lines, current)
+
+    return join([i == 1 ? prefix * line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
+end
+
+const NORMA_COLOR_OUTPUT = stdout isa Base.TTY && get(ENV, "NORMA_NO_COLOR", "false") != "true"
+
+const NORMA_COLORS = Dict(
+    :abort => :light_red,
+    :acceleration => :blue,
+    :advance => :green,
+    :contact => :light_yellow,
+    :debug => :red,
+    :domain => :light_blue,
+    :done => :green,
+    :equilibrium => :blue,
+    :error => :red,
+    :info => :cyan,
+    :initial => :blue,
+    :input => :cyan,
+    :linesearch => :cyan,
+    :norma => :magenta,
+    :output => :cyan,
+    :recover => :yellow,
+    :schwarz => :light_blue,
+    :setup => :magenta,
+    :solve => :cyan,
+    :step => :green,
+    :stop => :blue,
+    :summary => :magenta,
+    :test => :light_green,
+    :time => :light_cyan,
+    :warning => :yellow,
+)
+
+function visible_length(s::AbstractString)
+    return length(replace(s, r"\e\[[0-9;]*m" => ""))
+end
+
+function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
+    indent = " "^level
+    keyword_str = uppercase(string(keyword))[1:min(end, 7)]
+    bracketed = "[" * keyword_str * "]"
+    padded = rpad(bracketed, 9)
+    prefix = indent * padded
+
+    if NORMA_COLOR_OUTPUT
+        color = get(NORMA_COLORS, keyword, :default)
+        print(indent)
+        printstyled(padded * " "; color=color, bold=true)
+        if visible_length(prefix * msg) <= 80
+            println(msg)
+        else
+            wrapped = wrap_lines(msg, ""; width=80 - length(prefix))
+            println(wrapped)
+        end
+    else
+        if visible_length(prefix * msg) <= 80
+            println(prefix, msg)
+        else
+            wrapped = wrap_lines(msg, prefix)
+            println(wrapped)
+        end
+    end
+end
+
+function norma_logf(level::Int, keyword::Symbol, fmt::AbstractString, args...)
+    indent = " "^level
+    fstr = Printf.Format(fmt)
+    buf = Printf.format(fstr, args...)
+    keyword_str = uppercase(string(keyword))[1:min(end, 7)]
+    bracketed = "[" * keyword_str * "]"
+    padded = rpad(bracketed, 9)
+    prefix = indent * padded
+
+    if NORMA_COLOR_OUTPUT
+        color = get(NORMA_COLORS, keyword, :default)
+        print(indent)
+        printstyled(padded * " "; color=color, bold=true)
+        if visible_length(prefix * buf) <= 80
+            println(buf)
+        else
+            wrapped = wrap_lines(buf, ""; width=80 - length(prefix))
+            println(wrapped)
+        end
+    else
+        if visible_length(prefix * buf) <= 80
+            println(prefix, buf)
+        else
+            wrapped = wrap_lines(buf, prefix)
+            println(wrapped)
+        end
+    end
+end
+
+# Internal, testable logic
+function _norma_abort_message(msg::AbstractString)
+    norma_log(0, :abort, msg)
+    return norma_log(0, :norma, "SIMULATION ABORTED")
+end
+
+function _norma_abort_messagef(fmt::AbstractString, args...)
+    norma_logf(0, :abort, fmt, args...)
+    return norma_log(0, :norma, "SIMULATION ABORTED")
+end
+
+const NORMA_TEST_MODE = Ref(false)  # top-level constant
+
+struct NormaAbortException <: Exception
+    msg::String
+end
+
+function norma_abort(msg::AbstractString)
+    _norma_abort_message(msg)
+    if NORMA_TEST_MODE[]
+        throw(NormaAbortException(msg))
+    else
+        error("Norma aborted: $msg")
+    end
+end
+
+function norma_abortf(fmt::AbstractString, args...)
+    _norma_abort_messagef(fmt, args...)
+    f = Printf.Format(fmt)
+    msg = Printf.format(f, args...)
+    if NORMA_TEST_MODE[]
+        throw(NormaAbortException(msg))
+    else
+        error("Norma aborted: $msg")
+    end
+end
 
 # Enable debugging for a specific module in the environment variable JULIA_DEBUG (all for all modules)
 function configure_logger()
@@ -14,7 +158,7 @@ function configure_logger()
     if debug_level != ""
         # Enable debug logging
         global_logger(ConsoleLogger(stderr, Logging.Debug))
-        @info "Debugging enabled for: $debug_level"
+        norma_log(0, :info, "Debugging enabled for: $debug_level")
     else
         # Default to Info level
         global_logger(ConsoleLogger(stderr, Logging.Info))
@@ -36,13 +180,13 @@ Warns that parser behavior may break due to this setting.
 """
 function enable_fpe_traps()
     if Sys.islinux() && Sys.ARCH == :x86_64
-        @warn "Enabling FPE traps can break Julia's parser if done too early"
-        @warn "(e.g., before Meta.parse())."
+        norma_log(0, :warning, "Enabling FPE traps can break Julia's parser if done too early")
+        norma_log(0, :warning, "(e.g., before Meta.parse()).")
         mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
         ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
-        @info "Floating-point exceptions enabled (invalid, div-by-zero, overflow)"
+        norma_log(0, :info, "Floating-point exceptions enabled (invalid, div-by-zero, overflow)")
     else
-        @warn "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)"
+        norma_log(0, :warning, "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)")
     end
     return nothing
 end
@@ -75,7 +219,25 @@ end
 
 function parse_args()
     if length(ARGS) != 1
-        error("Usage: julia Norma.jl <input_file>")
+        norma_abort("Usage: julia Norma.jl <input_file>")
     end
     return ARGS[1]
+end
+
+function colored_status(status::String)
+    if status == "[WAIT]"
+        return NORMA_COLOR_OUTPUT ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
+    elseif status == "[DONE]"
+        return NORMA_COLOR_OUTPUT ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
+    elseif status == "[CONVERGING]"
+        return NORMA_COLOR_OUTPUT ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
+    elseif status == "[CONVERGED]"
+        return NORMA_COLOR_OUTPUT ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
+    else
+        return status  # fallback (no color)
+    end
+end
+
+function stripped_name(file::AbstractString)
+    return first(splitext(basename(file)))
 end

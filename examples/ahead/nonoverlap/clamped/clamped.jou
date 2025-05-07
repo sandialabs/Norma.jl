@@ -3,7 +3,7 @@ ${mm = 0.001 * m}
 ${side = 1.0 * mm}
 ${length = 1.0 * m}
 ${intervals_coarse = 600}
-${intervals_fine = 400} 
+${intervals_fine = 400}
 
 ${factor = 0.6}
 ${domain_length = length * factor}
@@ -14,9 +14,9 @@ create brick x {side} y {side} z {domain_length}
 move volume 1 z {-offset} include_merged
 surface 1 2 size {h_size_face}
 surface 1 2 scheme submap
-mesh surface 1 2 
+mesh surface 1 2
 curve 9 10 11 12 interval {intervals_coarse}
-mesh volume 1 
+mesh volume 1
 block 1 volume 1
 block 1 name "coarse"
 nodeset 1 surface with x_coord < 0
@@ -28,7 +28,7 @@ nodeset 3 name "nsy-"
 nodeset 4 surface with y_coord > 0
 nodeset 4 name "nsy+"
 #nodeset 5 surface with z_coord < 0
-nodeset 5 surface 2 
+nodeset 5 surface 2
 nodeset 5 name "nsz-"
 #nodeset 6 surface with z_coord > 0
 nodeset 6 surface 1
@@ -44,7 +44,7 @@ sideset 3 name "ssy-"
 sideset 4 surface with y_coord > 0
 sideset 4 name "ssy+"
 #sideset 5 surface with z_coord < 0
-sideset 5 surface 2 
+sideset 5 surface 2
 sideset 5 name "ssz-"
 #sideset 6 surface with z_coord > 0
 sideset 6 surface 1
@@ -56,9 +56,9 @@ reset
 create brick x {side} y {side} z {domain2_length}
 move volume 1 z {domain_length / 2.0} include_merged
 surface 1 2 scheme submap
-mesh surface 1 2 
+mesh surface 1 2
 curve 9 10 11 12 interval {intervals_fine}
-mesh volume 1 
+mesh volume 1
 block 1 volume 1
 block 1 name "fine"
 nodeset 1 surface with x_coord < 0

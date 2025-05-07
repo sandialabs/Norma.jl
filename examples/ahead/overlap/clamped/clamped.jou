@@ -4,7 +4,7 @@ ${side = 1.0 * mm}
 ${length = 1.0 * m}
 ${h_size_face = 1.0 * mm}
 ${intervals_coarse = 750}
-${intervals_fine = 750} 
+${intervals_fine = 750}
 
 ${overlap_length = side * 500}
 ${domain_length = (length + overlap_length) / 2.0}
@@ -14,9 +14,9 @@ create brick x {side} y {side} z {domain_length}
 move volume 1 z {-offset} include_merged
 surface 1 2 size {h_size_face}
 surface 1 2 scheme submap
-mesh surface 1 2 
+mesh surface 1 2
 curve 9 10 11 12 interval {intervals_coarse}
-mesh volume 1 
+mesh volume 1
 block 1 volume 1
 block 1 name "coarse"
 nodeset 1 surface with x_coord < 0
@@ -28,7 +28,7 @@ nodeset 3 name "nsy-"
 nodeset 4 surface with y_coord > 0
 nodeset 4 name "nsy+"
 #nodeset 5 surface with z_coord < 0
-nodeset 5 surface 2 
+nodeset 5 surface 2
 nodeset 5 name "nsz-"
 #nodeset 6 surface with z_coord > 0
 nodeset 6 surface 1
@@ -44,7 +44,7 @@ sideset 3 name "ssy-"
 sideset 4 surface with y_coord > 0
 sideset 4 name "ssy+"
 #sideset 5 surface with z_coord < 0
-sideset 5 surface 2 
+sideset 5 surface 2
 sideset 5 name "ssz-"
 #sideset 6 surface with z_coord > 0
 sideset 6 surface 1
@@ -56,9 +56,9 @@ delete mesh
 move volume 1 z {2 * offset} include_merged
 surface 1 2 size {h_size_face}
 surface 1 2 scheme submap
-mesh surface 1 2 
+mesh surface 1 2
 curve 9 10 11 12 interval {intervals_fine}
-mesh volume 1 
+mesh volume 1
 block 1 volume 1
 block 1 name "fine"
 nodeset 1 surface with x_coord < 0

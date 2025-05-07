@@ -39,7 +39,7 @@ initial conditions:
 boundary conditions:
   Schwarz nonoverlap:
     - side set: -Z_ss
-      source: torsion-1.yaml
+      source: torsion-1
       source block: bottom
       source side set: +Z_ss
 solver:

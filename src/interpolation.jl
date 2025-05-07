@@ -270,7 +270,7 @@ function element_type_from_string(s::AbstractString)::ElementType
     elseif s == "HEX8"
         return HEX8
     else
-        error("Unknown element type string: $s")
+        norma_abort("Unknown element type string: $s")
     end
 end
 
@@ -298,7 +298,7 @@ is_barycentric(::Val{TETRA10}) = true
 is_barycentric(::Val{HEX8}) = false
 is_barycentric(et::ElementType) = is_barycentric(Val(et))
 
-get_element_type(dim::Integer, num_nodes::Integer) = begin
+function get_element_type(dim::Integer, num_nodes::Integer)
     if dim == 1 && num_nodes == 2
         return BAR2
     elseif dim == 2 && num_nodes == 3
@@ -312,7 +312,7 @@ get_element_type(dim::Integer, num_nodes::Integer) = begin
     elseif dim == 3 && num_nodes == 8
         return HEX8
     else
-        error("Invalid dim=$dim and num_nodes=$num_nodes")
+        norma_abort("Invalid dim = $dim and num_nodes = $num_nodes")
     end
 end
 
@@ -390,7 +390,7 @@ function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Floa
     elseif element_type == HEX8
         return all(-factor .≤ ξ[1:3] .≤ factor)
     else
-        error("Unsupported element type: ", element_type)
+        norma_abort("Unsupported element type: $element_type")
     end
 end
 
@@ -481,11 +481,7 @@ function get_square_projection_matrix(model::SolidMechanics, side_set_id::Intege
         mesh, side_set_id
     )
     num_nodes = length(local_from_global_map)
-    if model.kinematics == Finite
-        coords = model.reference
-    else
-        coords = model.current
-    end
+    coords = model.reference
     square_projection_matrix = zeros(num_nodes, num_nodes)
     side_set_node_index = 1
     for num_nodes_side in num_nodes_sides
@@ -521,11 +517,7 @@ function get_rectangular_projection_matrix(
         dst_mesh, dst_side_set_id
     )
     dst_num_nodes = length(dst_local_from_global_map)
-    if dst_model.kinematics == Finite
-        dst_coords = dst_model.reference
-    else
-        dst_coords = dst_model.current
-    end
+    dst_coords = dst_model.reference
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
     for dst_num_nodes_side in dst_num_nodes_sides
@@ -596,11 +588,11 @@ function interpolate(tᵃ::Float64, tᵇ::Float64, xᵃ::Vector{Float64}, xᵇ::
 end
 
 function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, param::Float64)
-    if param < param_hist[1]
-        param = param_hist[1]
+    if param < param_hist[1] || isapprox(param, param_hist[1]; rtol=1.0e-06, atol=1.0e-12)
+        return value_hist[1]
     end
-    if param > param_hist[end]
-        param = param_hist[end]
+    if param > param_hist[end] || isapprox(param, param_hist[end]; rtol=1.0e-06, atol=1.0e-12)
+        return value_hist[end]
     end
     index = 1
     size = length(param_hist)
@@ -613,7 +605,7 @@ function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Floa
     if index == 1
         return value_hist[1]
     elseif index == size
-        return value_hist[size]
+        return value_hist[end]
     else
         return interpolate(param_hist[index], param_hist[index + 1], value_hist[index], value_hist[index + 1], param)
     end
@@ -651,7 +643,7 @@ function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
         end
         iteration += 1
         if iteration > max_iterations
-            error("Closest point projection failed to converge")
+            norma_abort("Closest point projection failed to converge")
         end
     end
     _, dN, _ = interpolate(element_type, ξ)

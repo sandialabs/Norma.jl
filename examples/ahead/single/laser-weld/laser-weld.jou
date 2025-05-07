@@ -191,7 +191,7 @@ block 1 volume 2
 
 block 1 name "bead_weld"
 
-block 2 volume 5 6 
+block 2 volume 5 6
 
 block 2 name "region_weld_0"
 
@@ -234,7 +234,7 @@ block 8 volume 3 5 6
 block 8 name "holder0"
 
 block 9 volume 1 4 7
-block 9 name "holder1" 
+block 9 name "holder1"
 
 block 10 volume 2 3 5 6 1 4 7
 
@@ -275,7 +275,7 @@ nodeset 3 surface 1
 nodeset 3 name "surface_positive_y"
 
 nodeset 4 surface 46 42 21 5 25 38 31
-nodeset 4 name "surface_negative_z" 
+nodeset 4 name "surface_negative_z"
 
 set large exodus file on
 export mesh "laser-weld.g" dimension 3 block 1 8 9 overwrite
@@ -289,7 +289,7 @@ export mesh "laser-weld.g" dimension 3 block 1 8 9 overwrite
 #
 #volume all size {sizeElementFine}
 #
-#mesh volume all 
+#mesh volume all
 #
 #nodeset 1 surface 30 37 26 8 20 41 47
 #nodeset 1 name "surface_symmetry"

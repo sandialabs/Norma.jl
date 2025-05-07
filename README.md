@@ -1,15 +1,21 @@
 [![CI](https://github.com/sandialabs/Norma.jl/actions/workflows/ci.yaml/badge.svg)](https://github.com/sandialabs/Norma.jl/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/gh/sandialabs/Norma.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/sandialabs/Norma.jl)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE.md)
-[![Julia version](https://img.shields.io/badge/Julia-1.11-blueviolet)](https://julialang.org/downloads/)
+[![Julia version](https://img.shields.io/badge/Julia-%E2%89%A5%201.10-blueviolet)](https://julialang.org/downloads/)
 
-# **📐 Norma.jl**
+# Norma.jl
 
 **Norma** is a Julia prototype for testing algorithms and ideas for coupling and multiphysics, primarily in solid mechanics and heat conduction.
 
+![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/bars.gif)
+*Simulation of the impact of two bars: one using hexahedral elements with an implicit time integrator, and the other using tetrahedral elements with an explicit time integrator, each with different time steps.*
+
+![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)
+*Dynamic simulation of torsion with large deformations.*
+
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
@@ -24,7 +30,7 @@ Norma.run("input.yaml")
 
 ---
 
-## 🧩 What is Norma.jl?
+## What is Norma.jl?
 
 - A prototyping framework for multiphysics and coupling algorithms
 - Focused on solid mechanics and heat conduction
@@ -33,19 +39,13 @@ Norma.run("input.yaml")
 
 ---
 
-![Norma Contact Simulation 1](https://github.com/sandialabs/Norma.jl/blob/main/doc/bars.gif)
-*Simulation of the impact of two bars: one using hexahedral elements with an implicit time integrator, and the other using tetrahedral elements with an explicit time integrator, each with different time steps.*
-
-![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)
-*Dynamic simulation of torsion with large deformations.*
-
----
-
 ## **Table of Contents**
 1. [Features](#features)
 2. [Installation](#installation)
 3. [Running the Code](#running-the-code)
 4. [Testing](#testing)
+   - [Selective Test Execution](#selective-test-execution)
+   - [Filtering by Name](#filtering-by-name)
 5. [Examples](#examples)
 6. [Profiling](#profiling)
 7. [Debugging](#debugging)
@@ -143,6 +143,39 @@ cd /path/to/Norma.jl/test
 julia --project=@/path/to/Norma.jl ./runtests.jl
 ```
 
+### Selective Test Execution
+
+You can control which tests to run via command-line arguments.
+
+#### Run Specific Tests by Index
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl 1 3 5
+```
+
+#### Run All Tests
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --all
+```
+
+#### List All Available Tests
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --list
+```
+
+### Filtering by Name
+
+To run tests whose filenames contain a string (case-insensitive):
+
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --filter cube
+```
+
+You can combine filters with `--all` or specific indices:
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --all --filter dynamic
+julia --project=@/path/to/Norma.jl ./runtests.jl 2 4 --filter static
+```
+
 ---
 
 ## **Examples**
@@ -161,7 +194,7 @@ Norma.run("bars.yaml")
 
 ## **Profiling**
 
-To identify performance bottlenecks in Norma.jl, use Julia's built-in `Profile` module:
+To identify performance bottlenecks in Norma.jl, you can use Julia's built-in `Profile` module and visualize results with [`ProfileCanvas.jl`](https://github.com/SciML/ProfileCanvas.jl):
 
 ### Step 1: Enable Profiling
 ```julia
@@ -171,21 +204,16 @@ cd("/path/to/Norma.jl/examples/contact/implicit-dynamic/2-bars")
 @profile Norma.run("bars.yaml")
 ```
 
-### Step 2: View the Profiling Results
+### Step 2: Visualize with ProfileCanvas
 ```julia
-Profile.print()
-```
-
-### Step 3: Visualize with ProfileView
-```julia
-using Pkg; Pkg.add("ProfileView")
-using ProfileView
-ProfileView.view()
+using Pkg; Pkg.add("ProfileCanvas")
+using ProfileCanvas
+ProfileCanvas.canvas()
 ```
 
 ### Command-Line Workflow
 ```bash
-julia --project=@/path/to/Norma.jl -e 'using Profile; using Norma; cd("examples/contact/implicit-dynamic/2-bars"); @profile Norma.run("bars.yaml")' -E 'using ProfileView; ProfileView.view()'
+julia --project=@/path/to/Norma.jl -e 'using Profile; using Norma; cd("examples/contact/implicit-dynamic/2-bars"); @profile Norma.run("bars.yaml")' -E 'using ProfileCanvas; ProfileCanvas.canvas()'
 ```
 
 ---
@@ -230,4 +258,3 @@ Then retry installation.
 ## **License**
 
 Norma.jl is licensed under the BSD 3-Clause License. See [LICENSE.md](LICENSE.md) for details.
-

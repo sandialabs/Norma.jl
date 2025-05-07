@@ -26,7 +26,7 @@ boundary conditions:
       function: "0.0"
   Schwarz nonoverlap:
     - side set: sideset_negative_y
-      source: gauge.yaml
+      source: gauge
       source block: region_weld_1
       source side set: sideset_positive_y
 solver:

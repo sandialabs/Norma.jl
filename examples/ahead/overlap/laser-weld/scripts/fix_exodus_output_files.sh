@@ -1,9 +1,9 @@
 #!/bin/bash
 
-ncdump holder-0.e >& h0 
+ncdump holder-0.e >& h0
 ncdump holder-1.e >& h1
 ncdump gauge.e >& g
-sed -i "s/num_elem_var = 49 ;/num_elem_var = 48 ;/g" h0 
+sed -i "s/num_elem_var = 49 ;/num_elem_var = 48 ;/g" h0
 sed -i "s/num_elem_var = 49 ;/num_elem_var = 48 ;/g" h1
 sed -i "s/num_elem_var = 49 ;/num_elem_var = 48 ;/g" g
 grep -wn "stored_energy" h0 | cut -d: -f1 >& a1
@@ -21,7 +21,7 @@ sed -i ''"$Y3"'d' g
 sed -i 's/"stored_energy",/"stored_energy" ;/g' h0
 sed -i 's/"stored_energy",/"stored_energy" ;/g' h1
 sed -i 's/"stored_energy",/"stored_energy" ;/g' g
-ncgen h0 -o holder-0.e 
+ncgen h0 -o holder-0.e
 ncgen h1 -o holder-1.e
 ncgen g -o gauge.e
 rm a1 a2 a3 h0 h1 g

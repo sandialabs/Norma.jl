@@ -55,13 +55,13 @@ function ExplicitSolver(params::Parameters, model::Model)
     num_dof = length(model.free_dofs)
     value = 0.0
     gradient = zeros(num_dof)
+    lumped_hessian = zeros(num_dof)
     solution = zeros(num_dof)
-    initial_guess = zeros(num_dof)
     initial_norm = 0.0
     converged = false
     failed = false
     step = create_step(solver_params)
-    return ExplicitSolver(value, gradient, solution, initial_guess, initial_norm, converged, failed, step)
+    return ExplicitSolver(value, gradient, lumped_hessian, solution, initial_norm, converged, failed, step)
 end
 
 function SteepestDescent(params::Parameters, model::Model)
@@ -75,6 +75,7 @@ function SteepestDescent(params::Parameters, model::Model)
     relative_error = 0.0
     value = 0.0
     gradient = zeros(num_dof)
+    lumped_hessian = zeros(num_dof)
     solution = zeros(num_dof)
     initial_norm = 0.0
     converged = false
@@ -97,6 +98,7 @@ function SteepestDescent(params::Parameters, model::Model)
         relative_error,
         value,
         gradient,
+        lumped_hessian,
         solution,
         initial_norm,
         converged,
@@ -116,7 +118,7 @@ function create_solver(params::Parameters, model::Model)
     elseif solver_name == "steepest descent"
         return SteepestDescent(params, model)
     else
-        error("Unknown type of solver : ", solver_name)
+        norma_abort("Unknown type of solver : $solver_name")
     end
 end
 
@@ -156,7 +158,7 @@ function create_step(solver_params::Parameters)
     elseif step_name == "steepest descent"
         return SteepestDescentStep(solver_params)
     else
-        error("Unknown type of solver step: ", step_name)
+        norma_abort("Unknown type of solver step: $step_name")
     end
 end
 
@@ -235,7 +237,7 @@ function copy_solution_source_targets(model::SolidMechanics, integrator::QuasiSt
     return nothing
 end
 
-function copy_solution_source_targets(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
+function copy_solution_source_targets(integrator::Newmark, solver::Solver, model::SolidMechanics)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
@@ -259,7 +261,7 @@ function copy_solution_source_targets(integrator::Newmark, solver::HessianMinimi
     return nothing
 end
 
-function copy_solution_source_targets(solver::HessianMinimizer, model::SolidMechanics, integrator::Newmark)
+function copy_solution_source_targets(solver::Solver, model::SolidMechanics, integrator::Newmark)
     displacement = solver.solution
     integrator.displacement = displacement
     velocity = integrator.velocity
@@ -283,7 +285,7 @@ function copy_solution_source_targets(solver::HessianMinimizer, model::SolidMech
     return nothing
 end
 
-function copy_solution_source_targets(model::SolidMechanics, integrator::Newmark, solver::HessianMinimizer)
+function copy_solution_source_targets(model::SolidMechanics, integrator::Newmark, solver::Solver)
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
         nodal_displacement = model.current[:, node] - model.reference[:, node]
@@ -445,7 +447,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOp
     #e = [x* - x] -> x* = x + e
     #Ax + Ae = b
     #Ax - b = -Ae
-    #Ae = r, r = b - Ax 
+    #Ae = r, r = b - Ax
     ##M uddot + Ku = f
 
     num_dof = length(model.free_dofs)
@@ -477,7 +479,7 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     return nothing
 end
 
-function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::SolidMechanics)
+function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMechanics)
     evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
@@ -485,7 +487,13 @@ function evaluate(integrator::QuasiStatic, solver::SteepestDescent, model::Solid
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
-    solver.gradient = model.internal_force - external_force
+    if model.inclined_support == true
+        solver.gradient = model.global_transform * (model.internal_force - external_force)
+        solver.lumped_hessian = model.global_transform * model.diag_stiffness
+    else
+        solver.gradient = model.internal_force - external_force
+        solver.lumped_hessian = model.diag_stiffness
+    end
     return nothing
 end
 
@@ -515,6 +523,32 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     return nothing
 end
 
+function evaluate(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
+    evaluate(model, integrator, solver)
+    if model.failed == true
+        return nothing
+    end
+    integrator.stored_energy = model.strain_energy
+    β = integrator.β
+    Δt = integrator.time_step
+    inertial_force = model.lumped_mass .* integrator.acceleration
+    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
+    integrator.kinetic_energy = kinetic_energy
+    internal_force = model.internal_force
+    external_force = model.body_force + model.boundary_force
+    diag_stiffness = model.diag_stiffness
+    if model.inclined_support == true
+        global_transform = model.global_transform
+        internal_force = global_transform * internal_force
+        external_force = global_transform * external_force
+        diag_stiffness = global_transform * diag_stiffness
+    end
+    solver.lumped_hessian = diag_stiffness + model.lumped_mass / β / Δt / Δt
+    solver.gradient = internal_force - external_force + inertial_force
+    solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
+    return nothing
+end
+
 function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     evaluate(model, integrator, solver)
     if model.failed == true
@@ -535,7 +569,7 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     end
     # External and internal force in local
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
-    # Graident -> local, local, local
+    # Gradient -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
     solver.lumped_hessian = model.lumped_mass
     return nothing
@@ -560,7 +594,7 @@ function backtrack_line_search(
     model.compute_mass = false
     model.compute_lumped_mass = false
     for iter in 1:max_iters
-        @printf("  📏 Line Search [%d] |ΔX| = %.3e\n", iter, step_length)
+        norma_logf(8, :linesearch, "Line Search [%d] |ΔX| = %.3e", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
         copy_solution_source_targets(solver, model, integrator)
@@ -583,13 +617,13 @@ function backtrack_line_search(
     return step
 end
 
-function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64})
-    return cg(A, b)
+function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, reltol::Float64)
+    return cg(A, b; reltol=reltol)
 end
 
-function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
+function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
+    step = -solve_linear(solver.hessian[free, free], solver.gradient[free], solver.relative_tolerance)
     if solver.use_line_search == true
         return backtrack_line_search(integrator, solver, model, step)
     else
@@ -597,29 +631,19 @@ function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::He
     end
 end
 
-function compute_step(integrator::Newmark, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
+function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::MatrixFree, _::SteepestDescentStep)
     free = model.free_dofs
-    step = -solve_linear(solver.hessian[free, free], solver.gradient[free])
-    if solver.use_line_search == true
-        return backtrack_line_search(integrator, solver, model, step)
-    else
-        return step
-    end
+    direction = -solver.gradient[free] ./ solver.lumped_hessian[free]
+    return backtrack_line_search(integrator, solver, model, direction)
 end
 
 function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
-    return -solve_linear(solver.hessian, solver.gradient)
+    return -solve_linear(solver.hessian, solver.gradient, solver.relative_tolerance)
 end
 
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
-end
-
-function compute_step(integrator::QuasiStatic, model::SolidMechanics, solver::SteepestDescent, _::SteepestDescentStep)
-    free = model.free_dofs
-    direction = -solver.gradient[free] ./ model.diag_stiffness[free]
-    return backtrack_line_search(integrator, solver, model, direction)
 end
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
@@ -694,7 +718,9 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
     if is_explicit_dynamic == false
-        @printf("  🔧 Solver [%d] %s = %.3e : %s = %.3e : %s\n", 0, "|R|", norm_residual, "|r|", 1.0, "⏳")
+        raw_status = "[WAIT]"
+        status = colored_status(raw_status)
+        norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -712,15 +738,18 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         norm_residual = norm(residual[model.free_dofs])
         update_solver_convergence_criterion(solver, norm_residual)
         if is_explicit_dynamic == false
-            status = solver.converged ? "✅" : "⏳"
-            @printf(
-                "  🔧 Solver [%d] %s = %.3e : %s = %.3e : %s\n",
+            raw_status = solver.converged ? "[DONE]" : "[WAIT]"
+            status = colored_status(raw_status)
+            norma_logf(
+                8,
+                :solve,
+                "Iteration [%d] %s = %.3e : %s = %.3e : %s",
                 iteration_number,
                 "|R|",
                 solver.absolute_error,
                 "|r|",
                 solver.relative_error,
-                status
+                status,
             )
         end
         iteration_number += 1
