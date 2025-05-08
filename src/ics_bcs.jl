@@ -100,6 +100,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
     coupled_side_set_name = bc_params["source side set"]
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
+    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
     rotation_matrix = I(3)
     active_contact = false
@@ -127,6 +128,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
         coupled_block_id,
         coupled_side_set_id,
         is_dirichlet,
+        dirichelt_projector,
         neumann_projector,
         rotation_matrix,
         active_contact,
@@ -147,6 +149,7 @@ function SMNonOverlapSchwarzBC(
     swap_bcs::Bool,
 )
     neumann_projector = Matrix{Float64}(undef, 0, 0)
+    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
     return SMNonOverlapSchwarzBC(
         side_set_id,
         side_set_node_indices,
@@ -157,6 +160,7 @@ function SMNonOverlapSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         swap_bcs,
+        dirichelt_projector,
         neumann_projector,
     )
 end

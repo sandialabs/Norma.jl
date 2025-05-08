@@ -56,6 +56,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     coupled_block_id::Int64
     coupled_side_set_id::Int64
     is_dirichlet::Bool
+    dirichelt_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
     rotation_matrix::Matrix{Float64}
     active_contact::Bool
@@ -84,5 +85,6 @@ mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     coupled_side_set_id::Int64
     is_dirichlet::Bool
     swap_bcs::Bool
+    dirichelt_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
 end
