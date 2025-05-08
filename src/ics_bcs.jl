@@ -428,7 +428,12 @@ function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     end
 end
 
-function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+function apply_bc_detail(model::SolidMechanics, bc::OverlapSchwarzBoundaryCondition)
+    coupling_pointwise_dbc(model, bc)
+    return nothing
+end
+
+function apply_bc_detail(model::SolidMechanics, bc::NonOverlapSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
         coupling_pointwise_dbc(model, bc)
     else
