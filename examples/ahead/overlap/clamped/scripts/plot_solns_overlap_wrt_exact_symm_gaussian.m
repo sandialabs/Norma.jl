@@ -83,26 +83,26 @@ for i=0:100:10000
   vz2ind2 = veloz2(ind2,ctr); 
   az1ind1 = accez1(ind1,ctr); 
   az2ind2 = accez2(ind2,ctr); 
-  for j = 1:length(zz)
-    ii1 = find(z1ind1 == zz(j)); 
-    ii2 = find(z2ind2 == zz(j)); 
-    dispz_merged(j,1) = 0; 
-    veloz_merged(j,1) = 0; 
-    accez_merged(j,1) = 0; 
+  for k = 1:length(zz)
+    ii1 = find(z1ind1 == zz(k)); 
+    ii2 = find(z2ind2 == zz(k)); 
+    dispz_merged(k,1) = 0; 
+    veloz_merged(k,1) = 0; 
+    accez_merged(k,1) = 0; 
     if length(ii1) > 0 
-      dispz_merged(j,1) = dispz_merged(j,1) + dz1ind1(ii1); 
-      veloz_merged(j,1) = veloz_merged(j,1) + vz1ind1(ii1); 
-      accez_merged(j,1) = accez_merged(j,1) + az1ind1(ii1); 
+      dispz_merged(k,1) = dispz_merged(k,1) + dz1ind1(ii1); 
+      veloz_merged(k,1) = veloz_merged(k,1) + vz1ind1(ii1); 
+      accez_merged(k,1) = accez_merged(k,1) + az1ind1(ii1); 
     end
     if length(ii2) > 0 
-      dispz_merged(j,1) = dispz_merged(j,1) + dz2ind2(ii2); 
-      veloz_merged(j,1) = veloz_merged(j,1) + vz2ind2(ii2); 
-      accez_merged(j,1) = accez_merged(j,1) + az2ind2(ii2); 
+      dispz_merged(k,1) = dispz_merged(k,1) + dz2ind2(ii2); 
+      veloz_merged(k,1) = veloz_merged(k,1) + vz2ind2(ii2); 
+      accez_merged(k,1) = accez_merged(k,1) + az2ind2(ii2); 
     end
     if length(ii1) + length(ii2) > 1 
-      dispz_merged(j,1) = dispz_merged(j,1)/2; 
-      veloz_merged(j,1) = veloz_merged(j,1)/2; 
-      accez_merged(j,1) = accez_merged(j,1)/2; 
+      dispz_merged(k,1) = dispz_merged(k,1)/2; 
+      veloz_merged(k,1) = veloz_merged(k,1)/2; 
+      accez_merged(k,1) = accez_merged(k,1)/2; 
     end 
   end
   c = sqrt(1e9/1e3);

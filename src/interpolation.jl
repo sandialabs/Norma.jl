@@ -278,7 +278,7 @@ default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
-default_num_int_pts(::Val{TETRA10}) = 4
+default_num_int_pts(::Val{TETRA10}) = 5
 default_num_int_pts(::Val{HEX8}) = 8
 default_num_int_pts(et::ElementType) = default_num_int_pts(Val(et))
 

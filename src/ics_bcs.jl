@@ -100,7 +100,8 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
     coupled_side_set_name = bc_params["source side set"]
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
-    transfer_operator = Matrix{Float64}(undef, 0, 0)
+    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
     rotation_matrix = I(3)
     active_contact = false
     swap_bcs = false
@@ -132,7 +133,8 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
         coupled_block_id,
         coupled_side_set_id,
         is_dirichlet,
-        transfer_operator,
+        dirichelt_projector,
+        neumann_projector,
         rotation_matrix,
         active_contact,
         swap_bcs,
@@ -152,7 +154,8 @@ function SMNonOverlapSchwarzBC(
     is_dirichlet::Bool,
     swap_bcs::Bool,
 )
-    transfer_operator = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
+    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
     return SMNonOverlapSchwarzBC(
         side_set_id,
         side_set_node_indices,
@@ -163,7 +166,8 @@ function SMNonOverlapSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         swap_bcs,
-        transfer_operator,
+        dirichelt_projector,
+        neumann_projector,
     )
 end
 
@@ -427,18 +431,18 @@ function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
         apply_sm_schwarz_contact_DDNN(model, bc)
     else
         if bc.is_dirichlet == true
-            apply_sm_schwarz_contact_dirichlet(model, bc)
+            contact_pointwise_dbc(model, bc)
         else
-            apply_sm_schwarz_contact_neumann(model, bc)
+            contact_variational_nbc(model, bc)
         end
     end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        apply_sm_schwarz_coupling_dirichlet(model, bc)
+        coupling_pointwise_dbc(model, bc)
     else
-        apply_sm_schwarz_coupling_neumann(model, bc)
+        coupling_variational_nbc(model, bc)
     end
 end
 
@@ -463,45 +467,30 @@ function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition
     end
 end
 
-function apply_sm_schwarz_coupling_dirichlet(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics
-        for i in 1:length(bc.side_set_node_indices)
-            node_index = bc.side_set_node_indices[i]
-            coupled_node_indices = bc.coupled_nodes_indices[i]
-            N = bc.interpolation_function_values[i]
-            elem_posn = bc.coupled_subsim.model.current[:, coupled_node_indices]
-            elem_velo = bc.coupled_subsim.model.velocity[:, coupled_node_indices]
-            elem_acce = bc.coupled_subsim.model.acceleration[:, coupled_node_indices]
-            point_posn = elem_posn * N
-            point_velo = elem_velo * N
-            point_acce = elem_acce * N
-            model.current[:, node_index] = point_posn
-            model.velocity[:, node_index] = point_velo
-            model.acceleration[:, node_index] = point_acce
-            dof_index = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
-            model.free_dofs[dof_index] .= false
-        end
-    elseif bc.coupled_subsim.model isa RomModel
-        for i in 1:length(bc.side_set_node_indices)
-            node_index = bc.side_set_node_indices[i]
-            coupled_node_indices = bc.coupled_nodes_indices[i]
-            N = bc.interpolation_function_values[i]
-            elem_posn = bc.coupled_subsim.model.fom_model.current[:, coupled_node_indices]
-            elem_velo = bc.coupled_subsim.model.fom_model.velocity[:, coupled_node_indices]
-            elem_acce = bc.coupled_subsim.model.fom_model.acceleration[:, coupled_node_indices]
-            point_posn = elem_posn * N
-            point_velo = elem_velo * N
-            point_acce = elem_acce * N
-            model.current[:, node_index] = point_posn
-            model.velocity[:, node_index] = point_velo
-            model.acceleration[:, node_index] = point_acce
-            dof_index = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
-            model.free_dofs[dof_index] .= false
-        end
+function coupling_pointwise_dbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+    get_coupled_field = bc.coupled_subsim.model isa SolidMechanics ?
+        (field -> getfield(bc.coupled_subsim.model, field)) :
+        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+
+    current     = get_coupled_field(:current)
+    velocity    = get_coupled_field(:velocity)
+    acceleration = get_coupled_field(:acceleration)
+
+    for i in eachindex(bc.side_set_node_indices)
+        node_index = bc.side_set_node_indices[i]
+        coupled_node_indices = bc.coupled_nodes_indices[i]
+        N = bc.interpolation_function_values[i]
+
+        model.current[:, node_index]      = current[:, coupled_node_indices] * N
+        model.velocity[:, node_index]     = velocity[:, coupled_node_indices] * N
+        model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
+
+        dof_index = (3 * node_index - 2):(3 * node_index)
+        model.free_dofs[dof_index] .= false
     end
 end
 
-function apply_sm_schwarz_coupling_neumann(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+function coupling_variational_nbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     schwarz_tractions = get_dst_traction(bc)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
     num_local_nodes = length(global_from_local_map)
@@ -621,7 +610,7 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
     return tangent_projection * target + normal_projection * source
 end
 
-function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContactSchwarzBC)
+function contact_pointwise_dbc(model::SolidMechanics, bc::SMContactSchwarzBC)
     side_set_node_indices = unique(bc.side_set_node_indices)
     for node_index in side_set_node_indices
         point = model.current[:, node_index]
@@ -671,7 +660,7 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
     return copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
 end
 
-function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSchwarzBC)
+function contact_variational_nbc(model::SolidMechanics, bc::SMContactSchwarzBC)
     schwarz_tractions = get_dst_traction(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
@@ -797,7 +786,24 @@ function subset_stiffness_from_global_stiffness(
     return local_stiffness
 end
 
-function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
+function subset_stiffness_from_global_stiffness(
+    mesh::ExodusDatabase, side_set_id::Integer, global_stiffness::SparseArrays.SparseMatrixCSC{Float64, Int64}
+)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    num_local_nodes = length(global_from_local_map)
+    local_stiffness = zeros(3 * num_local_nodes, 3 * num_local_nodes)
+    for local_node_1 in 1:num_local_nodes
+        for local_node_2 in 1:num_local_nodes
+            global_node_1 = global_from_local_map[local_node_1]
+            global_node_2 = global_from_local_map[local_node_2]
+            local_stiffness[(3 * local_node_1 - 2):(3 * local_node_1), (3 * local_node_2 - 2):(3 * local_node_2)] =
+                global_stiffness[(3 * global_node_1 - 2):(3 * global_node_1), (3 * global_node_2 - 2):(3 * global_node_2)]
+        end
+    end
+    return local_stiffness
+end
+
+function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
     src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
     dst_side_set_id = dst_bc.side_set_id
@@ -805,7 +811,19 @@ function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBou
     rectangular_projection_matrix = get_rectangular_projection_matrix(
         src_model, src_side_set_id, dst_model, dst_side_set_id
     )
-    dst_bc.transfer_operator = rectangular_projection_matrix * (square_projection_matrix \ I)
+    dst_bc.neumann_projector = rectangular_projection_matrix * (square_projection_matrix \ I)
+    return nothing
+end
+
+function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
+    src_side_set_id = dst_bc.coupled_side_set_id
+    src_model = dst_bc.coupled_subsim.model
+    dst_side_set_id = dst_bc.side_set_id
+    square_projection_matrix = get_square_projection_matrix(dst_model, dst_side_set_id)
+    rectangular_projection_matrix = get_rectangular_projection_matrix(
+        src_model, src_side_set_id, dst_model, dst_side_set_id
+    )
+    dst_bc.dirichelt_projector = (square_projection_matrix \ I) * rectangular_projection_matrix
     return nothing
 end
 
@@ -818,11 +836,11 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition, use_previous::Bool=f
         src_global_force = -dst_bc.coupled_subsim.model.previous_internal_force_schwarz
     end
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
-    num_dst_nodes = size(dst_bc.transfer_operator, 1)
+    num_dst_nodes = size(dst_bc.neumann_projector, 1)
     dst_traction = zeros(3, num_dst_nodes)
-    dst_traction[1, :] = dst_bc.transfer_operator * src_local_traction[1, :]
-    dst_traction[2, :] = dst_bc.transfer_operator * src_local_traction[2, :]
-    dst_traction[3, :] = dst_bc.transfer_operator * src_local_traction[3, :]
+    dst_traction[1, :] = dst_bc.neumann_projector * src_local_traction[1, :]
+    dst_traction[2, :] = dst_bc.neumann_projector * src_local_traction[2, :]
+    dst_traction[3, :] = dst_bc.neumann_projector * src_local_traction[3, :]
     return dst_traction
 end
 

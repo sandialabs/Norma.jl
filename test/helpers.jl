@@ -50,9 +50,9 @@ end
 
 using Exodus
 using Symbolics
-@variables t
+@variables t, x, y, z
 
-function get_boundary_traction_force(mesh::ExodusDatabase, side_set_id::Int64)
+function create_traction_force(mesh::ExodusDatabase, side_set_id::Int64)
     expression = "1.0 * t"
     t = 1.0
     traction_num = eval(Meta.parse(expression))
@@ -73,4 +73,31 @@ function get_boundary_traction_force(mesh::ExodusDatabase, side_set_id::Int64)
         ss_node_index += side
     end
     return boundary_tractions_force
+end
+
+function create_displacement(mesh::ExodusDatabase, side_set_id::Int64)
+    expression = "1.0 * t"
+    time = 1.0
+    disp_num = eval(Meta.parse(expression))
+    coords = read_coordinates(mesh)
+    num_nodes = size(coords)[2]
+    local_from_global_map, num_nodes_sides, side_set_node_indices = Norma.get_side_set_local_from_global_map(
+        mesh, side_set_id
+    )
+    num_nodes = length(local_from_global_map)
+    displacements = zeros(num_nodes)
+    ss_node_index = 1
+    for side in num_nodes_sides
+        side_nodes = side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+        for side_node in side_nodes
+            node_coordinates = coords[:, side_node]
+            values = Dict(t => time, x => node_coordinates[1], y => node_coordinates[2], z => node_coordinates[3])
+            disp_sym = substitute(disp_num, values)
+            disp_val = Norma.extract_value(disp_sym)
+            local_index = get.(Ref(local_from_global_map), side_node, 0)
+            displacements[local_index] = disp_val
+        end
+        ss_node_index += side
+    end
+    return displacements
 end

@@ -1,0 +1,12 @@
+type: multi
+domains: ["clamped-1.yaml", "clamped-2.yaml"]
+Exodus output interval: 10
+CSV output interval: 10
+CSV write sidesets: true
+initial time: 0.0
+final time: 1.0e-3
+time step: 1.0e-7
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08
