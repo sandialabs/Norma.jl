@@ -694,6 +694,18 @@ function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SchwarzBou
     return nothing
 end
 
+function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
+    src_side_set_id = dst_bc.coupled_side_set_id
+    src_model = dst_bc.coupled_subsim.model
+    dst_side_set_id = dst_bc.side_set_id
+    square_projection_matrix = get_square_projection_matrix(dst_model, dst_side_set_id)
+    rectangular_projection_matrix = get_rectangular_projection_matrix(
+        src_model, src_side_set_id, dst_model, dst_side_set_id
+    )
+    dst_bc.dirichelt_projector = (square_projection_matrix \ I) * rectangular_projection_matrix
+    return nothing
+end
+
 function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     src_mesh = dst_bc.coupled_subsim.model.mesh
     src_side_set_id = dst_bc.coupled_side_set_id
