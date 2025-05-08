@@ -696,6 +696,7 @@ function apply_sm_schwarz_contact_DDNN(model::SolidMechanics, bc::SMContactSchwa
     side_set_node_indices = unique(bc.side_set_node_indices)
     use_previous = true
     schwarz_tractions = get_dst_traction(bc, use_previous) #+ get_dst_inertia(bc)
+    schwarz_stiffness = get_dst_stiffness(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model, use_previous)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
     num_local_nodes = length(global_from_local_map)
@@ -779,6 +780,23 @@ function local_traction_from_global_force(mesh::ExodusDatabase, side_set_id::Int
     return local_traction
 end
 
+function subset_stiffness_from_global_stiffness(
+    mesh::ExodusDatabase, side_set_id::Integer, global_stiffness::SparseArrays.SparseMatrixCSC{Float64, Int64}
+)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    num_local_nodes = length(global_from_local_map)
+    local_stiffness = zeros(3 * num_local_nodes, 3 * num_local_nodes)
+    for local_node_1 in 1:num_local_nodes
+        for local_node_2 in 1:num_local_nodes
+            global_node_1 = global_from_local_map[local_node_1]
+            global_node_2 = global_from_local_map[local_node_2]
+            local_stiffness[(3 * local_node_1 - 2):(3 * local_node_1), (3 * local_node_2 - 2):(3 * local_node_2)] =
+                global_stiffness[(3 * global_node_1 - 2):(3 * global_node_1), (3 * global_node_2 - 2):(3 * global_node_2)]
+        end
+    end
+    return local_stiffness
+end
+
 function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
     src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
@@ -806,6 +824,33 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition, use_previous::Bool=f
     dst_traction[2, :] = dst_bc.transfer_operator * src_local_traction[2, :]
     dst_traction[3, :] = dst_bc.transfer_operator * src_local_traction[3, :]
     return dst_traction
+end
+
+function get_dst_stiffness(dst_bc::SchwarzBoundaryCondition)
+    src_mesh = dst_bc.coupled_subsim.model.mesh
+    src_side_set_id = dst_bc.coupled_side_set_id
+    if dst_bc.coupled_subsim.model.compute_stiffness == true
+        src_global_stiffness = dst_bc.coupled_subsim.model.stiffness
+    elseif dst_bc.coupled_subsim.model.compute_diag_stiffness == true
+        println("Stiffness transfer currently not supported for diagonal stiffness.")
+        exit(1)
+    else
+        println("Stiffness transfer currently not supported for selected integrator.")
+        exit(1)
+    end
+    # We'll extract the subset stiffness for the whole side set (TODO: this is inefficient?)
+    src_local_stiffness = subset_stiffness_from_global_stiffness(src_mesh, src_side_set_id, src_global_stiffness)
+    num_dst_nodes = size(dst_bc.transfer_operator, 1)
+    dst_stiffness = zeros(3 * num_dst_nodes, 3 * num_dst_nodes)
+    for i in 1:num_dst_nodes
+        dst_stiffness[(3 * i - 2):(3 * i), (3 * i - 2):(3 * i)] .= 
+            dst_bc.transfer_operator * src_local_stiffness[(3 * i - 2):(3 * i), (3 * i - 2):(3 * i)] * dst_bc.transfer_operator'
+    end
+    #dst_stiffness[1:(3 * num_dst_nodes), 1:(3 * num_dst_nodes)] =
+    #    dst_bc.transfer_operator * src_local_stiffness * dst_bc.transfer_operator'
+    print(dst_stiffness)
+
+
 end
 
 function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)
