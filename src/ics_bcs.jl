@@ -100,7 +100,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
     coupled_side_set_name = bc_params["source side set"]
     coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     is_dirichlet = true
-    transfer_operator = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
     rotation_matrix = I(3)
     active_contact = false
     swap_bcs = false
@@ -127,7 +127,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
         coupled_block_id,
         coupled_side_set_id,
         is_dirichlet,
-        transfer_operator,
+        neumann_projector,
         rotation_matrix,
         active_contact,
         swap_bcs,
@@ -146,7 +146,7 @@ function SMNonOverlapSchwarzBC(
     is_dirichlet::Bool,
     swap_bcs::Bool,
 )
-    transfer_operator = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
     return SMNonOverlapSchwarzBC(
         side_set_id,
         side_set_node_indices,
@@ -157,7 +157,7 @@ function SMNonOverlapSchwarzBC(
         coupled_side_set_id,
         is_dirichlet,
         swap_bcs,
-        transfer_operator,
+        neumann_projector,
     )
 end
 
@@ -693,7 +693,7 @@ function local_traction_from_global_force(mesh::ExodusDatabase, side_set_id::Int
     return local_traction
 end
 
-function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
+function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
     src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
     dst_side_set_id = dst_bc.side_set_id
@@ -701,7 +701,7 @@ function compute_transfer_operator(dst_model::SolidMechanics, dst_bc::SchwarzBou
     rectangular_projection_matrix = get_rectangular_projection_matrix(
         src_model, src_side_set_id, dst_model, dst_side_set_id
     )
-    dst_bc.transfer_operator = rectangular_projection_matrix * (square_projection_matrix \ I)
+    dst_bc.neumann_projector = rectangular_projection_matrix * (square_projection_matrix \ I)
     return nothing
 end
 
@@ -710,11 +710,11 @@ function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
     src_side_set_id = dst_bc.coupled_side_set_id
     src_global_force = -dst_bc.coupled_subsim.model.internal_force
     src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
-    num_dst_nodes = size(dst_bc.transfer_operator, 1)
+    num_dst_nodes = size(dst_bc.neumann_projector, 1)
     dst_traction = zeros(3, num_dst_nodes)
-    dst_traction[1, :] = dst_bc.transfer_operator * src_local_traction[1, :]
-    dst_traction[2, :] = dst_bc.transfer_operator * src_local_traction[2, :]
-    dst_traction[3, :] = dst_bc.transfer_operator * src_local_traction[3, :]
+    dst_traction[1, :] = dst_bc.neumann_projector * src_local_traction[1, :]
+    dst_traction[2, :] = dst_bc.neumann_projector * src_local_traction[2, :]
+    dst_traction[3, :] = dst_bc.neumann_projector * src_local_traction[3, :]
     return dst_traction
 end
 

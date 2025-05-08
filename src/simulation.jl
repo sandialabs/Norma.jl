@@ -365,7 +365,7 @@ function initialize(sim::SingleDomainSimulation)
 end
 
 function initialize(sim::MultiDomainSimulation)
-    initialize_transfer_operators(sim)
+    initialize_neumann_projectors(sim)
     apply_ics(sim)
     apply_bcs(sim)
     for subsim in sim.subsims
@@ -786,14 +786,14 @@ function check_compression(mesh::ExodusDatabase, model::SolidMechanics, bc::SMCo
     return compression
 end
 
-function initialize_transfer_operators(sim::MultiDomainSimulation)
+function initialize_neumann_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
             if !(bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC)
                 continue
             end
-            compute_transfer_operator(subsim.model, bc)
+            compute_neumann_projector(subsim.model, bc)
         end
     end
 end
