@@ -422,17 +422,17 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SMContactSchwarzBC)
     if bc.is_dirichlet == true
-        apply_sm_schwarz_contact_dirichlet(model, bc)
+        contact_pointwise_dbc(model, bc)
     else
-        apply_sm_schwarz_contact_neumann(model, bc)
+        contact_variational_nbc(model, bc)
     end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        apply_sm_schwarz_coupling_dirichlet(model, bc)
+        coupling_pointwise_dbc(model, bc)
     else
-        apply_sm_schwarz_coupling_neumann(model, bc)
+        coupling_variational_nbc(model, bc)
     end
 end
 
@@ -457,45 +457,30 @@ function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition
     end
 end
 
-function apply_sm_schwarz_coupling_dirichlet(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics
-        for i in 1:length(bc.side_set_node_indices)
-            node_index = bc.side_set_node_indices[i]
-            coupled_node_indices = bc.coupled_nodes_indices[i]
-            N = bc.interpolation_function_values[i]
-            elem_posn = bc.coupled_subsim.model.current[:, coupled_node_indices]
-            elem_velo = bc.coupled_subsim.model.velocity[:, coupled_node_indices]
-            elem_acce = bc.coupled_subsim.model.acceleration[:, coupled_node_indices]
-            point_posn = elem_posn * N
-            point_velo = elem_velo * N
-            point_acce = elem_acce * N
-            model.current[:, node_index] = point_posn
-            model.velocity[:, node_index] = point_velo
-            model.acceleration[:, node_index] = point_acce
-            dof_index = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
-            model.free_dofs[dof_index] .= false
-        end
-    elseif bc.coupled_subsim.model isa RomModel
-        for i in 1:length(bc.side_set_node_indices)
-            node_index = bc.side_set_node_indices[i]
-            coupled_node_indices = bc.coupled_nodes_indices[i]
-            N = bc.interpolation_function_values[i]
-            elem_posn = bc.coupled_subsim.model.fom_model.current[:, coupled_node_indices]
-            elem_velo = bc.coupled_subsim.model.fom_model.velocity[:, coupled_node_indices]
-            elem_acce = bc.coupled_subsim.model.fom_model.acceleration[:, coupled_node_indices]
-            point_posn = elem_posn * N
-            point_velo = elem_velo * N
-            point_acce = elem_acce * N
-            model.current[:, node_index] = point_posn
-            model.velocity[:, node_index] = point_velo
-            model.acceleration[:, node_index] = point_acce
-            dof_index = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
-            model.free_dofs[dof_index] .= false
-        end
+function coupling_pointwise_dbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+    get_coupled_field = bc.coupled_subsim.model isa SolidMechanics ?
+        (field -> getfield(bc.coupled_subsim.model, field)) :
+        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+
+    current     = get_coupled_field(:current)
+    velocity    = get_coupled_field(:velocity)
+    acceleration = get_coupled_field(:acceleration)
+
+    for i in eachindex(bc.side_set_node_indices)
+        node_index = bc.side_set_node_indices[i]
+        coupled_node_indices = bc.coupled_nodes_indices[i]
+        N = bc.interpolation_function_values[i]
+
+        model.current[:, node_index]      = current[:, coupled_node_indices] * N
+        model.velocity[:, node_index]     = velocity[:, coupled_node_indices] * N
+        model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
+
+        dof_index = (3 * node_index - 2):(3 * node_index)
+        model.free_dofs[dof_index] .= false
     end
 end
 
-function apply_sm_schwarz_coupling_neumann(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+function coupling_variational_nbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
     schwarz_tractions = get_dst_traction(bc)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
     num_local_nodes = length(global_from_local_map)
@@ -615,7 +600,7 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
     return tangent_projection * target + normal_projection * source
 end
 
-function apply_sm_schwarz_contact_dirichlet(model::SolidMechanics, bc::SMContactSchwarzBC)
+function contact_pointwise_dbc(model::SolidMechanics, bc::SMContactSchwarzBC)
     side_set_node_indices = unique(bc.side_set_node_indices)
     for node_index in side_set_node_indices
         point = model.current[:, node_index]
@@ -665,7 +650,7 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
     return copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
 end
 
-function apply_sm_schwarz_contact_neumann(model::SolidMechanics, bc::SMContactSchwarzBC)
+function contact_variational_nbc(model::SolidMechanics, bc::SMContactSchwarzBC)
     schwarz_tractions = get_dst_traction(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
