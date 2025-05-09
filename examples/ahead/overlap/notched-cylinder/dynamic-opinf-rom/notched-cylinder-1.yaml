@@ -15,6 +15,10 @@ time integrator:
   type: Newmark
   β: 0.25
   γ: 0.5
+  maximum time step: 0.1
+  minimum time step: 1.0e-05
+  increase factor: 1.1
+  decrease factor: 0.5
 boundary conditions:
   Dirichlet:
     - node set: -X_bottom

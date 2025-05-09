@@ -33,7 +33,7 @@ boundary conditions:
       function: "0.0"
     - node set: nodelist_4
       component: z
-      function: "0.0064 * t"
+      function: "0.0064 * (0.5 - 0.5 * cos(pi * t))"
 solver:
   type: Hessian minimizer
   step: full Newton
