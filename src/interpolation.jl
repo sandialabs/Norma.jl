@@ -549,9 +549,8 @@ function get_rectangular_projection_matrix(
 end
 
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
-    local_from_global_map, num_nodes_sides, side_set_node_indices = get_side_set_local_from_global_map(
-        mesh, side_set_id
-    )
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     if model.kinematics == Finite
         coords = model.reference
     else

@@ -627,7 +627,7 @@ end
 
 function swap_swappable_bcs(sim::SingleDomainSimulation)
     for bc in sim.model.boundary_conditions
-        if bc isa ContactSchwarzBoundaryCondition || bc isa CouplingSchwarzBoundaryCondition
+        if bc isa ContactSchwarzBoundaryCondition || bc isa NonOverlapSchwarzBoundaryCondition
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
@@ -750,7 +750,8 @@ function check_overlap(model::SolidMechanics, bc::SMContactSchwarzBC)
     distance_tol = 0.0
     parametric_tol = 1.0e-06
     overlap = false
-    for node_index in bc.side_set_node_indices
+    unique_node_indices = unique(bc.side_set_node_indices)
+    for node_index in unique_node_indices
         point = model.current[:, node_index]
         _, ξ, _, coupled_face_node_indices, _, distance = project_point_to_side_set(
             point, bc.coupled_subsim.model, bc.coupled_side_set_id

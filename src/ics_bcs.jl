@@ -86,12 +86,15 @@ function SMNeumannBC(input_mesh::ExodusDatabase, bc_params::Parameters)
     offset = component_offset_from_string(bc_params["component"])
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
     # expression is an arbitrary function of t, x, y, z in the input file
     traction_num = eval(Meta.parse(expression))
     return SMNeumannBC(side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_num)
 end
 
 function SMOverlapSchwarzBC(
+    coupled_block_name::String,
+    tol::Float64,
     side_set_name::String,
     side_set_node_indices::Vector{Int64},
     coupled_subsim::Simulation,
@@ -107,8 +110,8 @@ function SMOverlapSchwarzBC(
     element_type = element_type_from_string(element_type_string)
     coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
     interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
-    tol = get(bc_params, "search tolerance", 1.0e-06)
-    for node_index in side_set_node_indices
+    unique_node_indices = unique(side_set_node_indices)
+    for node_index in unique_node_indices
         point = subsim.model.reference[:, node_index]
         node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
         if found == false
@@ -139,6 +142,7 @@ function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
     coupled_side_set_name = bc_params["source side set"]
     is_dirichlet = true
     dirichelt_projector = Matrix{Float64}(undef, 0, 0)
@@ -218,11 +222,16 @@ function SMCouplingSchwarzBC(
     bc_params::Parameters,
 )
     side_set_name = bc_params["side set"]
+    coupled_block_name = get(bc_params, "source block", "")
+    tol = get(bc_params, "search tolerance", 1.0e-06)
     coupled_side_set_name = bc_params["source side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
     if bc_type == "Schwarz overlap"
         SMOverlapSchwarzBC(
+            coupled_block_name,
+            tol,
             side_set_name,
             side_set_node_indices,
             coupled_subsim,
@@ -272,8 +281,7 @@ function apply_bc(model::OpInfModel, bc::SMDirichletBC)
     if offset == 3
         offset_name = "z"
     end
-    node_set_name = bc.name
-    op_name = "B_" * node_set_name * "-" * offset_name
+    op_name = "B_" * bc.name * "-" * offset_name
     bc_operator = model.opinf_rom[op_name]
     # SM Dirichlet BC are only defined on a single x,y,z
     return model.reduced_boundary_forcing[:] += bc_operator[1, :, :] * bc_vector
@@ -446,13 +454,15 @@ function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
+        unique_node_indices = unique(bc.side_set_node_indices)
+
         # populate our own BC vector
-        bc_vector = zeros(3, length(bc.side_set_node_indices))
-        for i in 1:length(bc.side_set_node_indices)
-            node_index = bc.side_set_node_indices[i]
+        bc_vector = zeros(3, length(unique_node_indices))
+        for i in eachindex(unique_node_indices)
+            node_index = unique_node_indices[i]
             bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
         end
-        op_name = "B_" * bc.side_set_name
+        op_name = "B_" * bc.name
         bc_operator = model.opinf_rom[op_name]
         for i in 1:3
             model.reduced_boundary_forcing[:] += bc_operator[i, :, :] * bc_vector[i, :]
@@ -471,8 +481,10 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::CouplingSchwarzBounda
     velocity    = get_coupled_field(:velocity)
     acceleration = get_coupled_field(:acceleration)
 
-    for i in eachindex(bc.side_set_node_indices)
-        node_index = bc.side_set_node_indices[i]
+    unique_node_indices = unique(bc.side_set_node_indices)
+
+    for i in eachindex(unique_node_indices)
+        node_index = unique_node_indices[i]
         coupled_node_indices = bc.coupled_nodes_indices[i]
         N = bc.interpolation_function_values[i]
 
@@ -605,8 +617,8 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
 end
 
 function contact_pointwise_dbc(model::SolidMechanics, bc::SMContactSchwarzBC)
-    side_set_node_indices = unique(bc.side_set_node_indices)
-    for node_index in side_set_node_indices
+    unique_node_indices = unique(bc.side_set_node_indices)
+    for node_index in unique_node_indices
         point = model.current[:, node_index]
         new_point, ξ, _, closest_face_node_indices, closest_normal, _ = project_point_to_side_set(
             point, bc.coupled_subsim.model, bc.coupled_side_set_id
@@ -645,8 +657,8 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
     bcs = subsim.model.boundary_conditions
     for bc in bcs
         if bc isa SMContactSchwarzBC
-            side_set_node_indices = unique(bc.side_set_node_indices)
-            for node_index in side_set_node_indices
+            unique_node_indices = unique(bc.side_set_node_indices)
+            for node_index in unique_node_indices
                 subsim.model.acceleration[:, node_index] = zeros(3)
             end
         end
@@ -991,7 +1003,7 @@ function pair_bc(_::RegularBoundaryCondition, _::Int64)
 end
 
 function pair_bc(bc::SchwarzBoundaryCondition, bc_index::Int64)    
-    if bc isa SMNonOverlapSchwarzBC == false || bc isa ContactSchwarzBoundaryCondition == false
+    if bc isa OverlapSchwarzBoundaryCondition
         return nothing
     end
     coupled_bc_name = bc.coupled_bc_name
