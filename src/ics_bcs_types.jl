@@ -13,11 +13,10 @@ abstract type OverlapSchwarzBoundaryCondition <: CouplingSchwarzBoundaryConditio
 abstract type NonOverlapSchwarzBoundaryCondition <: CouplingSchwarzBoundaryCondition end
 abstract type InitialCondition end
 
-using Exodus
 using Symbolics
 
 mutable struct SMDirichletBC <: RegularBoundaryCondition
-    node_set_name::String
+    name::String
     offset::Int64
     node_set_id::Int64
     node_set_node_indices::Vector{Int64}
@@ -27,7 +26,7 @@ mutable struct SMDirichletBC <: RegularBoundaryCondition
 end
 
 mutable struct SMDirichletInclined <: RegularBoundaryCondition
-    node_set_name::String
+    name::String
     node_set_id::Int64
     node_set_node_indices::Vector{Int64}
     disp_expression::Vector{Num}
@@ -38,7 +37,7 @@ mutable struct SMDirichletInclined <: RegularBoundaryCondition
 end
 
 mutable struct SMNeumannBC <: RegularBoundaryCondition
-    side_set_name::String
+    name::String
     offset::Int64
     side_set_id::Int64
     num_nodes_per_side::Vector{Int64}
@@ -47,44 +46,45 @@ mutable struct SMNeumannBC <: RegularBoundaryCondition
 end
 
 mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
-    side_set_name::String
+    name::String
     side_set_id::Int64
-    num_nodes_per_side::Vector{Int64}
     side_set_node_indices::Vector{Int64}
+    num_nodes_sides::Vector{Int64}
+    local_from_global_map::Dict{Int64, Int64}
+    global_from_local_map::Vector{Int64}
     coupled_subsim::Simulation
+    coupled_bc_name::String
     coupled_bc_index::Int64
-    coupled_block_id::Int64
-    coupled_side_set_id::Int64
-    is_dirichlet::Bool
     dirichelt_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
+    is_dirichlet::Bool
+    swap_bcs::Bool
     rotation_matrix::Matrix{Float64}
     active_contact::Bool
-    swap_bcs::Bool
     friction_type::Int64
 end
 
 mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
-    side_set_name::String
+    name::String
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
     coupled_subsim::Simulation
     subsim::Simulation
-    is_dirichlet::Bool
-    swap_bcs::Bool
 end
 
 mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
+    name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
-    coupled_nodes_indices::Vector{Vector{Int64}}
-    interpolation_function_values::Vector{Vector{Float64}}
+    num_nodes_sides::Vector{Int64}
+    local_from_global_map::Dict{Int64, Int64}
+    global_from_local_map::Vector{Int64}
     coupled_subsim::Simulation
-    subsim::Simulation
-    coupled_side_set_id::Int64
-    is_dirichlet::Bool
-    swap_bcs::Bool
+    coupled_bc_name::String
+    coupled_bc_index::Simulation
     dirichelt_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
+    is_dirichlet::Bool
+    swap_bcs::Bool
 end

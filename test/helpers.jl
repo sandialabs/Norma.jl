@@ -52,38 +52,32 @@ using Exodus
 using Symbolics
 @variables t, x, y, z
 
-function create_traction_force(mesh::ExodusDatabase, side_set_id::Int64)
-    expression = "1.0 * t"
-    t = 1.0
-    traction_num = eval(Meta.parse(expression))
+function create_force(expression::String, mesh::ExodusDatabase, side_set_id::Int64, time::Float64)
+    force_num = eval(Meta.parse(expression))
     coords = read_coordinates(mesh)
     num_nodes = size(coords)[2]
-    local_from_global_map, num_nodes_sides, side_set_node_indices = Norma.get_side_set_local_from_global_map(
-        mesh, side_set_id
-    )
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    local_from_global_map = Norma.get_side_set_local_from_global_map(mesh, side_set_id)
     num_nodes = length(local_from_global_map)
-    boundary_tractions_force = zeros(num_nodes)
+    force = zeros(num_nodes)
     ss_node_index = 1
     for side in num_nodes_sides
         side_nodes = side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = coords[:, side_nodes]
-        nodal_force_component = Norma.get_side_set_nodal_forces(side_coordinates, traction_num, t)
+        nodal_force_component = Norma.get_side_set_nodal_forces(side_coordinates, force_num, time)
         local_indices = get.(Ref(local_from_global_map), side_nodes, 0)
-        boundary_tractions_force[local_indices] += nodal_force_component
+        force[local_indices] += nodal_force_component
         ss_node_index += side
     end
-    return boundary_tractions_force
+    return force
 end
 
-function create_displacement(mesh::ExodusDatabase, side_set_id::Int64)
-    expression = "1.0 * t"
-    time = 1.0
+function create_displacement(expression::String, mesh::ExodusDatabase, side_set_id::Int64, time::Float64)
     disp_num = eval(Meta.parse(expression))
     coords = read_coordinates(mesh)
     num_nodes = size(coords)[2]
-    local_from_global_map, num_nodes_sides, side_set_node_indices = Norma.get_side_set_local_from_global_map(
-        mesh, side_set_id
-    )
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    local_from_global_map = Norma.get_side_set_local_from_global_map(mesh, side_set_id)
     num_nodes = length(local_from_global_map)
     displacements = zeros(num_nodes)
     ss_node_index = 1

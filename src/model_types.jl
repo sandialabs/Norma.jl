@@ -7,6 +7,7 @@
 abstract type Model end
 abstract type RomModel <: Model end
 abstract type OpInfModel <: RomModel end
+using Exodus
 using SparseArrays
 
 @enum Kinematics begin

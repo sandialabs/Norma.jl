@@ -4,6 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using Exodus
+
 @variables t, x, y, z
 D = Differential(t)
 
@@ -89,93 +91,12 @@ function SMNeumannBC(input_mesh::ExodusDatabase, bc_params::Parameters)
     return SMNeumannBC(side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_num)
 end
 
-function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters)
-    side_set_name = bc_params["side set"]
-    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    _, num_nodes_per_side, side_set_node_indices = get_side_set_local_from_global_map(input_mesh, side_set_id)
-    coupled_block_name = bc_params["source block"]
-    coupled_bc_index = 0
-    coupled_mesh = coupled_subsim.model.mesh
-    coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
-    coupled_side_set_name = bc_params["source side set"]
-    coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
-    is_dirichlet = true
-    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
-    neumann_projector = Matrix{Float64}(undef, 0, 0)
-    rotation_matrix = I(3)
-    active_contact = false
-    swap_bcs = false
-    if haskey(bc_params, "swap BC types") == true
-        swap_bcs = bc_params["swap BC types"]
-    end
-
-    friction_type_string = bc_params["friction type"]
-    if friction_type_string == "frictionless"
-        friction_type = 0
-    elseif friction_type_string == "tied"
-        friction_type = 1
-    else
-        norma_abort("Unknown or not implemented friction type : $friction_type_string")
-    end
-
-    return SMContactSchwarzBC(
-        side_set_name,
-        side_set_id,
-        num_nodes_per_side,
-        side_set_node_indices,
-        coupled_subsim,
-        coupled_bc_index,
-        coupled_block_id,
-        coupled_side_set_id,
-        is_dirichlet,
-        dirichelt_projector,
-        neumann_projector,
-        rotation_matrix,
-        active_contact,
-        swap_bcs,
-        friction_type,
-    )
-end
-
-function SMNonOverlapSchwarzBC(
-    side_set_id::Int64,
+function SMOverlapSchwarzBC(
+    side_set_name::String,
     side_set_node_indices::Vector{Int64},
-    coupled_nodes_indices::Vector{Vector{Int64}},
-    interpolation_function_values::Vector{Vector{Float64}},
     coupled_subsim::Simulation,
     subsim::Simulation,
-    coupled_side_set_id::Int64,
-    is_dirichlet::Bool,
-    swap_bcs::Bool,
 )
-    neumann_projector = Matrix{Float64}(undef, 0, 0)
-    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
-    return SMNonOverlapSchwarzBC(
-        side_set_id,
-        side_set_node_indices,
-        coupled_nodes_indices,
-        interpolation_function_values,
-        coupled_subsim,
-        subsim,
-        coupled_side_set_id,
-        is_dirichlet,
-        swap_bcs,
-        dirichelt_projector,
-        neumann_projector,
-    )
-end
-
-function SMCouplingSchwarzBC(
-    subsim::SingleDomainSimulation,
-    coupled_subsim::SingleDomainSimulation,
-    input_mesh::ExodusDatabase,
-    bc_type::String,
-    bc_params::Parameters,
-)
-    side_set_name = bc_params["side set"]
-    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    _, _, side_set_node_indices = get_side_set_local_from_global_map(input_mesh, side_set_id)
-    coupled_block_name = bc_params["source block"]
     if coupled_subsim.model isa RomModel
         coupled_mesh = coupled_subsim.model.fom_model.mesh
     else
@@ -184,15 +105,9 @@ function SMCouplingSchwarzBC(
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
     element_type = element_type_from_string(element_type_string)
-    coupled_side_set_name = bc_params["source side set"]
-    coupled_side_set_id = side_set_id_from_name(coupled_side_set_name, coupled_mesh)
     coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
     interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
-    tol = 1.0e-06
-    if haskey(bc_params, "search tolerance") == true
-        tol = bc_params["search tolerance"]
-    end
-    side_set_node_indices = unique(side_set_node_indices)
+    tol = get(bc_params, "search tolerance", 1.0e-06)
     for node_index in side_set_node_indices
         point = subsim.model.reference[:, node_index]
         node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
@@ -210,41 +125,127 @@ function SMCouplingSchwarzBC(
         push!(coupled_nodes_indices, node_indices)
         push!(interpolation_function_values, N)
     end
+    return SMOverlapSchwarzBC(
+        side_set_name,
+        side_set_node_indices,
+        coupled_nodes_indices,
+        interpolation_function_values,
+        coupled_subsim,
+        subsim,
+    )
+end
+
+function SMContactSchwarzBC(coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters)
+    side_set_name = bc_params["side set"]
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    coupled_side_set_name = bc_params["source side set"]
     is_dirichlet = true
-    swap_bcs = false
+    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
+    local_from_global_map = get_side_set_local_from_global_map(input_mesh, side_set_id)
+    global_from_local_map = get_side_set_global_from_local_map(input_mesh, side_set_id)
+    coupled_bc_index = 0
+    rotation_matrix = I(3)
+    active_contact = false
+    swap_bcs = get(bc_params, "swap BC types", false)
+    friction_type_string = bc_params["friction type"]
+    if friction_type_string == "frictionless"
+        friction_type = 0
+    elseif friction_type_string == "tied"
+        friction_type = 1
+    else
+        norma_abort("Unknown or not implemented friction type : $friction_type_string")
+    end
+    return SMContactSchwarzBC(
+        side_set_name,
+        side_set_id,
+        side_set_node_indices,
+        num_nodes_sides,
+        local_from_global_map,
+        global_from_local_map,
+        coupled_subsim,
+        coupled_side_set_name,
+        coupled_bc_index,
+        dirichelt_projector,
+        neumann_projector,
+        is_dirichlet,
+        swap_bcs,
+        rotation_matrix,
+        active_contact,
+        friction_type,
+    )
+end
+
+function SMNonOverlapSchwarzBC(
+    mesh::ExodusDatabase,
+    side_set_name::String,
+    coupled_side_set_name::String,
+    side_set_id::Int64,
+    side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
+    coupled_subsim::Simulation,
+    is_dirichlet::Bool,
+    swap_bcs::Bool,
+)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
+    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
+    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    coupled_bc_index = 0
+    return SMNonOverlapSchwarzBC(
+        side_set_name,
+        side_set_id,
+        side_set_node_indices,
+        num_nodes_sides,
+        local_from_global_map,
+        global_from_local_map,
+        coupled_subsim,
+        coupled_side_set_name,
+        coupled_bc_index,
+        dirichelt_projector,
+        neumann_projector,
+        is_dirichlet,
+        swap_bcs,
+    )
+end
+
+function SMCouplingSchwarzBC(
+    subsim::SingleDomainSimulation,
+    coupled_subsim::SingleDomainSimulation,
+    input_mesh::ExodusDatabase,
+    bc_type::String,
+    bc_params::Parameters,
+)
+    side_set_name = bc_params["side set"]
+    coupled_side_set_name = bc_params["source side set"]
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     if bc_type == "Schwarz overlap"
         SMOverlapSchwarzBC(
             side_set_name,
             side_set_node_indices,
-            coupled_nodes_indices,
-            interpolation_function_values,
             coupled_subsim,
             subsim,
-            is_dirichlet,
-            swap_bcs,
         )
     elseif bc_type == "Schwarz nonoverlap"
-        if haskey(bc_params, "default BC type") == true
-            default_bc_type = bc_params["default BC type"]
-            if default_bc_type == "Dirichlet"
-                is_dirichlet = true
-            elseif default_bc_type == "Neumann"
-                is_dirichlet = false
-            else
-                norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
-            end
+        default_bc_type = get(bc_params, "default BC type", "Dirichlet")
+        if default_bc_type == "Dirichlet"
+            is_dirichlet = true
+        elseif default_bc_type == "Neumann"
+            is_dirichlet = false
+        else
+            norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
         end
-        if haskey(bc_params, "swap BC types") == true
-            swap_bcs = bc_params["swap BC types"]
-        end
+        swap_bcs = get(bc_params, "swap BC types", false)
         SMNonOverlapSchwarzBC(
+            input_mesh,
+            side_set_name,
+            coupled_side_set_name,
             side_set_id,
             side_set_node_indices,
-            coupled_nodes_indices,
-            interpolation_function_values,
+            num_nodes_sides,
             coupled_subsim,
-            subsim,
-            coupled_side_set_id,
             is_dirichlet,
             swap_bcs,
         )
@@ -261,7 +262,6 @@ function apply_bc(model::OpInfModel, bc::SMDirichletBC)
         disp_val = model.fom_model.current[bc.offset, node_index] - model.fom_model.reference[bc.offset, node_index]
         push!(bc_vector, disp_val)
     end
-
     offset = bc.offset
     if offset == 1
         offset_name = "x"
@@ -272,8 +272,8 @@ function apply_bc(model::OpInfModel, bc::SMDirichletBC)
     if offset == 3
         offset_name = "z"
     end
-
-    op_name = "B_" * bc.node_set_name * "-" * offset_name
+    node_set_name = bc.name
+    op_name = "B_" * node_set_name * "-" * offset_name
     bc_operator = model.opinf_rom[op_name]
     # SM Dirichlet BC are only defined on a single x,y,z
     return model.reduced_boundary_forcing[:] += bc_operator[1, :, :] * bc_vector
@@ -486,13 +486,12 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::CouplingSchwarzBounda
 end
 
 function coupling_variational_nbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
-    schwarz_tractions = get_dst_traction(bc)
-    global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
-    num_local_nodes = length(global_from_local_map)
-    for local_node in 1:num_local_nodes
-        global_node = global_from_local_map[local_node]
-        node_tractions = schwarz_tractions[:, local_node]
-        model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
+    nodal_force = get_dst_force(bc)
+    global_from_local_map = bc.global_from_local_map
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        global_range = (3*(i_global-1)+1):(3*i_global)
+        local_range  = (3*(i_local-1)+1):(3*i_local)
+        @inbounds model.boundary_force[global_range] += nodal_force[local_range]
     end
 end
 
@@ -656,72 +655,79 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
 end
 
 function contact_variational_nbc(model::SolidMechanics, bc::SMContactSchwarzBC)
-    schwarz_tractions = get_dst_traction(bc)
+    friction_type = bc.friction_type
+    if friction_type != 0 || friction_type != 1
+        norma_abort("Unknown or not implemented friction type $friction_type.")
+    end
+    nodal_force = get_dst_force(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model)
-    global_from_local_map = get_side_set_global_from_local_map(model.mesh, bc.side_set_id)
-    num_local_nodes = length(global_from_local_map)
-    for local_node in 1:num_local_nodes
-        global_node = global_from_local_map[local_node]
-        node_tractions = schwarz_tractions[:, local_node]
-        normal = normals[:, local_node]
-        if bc.friction_type == 0
-            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += transfer_normal_component(
-                node_tractions, model.boundary_force[(3 * global_node - 2):(3 * global_node)], normal
-            )
-        elseif bc.friction_type == 1
-            model.boundary_force[(3 * global_node - 2):(3 * global_node)] += node_tractions
+    global_from_local_map = bc.global_from_local_map
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        global_range = (3*(i_global-1)+1):(3*i_global)
+        local_range  = (3*(i_local-1)+1):(3*i_local)
+        normal = normals[:, i_local]
+        node_force = nodal_force[local_range]
+        if friction_type == 1
+            target = model.boundary_force[global_range]
+            eff_node_force = transfer_normal_component(node_force, target, normal)
         else
-            norma_abort("Unknown or not implemented friction type.")
+            eff_node_force = node_force
         end
+        @inbounds model.boundary_force[global_range] += node_force
     end
 end
 
-function local_traction_from_global_force(mesh::ExodusDatabase, side_set_id::Integer, global_force::Vector{Float64})
-    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+function extract_local_vector(global_vector::Vector{Float64}, global_from_local_map::Vector{Int64}, dim::Int64)
     num_local_nodes = length(global_from_local_map)
-    local_traction = zeros(3, num_local_nodes)
-    for local_node in 1:num_local_nodes
-        global_node = global_from_local_map[local_node]
-        local_traction[:, local_node] = global_force[(3 * global_node - 2):(3 * global_node)]
+    local_vector = Vector{Float64}(undef, dim * num_local_nodes)
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        global_range = (dim*(i_global-1)+1):(dim*i_global)
+        local_range  = (dim*(i_local-1)+1):(dim*i_local)
+        @inbounds local_vector[local_range] = global_vector[global_range]
     end
-    return local_traction
+    return local_vector
+end
+
+
+function extract_local_vector(bc::SchwarzBoundaryCondition, global_vector::Vector{Float64}, dim::Int64)
+    global_from_local_map = bc.global_from_local_map
+    return extract_local_vector(global_vector, global_from_local_map, dim)
 end
 
 function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
-    src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
-    dst_side_set_id = dst_bc.side_set_id
-    square_projection_matrix = get_square_projection_matrix(src_model, src_side_set_id)
-    rectangular_projection_matrix = get_rectangular_projection_matrix(
-        src_model, src_side_set_id, dst_model, dst_side_set_id
-    )
-    dst_bc.neumann_projector = rectangular_projection_matrix * (square_projection_matrix \ I)
+    src_bc_index = dst_bc.coupled_bc_index
+    src_bc = src_model.boundary_conditions[src_bc_index]
+    H = get_square_projection_matrix(src_model, src_bc)
+    L = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    dst_bc.neumann_projector = L * (H \ I)
     return nothing
 end
 
 function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SchwarzBoundaryCondition)
-    src_side_set_id = dst_bc.coupled_side_set_id
     src_model = dst_bc.coupled_subsim.model
-    dst_side_set_id = dst_bc.side_set_id
-    square_projection_matrix = get_square_projection_matrix(dst_model, dst_side_set_id)
-    rectangular_projection_matrix = get_rectangular_projection_matrix(
-        src_model, src_side_set_id, dst_model, dst_side_set_id
-    )
-    dst_bc.dirichelt_projector = (square_projection_matrix \ I) * rectangular_projection_matrix
+    src_bc_index = dst_bc.coupled_bc_index
+    src_bc = src_model.boundary_conditions[src_bc_index]
+    W = get_square_projection_matrix(dst_model, dst_bc)
+    L = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    dst_bc.dirichelt_projector = (W \ I) * L
     return nothing
 end
 
-function get_dst_traction(dst_bc::SchwarzBoundaryCondition)
-    src_mesh = dst_bc.coupled_subsim.model.mesh
-    src_side_set_id = dst_bc.coupled_side_set_id
-    src_global_force = -dst_bc.coupled_subsim.model.internal_force
-    src_local_traction = local_traction_from_global_force(src_mesh, src_side_set_id, src_global_force)
-    num_dst_nodes = size(dst_bc.neumann_projector, 1)
-    dst_traction = zeros(3, num_dst_nodes)
-    dst_traction[1, :] = dst_bc.neumann_projector * src_local_traction[1, :]
-    dst_traction[2, :] = dst_bc.neumann_projector * src_local_traction[2, :]
-    dst_traction[3, :] = dst_bc.neumann_projector * src_local_traction[3, :]
-    return dst_traction
+function get_dst_force(dst_bc::SchwarzBoundaryCondition)
+    src_sim = dst_bc.coupled_subsim
+    src_model = src_sim.model
+    src_bc_index = dst_bc.coupled_bc_index
+    src_bc = src_model.boundary_conditions[src_bc_index]
+    src_global_force = src_model.internal_force
+    src_force = -extract_local_vector(src_bc, src_global_force, 3)
+    neumann_projector = dst_bc.neumann_projector
+    num_dst_nodes = size(neumann_projector, 1)
+    dst_force = zeros(3 * num_dst_nodes)
+    dst_force[1:3:end] = neumann_projector * src_force[1:3:end]
+    dst_force[2:3:end] = neumann_projector * src_force[2:3:end]
+    dst_force[3:3:end] = neumann_projector * src_force[3:3:end]
+    return dst_force
 end
 
 function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)
@@ -954,7 +960,7 @@ function apply_ics(params::Parameters, model::RomModel)
 
     # Make sure basis is the right size
     if n_var != n_var_fom || n_node != n_node_fom
-        throw("Basis is wrong size")
+        norma_abort("Basis is wrong size")
     end
 
     # project onto basis
@@ -974,49 +980,32 @@ end
 function pair_schwarz_bcs(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         model = subsim.model
-        name = subsim.name
         bcs = model.boundary_conditions
-        for bc in bcs
-            pair_bc(name, bc)
+        for (bc_index, bc) in enumerate(bcs)
+            pair_bc(bc, bc_index)
         end
     end
 end
 
-function pair_bc(_::String, _::RegularBoundaryCondition) end
+function pair_bc(_::RegularBoundaryCondition, _::Int64)    
+end
 
-function pair_bc(name::String, bc::ContactSchwarzBoundaryCondition)
+function pair_bc(bc::SchwarzBoundaryCondition, bc_index::Int64)    
+    if bc isa SMNonOverlapSchwarzBC == false || bc isa ContactSchwarzBoundaryCondition == false
+        return nothing
+    end
+    coupled_bc_name = bc.coupled_bc_name
     coupled_model = bc.coupled_subsim.model
     coupled_bcs = coupled_model.boundary_conditions
-    for coupled_bc in coupled_bcs
-        if is_coupled_to_current(name, coupled_bc) == true
+    for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
+        if coupled_bc_name == coupled_bc.name 
             coupled_bc.is_dirichlet = !bc.is_dirichlet
+            bc.coupled_bc_index = coupled_bc_index
+            coupled_bc.coupled_bc_index = bc_index
             if coupled_bc.is_dirichlet == false
                 coupled_model.inclined_support = false
             end
         end
     end
-end
-
-function pair_bc(name::String, bc::CouplingSchwarzBoundaryCondition)
-    if bc isa SMNonOverlapSchwarzBC
-        coupled_model = bc.coupled_subsim.model
-        coupled_bcs = coupled_model.boundary_conditions
-        for coupled_bc in coupled_bcs
-            if is_coupled_to_current(name, coupled_bc) == true
-                coupled_bc.is_dirichlet = !bc.is_dirichlet
-            end
-        end
-    end
-end
-
-function is_coupled_to_current(_::String, _::RegularBoundaryCondition)
-    return false
-end
-
-function is_coupled_to_current(name::String, coupled_bc::ContactSchwarzBoundaryCondition)
-    return name == coupled_bc.coupled_subsim.name
-end
-
-function is_coupled_to_current(name::String, coupled_bc::CouplingSchwarzBoundaryCondition)
-    return name == coupled_bc.coupled_subsim.name
+    return nothing
 end

@@ -419,12 +419,12 @@ end
 
 function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
     mesh = model.mesh
-    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     ss_node_index = 1
     closest_face_nodes = Array{Float64}(undef, 0)
     closest_face_node_indices = Array{Int64}(undef, 0)
     minimum_nodal_distance = Inf
-    for num_nodes_side in num_nodes_per_sides
+    for num_nodes_side in num_nodes_sides
         face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
         face_nodes = model.current[:, face_node_indices]
         nodal_distance = get_minimum_distance_to_nodes(face_nodes, point)
@@ -454,14 +454,14 @@ function get_minimum_distance_to_nodes(nodes::Matrix{Float64}, point::Vector{Flo
 end
 
 function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::Integer)
-    num_nodes_per_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)[2]
     unique_node_indices = unique(side_set_node_indices)
     num_nodes = length(unique_node_indices)
     local_from_global_map = Dict{Int64,Int64}()
     for i in 1:num_nodes
         local_from_global_map[Int64(unique_node_indices[i])] = i
     end
-    return local_from_global_map, num_nodes_per_sides, Int64.(side_set_node_indices)
+    return local_from_global_map
 end
 
 function get_side_set_global_from_local_map(mesh::ExodusDatabase, side_set_id::Integer)
@@ -475,11 +475,10 @@ function get_side_set_global_from_local_map(mesh::ExodusDatabase, side_set_id::I
     return global_from_local_map
 end
 
-function get_square_projection_matrix(model::SolidMechanics, side_set_id::Integer)
-    mesh = model.mesh
-    local_from_global_map, num_nodes_sides, side_set_node_indices = get_side_set_local_from_global_map(
-        mesh, side_set_id
-    )
+function get_square_projection_matrix(model::SolidMechanics, bc::SchwarzBoundaryCondition)
+    num_nodes_sides = bc.num_nodes_sides
+    side_set_node_indices = bc.side_set_node_indices
+    local_from_global_map = bc.local_from_global_map
     num_nodes = length(local_from_global_map)
     coords = model.reference
     square_projection_matrix = zeros(num_nodes, num_nodes)
@@ -507,15 +506,17 @@ function get_square_projection_matrix(model::SolidMechanics, side_set_id::Intege
 end
 
 function get_rectangular_projection_matrix(
-    src_model::SolidMechanics, src_side_set_id::Integer, dst_model::SolidMechanics, dst_side_set_id::Integer
+    dst_model::SolidMechanics,
+    dst_bc::SchwarzBoundaryCondition,
+    src_model::SolidMechanics,
+    src_bc::SchwarzBoundaryCondition, 
 )
-    src_mesh = src_model.mesh
-    src_local_from_global_map, _, _ = get_side_set_local_from_global_map(src_mesh, src_side_set_id)
+    src_local_from_global_map = src_bc.local_from_global_map
     src_num_nodes = length(src_local_from_global_map)
-    dst_mesh = dst_model.mesh
-    dst_local_from_global_map, dst_num_nodes_sides, dst_side_set_node_indices = get_side_set_local_from_global_map(
-        dst_mesh, dst_side_set_id
-    )
+    src_side_set_id = src_bc.side_set_id
+    dst_local_from_global_map = dst_bc.local_from_global_map
+    dst_num_nodes_sides = dst_bc.num_nodes_sides
+    dst_side_set_node_indices = dst_bc.side_set_node_indices
     dst_num_nodes = length(dst_local_from_global_map)
     dst_coords = dst_model.reference
     dst_side_set_node_index = 1
