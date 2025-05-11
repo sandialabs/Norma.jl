@@ -41,8 +41,14 @@ const all_test_files = [
     "utils.jl",
 ]
 
+# Enumerated test files
 const indexed_test_files = collect(enumerate(all_test_files))
-const default_test_indices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+
+# Optional test indices
+const optional_test_indices = Int[]
+
+# Default test indices: all except optional ones
+const default_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
 
 function print_available_tests()
     Norma.norma_log(0, :info, "Available tests:")
