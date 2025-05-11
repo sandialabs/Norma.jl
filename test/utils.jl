@@ -38,6 +38,7 @@ using Logging
     end
 
     @testset "norma_abort logging" begin
+        Norma.norma_log(0, :info, "Mock code abort ...")
         @test Norma._norma_abort_message("Testing aborting") === nothing
         @test Norma._norma_abort_messagef("Testing failure code = %d", 42) === nothing
     end

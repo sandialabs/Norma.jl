@@ -105,6 +105,7 @@ using StaticArrays
     end
 
     @testset "Failure Cases" begin
+        Norma.norma_log(0, :info, "Testing bad input. Mock code abort ...")
         Norma.NORMA_TEST_MODE[] = true
         @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters("elastic modulus" => 200e9))
         @test_throws Norma.NormaAbortException Norma.elastic_constants(Norma.Parameters("Poisson's ratio" => 0.25))

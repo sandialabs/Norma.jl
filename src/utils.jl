@@ -63,55 +63,26 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     keyword_str = uppercase(string(keyword))[1:min(end, 7)]
     bracketed = "[" * keyword_str * "]"
     padded = rpad(bracketed, 9)
-    prefix = indent * padded
+    prefix = indent * padded * " "
 
     if NORMA_COLOR_OUTPUT
         color = get(NORMA_COLORS, keyword, :default)
-        print(indent)
-        printstyled(padded * " "; color=color, bold=true)
-        if visible_length(prefix * msg) <= 80
-            println(msg)
-        else
-            wrapped = wrap_lines(msg, ""; width=80 - length(prefix))
-            println(wrapped)
-        end
+        printstyled(prefix; color=color, bold=true)
     else
-        if visible_length(prefix * msg) <= 80
-            println(prefix, msg)
-        else
-            wrapped = wrap_lines(msg, prefix)
-            println(wrapped)
-        end
+        print(prefix)
+    end
+    if visible_length(prefix * msg) <= 80
+        println(msg)
+    else
+        wrapped = wrap_lines(msg, prefix; width=80 - length(prefix))
+        println(wrapped)
     end
 end
 
 function norma_logf(level::Int, keyword::Symbol, fmt::AbstractString, args...)
-    indent = " "^level
     fstr = Printf.Format(fmt)
-    buf = Printf.format(fstr, args...)
-    keyword_str = uppercase(string(keyword))[1:min(end, 7)]
-    bracketed = "[" * keyword_str * "]"
-    padded = rpad(bracketed, 9)
-    prefix = indent * padded
-
-    if NORMA_COLOR_OUTPUT
-        color = get(NORMA_COLORS, keyword, :default)
-        print(indent)
-        printstyled(padded * " "; color=color, bold=true)
-        if visible_length(prefix * buf) <= 80
-            println(buf)
-        else
-            wrapped = wrap_lines(buf, ""; width=80 - length(prefix))
-            println(wrapped)
-        end
-    else
-        if visible_length(prefix * buf) <= 80
-            println(prefix, buf)
-        else
-            wrapped = wrap_lines(buf, prefix)
-            println(wrapped)
-        end
-    end
+    msg = Printf.format(fstr, args...)
+    norma_log(level, keyword, msg)
 end
 
 # Internal, testable logic
