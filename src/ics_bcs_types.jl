@@ -5,17 +5,15 @@
 # top-level Norma.jl directory.
 
 abstract type BoundaryCondition end
-abstract type SchwarzBoundaryCondition <: BoundaryCondition end
-abstract type RegularBoundaryCondition <: BoundaryCondition end
-abstract type ContactSchwarzBoundaryCondition <: SchwarzBoundaryCondition end
-abstract type CouplingSchwarzBoundaryCondition <: SchwarzBoundaryCondition end
-abstract type OverlapSchwarzBoundaryCondition <: CouplingSchwarzBoundaryCondition end
-abstract type NonOverlapSchwarzBoundaryCondition <: CouplingSchwarzBoundaryCondition end
 abstract type InitialCondition end
+abstract type SolidMechanicsBoundaryCondition <: BoundaryCondition end
+abstract type SolidMechanicsRegularBoundaryCondition <: SolidMechanicsBoundaryCondition end
+abstract type SolidMechanicsSchwarzBoundaryCondition <: SolidMechanicsBoundaryCondition end
+abstract type SolidMechanicsCouplingSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition end
 
 using Symbolics
 
-mutable struct SMDirichletBC <: RegularBoundaryCondition
+mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     offset::Int64
     node_set_id::Int64
@@ -25,7 +23,7 @@ mutable struct SMDirichletBC <: RegularBoundaryCondition
     acce_num::Num
 end
 
-mutable struct SMDirichletInclined <: RegularBoundaryCondition
+mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     node_set_id::Int64
     node_set_node_indices::Vector{Int64}
@@ -36,7 +34,7 @@ mutable struct SMDirichletInclined <: RegularBoundaryCondition
     off_axis_free::Bool
 end
 
-mutable struct SMNeumannBC <: RegularBoundaryCondition
+mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     offset::Int64
     side_set_id::Int64
@@ -45,7 +43,7 @@ mutable struct SMNeumannBC <: RegularBoundaryCondition
     traction_num::Num
 end
 
-mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
+mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
@@ -64,7 +62,7 @@ mutable struct SMContactSchwarzBC <: ContactSchwarzBoundaryCondition
     friction_type::Int64
 end
 
-mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
+mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
@@ -73,7 +71,7 @@ mutable struct SMOverlapSchwarzBC <: OverlapSchwarzBoundaryCondition
     subsim::Simulation
 end
 
-mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
+mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}

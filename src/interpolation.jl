@@ -475,7 +475,7 @@ function get_side_set_global_from_local_map(mesh::ExodusDatabase, side_set_id::I
     return global_from_local_map
 end
 
-function get_square_projection_matrix(model::SolidMechanics, bc::SchwarzBoundaryCondition)
+function get_square_projection_matrix(model::SolidMechanics, bc::SolidMechanicsSchwarzBoundaryCondition)
     num_nodes_sides = bc.num_nodes_sides
     side_set_node_indices = bc.side_set_node_indices
     local_from_global_map = bc.local_from_global_map
@@ -507,9 +507,9 @@ end
 
 function get_rectangular_projection_matrix(
     dst_model::SolidMechanics,
-    dst_bc::SchwarzBoundaryCondition,
+    dst_bc::SolidMechanicsSchwarzBoundaryCondition,
     src_model::SolidMechanics,
-    src_bc::SchwarzBoundaryCondition, 
+    src_bc::SolidMechanicsSchwarzBoundaryCondition, 
 )
     src_local_from_global_map = src_bc.local_from_global_map
     src_num_nodes = length(src_local_from_global_map)

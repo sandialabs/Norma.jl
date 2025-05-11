@@ -206,7 +206,7 @@ end
 function create_bcs(sim::SingleDomainSimulation)
     boundary_conditions = create_bcs(sim.params)
     for bc in boundary_conditions
-        if bc isa SMDirichletInclined || bc isa SMContactSchwarzBC
+        if bc isa SolidMechanicsInclinedDirichletBoundaryCondition || bc isa SolidMechanicsContactSchwarzBoundaryCondition
             sim.model.inclined_support = true
             break
         end
@@ -627,7 +627,7 @@ end
 
 function swap_swappable_bcs(sim::SingleDomainSimulation)
     for bc in sim.model.boundary_conditions
-        if bc isa ContactSchwarzBoundaryCondition || bc isa NonOverlapSchwarzBoundaryCondition
+        if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
@@ -746,7 +746,7 @@ function stop_schwarz(sim::MultiDomainSimulation, iteration_number::Int64)
     return sim.controller.converged
 end
 
-function check_overlap(model::SolidMechanics, bc::SMContactSchwarzBC)
+function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     distance_tol = 0.0
     parametric_tol = 1.0e-06
     overlap = false
@@ -770,7 +770,7 @@ function check_overlap(model::SolidMechanics, bc::SMContactSchwarzBC)
     return overlap
 end
 
-function check_compression(mesh::ExodusDatabase, model::SolidMechanics, bc::SMContactSchwarzBC)
+function check_compression(mesh::ExodusDatabase, model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     compression_tol = 0.0
     compression = false
     nodal_forces = get_dst_force(bc)
@@ -794,7 +794,7 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if !(bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC)
+            if !(bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition)
                 continue
             end
             compute_dirichlet_projector(subsim.model, bc)
@@ -815,7 +815,7 @@ function detect_contact(sim::MultiDomainSimulation)
         mesh = subsim.params["input_mesh"]
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if bc isa SMContactSchwarzBC
+            if bc isa SolidMechanicsContactSchwarzBoundaryCondition
                 if persistence == true
                     compression = check_compression(mesh, subsim.model, bc)
                     contact_domain[domain] = compression == true
@@ -831,7 +831,7 @@ function detect_contact(sim::MultiDomainSimulation)
         subsim = sim.subsims[domain]
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if bc isa SMContactSchwarzBC
+            if bc isa SolidMechanicsContactSchwarzBoundaryCondition
                 bc.active_contact = sim.controller.active_contact
             end
         end
