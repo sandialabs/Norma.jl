@@ -365,7 +365,7 @@ function initialize(sim::SingleDomainSimulation)
 end
 
 function initialize(sim::MultiDomainSimulation)
-    initialize_neumann_projectors(sim)
+    initialize_bc_projectors(sim)
     apply_ics(sim)
     apply_bcs(sim)
     for subsim in sim.subsims
@@ -751,10 +751,13 @@ function check_overlap(model::SolidMechanics, bc::SMContactSchwarzBC)
     parametric_tol = 1.0e-06
     overlap = false
     unique_node_indices = unique(bc.side_set_node_indices)
+    coupled_model = bc.coupled_subsim.model
+    coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
+    coupled_side_set_id = coupled_bc.side_set_id
     for node_index in unique_node_indices
         point = model.current[:, node_index]
         _, ξ, _, coupled_face_node_indices, _, distance = project_point_to_side_set(
-            point, bc.coupled_subsim.model, bc.coupled_side_set_id
+            point, coupled_model, coupled_side_set_id
         )
         num_nodes_coupled_side = length(coupled_face_node_indices)
         parametric_dim = length(ξ)
@@ -770,16 +773,16 @@ end
 function check_compression(mesh::ExodusDatabase, model::SolidMechanics, bc::SMContactSchwarzBC)
     compression_tol = 0.0
     compression = false
-    nodal_reactions = get_dst_force(bc)
+    nodal_forces = get_dst_force(bc)
     normals = compute_normal(mesh, bc.side_set_id, model)
-    global_from_local_map = get_side_set_global_from_local_map(mesh, bc.side_set_id)
-    num_local_nodes = length(global_from_local_map)
-    for local_node in 1:num_local_nodes
-        nodal_reaction = nodal_reactions[:, local_node]
+    global_from_local_map = bc.global_from_local_map
+    for local_node in eachindex(global_from_local_map)
+        local_range = (3*(local_node-1)+1):(3*local_node)
+        nodal_force = nodal_forces[local_range]
         normal = normals[:, local_node]
-        normal_traction = dot(nodal_reaction, normal)
-        compressive_traction = normal_traction ≤ compression_tol
-        if compressive_traction == true
+        normal_force = dot(nodal_force, normal)
+        compressive_force = normal_force ≤ compression_tol
+        if compressive_force == true
             compression = true
             break
         end
@@ -787,13 +790,14 @@ function check_compression(mesh::ExodusDatabase, model::SolidMechanics, bc::SMCo
     return compression
 end
 
-function initialize_neumann_projectors(sim::MultiDomainSimulation)
+function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
             if !(bc isa SMContactSchwarzBC || bc isa SMNonOverlapSchwarzBC)
                 continue
             end
+            compute_dirichlet_projector(subsim.model, bc)
             compute_neumann_projector(subsim.model, bc)
         end
     end

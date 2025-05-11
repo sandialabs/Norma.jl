@@ -227,6 +227,7 @@ function SMCouplingSchwarzBC(
     coupled_side_set_name = bc_params["source side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
     if bc_type == "Schwarz overlap"
         SMOverlapSchwarzBC(
@@ -443,7 +444,7 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::NonOverlapSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        coupling_pointwise_dbc(model, bc)
+        coupling_variational_dbc(model, bc)
     else
         coupling_variational_nbc(model, bc)
     end
@@ -472,7 +473,7 @@ function apply_bc_detail(model::OpInfModel, bc::CouplingSchwarzBoundaryCondition
     end
 end
 
-function coupling_pointwise_dbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+function coupling_pointwise_dbc(model::SolidMechanics, bc::SMOverlapSchwarzBC)
     get_coupled_field = bc.coupled_subsim.model isa SolidMechanics ?
         (field -> getfield(bc.coupled_subsim.model, field)) :
         (field -> getfield(bc.coupled_subsim.model.fom_model, field))
@@ -497,7 +498,19 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::CouplingSchwarzBounda
     end
 end
 
-function coupling_variational_nbc(model::SolidMechanics, bc::CouplingSchwarzBoundaryCondition)
+function coupling_variational_dbc(model::SolidMechanics, bc::SMNonOverlapSchwarzBC)
+    nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
+    global_from_local_map = bc.global_from_local_map
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
+        @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
+        @inbounds model.acceleration[:, i_global] = nodal_acce[:, i_local]
+        global_range = (3*(i_global-1)+1):(3*i_global)
+        model.free_dofs[global_range] .= false
+    end
+end
+
+function coupling_variational_nbc(model::SolidMechanics, bc::SMNonOverlapSchwarzBC)
     nodal_force = get_dst_force(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
@@ -618,10 +631,13 @@ end
 
 function contact_pointwise_dbc(model::SolidMechanics, bc::SMContactSchwarzBC)
     unique_node_indices = unique(bc.side_set_node_indices)
+    coupled_model = bc.coupled_subsim.model
+    coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
+    coupled_side_set_id = coupled_bc.side_set_id
     for node_index in unique_node_indices
         point = model.current[:, node_index]
         new_point, ξ, _, closest_face_node_indices, closest_normal, _ = project_point_to_side_set(
-            point, bc.coupled_subsim.model, bc.coupled_side_set_id
+            point, coupled_model, coupled_side_set_id
         )
         axis = SVector{3,Float64}(-normalize(closest_normal))
         bc.rotation_matrix = compute_rotation_matrix(axis)
@@ -629,8 +645,8 @@ function contact_pointwise_dbc(model::SolidMechanics, bc::SMContactSchwarzBC)
         num_nodes = length(closest_face_node_indices)
         element_type = get_element_type(2, num_nodes)
         N, _, _ = interpolate(element_type, ξ)
-        source_velo = bc.coupled_subsim.model.velocity[:, closest_face_node_indices] * N
-        source_acce = bc.coupled_subsim.model.acceleration[:, closest_face_node_indices] * N
+        source_velo = coupled_model.velocity[:, closest_face_node_indices] * N
+        source_acce = coupled_model.acceleration[:, closest_face_node_indices] * N
         model.free_dofs[[3 * node_index - 2]] .= false
         model.free_dofs[[3 * node_index - 1]] .= true
         model.free_dofs[[3 * node_index]] .= true
@@ -668,9 +684,6 @@ end
 
 function contact_variational_nbc(model::SolidMechanics, bc::SMContactSchwarzBC)
     friction_type = bc.friction_type
-    if friction_type != 0 || friction_type != 1
-        norma_abort("Unknown or not implemented friction type $friction_type.")
-    end
     nodal_force = get_dst_force(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     global_from_local_map = bc.global_from_local_map
@@ -740,6 +753,34 @@ function get_dst_force(dst_bc::SchwarzBoundaryCondition)
     dst_force[2:3:end] = neumann_projector * src_force[2:3:end]
     dst_force[3:3:end] = neumann_projector * src_force[3:3:end]
     return dst_force
+end
+
+function get_dst_curr_velo_acce(dst_bc::SchwarzBoundaryCondition)
+    src_sim = dst_bc.coupled_subsim
+    src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
+    src_bc_index = dst_bc.coupled_bc_index
+    src_bc = src_model.boundary_conditions[src_bc_index]
+    src_global_from_local_map = src_bc.global_from_local_map
+    num_src_nodes = length(src_global_from_local_map)
+    src_curr = zeros(3, num_src_nodes)
+    src_velo = zeros(3, num_src_nodes)
+    src_acce = zeros(3, num_src_nodes)
+    for (i_local, i_global) in enumerate(src_global_from_local_map)
+        src_curr[:, i_local] = src_model.current[:, i_global]
+        src_velo[:, i_local] = src_model.velocity[:, i_global]
+        src_acce[:, i_local] = src_model.acceleration[:, i_global]
+    end
+    dirichelt_projector = dst_bc.dirichelt_projector
+    num_dst_nodes = size(dirichelt_projector, 1)
+    dst_curr = zeros(3, num_dst_nodes)
+    dst_velo = zeros(3, num_dst_nodes)
+    dst_acce = zeros(3, num_dst_nodes)
+    for i in 1:3
+        dst_curr[i, :] = dirichelt_projector * src_curr[i, :]
+        dst_velo[i, :] = dirichelt_projector * src_velo[i, :]
+        dst_acce[i, :] = dirichelt_projector * src_acce[i, :]
+    end
+    return dst_curr, dst_velo, dst_acce
 end
 
 function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)

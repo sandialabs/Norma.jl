@@ -82,7 +82,7 @@ mutable struct SMNonOverlapSchwarzBC <: NonOverlapSchwarzBoundaryCondition
     global_from_local_map::Vector{Int64}
     coupled_subsim::Simulation
     coupled_bc_name::String
-    coupled_bc_index::Simulation
+    coupled_bc_index::Int64
     dirichelt_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
     is_dirichlet::Bool
