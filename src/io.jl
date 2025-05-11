@@ -77,10 +77,12 @@ end
 function write_stop(sim::SingleDomainSimulation)
     params = sim.params
     stop = sim.controller.stop
+    num_stops = sim.controller.num_stops - 1
     time = sim.controller.time
     name = sim.name
     if haskey(params, "parent_simulation") == false
-        norma_logf(0, :stop, "[%d] : Time = %.4e", stop, time)
+        percent = Int(round(100 * stop / num_stops))
+        norma_logf(0, :stop, "[%d/%d, %d%%] : Time = %.4e", stop, num_stops, percent, time)
     end
     exodus_interval = get(params, "Exodus output interval", 1)
     if exodus_interval > 0 && stop % exodus_interval == 0
@@ -97,8 +99,10 @@ end
 
 function write_stop(sim::MultiDomainSimulation)
     stop = sim.controller.stop
+    num_stops = sim.controller.num_stops - 1
     time = sim.controller.time
-    norma_logf(0, :stop, "[%d] : Time = %.4e", stop, time)
+    percent = Int(round(100 * stop / num_stops))
+    norma_logf(0, :stop, "[%d/%d, %d%%] : Time = %.4e", stop, num_stops, percent, time)
     for subsim in sim.subsims
         write_stop(subsim)
     end
