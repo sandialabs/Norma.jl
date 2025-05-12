@@ -300,28 +300,14 @@ function avg_edge_length_tet_h(u::Vector{Float64}, v::Vector{Float64}, w::Vector
     return h
 end
 
-function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, edges::Vector{Tuple{Int64,Int64}})
-    minimum_edge_length = Inf
-    for edge in edges
-        node_a = edge[1]
-        node_b = edge[2]
-        edge_vector = nodal_coordinates[:, node_a] - nodal_coordinates[:, node_b]
-        distance = norm(edge_vector)
-        minimum_edge_length = min(minimum_edge_length, distance)
+function characteristic_element_length_centroid(nodal_coordinates::Matrix{Float64})::Float64
+    centroid = sum(nodal_coordinates, dims=2) / size(nodal_coordinates, 2)
+    total = 0.0
+    @inbounds for i in 1:size(nodal_coordinates, 2)
+        δ = nodal_coordinates[:, i] - centroid
+        total += norm(δ)
     end
-    return minimum_edge_length
-end
-
-function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, element_type::ElementType)
-    if element_type == TETRA4
-        edges = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4), (2, 4)]
-        return get_minimum_edge_length(nodal_coordinates, edges)
-    elseif element_type == HEX8
-        edges = [(1, 4), (1, 5), (4, 8), (5, 8), (2, 3), (2, 6), (3, 7), (6, 7), (1, 2), (3, 4), (5, 6), (7, 8)]
-        return get_minimum_edge_length(nodal_coordinates, edges)
-    else
-        norma_abort("Invalid element type: $element_type")
-    end
+    return 2 * total / size(nodal_coordinates, 2)  # Approximate diameter
 end
 
 function set_time_step(integrator::CentralDifference, model::SolidMechanics)
@@ -338,15 +324,13 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         minimum_blk_edge_length = Inf
         block = blocks[blk_index]
         blk_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, blk_id)[1]
-        element_type = element_type_from_string(element_type_string)
         elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
         num_blk_elems, num_elem_nodes = size(elem_blk_conn)
         for blk_elem_index in 1:num_blk_elems
             conn_indices = ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
             node_indices = elem_blk_conn[conn_indices]
             elem_cur_pos = model.current[:, node_indices]
-            minimum_elem_edge_length = get_minimum_edge_length(elem_cur_pos, element_type)
+            minimum_elem_edge_length = characteristic_element_length_centroid(elem_cur_pos)
             minimum_blk_edge_length = min(minimum_blk_edge_length, minimum_elem_edge_length)
         end
         blk_stable_time_step = integrator.CFL * minimum_blk_edge_length / wave_speed
