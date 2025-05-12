@@ -22,7 +22,7 @@ boundary conditions:
       function: "0.0"
     - node set: nodeset_negative_y
       component: y
-      function: "-0.1 * t"
+      function: "-0.1 * (0.5 - 0.5 * cos(pi * t))"
     - node set: nodeset_negative_y
       component: z
       function: "0.0"

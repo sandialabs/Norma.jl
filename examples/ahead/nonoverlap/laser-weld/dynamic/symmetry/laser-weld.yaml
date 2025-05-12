@@ -7,6 +7,6 @@ final time: 0.1
 time step: 0.01
 minimum iterations: 1
 maximum iterations: 256
-relative tolerance: 1.0e-05
-absolute tolerance: 1.0e-03
-relaxation parameter: 0.4
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-6
+relaxation parameter: 0.1

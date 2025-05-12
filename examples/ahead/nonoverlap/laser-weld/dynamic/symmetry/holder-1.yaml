@@ -15,6 +15,10 @@ time integrator:
   type: Newmark
   β: 0.25
   γ: 0.5
+  maximum time step: 0.1
+  minimum time step: 1.0e-04
+  increase factor: 1.1
+  decrease factor: 0.5
 boundary conditions:
   Dirichlet:
     - node set: nodeset_negative_x
@@ -22,7 +26,7 @@ boundary conditions:
       function: "0.0"
     - node set: nodeset_positive_y
       component: y
-      function: "0.1 * t"
+      function: "0.1 * (0.5 - 0.5 * cos(pi * t))"
     - node set: nodeset_negative_z
       component: z
       function: "0.0"
