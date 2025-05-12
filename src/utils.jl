@@ -24,7 +24,9 @@ function wrap_lines(msg::AbstractString, prefix::AbstractString; width::Int=80)
     return join([i == 1 ? prefix * line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
 end
 
-const NORMA_COLOR_OUTPUT = stdout isa Base.TTY && get(ENV, "NORMA_NO_COLOR", "false") != "true"
+const NORMA_COLOR_OUTPUT = 
+    (isdefined(Base, :have_color) && Base.have_color !== nothing ? Base.have_color : stdout isa Base.TTY) &&
+    get(ENV, "NORMA_NO_COLOR", "false") != "true"
 
 const NORMA_COLORS = Dict(
     :abort => :light_red,

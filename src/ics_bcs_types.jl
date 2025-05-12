@@ -18,9 +18,9 @@ mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegular
     offset::Int64
     node_set_id::Int64
     node_set_node_indices::Vector{Int64}
-    disp_num::Num
-    velo_num::Num
-    acce_num::Num
+    disp_fun::Function
+    velo_fun::Function
+    acce_fun::Function
 end
 
 mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition

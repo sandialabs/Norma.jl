@@ -6,7 +6,7 @@
 
 using Exodus
 
-@variables t, x, y, z
+@variables t x y z
 D = Differential(t)
 
 function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
@@ -15,11 +15,26 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     offset = component_offset_from_string(bc_params["component"])
     node_set_id = node_set_id_from_name(node_set_name, input_mesh)
     node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
-    # expression is an arbitrary function of t, x, y, z in the input file
+
+    # Build symbolic expressions
     disp_num = eval(Meta.parse(expression))
     velo_num = expand_derivatives(D(disp_num))
     acce_num = expand_derivatives(D(velo_num))
-    return SolidMechanicsDirichletBoundaryCondition(node_set_name, offset, node_set_id, node_set_node_indices, disp_num, velo_num, acce_num)
+
+    # Compile them into functions
+    disp_fun = eval(build_function(disp_num, [t, x, y, z], expression=Val(false)))
+    velo_fun = eval(build_function(velo_num, [t, x, y, z], expression=Val(false)))
+    acce_fun = eval(build_function(acce_num, [t, x, y, z], expression=Val(false)))
+
+    return SolidMechanicsDirichletBoundaryCondition(
+        node_set_name,
+        offset,
+        node_set_id,
+        node_set_node_indices,
+        disp_fun,
+        velo_fun,
+        acce_fun
+    )
 end
 
 function SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
@@ -290,18 +305,15 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
     for node_index in bc.node_set_node_indices
-        values = Dict(
-            t => model.time,
-            x => model.reference[1, node_index],
-            y => model.reference[2, node_index],
-            z => model.reference[3, node_index],
-        )
-        disp_sym = substitute(bc.disp_num, values)
-        velo_sym = substitute(bc.velo_num, values)
-        acce_sym = substitute(bc.acce_num, values)
-        disp_val = extract_value(disp_sym)
-        velo_val = extract_value(velo_sym)
-        acce_val = extract_value(acce_sym)
+        txzy = (model.time,
+                model.reference[1, node_index],
+                model.reference[2, node_index],
+                model.reference[3, node_index])
+
+        disp_val = bc.disp_fun(txzy...)
+        velo_val = bc.velo_fun(txzy...)
+        acce_val = bc.acce_fun(txzy...)
+
         dof_index = 3 * (node_index - 1) + bc.offset
         model.current[bc.offset, node_index] = model.reference[bc.offset, node_index] + disp_val
         model.velocity[bc.offset, node_index] = velo_val
