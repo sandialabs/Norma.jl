@@ -338,7 +338,7 @@ end
 using Symbolics
 @variables t, x, y, z
 
-function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_num::Num, time::Float64)
+function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::Function, time::Float64)
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
     num_int_points = default_num_int_pts(element_type)
@@ -351,9 +351,8 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_num::N
         j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
         wₚ = w[point]
         point_coord = nodal_coord * Nₚ
-        values = Dict(t => time, x => point_coord[1], y => point_coord[2], z => point_coord[3])
-        traction_sym = substitute(traction_num, values)
-        traction_val = extract_value(traction_sym)
+        txzy = (time, point_coord[1], point_coord[2], point_coord[3])
+        traction_val = traction_fun(txzy...)
         nodal_force_component += traction_val * Nₚ * j * wₚ
     end
     return nodal_force_component

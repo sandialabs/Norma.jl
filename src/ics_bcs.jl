@@ -102,9 +102,14 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     side_set_node_indices = Int64.(side_set_node_indices)
-    # expression is an arbitrary function of t, x, y, z in the input file
+
+    # Build symbolic expressions
     traction_num = eval(Meta.parse(expression))
-    return SolidMechanicsNeumannBoundaryCondition(side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_num)
+
+    # Compile them into functions
+    traction_fun = eval(build_function(traction_num, [t, x, y, z], expression=Val(false)))
+
+    return SolidMechanicsNeumannBoundaryCondition(side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun)
 end
 
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
@@ -327,7 +332,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
     for side in bc.num_nodes_per_side
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
-        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_num, model.time)
+        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_fun, model.time)
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes

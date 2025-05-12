@@ -40,7 +40,7 @@ mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBo
     side_set_id::Int64
     num_nodes_per_side::Vector{Int64}
     side_set_node_indices::Vector{Int64}
-    traction_num::Num
+    traction_fun::Function
 end
 
 mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition
