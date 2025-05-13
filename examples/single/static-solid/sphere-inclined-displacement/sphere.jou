@@ -15,7 +15,11 @@ block 1 name "sphere"
 nodeset 1 add surface 21 23 27 35 45 33 41 47
 nodeset 1 name "sphere_surf"
 nodeset 1 remove node 2 6 24
-nodeset 2 add node 2 6 24
-nodeset 2 name "axial_fix"
+nodeset 2 add node 2
+nodeset 2 name "x_fix"
+nodeset 3 add node 6
+nodeset 3 name "y_fix"
+nodeset 4 add node 24
+nodeset 4 name "z_fix"
 set large exodus file off
 export mesh "sphere.g" overwrite

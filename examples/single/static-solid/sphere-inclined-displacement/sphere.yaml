@@ -23,9 +23,34 @@ boundary conditions:
     - node set: sphere_surf
       normal vector: [ "x", "y", "z" ]
       function: "-0.0005*t"
-    - node set: axial_fix
-      normal vector: [ "x", "y", "z" ]
-      function: [ "-0.0005*t", "0", "0" ]
+    Dirichlet:
+    - node set: x_fix
+      component: x
+      function: "-0.0005*t"
+    - node set: x_fix
+      component: y
+      function: "0.0"
+    - node set: x_fix
+      component: z
+      function: "0.0"
+    - node set: y_fix
+      component: x
+      function: "0.0"
+    - node set: y_fix
+      component: y
+      function: "-0.0005*t"
+    - node set: y_fix
+      component: z
+      function: "0.0"
+    - node set: z_fix
+      component: x
+      function: "0.0"
+    - node set: z_fix
+      component: y
+      function: "0.0"
+    - node set: z_fix
+      component: z
+      function: "-0.0005*t"
 solver:
   type: Hessian minimizer
   step: full Newton
