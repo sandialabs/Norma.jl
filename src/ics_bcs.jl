@@ -862,7 +862,7 @@ function get_dst_stiffness(dst_bc::SchwarzBoundaryCondition)
     dst_stiffness = zeros(3 * num_dst_nodes, 3 * num_dst_nodes)
     for i in 1:num_dst_nodes
         dst_stiffness[(3 * i - 2):(3 * i), (3 * i - 2):(3 * i)] .= 
-            dst_bc.transfer_operator * src_local_stiffness[(3 * i - 2):(3 * i), (3 * i - 2):(3 * i)] * dst_bc.transfer_operator'
+            dst_bc.neumann_projector * src_local_stiffness[(3 * i - 2):(3 * i), (3 * i - 2):(3 * i)] * dst_bc.neumann_projector'
     end
     #dst_stiffness[1:(3 * num_dst_nodes), 1:(3 * num_dst_nodes)] =
     #    dst_bc.transfer_operator * src_local_stiffness * dst_bc.transfer_operator'
