@@ -687,11 +687,12 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
         if bc isa SolidMechanicsContactSchwarzBoundaryCondition
             unique_node_indices = unique(bc.side_set_node_indices)
             for node_index in unique_node_indices
-                subsim.model.acceleration[:, node_index] = zeros(3)
+                subsim.model.acceleration[:, node_index] .= 0.0
             end
         end
     end
-    return copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
+    copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
+    return nothing
 end
 
 function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
