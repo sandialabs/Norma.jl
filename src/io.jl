@@ -235,16 +235,16 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         stress_yz = zeros(num_block_elems, num_points)
         stress_xz = zeros(num_block_elems, num_points)
         stress_xy = zeros(num_block_elems, num_points)
-        for block_elem_index in 1:num_block_elems
-            element_stress = block_stress[block_elem_index]
+        for block_element_index in 1:num_block_elems
+            element_stress = block_stress[block_element_index]
             for point in 1:num_points
                 point_stress = element_stress[point]
-                stress_xx[block_elem_index, point] = point_stress[1]
-                stress_yy[block_elem_index, point] = point_stress[2]
-                stress_zz[block_elem_index, point] = point_stress[3]
-                stress_yz[block_elem_index, point] = point_stress[4]
-                stress_xz[block_elem_index, point] = point_stress[5]
-                stress_xy[block_elem_index, point] = point_stress[6]
+                stress_xx[block_element_index, point] = point_stress[1]
+                stress_yy[block_element_index, point] = point_stress[2]
+                stress_zz[block_element_index, point] = point_stress[3]
+                stress_yz[block_element_index, point] = point_stress[4]
+                stress_xz[block_element_index, point] = point_stress[5]
+                stress_xy[block_element_index, point] = point_stress[6]
             end
         end
         for point in 1:num_points

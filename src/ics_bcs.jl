@@ -424,16 +424,16 @@ function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block
     mesh = model.mesh
     element_type_string = Exodus.read_block_parameters(mesh, Int32(block_id))[1]
     element_type = element_type_from_string(element_type_string)
-    elem_block_conn = get_block_connectivity(mesh, block_id)
-    num_block_elems, num_elem_nodes = size(elem_block_conn)
+    element_block_conn = get_block_connectivity(mesh, block_id)
+    num_block_elems, num_element_nodes = size(element_block_conn)
     node_indices = Vector{Int64}()
     found = false
     ξ = zeros(length(point))
-    for block_elem_index in 1:num_block_elems
-        conn_indices = ((block_elem_index - 1) * num_elem_nodes + 1):(block_elem_index * num_elem_nodes)
-        node_indices = elem_block_conn[conn_indices]
-        elem_ref_pos = model.reference[:, node_indices]
-        ξ, found = is_inside(element_type, elem_ref_pos, point, tol)
+    for block_element_index in 1:num_block_elems
+        conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+        node_indices = element_block_conn[conn_indices]
+        element_ref_pos = model.reference[:, node_indices]
+        ξ, found = is_inside(element_type, element_ref_pos, point, tol)
         if found == true
             break
         end

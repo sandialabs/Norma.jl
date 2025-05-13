@@ -145,11 +145,11 @@ function SolidMechanics(params::Parameters)
             num_blocks_params,
         )
     end
-    elem_block_names = Exodus.read_names(input_mesh, Block)
+    element_block_names = Exodus.read_names(input_mesh, Block)
     materials = Vector{Solid}(undef, 0)
     kinematics = Undefined
-    for elem_block_name in elem_block_names
-        material_name = material_blocks[elem_block_name]
+    for element_block_name in element_block_names
+        material_name = material_blocks[element_block_name]
         material_props = material_params[material_name]
         material_model = create_material(material_props)
         if kinematics == Undefined
@@ -262,11 +262,11 @@ function create_model(params::Parameters)
     end
 end
 
-function create_smooth_reference(smooth_reference::String, element_type::ElementType, elem_ref_pos::Matrix{Float64})
+function create_smooth_reference(smooth_reference::String, element_type::ElementType, element_ref_pos::Matrix{Float64})
     if element_type == TETRA4
-        u = elem_ref_pos[:, 2] - elem_ref_pos[:, 1]
-        v = elem_ref_pos[:, 3] - elem_ref_pos[:, 1]
-        w = elem_ref_pos[:, 4] - elem_ref_pos[:, 1]
+        u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
+        v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
+        w = element_ref_pos[:, 4] - element_ref_pos[:, 1]
 
         if smooth_reference == "equal volume"
             h = equal_volume_tet_h(u, v, w)
@@ -321,19 +321,19 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         ρ = material.ρ
         M = get_p_wave_modulus(material)
         wave_speed = sqrt(M / ρ)
-        minimum_block_edge_length = Inf
+        minimum_block_characteristic_length = Inf
         block = blocks[block_index]
         block_id = block.id
-        elem_block_conn = get_block_connectivity(input_mesh, block_id)
-        num_block_elems, num_elem_nodes = size(elem_block_conn)
-        for block_elem_index in 1:num_block_elems
-            conn_indices = ((block_elem_index - 1) * num_elem_nodes + 1):(block_elem_index * num_elem_nodes)
-            node_indices = elem_block_conn[conn_indices]
-            elem_cur_pos = model.current[:, node_indices]
-            minimum_elem_edge_length = characteristic_element_length_centroid(elem_cur_pos)
-            minimum_block_edge_length = min(minimum_block_edge_length, minimum_elem_edge_length)
+        element_block_conn = get_block_connectivity(input_mesh, block_id)
+        num_block_elems, num_element_nodes = size(element_block_conn)
+        for block_element_index in 1:num_block_elems
+            conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_conn[conn_indices]
+            element_curr_pos = model.current[:, node_indices]
+            minimum_element_characteristic_length = characteristic_element_length_centroid(element_curr_pos)
+            minimum_block_characteristic_length = min(minimum_block_characteristic_length, minimum_element_characteristic_length)
         end
-        block_stable_time_step = integrator.CFL * minimum_block_edge_length / wave_speed
+        block_stable_time_step = integrator.CFL * minimum_block_characteristic_length / wave_speed
         stable_time_step = min(stable_time_step, block_stable_time_step)
     end
     if stable_time_step < integrator.time_step

@@ -32,15 +32,15 @@ function average_components(stress::Vector{Vector{Vector{Vector{Float64}}}})
     xz = 0.0
     xy = 0.0
     num_stress = 0
-    for blk_index in 1:length(stress)
-        for blk_elem_index in 1:length(stress[blk_index])
-            for point in 1:length(stress[blk_index][blk_elem_index])
-                xx += stress[blk_index][blk_elem_index][point][1]
-                yy += stress[blk_index][blk_elem_index][point][2]
-                zz += stress[blk_index][blk_elem_index][point][3]
-                yz += stress[blk_index][blk_elem_index][point][4]
-                xz += stress[blk_index][blk_elem_index][point][5]
-                xy += stress[blk_index][blk_elem_index][point][6]
+    for block_index in 1:length(stress)
+        for block_element_index in 1:length(stress[block_index])
+            for point in 1:length(stress[block_index][block_element_index])
+                xx += stress[block_index][block_element_index][point][1]
+                yy += stress[block_index][block_element_index][point][2]
+                zz += stress[block_index][block_element_index][point][3]
+                yz += stress[block_index][block_element_index][point][4]
+                xz += stress[block_index][block_element_index][point][5]
+                xy += stress[block_index][block_element_index][point][6]
                 num_stress += 1
             end
         end
