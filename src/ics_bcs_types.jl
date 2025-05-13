@@ -53,7 +53,7 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     coupled_subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
-    dirichelt_projector::Matrix{Float64}
+    dirichlet_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
@@ -81,7 +81,7 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     coupled_subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
-    dirichelt_projector::Matrix{Float64}
+    dirichlet_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
