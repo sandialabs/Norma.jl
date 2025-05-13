@@ -133,16 +133,16 @@ function SolidMechanics(params::Parameters)
     end
     material_params = model_params["material"]
     material_blocks = material_params["blocks"]
-    num_blks_params = length(material_blocks)
+    num_blocks_params = length(material_blocks)
     blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(blocks)
-    if num_blks_params ≠ num_blks
+    num_blocks = length(blocks)
+    if num_blocks_params ≠ num_blocks
         norma_abortf(
             "Number of blocks in mesh %s (%d) must be equal to number of blocks in materials %s (%d).",
             model_params["mesh"],
-            num_blks,
+            num_blocks,
             model_params["material"],
-            num_blks_params,
+            num_blocks_params,
         )
     end
     elem_block_names = Exodus.read_names(input_mesh, Block)
@@ -314,9 +314,9 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
     materials = model.materials
     input_mesh = model.mesh
     blocks = Exodus.read_sets(input_mesh, Block)
-    num_blks = length(blocks)
+    num_blocks = length(blocks)
     stable_time_step = Inf
-    for block_index in 1:num_blks
+    for block_index in 1:num_blocks
         material = materials[block_index]
         ρ = material.ρ
         M = get_p_wave_modulus(material)
