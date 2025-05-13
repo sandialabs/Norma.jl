@@ -145,11 +145,11 @@ function SolidMechanics(params::Parameters)
             num_blks_params,
         )
     end
-    elem_blk_names = Exodus.read_names(input_mesh, Block)
+    elem_block_names = Exodus.read_names(input_mesh, Block)
     materials = Vector{Solid}(undef, 0)
     kinematics = Undefined
-    for elem_blk_name in elem_blk_names
-        material_name = material_blocks[elem_blk_name]
+    for elem_block_name in elem_block_names
+        material_name = material_blocks[elem_block_name]
         material_props = material_params[material_name]
         material_model = create_material(material_props)
         if kinematics == Undefined
@@ -175,13 +175,13 @@ function SolidMechanics(params::Parameters)
     stress = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
     for block in blocks
-        blk_id = block.id
-        element_type_string, num_blk_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, blk_id)
+        block_id = block.id
+        element_type_string, num_block_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         block_stress = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
-        for _ in 1:num_blk_elems
+        for _ in 1:num_block_elems
             element_stress = Vector{Vector{Float64}}()
             for _ in 1:num_points
                 push!(element_stress, zeros(6))
@@ -316,25 +316,25 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
     blocks = Exodus.read_sets(input_mesh, Block)
     num_blks = length(blocks)
     stable_time_step = Inf
-    for blk_index in 1:num_blks
-        material = materials[blk_index]
+    for block_index in 1:num_blks
+        material = materials[block_index]
         ρ = material.ρ
         M = get_p_wave_modulus(material)
         wave_speed = sqrt(M / ρ)
-        minimum_blk_edge_length = Inf
-        block = blocks[blk_index]
-        blk_id = block.id
-        elem_blk_conn = get_block_connectivity(input_mesh, blk_id)
-        num_blk_elems, num_elem_nodes = size(elem_blk_conn)
-        for blk_elem_index in 1:num_blk_elems
-            conn_indices = ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
-            node_indices = elem_blk_conn[conn_indices]
+        minimum_block_edge_length = Inf
+        block = blocks[block_index]
+        block_id = block.id
+        elem_block_conn = get_block_connectivity(input_mesh, block_id)
+        num_block_elems, num_elem_nodes = size(elem_block_conn)
+        for block_elem_index in 1:num_block_elems
+            conn_indices = ((block_elem_index - 1) * num_elem_nodes + 1):(block_elem_index * num_elem_nodes)
+            node_indices = elem_block_conn[conn_indices]
             elem_cur_pos = model.current[:, node_indices]
             minimum_elem_edge_length = characteristic_element_length_centroid(elem_cur_pos)
-            minimum_blk_edge_length = min(minimum_blk_edge_length, minimum_elem_edge_length)
+            minimum_block_edge_length = min(minimum_block_edge_length, minimum_elem_edge_length)
         end
-        blk_stable_time_step = integrator.CFL * minimum_blk_edge_length / wave_speed
-        stable_time_step = min(stable_time_step, blk_stable_time_step)
+        block_stable_time_step = integrator.CFL * minimum_block_edge_length / wave_speed
+        stable_time_step = min(stable_time_step, block_stable_time_step)
     end
     if stable_time_step < integrator.time_step
         norma_logf(
@@ -811,8 +811,8 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     return nothing
 end
 
-function get_block_connectivity(mesh::ExodusDatabase, blk_id::Integer)
-    _, num_elems, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(blk_id))
-    conn = Exodus.read_block_connectivity(mesh, Int32(blk_id), num_elems * num_nodes)
+function get_block_connectivity(mesh::ExodusDatabase, block_id::Integer)
+    _, num_elems, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(block_id))
+    conn = Exodus.read_block_connectivity(mesh, Int32(block_id), num_elems * num_nodes)
     return reshape(conn, (num_elems, num_nodes))
 end

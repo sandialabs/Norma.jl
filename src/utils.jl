@@ -21,7 +21,7 @@ function wrap_lines(msg::AbstractString, prefix::AbstractString; width::Int=80)
     end
     push!(lines, current)
 
-    return join([i == 1 ? prefix * line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
+    return join([i == 1 ? line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
 end
 
 const NORMA_COLOR_OUTPUT = 

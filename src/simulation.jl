@@ -557,7 +557,8 @@ function restore_prev_state(sim::SingleDomainSimulation)
         integrator.acceleration = copy(integrator.prev_acce)
     end
     sim.model.internal_force = copy(integrator.prev_∂Ω_f)
-    return copy_solution_source_targets(sim.integrator, sim.solver, sim.model)
+    copy_solution_source_targets(sim.integrator, sim.solver, sim.model)
+    return nothing
 end
 
 function save_stop_state(sim::MultiDomainSimulation)

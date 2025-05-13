@@ -420,18 +420,18 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoun
     end
 end
 
-function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, blk_id::Int, tol::Float64)
+function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block_id::Int, tol::Float64)
     mesh = model.mesh
-    element_type_string = Exodus.read_block_parameters(mesh, Int32(blk_id))[1]
+    element_type_string = Exodus.read_block_parameters(mesh, Int32(block_id))[1]
     element_type = element_type_from_string(element_type_string)
-    elem_blk_conn = get_block_connectivity(mesh, blk_id)
-    num_blk_elems, num_elem_nodes = size(elem_blk_conn)
+    elem_block_conn = get_block_connectivity(mesh, block_id)
+    num_block_elems, num_elem_nodes = size(elem_block_conn)
     node_indices = Vector{Int64}()
     found = false
     ξ = zeros(length(point))
-    for blk_elem_index in 1:num_blk_elems
-        conn_indices = ((blk_elem_index - 1) * num_elem_nodes + 1):(blk_elem_index * num_elem_nodes)
-        node_indices = elem_blk_conn[conn_indices]
+    for block_elem_index in 1:num_block_elems
+        conn_indices = ((block_elem_index - 1) * num_elem_nodes + 1):(block_elem_index * num_elem_nodes)
+        node_indices = elem_block_conn[conn_indices]
         elem_ref_pos = model.reference[:, node_indices]
         ξ, found = is_inside(element_type, elem_ref_pos, point, tol)
         if found == true
@@ -441,8 +441,8 @@ function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, blk_i
     return node_indices, ξ, found
 end
 
-function find_point_in_mesh(point::Vector{Float64}, model::RomModel, blk_id::Int, tol::Float64)
-    node_indices, ξ, found = find_point_in_mesh(point, model.fom_model, blk_id, tol)
+function find_point_in_mesh(point::Vector{Float64}, model::RomModel, block_id::Int, tol::Float64)
+    node_indices, ξ, found = find_point_in_mesh(point, model.fom_model, block_id, tol)
     return node_indices, ξ, found
 end
 
