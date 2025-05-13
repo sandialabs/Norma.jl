@@ -140,7 +140,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     side_set_node_indices = Int64.(side_set_node_indices)
     coupled_side_set_name = bc_params["source side set"]
     is_dirichlet = true
-    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
+    dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(input_mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(input_mesh, side_set_id)
@@ -166,7 +166,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         coupled_subsim,
         coupled_side_set_name,
         coupled_bc_index,
-        dirichelt_projector,
+        dirichlet_projector,
         neumann_projector,
         is_dirichlet,
         swap_bcs,
@@ -188,7 +188,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     swap_bcs::Bool,
 )
     neumann_projector = Matrix{Float64}(undef, 0, 0)
-    dirichelt_projector = Matrix{Float64}(undef, 0, 0)
+    dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
@@ -202,7 +202,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         coupled_subsim,
         coupled_side_set_name,
         coupled_bc_index,
-        dirichelt_projector,
+        dirichlet_projector,
         neumann_projector,
         is_dirichlet,
         swap_bcs,
@@ -712,7 +712,7 @@ function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMec
     src_bc = src_model.boundary_conditions[src_bc_index]
     W = get_square_projection_matrix(dst_model, dst_bc)
     L = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
-    dst_bc.dirichelt_projector = (W \ I) * L
+    dst_bc.dirichlet_projector = (W \ I) * L
     return nothing
 end
 
@@ -747,15 +747,15 @@ function get_dst_curr_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
         src_velo[:, i_local] = src_model.velocity[:, i_global]
         src_acce[:, i_local] = src_model.acceleration[:, i_global]
     end
-    dirichelt_projector = dst_bc.dirichelt_projector
-    num_dst_nodes = size(dirichelt_projector, 1)
+    dirichlet_projector = dst_bc.dirichlet_projector
+    num_dst_nodes = size(dirichlet_projector, 1)
     dst_curr = zeros(3, num_dst_nodes)
     dst_velo = zeros(3, num_dst_nodes)
     dst_acce = zeros(3, num_dst_nodes)
     for i in 1:3
-        dst_curr[i, :] = dirichelt_projector * src_curr[i, :]
-        dst_velo[i, :] = dirichelt_projector * src_velo[i, :]
-        dst_acce[i, :] = dirichelt_projector * src_acce[i, :]
+        dst_curr[i, :] = dirichlet_projector * src_curr[i, :]
+        dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
+        dst_acce[i, :] = dirichlet_projector * src_acce[i, :]
     end
     return dst_curr, dst_velo, dst_acce
 end
