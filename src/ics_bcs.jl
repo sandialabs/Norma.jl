@@ -22,18 +22,12 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     acce_num = expand_derivatives(D(velo_num))
 
     # Compile them into functions
-    disp_fun = eval(build_function(disp_num, [t, x, y, z], expression=Val(false)))
-    velo_fun = eval(build_function(velo_num, [t, x, y, z], expression=Val(false)))
-    acce_fun = eval(build_function(acce_num, [t, x, y, z], expression=Val(false)))
+    disp_fun = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
+    velo_fun = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
+    acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsDirichletBoundaryCondition(
-        node_set_name,
-        offset,
-        node_set_id,
-        node_set_node_indices,
-        disp_fun,
-        velo_fun,
-        acce_fun
+        node_set_name, offset, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun
     )
 end
 
@@ -107,9 +101,11 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
     traction_num = eval(Meta.parse(expression))
 
     # Compile them into functions
-    traction_fun = eval(build_function(traction_num, [t, x, y, z], expression=Val(false)))
+    traction_fun = eval(build_function(traction_num, [t, x, y, z]; expression=Val(false)))
 
-    return SolidMechanicsNeumannBoundaryCondition(side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun)
+    return SolidMechanicsNeumannBoundaryCondition(
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun
+    )
 end
 
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
@@ -158,7 +154,9 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     )
 end
 
-function SolidMechanicsContactSchwarzBoundaryCondition(coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters)
+function SolidMechanicsContactSchwarzBoundaryCondition(
+    coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters
+)
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
@@ -251,12 +249,7 @@ function SMCouplingSchwarzBC(
     side_set_node_indices = Int64.(side_set_node_indices)
     if bc_type == "Schwarz overlap"
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name,
-            tol,
-            side_set_name,
-            side_set_node_indices,
-            coupled_subsim,
-            subsim,
+            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim
         )
     elseif bc_type == "Schwarz nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -310,10 +303,9 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
     for node_index in bc.node_set_node_indices
-        txzy = (model.time,
-                model.reference[1, node_index],
-                model.reference[2, node_index],
-                model.reference[3, node_index])
+        txzy = (
+            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
+        )
 
         disp_val = bc.disp_fun(txzy...)
         velo_val = bc.velo_fun(txzy...)
@@ -424,14 +416,15 @@ function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block
     mesh = model.mesh
     element_type_string = Exodus.read_block_parameters(mesh, Int32(block_id))[1]
     element_type = element_type_from_string(element_type_string)
-    element_block_conn = get_block_connectivity(mesh, block_id)
-    num_block_elements, num_element_nodes = size(element_block_conn)
+    element_block_connectivity = get_block_connectivity(mesh, block_id)
+    num_block_elements, num_element_nodes = size(element_block_connectivity)
     node_indices = Vector{Int64}()
     found = false
     ξ = zeros(length(point))
     for block_element_index in 1:num_block_elements
-        conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-        node_indices = element_block_conn[conn_indices]
+        connectivity_indices =
+            ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+        node_indices = element_block_connectivity[connectivity_indices]
         element_ref_pos = model.reference[:, node_indices]
         ξ, found = is_inside(element_type, element_ref_pos, point, tol)
         if found == true
@@ -491,12 +484,14 @@ function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBou
 end
 
 function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    get_coupled_field = bc.coupled_subsim.model isa SolidMechanics ?
-        (field -> getfield(bc.coupled_subsim.model, field)) :
+    get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
+        (field -> getfield(bc.coupled_subsim.model, field))
+    else
         (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+    end
 
-    current     = get_coupled_field(:current)
-    velocity    = get_coupled_field(:velocity)
+    current = get_coupled_field(:current)
+    velocity = get_coupled_field(:velocity)
     acceleration = get_coupled_field(:acceleration)
 
     unique_node_indices = unique(bc.side_set_node_indices)
@@ -506,8 +501,8 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
         coupled_node_indices = bc.coupled_nodes_indices[i]
         N = bc.interpolation_function_values[i]
 
-        model.current[:, node_index]      = current[:, coupled_node_indices] * N
-        model.velocity[:, node_index]     = velocity[:, coupled_node_indices] * N
+        model.current[:, node_index] = current[:, coupled_node_indices] * N
+        model.velocity[:, node_index] = velocity[:, coupled_node_indices] * N
         model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
 
         dof_index = (3 * node_index - 2):(3 * node_index)
@@ -522,7 +517,7 @@ function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOv
         @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
         @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
         @inbounds model.acceleration[:, i_global] = nodal_acce[:, i_local]
-        global_range = (3*(i_global-1)+1):(3*i_global)
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
         model.free_dofs[global_range] .= false
     end
 end
@@ -531,8 +526,8 @@ function coupling_variational_nbc(model::SolidMechanics, bc::SolidMechanicsNonOv
     nodal_force = get_dst_force(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
-        global_range = (3*(i_global-1)+1):(3*i_global)
-        local_range  = (3*(i_local-1)+1):(3*i_local)
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
         @inbounds model.boundary_force[global_range] += nodal_force[local_range]
     end
 end
@@ -705,8 +700,8 @@ function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContac
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
-        global_range = (3*(i_global-1)+1):(3*i_global)
-        local_range  = (3*(i_local-1)+1):(3*i_local)
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
         normal = normals[:, i_local]
         node_force = nodal_force[local_range]
         if friction_type == 1
@@ -723,13 +718,12 @@ function extract_local_vector(global_vector::Vector{Float64}, global_from_local_
     num_local_nodes = length(global_from_local_map)
     local_vector = Vector{Float64}(undef, dim * num_local_nodes)
     for (i_local, i_global) in enumerate(global_from_local_map)
-        global_range = (dim*(i_global-1)+1):(dim*i_global)
-        local_range  = (dim*(i_local-1)+1):(dim*i_local)
+        global_range = (dim * (i_global - 1) + 1):(dim * i_global)
+        local_range = (dim * (i_local - 1) + 1):(dim * i_local)
         @inbounds local_vector[local_range] = global_vector[global_range]
     end
     return local_vector
 end
-
 
 function extract_local_vector(bc::SolidMechanicsSchwarzBoundaryCondition, global_vector::Vector{Float64}, dim::Int64)
     global_from_local_map = bc.global_from_local_map
@@ -898,7 +892,9 @@ function create_bcs(params::Parameters)
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
-                boundary_condition = SolidMechanicsContactSchwarzBoundaryCondition(coupled_subsim, input_mesh, bc_setting_params)
+                boundary_condition = SolidMechanicsContactSchwarzBoundaryCondition(
+                    coupled_subsim, input_mesh, bc_setting_params
+                )
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Inclined Dirichlet"
                 boundary_condition = SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh, bc_setting_params)
@@ -1057,10 +1053,9 @@ function pair_schwarz_bcs(sim::MultiDomainSimulation)
     end
 end
 
-function pair_bc(_::SolidMechanicsRegularBoundaryCondition, _::Int64)    
-end
+function pair_bc(_::SolidMechanicsRegularBoundaryCondition, _::Int64) end
 
-function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)    
+function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     if bc isa SolidMechanicsOverlapSchwarzBoundaryCondition
         return nothing
     end
@@ -1068,7 +1063,7 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     coupled_model = bc.coupled_subsim.model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
-        if coupled_bc_name == coupled_bc.name 
+        if coupled_bc_name == coupled_bc.name
             coupled_bc.is_dirichlet = !bc.is_dirichlet
             bc.coupled_bc_index = coupled_bc_index
             coupled_bc.coupled_bc_index = bc_index

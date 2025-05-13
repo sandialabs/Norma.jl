@@ -508,7 +508,7 @@ function get_rectangular_projection_matrix(
     dst_model::SolidMechanics,
     dst_bc::SolidMechanicsSchwarzBoundaryCondition,
     src_model::SolidMechanics,
-    src_bc::SolidMechanicsSchwarzBoundaryCondition, 
+    src_bc::SolidMechanicsSchwarzBoundaryCondition,
 )
     src_local_from_global_map = src_bc.local_from_global_map
     src_num_nodes = length(src_local_from_global_map)

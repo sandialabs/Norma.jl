@@ -54,7 +54,7 @@ using Symbolics
 
 function create_force(expression::String, mesh::ExodusDatabase, side_set_id::Int64, time::Float64)
     force_num = eval(Meta.parse(expression))
-    force_fun = eval(build_function(force_num, [t, x, y, z], expression=Val(false)))
+    force_fun = eval(build_function(force_num, [t, x, y, z]; expression=Val(false)))
     coords = read_coordinates(mesh)
     num_nodes = size(coords)[2]
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)

@@ -48,7 +48,7 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
     num_nodes_sides::Vector{Int64}
-    local_from_global_map::Dict{Int64, Int64}
+    local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
     coupled_subsim::Simulation
     coupled_bc_name::String
@@ -76,7 +76,7 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
     num_nodes_sides::Vector{Int64}
-    local_from_global_map::Dict{Int64, Int64}
+    local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
     coupled_subsim::Simulation
     coupled_bc_name::String

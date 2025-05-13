@@ -114,7 +114,7 @@ function CubicOpInfRom(params::Parameters)
         reference,
         false,
     )
-end 
+end
 
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
@@ -301,7 +301,7 @@ function avg_edge_length_tet_h(u::Vector{Float64}, v::Vector{Float64}, w::Vector
 end
 
 function characteristic_element_length_centroid(nodal_coordinates::Matrix{Float64})::Float64
-    centroid = sum(nodal_coordinates, dims=2) / size(nodal_coordinates, 2)
+    centroid = sum(nodal_coordinates; dims=2) / size(nodal_coordinates, 2)
     total = 0.0
     @inbounds for i in 1:size(nodal_coordinates, 2)
         δ = nodal_coordinates[:, i] - centroid
@@ -324,14 +324,17 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         minimum_block_characteristic_length = Inf
         block = blocks[block_index]
         block_id = block.id
-        element_block_conn = get_block_connectivity(input_mesh, block_id)
-        num_block_elements, num_element_nodes = size(element_block_conn)
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
         for block_element_index in 1:num_block_elements
-            conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-            node_indices = element_block_conn[conn_indices]
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_connectivity[connectivity_indices]
             element_curr_pos = model.current[:, node_indices]
             minimum_element_characteristic_length = characteristic_element_length_centroid(element_curr_pos)
-            minimum_block_characteristic_length = min(minimum_block_characteristic_length, minimum_element_characteristic_length)
+            minimum_block_characteristic_length = min(
+                minimum_block_characteristic_length, minimum_element_characteristic_length
+            )
         end
         block_stable_time_step = integrator.CFL * minimum_block_characteristic_length / wave_speed
         stable_time_step = min(stable_time_step, block_stable_time_step)
@@ -469,8 +472,8 @@ function count_coo_matrix_nnz(model::SolidMechanics)
     for block_index in 1:num_blocks
         block = blocks[block_index]
         block_id = block.id
-        element_block_conn = get_block_connectivity(mesh, block_id)
-        num_block_elements, num_element_nodes = size(element_block_conn)
+        element_block_connectivity = get_block_connectivity(mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
         total += num_block_elements * num_element_nodes * num_element_nodes * 9
     end
     return total
@@ -637,14 +640,14 @@ end
 
 function reset_element_threadlocal_arrays!(
     element_arrays_tl::SMElementThreadLocalArrays,
-    element_block_conn::Matrix{<:Integer},
+    element_block_connectivity::Matrix{<:Integer},
     block_element_index::Integer,
     flags::EvaluationFlags,
 )
     t = threadid()
-    num_element_nodes = size(element_block_conn, 2)
-    conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-    node_indices = element_block_conn[conn_indices]
+    num_element_nodes = size(element_block_connectivity, 2)
+    connectivity_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+    node_indices = element_block_connectivity[connectivity_indices]
     element_arrays_tl.dofs[t] = reshape(3 .* node_indices' .- [2, 1, 0], :)
     element_arrays_tl.energy[t] = 0.0
     fill!(element_arrays_tl.internal_force[t], 0.0)
@@ -760,12 +763,12 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         N, dN, ip_weights = isoparametric(element_type, num_points)
-        element_block_conn = get_block_connectivity(input_mesh, block_id)
-        num_block_elements, num_element_nodes = size(element_block_conn)
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
         element_arrays_tl = create_element_threadlocal_arrays(num_element_nodes, flags)
         @threads for block_element_index in 1:num_block_elements
             node_indices = reset_element_threadlocal_arrays!(
-                element_arrays_tl, element_block_conn, block_element_index, flags
+                element_arrays_tl, element_block_connectivity, block_element_index, flags
             )
             if flags.mesh_smoothing == true
                 element_reference_position = create_smooth_reference(

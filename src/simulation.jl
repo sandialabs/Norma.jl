@@ -206,7 +206,8 @@ end
 function create_bcs(sim::SingleDomainSimulation)
     boundary_conditions = create_bcs(sim.params)
     for bc in boundary_conditions
-        if bc isa SolidMechanicsInclinedDirichletBoundaryCondition || bc isa SolidMechanicsContactSchwarzBoundaryCondition
+        if bc isa SolidMechanicsInclinedDirichletBoundaryCondition ||
+            bc isa SolidMechanicsContactSchwarzBoundaryCondition
             sim.model.inclined_support = true
             break
         end
@@ -628,7 +629,8 @@ end
 
 function swap_swappable_bcs(sim::SingleDomainSimulation)
     for bc in sim.model.boundary_conditions
-        if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+        if bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
+            bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
@@ -771,14 +773,16 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     return overlap
 end
 
-function check_compression(mesh::ExodusDatabase, model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+function check_compression(
+    mesh::ExodusDatabase, model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition
+)
     compression_tol = 0.0
     compression = false
     nodal_forces = get_dst_force(bc)
     normals = compute_normal(mesh, bc.side_set_id, model)
     global_from_local_map = bc.global_from_local_map
     for local_node in eachindex(global_from_local_map)
-        local_range = (3*(local_node-1)+1):(3*local_node)
+        local_range = (3 * (local_node - 1) + 1):(3 * local_node)
         nodal_force = nodal_forces[local_range]
         normal = normals[:, local_node]
         normal_force = dot(nodal_force, normal)
@@ -795,7 +799,10 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if !(bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+            if !(
+                bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
+                bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+            )
                 continue
             end
             compute_dirichlet_projector(subsim.model, bc)
