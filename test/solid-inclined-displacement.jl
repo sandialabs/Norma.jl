@@ -391,8 +391,8 @@ end
 
         # These displacements are obtained from an identical problem with
         # BCs coincident with the lab basis
-        reference_displacements =
-            reference_displacements = [
+
+        reference_displacements = [
                 0.09999999999999998,
                 0.0,
                 0.0,

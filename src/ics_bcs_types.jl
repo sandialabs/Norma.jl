@@ -27,11 +27,10 @@ mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanic
     name::String
     node_set_id::Int64
     node_set_node_indices::Vector{Int64}
-    disp_expression::Vector{Num}
-    velo_expression::Vector{Num}
-    acce_expression::Vector{Num}
-    reference_normal::Vector{Num}
-    off_axis_free::Bool
+    disp_fun::Function
+    velo_fun::Function
+    acce_fun::Function
+    reference_funs::Vector{Function}
 end
 
 mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
