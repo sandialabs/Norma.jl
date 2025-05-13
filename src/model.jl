@@ -176,12 +176,12 @@ function SolidMechanics(params::Parameters)
     stored_energy = Vector{Vector{Float64}}()
     for block in blocks
         block_id = block.id
-        element_type_string, num_block_elems, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
+        element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
         block_stress = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
-        for _ in 1:num_block_elems
+        for _ in 1:num_block_elements
             element_stress = Vector{Vector{Float64}}()
             for _ in 1:num_points
                 push!(element_stress, zeros(6))
@@ -325,8 +325,8 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         block = blocks[block_index]
         block_id = block.id
         element_block_conn = get_block_connectivity(input_mesh, block_id)
-        num_block_elems, num_element_nodes = size(element_block_conn)
-        for block_element_index in 1:num_block_elems
+        num_block_elements, num_element_nodes = size(element_block_conn)
+        for block_element_index in 1:num_block_elements
             conn_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_conn[conn_indices]
             element_curr_pos = model.current[:, node_indices]
@@ -812,7 +812,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
 end
 
 function get_block_connectivity(mesh::ExodusDatabase, block_id::Integer)
-    _, num_elems, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(block_id))
-    conn = Exodus.read_block_connectivity(mesh, Int32(block_id), num_elems * num_nodes)
-    return reshape(conn, (num_elems, num_nodes))
+    _, num_elements, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(block_id))
+    conn = Exodus.read_block_connectivity(mesh, Int32(block_id), num_elements * num_nodes)
+    return reshape(conn, (num_elements, num_nodes))
 end

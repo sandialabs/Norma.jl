@@ -226,16 +226,16 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     blocks = Exodus.read_sets(output_mesh, Block)
     for (block, block_stress, block_stored_energy) in zip(blocks, stress, stored_energy)
         block_id = block.id
-        element_type_string, num_block_elems, _, _, _, _ = Exodus.read_block_parameters(output_mesh, block_id)
+        element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(output_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
-        stress_xx = zeros(num_block_elems, num_points)
-        stress_yy = zeros(num_block_elems, num_points)
-        stress_zz = zeros(num_block_elems, num_points)
-        stress_yz = zeros(num_block_elems, num_points)
-        stress_xz = zeros(num_block_elems, num_points)
-        stress_xy = zeros(num_block_elems, num_points)
-        for block_element_index in 1:num_block_elems
+        stress_xx = zeros(num_block_elements, num_points)
+        stress_yy = zeros(num_block_elements, num_points)
+        stress_zz = zeros(num_block_elements, num_points)
+        stress_yz = zeros(num_block_elements, num_points)
+        stress_xz = zeros(num_block_elements, num_points)
+        stress_xy = zeros(num_block_elements, num_points)
+        for block_element_index in 1:num_block_elements
             element_stress = block_stress[block_element_index]
             for point in 1:num_points
                 point_stress = element_stress[point]
