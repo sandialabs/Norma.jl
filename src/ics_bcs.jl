@@ -34,58 +34,35 @@ end
 function SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
-    if expression isa AbstractVector
-        if (length(expression) != 3)
-            norma_abort("Vectorized function must have 3 elements.")
-        end
-        if all(x -> x isa String, expression) == false
-            norma_abort("All functions must be strings (including zeros).")
-        end
-        disp_expression = [
-            eval(Meta.parse(expression[1])), eval(Meta.parse(expression[2])), eval(Meta.parse(expression[3]))
-        ]
-        off_axis_free = false
-    else
-        disp_expression = [eval(Meta.parse(expression)), eval(Meta.parse("0.0")), eval(Meta.parse("0.0"))]
-        off_axis_free = true
-    end
-
-    velo_expression = [
-        expand_derivatives(D(disp_expression[1])),
-        expand_derivatives(D(disp_expression[2])),
-        expand_derivatives(D(disp_expression[3])),
-    ]
-    acce_expression = [
-        expand_derivatives(D(velo_expression[1])),
-        expand_derivatives(D(velo_expression[2])),
-        expand_derivatives(D(velo_expression[3])),
-    ]
-
     node_set_id = node_set_id_from_name(node_set_name, input_mesh)
     node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
-    # expression is an arbitrary function of t, x, y, z in the input file
 
-    reference_normal = bc_params["normal vector"]
+    # Build symbolic expressions
+    disp_num = eval(Meta.parse(expression))
+    velo_num = expand_derivatives(D(disp_num))
+    acce_num = expand_derivatives(D(velo_num))
 
-    if all(x -> x isa String, reference_normal) == false
-        # We'll cast the normal into a string expression
-        reference_normal = [string(vc) for vc in reference_normal]
-    end
+    # Compile them into functions
+    disp_fun = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
+    velo_fun = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
+    acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
 
-    reference_normal = [
-        eval(Meta.parse(reference_normal[1])),
-        eval(Meta.parse(reference_normal[2])),
-        eval(Meta.parse(reference_normal[3])),
+    reference_normal_expression_vector = bc_params["normal vector"]
+    reference_normal_nums = [eval(Meta.parse(string(ref_exp))) for ref_exp in reference_normal_expression_vector]
+ 
+
+    reference_funs = [
+        eval(build_function(norm_num, [t, x, y, z]; expression=Val(false)))
+        for norm_num in reference_normal_nums
     ]
     return SolidMechanicsInclinedDirichletBoundaryCondition(
         node_set_name,
         node_set_id,
         node_set_node_indices,
-        disp_expression,
-        velo_expression,
-        acce_expression,
-        reference_normal,
-        off_axis_free,
+        disp_fun,
+        velo_fun,
+        acce_fun,
+        reference_funs
     )
 end
 
@@ -359,21 +336,19 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoundaryCondition)
     for node_index in bc.node_set_node_indices
-        values = Dict(
-            t => model.time,
-            x => model.reference[1, node_index],
-            y => model.reference[2, node_index],
-            z => model.reference[3, node_index],
+        txzy = (
+            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
         )
 
-        # Local basis from reference normal
-        normal = [extract_value(substitute(av, values)) for av in bc.reference_normal]
-        axis = normalize(SVector{3,Float64}(normal))
-        rotation_matrix = compute_rotation_matrix(axis)
+        disp_val = bc.disp_fun(txzy)
+        velo_val = bc.velo_fun(txzy)
+        acce_val = bc.acce_fun(txzy)
 
-        disp_val_loc = SVector{3,Float64}([extract_value(substitute(exp, values)) for exp in bc.disp_expression])
-        velo_val_loc = SVector{3,Float64}([extract_value(substitute(exp, values)) for exp in bc.velo_expression])
-        acce_val_loc = SVector{3,Float64}([extract_value(substitute(exp, values)) for exp in bc.acce_expression])
+        
+        # Local basis from reference normal
+        normal_vals = [norm_fun(txzy) for norm_fun in bc.reference_funs]
+        axis = normalize(SVector{3,Float64}(normal_vals))
+        rotation_matrix = compute_rotation_matrix(axis)
 
         original_disp = model.current[:, node_index] - model.reference[:, node_index]
         original_velocity = model.velocity[:, node_index]
@@ -383,23 +358,13 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoun
         local_original_velocity = MVector(rotation_matrix * original_velocity)
         local_original_acceleration = MVector(rotation_matrix * original_acceleration)
 
-        if bc.off_axis_free == true
-            model.free_dofs[3 * node_index - 2] = false
-            model.free_dofs[3 * node_index - 1] = true
-            model.free_dofs[3 * node_index] = true
+        model.free_dofs[3 * node_index - 2] = false
+        model.free_dofs[3 * node_index - 1] = true
+        model.free_dofs[3 * node_index] = true
 
-            local_original_displacement[1] = disp_val_loc[1]
-            local_original_velocity[1] = velo_val_loc[1]
-            local_original_acceleration[1] = acce_val_loc[1]
-        else
-            model.free_dofs[3 * node_index - 2] = false
-            model.free_dofs[3 * node_index - 1] = false
-            model.free_dofs[3 * node_index] = false
-
-            local_original_displacement .= disp_val_loc
-            local_original_velocity .= velo_val_loc
-            local_original_acceleration .= acce_val_loc
-        end
+        local_original_displacement[1] = disp_val
+        local_original_velocity[1] = velo_val
+        local_original_acceleration[1] = acce_val
 
         model.velocity[:, node_index] = rotation_matrix' * SVector(local_original_velocity)
         model.acceleration[:, node_index] = rotation_matrix' * SVector(local_original_acceleration)
