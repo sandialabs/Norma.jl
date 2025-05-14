@@ -397,7 +397,7 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        contact_pointwise_dbc(model, bc)
+        contact_variational_dbc(model, bc)
     else
         contact_variational_nbc(model, bc)
     end
@@ -634,6 +634,44 @@ function contact_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsContactS
         global_base = 3 * (node_index - 1) # Block index in global stiffness
         model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
             bc.rotation_matrix
+    end
+end
+
+function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+    nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
+    global_from_local_map = bc.global_from_local_map
+    normals = compute_normal(model.mesh, bc.side_set_id, model)
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        normal = normals[:, i_local]
+
+        @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
+
+        
+
+        if bc.friction_type == 0
+            @inbounds model.velocity[:, i_global] = transfer_normal_component(
+                nodal_velo[:, i_local], model.velocity[:, i_global], normal
+            )
+            @inbounds model.acceleration[:, i_global] = transfer_normal_component(
+                nodal_acce[:, i_local], model.acceleration[:, i_global], normal
+            )
+        elseif bc.friction_type == 1
+            @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
+            @inbounds model.acceleration[:, i_global] = nodal_velo[:, i_local]
+        else
+            norma_abort("Unknown or not implemented friction type.")
+        end
+
+        model.free_dofs[[3 * i_global - 2]] .= false
+        model.free_dofs[[3 * i_global - 1]] .= true
+        model.free_dofs[[3 * i_global]] .= true
+
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+
+        # Update the rotation matrix
+        axis = SVector{3,Float64}(-normalize(normal))
+        bc.rotation_matrix = compute_rotation_matrix(axis)
+        model.global_transform[global_range, global_range] = bc.rotation_matrix
     end
 end
 
