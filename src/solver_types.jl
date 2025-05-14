@@ -26,6 +26,8 @@ mutable struct HessianMinimizer <: Minimizer
     relative_tolerance::Float64
     absolute_error::Float64
     relative_error::Float64
+    linear_solver_absolute_tolerance::Float64
+    linear_solver_relative_tolerance::Float64
     value::Float64
     gradient::Vector{Float64}
     hessian::SparseMatrixCSC{Float64,Int64}

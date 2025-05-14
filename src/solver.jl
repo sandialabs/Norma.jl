@@ -15,6 +15,11 @@ function HessianMinimizer(params::Parameters, model::Model)
     maximum_iterations = solver_params["maximum iterations"]
     absolute_tolerance = solver_params["absolute tolerance"]
     relative_tolerance = solver_params["relative tolerance"]
+    # See documentation for IterativeSolvers.cg and others for this
+    default_abs_tol = 0.0
+    default_rel_tol = sqrt(eps(Float64))
+    linear_solver_absolute_tolerance = get(solver_params, "linear solver absolute tolerance", default_abs_tol)
+    linear_solver_relative_tolerance = get(solver_params, "linear solver relative tolerance", default_rel_tol)
     absolute_error = 0.0
     relative_error = 0.0
     value = 0.0
@@ -37,6 +42,8 @@ function HessianMinimizer(params::Parameters, model::Model)
         relative_tolerance,
         absolute_error,
         relative_error,
+        linear_solver_absolute_tolerance,
+        linear_solver_relative_tolerance,
         value,
         gradient,
         hessian,
@@ -617,18 +624,18 @@ function backtrack_line_search(
     return step
 end
 
-function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, reltol::Float64)
-    return cg(A, b; reltol=reltol)
+function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, atol::Float64, rtol::Float64)
+    return cg(A, b; abstol=atol, reltol=rtol)
 end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    step = -solve_linear(solver.hessian[free, free], solver.gradient[free], solver.relative_tolerance)
-    if solver.use_line_search == true
-        return backtrack_line_search(integrator, solver, model, step)
-    else
-        return step
-    end
+    A = solver.hessian[free, free]
+    b = solver.gradient[free]
+    atol = solver.linear_solver_absolute_tolerance
+    rtol = solver.linear_solver_relative_tolerance
+    step = -solve_linear(A, b, atol, rtol)
+    return solver.use_line_search ? backtrack_line_search(integrator, solver, model, step) : step
 end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::MatrixFree, _::SteepestDescentStep)
@@ -638,7 +645,9 @@ function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver:
 end
 
 function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
-    return -solve_linear(solver.hessian, solver.gradient, solver.relative_tolerance)
+    atol = solver.linear_solver_absolute_tolerance
+    rtol = solver.linear_solver_relative_tolerance
+    return -solve_linear(solver.hessian, solver.gradient, atol, rtol)
 end
 
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)

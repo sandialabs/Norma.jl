@@ -37,5 +37,7 @@ solver:
   step: full Newton
   minimum iterations: 1
   maximum iterations: 16
-  relative tolerance: 1.0e-12
+  relative tolerance: 1.0e-14
   absolute tolerance: 1.0e-08
+  linear solver relative tolerance: 1.0e-14
+  linear solver absolute tolerance: 1.0e-08

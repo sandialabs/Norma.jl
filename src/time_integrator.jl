@@ -283,9 +283,9 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     integrator.stored_energy = model.strain_energy
-    integrator.acceleration[free] = solve_linear(
-        model.mass[free, free], inertial_force[free], solver.relative_tolerance
-    )
+    atol = solver.linear_solver_absolute_tolerance
+    rtol = solver.linear_solver_relative_tolerance
+    integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
     copy_solution_source_targets(integrator, solver, model)
     return nothing
 end

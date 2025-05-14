@@ -49,20 +49,12 @@ function SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh::ExodusData
 
     reference_normal_expression_vector = bc_params["normal vector"]
     reference_normal_nums = [eval(Meta.parse(string(ref_exp))) for ref_exp in reference_normal_expression_vector]
- 
 
     reference_funs = [
-        eval(build_function(norm_num, [t, x, y, z]; expression=Val(false)))
-        for norm_num in reference_normal_nums
+        eval(build_function(norm_num, [t, x, y, z]; expression=Val(false))) for norm_num in reference_normal_nums
     ]
     return SolidMechanicsInclinedDirichletBoundaryCondition(
-        node_set_name,
-        node_set_id,
-        node_set_node_indices,
-        disp_fun,
-        velo_fun,
-        acce_fun,
-        reference_funs
+        node_set_name, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun, reference_funs
     )
 end
 
@@ -344,7 +336,6 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoun
         velo_val = bc.velo_fun(txzy)
         acce_val = bc.acce_fun(txzy)
 
-        
         # Local basis from reference normal
         normal_vals = [norm_fun(txzy) for norm_fun in bc.reference_funs]
         axis = normalize(SVector{3,Float64}(normal_vals))
