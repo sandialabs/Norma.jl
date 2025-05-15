@@ -648,12 +648,13 @@ function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContac
         local_range = (3 * (i_local - 1) + 1):(3 * i_local)
         normal = normals[:, i_local]
         node_force = nodal_force[local_range]
-        if friction_type == 1
+        if friction_type == 1 #TODO: verify
             target = model.boundary_force[global_range]
             eff_node_force = transfer_normal_component(node_force, target, normal)
         else
             eff_node_force = node_force
         end
+        # TODO: eff_node_force is not being used, verify
         @inbounds model.boundary_force[global_range] += node_force
     end
 end
@@ -661,47 +662,89 @@ end
 
 function contact_variational_ddnnbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     use_previous = true
-    # Apply Dirichlet BC, do not constrain
+    if bc.friction_type != 0
+        norma_abort("DDNN only implemented for frictionless contact.")
+    end
+    
     other_nodal_curr, other_nodal_velo, other_nodal_acce = get_dst_curr_velo_acce(bc, use_previous)
     this_nodal_curr, this_nodal_velo, this_nodal_acce = model.previous_current_schwarz, 
                             model.previous_velocity_schwarz, model.previous_acceleration_schwarz
 
+    nodal_force = get_dst_force(bc, use_previous)
+
     global_from_local_map = bc.global_from_local_map
     normals = compute_normal(model.mesh, bc.side_set_id, model)
 
+    # Compile projected stiffnesses
+    other_stiffnesses = get_dst_stiffness(bc, -normals)
+
+    # Apply Dirichlet BC, do not constrain
     for (i_local, i_global) in enumerate(global_from_local_map)
         this_normal = normals[:, i_local]
         other_normal = -this_normal
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
 
-        this_x = this_nodal_curr[:, i_local]
-        this_v = this_nodal_velo[:, i_local]
-        this_a = this_nodal_acce[:, i_local]
+        this_x = this_nodal_curr[:, i_global]
+        this_v = this_nodal_velo[:, i_global]
+        this_a = this_nodal_acce[:, i_global]
         other_x = other_nodal_curr[:, i_local]
         other_v = other_nodal_velo[:, i_local]
         other_a = other_nodal_acce[:, i_local]
 
+        # Calculate this nodal stiffness
+        other_nodal_stiffness = other_stiffnesses[i_local]
+        this_nodal_stiffness = this_normal' * model.stiffness[global_range, global_range] * this_normal
+
+        alpha_stiff = this_nodal_stiffness  / 
+            (this_nodal_stiffness + 
+            other_nodal_stiffness) 
+        beta_stiff = 1 - alpha_stiff
+
+        println("Alpha and Beta Stiffnesses: ", alpha_stiff, " ", beta_stiff)
+
+        alpha_mass = 0.5
+        beta_mass = 1 - alpha_mass
+
+        new_point = alpha_stiff * this_x + beta_stiff * other_x
+
+        println("This and other x: ", this_x, " ", other_x)
+        println("New Point: ", new_point)
+        new_velocity = alpha_mass * this_v + beta_mass * other_v
+        new_acceleration = alpha_mass * this_a + beta_mass * other_a
+        #new_acceleration .= 0
 
 
-        if bc.friction_type != 0
-            norma_abort("DDNN only implemented for frictionless contact.")
-        else
-            @inbounds model.current[:, i_global] = transfer_normal_component(
-                nodal_curr[:, i_local], model.current[:, i_global], normal
-            )
-            @inbounds model.velocity[:, i_global] = transfer_normal_component(
-                nodal_velo[:, i_local], model.velocity[:, i_global], normal
-            )
-            @inbounds model.acceleration[:, i_global] = transfer_normal_component(
-                nodal_acce[:, i_local], model.acceleration[:, i_global], normal
-            )
-        end
+        @inbounds model.current[:, i_global] = transfer_normal_component(
+            new_point, model.current[:, i_global], this_normal
+        )
+        @inbounds model.velocity[:, i_global] = transfer_normal_component(
+            new_velocity, model.velocity[:, i_global], this_normal
+        )
+        @inbounds model.acceleration[:, i_global] = transfer_normal_component(
+            new_acceleration, model.acceleration[:, i_global], this_normal
+        )
+
         # Update the rotation matrix
         axis = SVector{3,Float64}(-normalize(this_normal))
         bc.rotation_matrix = compute_rotation_matrix(axis)
         model.global_transform[global_range, global_range] = bc.rotation_matrix
+
+        # Do not fix the any DOF
         model.free_dofs[global_range] .= true
+
+
+        # Apply Neumann BC
+        node_force = nodal_force[local_range]
+        target = model.boundary_force[global_range]
+        eff_node_force = transfer_normal_component(node_force, target, this_normal)
+        println("Applying the force : ", eff_node_force)
+        println("Where the proposed force is : ", node_force, ", current boundary force is ", target, " and the current internal force is ", model.internal_force[global_range])
+        @inbounds model.boundary_force[global_range] += eff_node_force
     end
+
+   
+
 end
 
 function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
@@ -734,6 +777,18 @@ function extract_local_vector(bc::SolidMechanicsSchwarzBoundaryCondition, global
     return extract_local_vector(global_vector, global_from_local_map, dim)
 end
 
+function extract_local_sparse_matrix(bc::SolidMechanicsSchwarzBoundaryCondition, global_matrix::SparseArrays.SparseMatrixCSC{Float64, Int64})
+    global_from_local_map = bc.global_from_local_map
+    num_local_nodes = length(global_from_local_map)
+    local_matrix = Matrix{Float64}(undef, 3 * num_local_nodes, 3)
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
+        @inbounds local_matrix[local_range, :] = global_matrix[global_range, global_range]
+    end
+    return local_matrix, num_local_nodes
+end
+
 function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_model = dst_bc.coupled_subsim.model
     src_bc_index = dst_bc.coupled_bc_index
@@ -754,12 +809,16 @@ function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMec
     return nothing
 end
 
-function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
+function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition, use_previous::Bool=false)
     src_sim = dst_bc.coupled_subsim
     src_model = src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
-    src_global_force = src_model.internal_force
+    if use_previous == true
+        src_global_force = src_model.previous_internal_force_schwarz
+    else 
+        src_global_force = src_model.internal_force
+    end
     src_force = -extract_local_vector(src_bc, src_global_force, 3)
     neumann_projector = dst_bc.neumann_projector
     num_dst_nodes = size(neumann_projector, 1)
@@ -770,7 +829,7 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     return dst_force
 end
 
-function get_dst_stiffness(dst_bc::SolidMechanicsSchwarzBoundaryCondition, normal::Vector{Float64})
+function get_dst_stiffness(dst_bc::SolidMechanicsSchwarzBoundaryCondition, normal_projection::Matrix{Float64})
     if dst_bc.coupled_subsim.model.compute_stiffness == false
         norma_abort("DDNN not implemented for simulations with no full stiffness matrix.")
     end
@@ -780,13 +839,16 @@ function get_dst_stiffness(dst_bc::SolidMechanicsSchwarzBoundaryCondition, norma
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     src_global_stiffness = src_model.stiffness
-    src_stiffness = -extract_local_vector(src_bc, src_global_stiffness, 3)
+    # src_stiffness will be a collection of 3x3 matrix equal to the number of src_bc nodes
+    src_stiffness, number_of_nodes = extract_local_sparse_matrix(src_bc, src_global_stiffness)
+    scalar_stiffness = zeros(number_of_nodes, 1)
+    for i_local in range(1,number_of_nodes)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
+        scalar_stiffness[i_local] = normal_projection[:, i_local]' * src_stiffness[local_range, :] * normal_projection[:, i_local]
+    end
+
     neumann_projector = dst_bc.neumann_projector
-    num_dst_nodes = size(neumann_projector, 1)
-    dst_stiffness = zeros(3 * num_dst_nodes)
-    dst_stiffness[1:3:end] = neumann_projector * src_stiffness[1:3:end]
-    dst_stiffness[2:3:end] = neumann_projector * src_stiffness[2:3:end]
-    dst_stiffness[3:3:end] = neumann_projector * src_stiffness[3:3:end]
+    dst_stiffness = neumann_projector * scalar_stiffness
     return dst_stiffness
 end
 
@@ -802,9 +864,9 @@ function get_dst_curr_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition, 
     src_acce = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
         if use_previous == true
-            src_curr[:, i_local] = src_model.previous_current[:, i_global]
-            src_velo[:, i_local] = src_model.previous_velocity[:, i_global]
-            src_acce[:, i_local] = src_model.previous_acceleration[:, i_global]
+            src_curr[:, i_local] = src_model.previous_current_schwarz[:, i_global]
+            src_velo[:, i_local] = src_model.previous_velocity_schwarz[:, i_global]
+            src_acce[:, i_local] = src_model.previous_acceleration_schwarz[:, i_global]
         else
             src_curr[:, i_local] = src_model.current[:, i_global]
             src_velo[:, i_local] = src_model.velocity[:, i_global]
