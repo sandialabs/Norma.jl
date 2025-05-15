@@ -656,13 +656,13 @@ function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContac
         local_range = (3 * (i_local - 1) + 1):(3 * i_local)
         normal = normals[:, i_local]
         node_force = nodal_force[local_range]
-        if friction_type == 1
+        if friction_type == 0
             target = model.boundary_force[global_range]
             eff_node_force = transfer_normal_component(node_force, target, normal)
         else
             eff_node_force = node_force
         end
-        @inbounds model.boundary_force[global_range] += node_force
+        @inbounds model.boundary_force[global_range] += eff_node_force
     end
 end
 
