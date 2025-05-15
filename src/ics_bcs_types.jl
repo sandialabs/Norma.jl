@@ -59,6 +59,7 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     rotation_matrix::Matrix{Float64}
     active_contact::Bool
     friction_type::Int64
+    use_DDNN::Bool
 end
 
 mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition

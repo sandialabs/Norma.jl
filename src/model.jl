@@ -125,6 +125,9 @@ function SolidMechanics(params::Parameters)
     current = Matrix{Float64}(undef, 3, num_nodes)
     velocity = Matrix{Float64}(undef, 3, num_nodes)
     acceleration = Matrix{Float64}(undef, 3, num_nodes)
+    previous_current_schwarz = Matrix{Float64}(undef, 3, num_nodes)
+    previous_velocity_schwarz = Matrix{Float64}(undef, 3, num_nodes)
+    previous_acceleration_schwarz = Matrix{Float64}(undef, 3, num_nodes)
     for node in 1:num_nodes
         reference[:, node] = coords[:, node]
         current[:, node] = coords[:, node]
@@ -169,6 +172,7 @@ function SolidMechanics(params::Parameters)
     time = 0.0
     failed = false
     internal_force = zeros(3 * num_nodes)
+    previous_internal_force_schwarz = zeros(3 * num_nodes) 
     boundary_force = zeros(3 * num_nodes)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
@@ -239,6 +243,10 @@ function SolidMechanics(params::Parameters)
         inclined_support,
         global_transform,
         kinematics,
+        previous_current_schwarz,
+        previous_velocity_schwarz,
+        previous_acceleration_schwarz,
+        previous_internal_force_schwarz,
     )
 end
 
