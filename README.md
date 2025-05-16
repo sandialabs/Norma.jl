@@ -22,7 +22,9 @@ its own time step. (~100,000 elements)*
 ![Norma Sphere Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/sphere.gif)
 *Large-deformation vibration of a soft rubber ball. The animation
 plays in real time (100 frames per second) to match simulation
-time. (~300,000 elements)* ---
+time. (~300,000 elements)*
+
+---
 
 ## Quick Start
 
