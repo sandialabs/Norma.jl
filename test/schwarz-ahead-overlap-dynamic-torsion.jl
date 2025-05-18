@@ -49,14 +49,14 @@ using YAML
     println("avg_stress_torsion1 = ", avg_stress_torsion1, "\n")
     println("avg_stress_torsion2 = ", avg_stress_torsion2, "\n")
 
-    @test min_disp_x_torsion1 ≈ 0.0 atol = 1e-8
-    @test min_disp_y_torsion1 ≈ 0.0 atol = 1e-8
-    @test max_disp_z_torsion1 ≈ 0.0 atol = 1e-8
-    @test min_disp_x_torsion2 ≈ 0.0 atol = 1e-8
-    @test min_disp_y_torsion2 ≈ 0.0 atol = 1e-8
-    @test max_disp_z_torsion2 ≈ 0.0 atol = 1e-8
-    @test avg_stress_torsion1 ≈ [1.4889709835472307e-8 6.412694449530423e-9 3.5272710678153343e-10 -2.9469083079595386e-8 1.4680773495310078e-8 -1.0532666845550373e-9] atol = 1e-6
-    @test avg_stress_torsion2 ≈ [-5.669538912417606e-7 -5.865215720508659e-7 -4.190166732106221e-7 -6.759932128000284e-8 1.5515847522107731e-7 -1.8285069934175328e-7] atol = 1e-6
+    @test min_disp_x_torsion1 ≈ 0.0 atol = 1e-12
+    @test min_disp_y_torsion1 ≈ 0.0 atol = 1e-12
+    @test max_disp_z_torsion1 ≈ 0.0 atol = 1e-12
+    @test min_disp_x_torsion2 ≈ 0.0 atol = 1e-12
+    @test min_disp_y_torsion2 ≈ 0.0 atol = 1e-12
+    @test max_disp_z_torsion2 ≈ 0.0 atol = 1e-12
+    @test avg_stress_torsion1 ≈ [1.4889709835472307e-8 6.412694449530423e-9 3.5272710678153343e-10 -2.9469083079595386e-8 1.4680773495310078e-8 -1.0532666845550373e-9] atol = 1e-12
+    @test avg_stress_torsion2 ≈ [-5.669538912417606e-7 -5.865215720508659e-7 -4.190166732106221e-7 -6.759932128000284e-8 1.5515847522107731e-7 -1.8285069934175328e-7] atol = 1e-12
 
 end
 
