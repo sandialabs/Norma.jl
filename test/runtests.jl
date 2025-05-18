@@ -38,6 +38,7 @@ const all_test_files = [
     "cubic-opinf-schwarz-overlap-cuboid-hex8.jl",
     "adaptive-time-stepping.jl",
     "schwarz-ahead-overlap-dynamic-notched-cylinder.jl",
+    "schwarz-ahead-overlap-dynamic-laser-weld.jl", 
     # Must go last due to FPE traps
     "utils.jl",
 ]
