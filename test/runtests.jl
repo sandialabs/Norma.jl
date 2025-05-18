@@ -40,6 +40,7 @@ const all_test_files = [
     "schwarz-ahead-overlap-dynamic-notched-cylinder.jl",
     "schwarz-ahead-overlap-dynamic-laser-weld.jl", 
     "schwarz-ahead-overlap-dynamic-torsion.jl", 
+    "schwarz-ahead-overlap-dynamic-plate.jl", 
     # Must go last due to FPE traps
     "utils.jl",
 ]
