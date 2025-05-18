@@ -35,6 +35,7 @@ boundary conditions:
       source: notched-cylinder-1
       source side set: +Z_bottomSS
       source block: fine
+      search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer
   step: full Newton
