@@ -39,6 +39,7 @@ const all_test_files = [
     "adaptive-time-stepping.jl",
     "schwarz-ahead-overlap-dynamic-notched-cylinder.jl",
     "schwarz-ahead-overlap-dynamic-laser-weld.jl", 
+    "schwarz-ahead-overlap-dynamic-torsion.jl", 
     # Must go last due to FPE traps
     "utils.jl",
 ]
