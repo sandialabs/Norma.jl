@@ -14,35 +14,35 @@ include("helpers.jl")
 
 # List of all test files (ordered)
 const all_test_files = [
-    "minitensor.jl",
-    "interpolation.jl",
-    "constitutive.jl",
-    "single-static-solid-cube.jl",
-    "single-static-solid-neumann-bc.jl",
-    "single-implicit-dynamic-solid-cube.jl",
-    "single-implicit-dynamic-solid-sho.jl",
-    "single-implicit-dynamic-solid-clamped.jl",
-    "single-explicit-dynamic-solid-cube.jl",
-    "single-explicit-dynamic-solid-sho.jl",
-    "single-explicit-dynamic-solid-clamped.jl",
-    "tet4-static-solid-cube.jl",
-    "tet10-static-solid-cube.jl",
-    "schwarz-overlap-static-cuboid-hex8.jl",
-    "schwarz-nonoverlap-static-cuboid-hex8.jl",
-    "transfer-operators.jl",
-    "schwarz-contact-static-cubes.jl",
-    "schwarz-contact-dynamic-cubes.jl",
-    "solid-inclined-displacement.jl",
-    "opinf-schwarz-overlap-cuboid-hex8.jl",
-    "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
-    "cubic-opinf-schwarz-overlap-cuboid-hex8.jl",
-    "adaptive-time-stepping.jl",
-    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl",
-    "schwarz-ahead-overlap-dynamic-laser-weld.jl", 
-    "schwarz-ahead-overlap-dynamic-torsion.jl", 
-    "schwarz-ahead-overlap-dynamic-plate.jl", 
+    "minitensor.jl", #1
+    "interpolation.jl", #2
+    "constitutive.jl", #3
+    "single-static-solid-cube.jl", #4
+    "single-static-solid-neumann-bc.jl", #5
+    "single-implicit-dynamic-solid-cube.jl", #6
+    "single-implicit-dynamic-solid-sho.jl", #7
+    "single-implicit-dynamic-solid-clamped.jl", #8
+    "single-explicit-dynamic-solid-cube.jl", #9
+    "single-explicit-dynamic-solid-sho.jl", #10
+    "single-explicit-dynamic-solid-clamped.jl", #11
+    "tet4-static-solid-cube.jl", #12
+    "tet10-static-solid-cube.jl", #13
+    "schwarz-overlap-static-cuboid-hex8.jl", #14
+    "schwarz-nonoverlap-static-cuboid-hex8.jl", #15
+    "transfer-operators.jl", #16
+    "schwarz-contact-static-cubes.jl", #17
+    "schwarz-contact-dynamic-cubes.jl", #18
+    "solid-inclined-displacement.jl", #19
+    "opinf-schwarz-overlap-cuboid-hex8.jl", #20
+    "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl", #21
+    "cubic-opinf-schwarz-overlap-cuboid-hex8.jl", #22
+    "adaptive-time-stepping.jl", #23
+    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl", #24
+    "schwarz-ahead-overlap-dynamic-laser-weld.jl", #25
+    "schwarz-ahead-overlap-dynamic-torsion.jl", #26
+    "schwarz-ahead-overlap-dynamic-plate.jl", #27
     # Must go last due to FPE traps
-    "utils.jl",
+    "utils.jl", #28
 ]
 
 # Enumerated test files
