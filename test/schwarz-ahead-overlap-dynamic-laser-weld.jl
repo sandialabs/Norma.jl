@@ -25,7 +25,7 @@ using YAML
     model_holder0 = subsims[1].model
     model_gauge = subsims[2].model
     model_holder1 = subsims[3].model
-
+    
     rm("laser-weld.yaml")
     rm("holder-0.yaml")
     rm("holder-1.yaml")
@@ -62,6 +62,7 @@ using YAML
     @test avg_stress_holder0 ≈ [56175.3792091251 1.6118582225707504e6 56432.31379334061 -2152.420453309265 3.3326750781270676e-9 1.2065091337850238e-8] atol = 1e1
     @test avg_stress_gauge ≈ [12641.620130337215 1.6499174233606872e6 28966.287163254172 -179.1767306388687 -1.3967327005127079e-9 -1.079985106175825e-9] atol = 1e1
     @test avg_stress_holder1 ≈ [56175.5776544634 1.611857519176203e6 56430.374623511234 2138.110887978947 5.693916591553716e-9 -8.169333644521733e-8] atol = 1e1
+    @test sim.controller.schwarz_iters ≈ [23, 27, 29, 30, 31] atol = 0  
 
 end
 
