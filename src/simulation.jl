@@ -131,7 +131,8 @@ function SolidMultiDomainTimeController(params::Parameters)
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
-    contact_hist = Vector{Bool}()
+    contact_hist = Vector{Bool}[]
+    schwarz_iters = zeros(Int64, num_stops-1)
 
     csv_interval = get(params, "CSV output interval", 0)
     if csv_interval > 0
@@ -178,6 +179,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         active_contact,
         contact_hist,
         convergence_hist,
+        schwarz_iters
     )
 end
 
@@ -317,6 +319,7 @@ end
 function advance_control(sim::MultiDomainSimulation)
     if sim.controller.schwarz_contact == false
         schwarz(sim)
+        println("IKT schwarz_iters = ", sim.controller.schwarz_iters)
         return nothing
     end
     save_stop_state(sim)
@@ -521,6 +524,7 @@ function schwarz(sim::MultiDomainSimulation)
         if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
             norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
+            sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
             break
         end
         iteration_number += 1

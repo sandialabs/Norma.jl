@@ -55,6 +55,7 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     active_contact::Bool
     contact_hist::Vector{Bool}
     convergence_hist::Array{Float64}
+    schwarz_iters::Vector{Int64}
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController
