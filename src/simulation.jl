@@ -330,7 +330,7 @@ function advance_control(sim::MultiDomainSimulation)
 end
 
 function apply_ics(sim::SingleDomainSimulation)
-    apply_ics(sim.params, sim.model)
+    apply_ics(sim.params, sim.model, sim.integrator, sim.solver)
     return nothing
 end
 
