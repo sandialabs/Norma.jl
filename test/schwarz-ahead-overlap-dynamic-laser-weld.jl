@@ -49,18 +49,6 @@ using YAML
     avg_stress_holder0 = average_components(model_holder0.stress)
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
-    println("min_disp_x_holder0 = ", min_disp_x_holder0, "\n")
-    println("min_disp_y_holder0 = ", min_disp_y_holder0, "\n")
-    println("max_disp_z_holder0 = ", max_disp_z_holder0, "\n")
-    println("min_disp_x_gauge = ", min_disp_x_gauge, "\n")
-    println("min_disp_y_gauge = ", min_disp_y_gauge, "\n")
-    println("min_disp_z_gauge = ", min_disp_z_gauge, "\n")
-    println("min_disp_x_holder1 = ", min_disp_x_holder1, "\n")
-    println("min_disp_y_holder1 = ", min_disp_y_holder1, "\n")
-    println("max_disp_z_holder1 = ", max_disp_z_holder1, "\n")
-    println("avg_stress_holder0 = ", avg_stress_holder0, "\n")
-    println("avg_stress_gauge = ", avg_stress_gauge, "\n")
-    println("avg_stress_holder1 = ", avg_stress_holder1, "\n")
 
     @test min_disp_x_holder0 ≈ -3.0733236697749744e-5 atol = 1e-6
     @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-6

@@ -319,7 +319,6 @@ end
 function advance_control(sim::MultiDomainSimulation)
     if sim.controller.schwarz_contact == false
         schwarz(sim)
-        println("IKT schwarz_iters = ", sim.controller.schwarz_iters)
         return nothing
     end
     save_stop_state(sim)
