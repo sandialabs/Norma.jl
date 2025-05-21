@@ -171,7 +171,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         schwarz_contact,
         active_contact,
         contact_hist,
-        schwarz_iters
+        schwarz_iters,
     )
 end
 
