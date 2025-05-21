@@ -131,15 +131,9 @@ function SolidMultiDomainTimeController(params::Parameters)
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
-    contact_hist = Vector{Bool}()
+    contact_hist = Vector{Bool}[]
+    schwarz_iters = zeros(Int64, num_stops-1)
 
-    csv_interval = get(params, "CSV output interval", 0)
-    if csv_interval > 0
-        iterations = params["maximum iterations"]
-        convergence_hist = zeros(Float64, iterations, 2)
-    else
-        convergence_hist = Array{Float64}(undef, 0, 0)
-    end
     return SolidMultiDomainTimeController(
         minimum_iterations,
         maximum_iterations,
@@ -177,7 +171,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         schwarz_contact,
         active_contact,
         contact_hist,
-        convergence_hist,
+        schwarz_iters,
     )
 end
 
@@ -336,7 +330,7 @@ function advance_control(sim::MultiDomainSimulation)
 end
 
 function apply_ics(sim::SingleDomainSimulation)
-    apply_ics(sim.params, sim.model)
+    apply_ics(sim.params, sim.model, sim.integrator, sim.solver)
     return nothing
 end
 
@@ -490,21 +484,12 @@ function schwarz(sim::MultiDomainSimulation)
     reset_histories(sim)
     swap_swappable_bcs(sim)
 
-    csv_interval = get(sim.params, "CSV output interval", 0)
-    if csv_interval > 0
-        sim.controller.convergence_hist .= 0.0
-    end
-
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
-        if csv_interval > 0
-            sim.controller.convergence_hist[iteration_number, 1] = ΔU
-            sim.controller.convergence_hist[iteration_number, 2] = Δu
-        end
         raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
         status = colored_status(raw_status)
         norma_logf(
@@ -521,6 +506,7 @@ function schwarz(sim::MultiDomainSimulation)
         if stop_schwarz(sim, iteration_number + 1) == true
             plural = iteration_number == 1 ? "" : "s"
             norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
+            sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
             break
         end
         iteration_number += 1
@@ -862,7 +848,5 @@ function write_schwarz_params_csv(sim::MultiDomainSimulation)
         writedlm(contact_filename, sim.controller.active_contact, '\n')
         iters_filename = "iterations" * index_string * ".csv"
         writedlm(iters_filename, sim.controller.iteration_number, '\n')
-        conv_filename = "convergence_values" * index_string * ".csv"
-        writedlm(conv_filename, sim.controller.convergence_hist, '\n')
     end
 end

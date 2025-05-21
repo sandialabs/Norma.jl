@@ -49,18 +49,6 @@ using YAML
     avg_stress_holder0 = average_components(model_holder0.stress)
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
-    println("min_disp_x_holder0 = ", min_disp_x_holder0, "\n")
-    println("min_disp_y_holder0 = ", min_disp_y_holder0, "\n")
-    println("max_disp_z_holder0 = ", max_disp_z_holder0, "\n")
-    println("min_disp_x_gauge = ", min_disp_x_gauge, "\n")
-    println("min_disp_y_gauge = ", min_disp_y_gauge, "\n")
-    println("min_disp_z_gauge = ", min_disp_z_gauge, "\n")
-    println("min_disp_x_holder1 = ", min_disp_x_holder1, "\n")
-    println("min_disp_y_holder1 = ", min_disp_y_holder1, "\n")
-    println("max_disp_z_holder1 = ", max_disp_z_holder1, "\n")
-    println("avg_stress_holder0 = ", avg_stress_holder0, "\n")
-    println("avg_stress_gauge = ", avg_stress_gauge, "\n")
-    println("avg_stress_holder1 = ", avg_stress_holder1, "\n")
 
     @test min_disp_x_holder0 ≈ -3.0733236697749744e-5 atol = 1e-6
     @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-6
@@ -71,9 +59,14 @@ using YAML
     @test min_disp_x_holder1 ≈ -3.0734132231508005e-5 atol = 1e-6
     @test min_disp_y_holder1 ≈ 0.00025514717233354745 atol = 1e-6
     @test max_disp_z_holder1 ≈ 0.0002059887389275507 atol = 1e-6
-    @test avg_stress_holder0 ≈ [56175.3792091251 1.6118582225707504e6 56432.31379334061 -2152.420453309265 3.3326750781270676e-9 1.2065091337850238e-8] atol = 1e1
-    @test avg_stress_gauge ≈ [12641.620130337215 1.6499174233606872e6 28966.287163254172 -179.1767306388687 -1.3967327005127079e-9 -1.079985106175825e-9] atol = 1e1
-    @test avg_stress_holder1 ≈ [56175.5776544634 1.611857519176203e6 56430.374623511234 2138.110887978947 5.693916591553716e-9 -8.169333644521733e-8] atol = 1e1
-
+    @test avg_stress_holder0 ≈
+        [56175.3792091251 1.6118582225707504e6 56432.31379334061 -2152.420453309265 3.3326750781270676e-9 1.2065091337850238e-8] atol =
+        1e1
+    @test avg_stress_gauge ≈
+        [12641.620130337215 1.6499174233606872e6 28966.287163254172 -179.1767306388687 -1.3967327005127079e-9 -1.079985106175825e-9] atol =
+        1e1
+    @test avg_stress_holder1 ≈
+        [56175.5776544634 1.611857519176203e6 56430.374623511234 2138.110887978947 5.693916591553716e-9 -8.169333644521733e-8] atol =
+        1e1
+    @test sim.controller.schwarz_iters ≈ [23, 27, 29, 30, 31] atol = 0
 end
-

@@ -916,7 +916,7 @@ function assign_velocity!(
     return nothing
 end
 
-function apply_ics(params::Parameters, model::SolidMechanics)
+function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     if haskey(params, "initial conditions") == false
         return nothing
     end
@@ -965,10 +965,11 @@ function apply_ics(params::Parameters, model::SolidMechanics)
             end
         end
     end
+    copy_solution_source_targets(model, integrator, solver)
 end
 
-function apply_ics(params::Parameters, model::RomModel)
-    apply_ics(params, model.fom_model)
+function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
+    apply_ics(params, model.fom_model, integrator, solver)
 
     if haskey(params, "initial conditions") == false
         return nothing
