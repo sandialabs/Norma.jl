@@ -41,8 +41,9 @@ const all_test_files = [
     "schwarz-ahead-overlap-dynamic-laser-weld.jl", #25
     "schwarz-ahead-overlap-dynamic-torsion.jl", #26
     "schwarz-ahead-overlap-dynamic-bracket.jl", #27
+    "schwarz-ahead-overlap-dynamic-plate.jl", #28
     # Must go last due to FPE traps
-    "utils.jl", #28
+    "utils.jl", #29
 ]
 
 # Enumerated test files

@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz AHeaD Overlap Dynamic Plate" begin
+@testset "Schwarz AHeaD Overlap Dynamic Plate HEX8-HEX8 Dissipative Newmark" begin
     cp("../examples/ahead/overlap/plate/dynamic/plate.yaml", "plate.yaml"; force=true)
     cp("../examples/ahead/overlap/plate/dynamic/plate-1.yaml", "plate-1.yaml"; force=true)
     cp("../examples/ahead/overlap/plate/dynamic/plate-2.yaml", "plate-2.yaml"; force=true)
@@ -16,7 +16,7 @@ using YAML
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = 0.0
     params["time step"] = 1.0e-5
-    params["final time"] = 2.0e-3
+    params["final time"] = 5.0e-4
     params["name"] = input_file
     sim = Norma.run(params)
     subsims = sim.subsims
@@ -49,14 +49,15 @@ using YAML
     println("avg_stress_plate1 = ", avg_stress_plate1, "\n")
     println("avg_stress_plate2 = ", avg_stress_plate2, "\n")
 
-    @test min_disp_x_plate1 ≈ 0.0 atol = 1e-12
-    @test min_disp_y_plate1 ≈ 0.0 atol = 1e-12
-    @test max_disp_z_plate1 ≈ 0.0 atol = 1e-12
-    @test min_disp_x_plate2 ≈ 0.0 atol = 1e-12
-    @test min_disp_y_plate2 ≈ 0.0 atol = 1e-12
-    @test max_disp_z_plate2 ≈ 0.0 atol = 1e-12
-    @test avg_stress_plate1 ≈ [-6.825024875740436e-6 -1.974204275839816e-6 2.1834386150963154e-6 4.116715834549778e-7 -6.5165933683627004e-6 -3.5269645073874523e-6] atol = 1e-10
-    @test avg_stress_plate2 ≈ [8.812988325817226e-6 7.146230426027395e-6 9.688356479849091e-7 1.19067716904036e-6 1.4079798580596465e-6 -1.184951596283739e-6] atol = 1e-10
+    @test min_disp_x_plate1 ≈ -9.921851879713967e-5 atol = 1e-12
+    @test min_disp_y_plate1 ≈ -1.2983244377276493e-5 atol = 1e-12
+    @test max_disp_z_plate1 ≈ 0.0006671119244265724 atol = 1e-12
+    @test min_disp_x_plate2 ≈ -9.931932093781848e-5 atol = 1e-12
+    @test min_disp_y_plate2 ≈ -1.6908937976650718e-5 atol = 1e-12
+    @test max_disp_z_plate2 ≈ 0.0011022795117623524 atol = 1e-12
+    @test avg_stress_plate1 ≈ [471598.3029312377 3758.0552427898924 -58910.05950477131 -1.3093161657870484e-6 2.154745935704122e7 5.258888212175896e-6] atol = 1e-10
+    @test avg_stress_plate2 ≈ [253926.84478024076 -22969.447947428558 -3377.0523740657545 -1.8554517555458006e-7 3.0969903938841815e6 6.773073467532717e-8] atol = 1e-10
+    @test sim.controller.schwarz_iters ≈ [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5] atol = 0
 
 end
 
