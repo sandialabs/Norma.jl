@@ -32,15 +32,6 @@ using YAML
     println("max_disp_z = ", max_disp_z, "\n")
     println("avg_stress = ", avg_stress, "\n")
 
-min_disp_x = -0.044380857564717574
-
-min_disp_y = -0.04438085756471812
-
-max_disp_z = 8.033797118034425e-5
-
-avg_stress = [-1.3396757511504798e6 -1.33967575115108e6 457701.97380569484 1.0842104529729113e-7 3.0323481041705237e-7 1.7932685807409144e-7]
-
-
     @test min_disp_x ≈ -0.044380857564717574 atol = 1e-6
     @test min_disp_y ≈ -0.04438085756471812 atol = 1e-6
     @test max_disp_z ≈ 8.033797118034425e-5 atol = 1e-6
