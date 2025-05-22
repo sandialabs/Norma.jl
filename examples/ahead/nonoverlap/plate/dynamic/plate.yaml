@@ -9,4 +9,4 @@ minimum iterations: 1
 maximum iterations: 128
 relative tolerance: 1.0e-12
 absolute tolerance: 1.0e-08
-relaxation parameter: 0.4 
+relaxation parameter: 0.1 
