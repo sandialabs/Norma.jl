@@ -42,6 +42,7 @@ const all_test_files = [
     "schwarz-ahead-overlap-dynamic-torsion.jl", #26
     "schwarz-ahead-overlap-dynamic-bracket.jl", #27
     "schwarz-ahead-overlap-dynamic-plate.jl", #28
+    "ahead-single-notched-cylinder.jl", #29
     # Must go last due to FPE traps
     "utils.jl", #29
 ]
