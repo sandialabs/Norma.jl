@@ -648,14 +648,13 @@ function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContac
         local_range = (3 * (i_local - 1) + 1):(3 * i_local)
         normal = normals[:, i_local]
         node_force = nodal_force[local_range]
-        if friction_type == 1 #TODO: verify
+        if friction_type == 0
             target = model.boundary_force[global_range]
             eff_node_force = transfer_normal_component(node_force, target, normal)
         else
             eff_node_force = node_force
         end
-        # TODO: eff_node_force is not being used, verify
-        @inbounds model.boundary_force[global_range] += node_force
+        @inbounds model.boundary_force[global_range] += eff_node_force
     end
 end
 
@@ -1078,7 +1077,7 @@ function assign_velocity!(
     return nothing
 end
 
-function apply_ics(params::Parameters, model::SolidMechanics)
+function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     if haskey(params, "initial conditions") == false
         return nothing
     end
@@ -1127,10 +1126,11 @@ function apply_ics(params::Parameters, model::SolidMechanics)
             end
         end
     end
+    copy_solution_source_targets(model, integrator, solver)
 end
 
-function apply_ics(params::Parameters, model::RomModel)
-    apply_ics(params, model.fom_model)
+function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
+    apply_ics(params, model.fom_model, integrator, solver)
 
     if haskey(params, "initial conditions") == false
         return nothing
