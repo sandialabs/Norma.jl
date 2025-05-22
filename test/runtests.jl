@@ -47,8 +47,9 @@ const all_test_files = [
     "ahead-single-torsion.jl", #31
     "ahead-single-bracket.jl", #32
     "ahead-single-plate.jl", #33
+    "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl", #34
     # Must go last due to FPE traps
-    "utils.jl", #34
+    "utils.jl", #35
 ]
 
 # Enumerated test files
