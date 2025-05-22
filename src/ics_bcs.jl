@@ -603,6 +603,46 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
     return tangent_projection * target + normal_projection * source
 end
 
+function contact_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+    unique_node_indices = unique(bc.side_set_node_indices)
+    coupled_model = bc.coupled_subsim.model
+    coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
+    coupled_side_set_id = coupled_bc.side_set_id
+    for node_index in unique_node_indices
+        point = model.current[:, node_index]
+        new_point, ξ, _, closest_face_node_indices, closest_normal, _ = project_point_to_side_set(
+            point, coupled_model, coupled_side_set_id
+        )
+        axis = SVector{3,Float64}(-normalize(closest_normal))
+        bc.rotation_matrix = compute_rotation_matrix(axis)
+        model.current[:, node_index] = new_point
+        num_nodes = length(closest_face_node_indices)
+        element_type = get_element_type(2, num_nodes)
+        N, _, _ = interpolate(element_type, ξ)
+        source_velo = coupled_model.velocity[:, closest_face_node_indices] * N
+        source_acce = coupled_model.acceleration[:, closest_face_node_indices] * N
+        model.free_dofs[[3 * node_index - 2]] .= false
+        model.free_dofs[[3 * node_index - 1]] .= true
+        model.free_dofs[[3 * node_index]] .= true
+        if bc.friction_type == 0
+            model.velocity[:, node_index] = transfer_normal_component(
+                source_velo, model.velocity[:, node_index], closest_normal
+            )
+            model.acceleration[:, node_index] = transfer_normal_component(
+                source_acce, model.acceleration[:, node_index], closest_normal
+            )
+        elseif bc.friction_type == 1
+            model.velocity[:, node_index] = source_velo
+            model.acceleration[:, node_index] = source_acce
+        else
+            norma_abort("Unknown or not implemented friction type.")
+        end
+        global_base = 3 * (node_index - 1) # Block index in global stiffness
+        model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
+            bc.rotation_matrix
+    end
+end
+
 function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
