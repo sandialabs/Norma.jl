@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz AHeaD Non-Overlap Dynamic Torsion" begin
+@testset "Schwarz AHeaD Non-Overlap Dynamic Torsion HEX8-HEX8" begin
     cp("../examples/ahead/nonoverlap/torsion/dynamic/torsion.yaml", "torsion.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/torsion/dynamic/torsion-1.yaml", "torsion-1.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/torsion/dynamic/torsion-2.yaml", "torsion-2.yaml"; force=true)
