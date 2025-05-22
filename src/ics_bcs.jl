@@ -676,7 +676,8 @@ function contact_variational_ddnnbc(model::SolidMechanics, bc::SolidMechanicsCon
     normals = compute_normal(model.mesh, bc.side_set_id, model)
 
     # Compile projected stiffnesses
-    other_stiffnesses = get_dst_stiffness(bc, -normals)
+    other_stiffnesses = get_dst_stiffness(bc, normals)
+    other_mass = get_dst_mass(bc, normals)
 
     # Apply Dirichlet BC, do not constrain
     for (i_local, i_global) in enumerate(global_from_local_map)
@@ -830,9 +831,9 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition, use_previ
 end
 
 function get_dst_stiffness(dst_bc::SolidMechanicsSchwarzBoundaryCondition, normal_projection::Matrix{Float64})
-    if dst_bc.coupled_subsim.model.compute_stiffness == false
-        norma_abort("DDNN not implemented for simulations with no full stiffness matrix.")
-    end
+    # if dst_bc.coupled_subsim.model.compute_stiffness == false
+    #     norma_abort("DDNN not implemented for simulations with no full stiffness matrix.")
+    # end
 
     src_sim = dst_bc.coupled_subsim
     src_model = src_sim.model
@@ -852,6 +853,27 @@ function get_dst_stiffness(dst_bc::SolidMechanicsSchwarzBoundaryCondition, norma
     return dst_stiffness
 end
 
+function get_dst_mass(dst_bc::SolidMechanicsSchwarzBoundaryCondition, normal_projection::Matrix{Float64})
+
+
+    src_sim = dst_bc.coupled_subsim
+    src_model = src_sim.model
+    src_bc_index = dst_bc.coupled_bc_index
+    src_bc = src_model.boundary_conditions[src_bc_index]
+    src_global_mass = src_model.mass
+    # src_mass will be a collection of 3x3 matrix equal to the number of src_bc nodes
+    src_mass, number_of_nodes = extract_local_sparse_matrix(src_bc, src_global_mass)
+    scalar_mass = zeros(number_of_nodes, 1)
+    for i_local in range(1,number_of_nodes)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
+        scalar_mass[i_local] = normal_projection[:, i_local]' * src_mass[local_range, :] * normal_projection[:, i_local]
+    end
+
+    neumann_projector = dst_bc.neumann_projector
+    dst_mass = neumann_projector * scalar_mass
+    return dst_mass
+end
+    
 function get_dst_curr_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition, use_previous::Bool=false)
     src_sim = dst_bc.coupled_subsim
     src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
