@@ -45,11 +45,11 @@ const indexed_test_files = [
 # Extract test file names
 const all_test_files = [file for (_, file) in indexed_test_files]
 
-# Optional test indices
+# Optional test indices (excluded from quick runs)
 const optional_test_indices = Int[24, 25]
 
-# Default test indices: all except optional ones
-const default_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
+# Quick test set (subset of all tests)
+const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
 
 function print_available_tests()
     Norma.norma_log(0, :info, "Available tests:")
@@ -64,13 +64,13 @@ function parse_args(args)
         exit(0)
     end
 
-    # Extract optional filter string
+    # Optional name filter
     filter_idx = findfirst(isequal("--filter"), args)
     name_filter = filter_idx !== nothing && filter_idx < length(args) ? lowercase(args[filter_idx + 1]) : ""
 
-    run_all = "--all" in args
+    quick_only = "--quick" in args
 
-    # Extract indices
+    # Parse integer indices
     selected_indices = try
         parse.(Int, filter(x -> occursin(r"^\d+$", x), args))
     catch
@@ -78,10 +78,7 @@ function parse_args(args)
         exit(1)
     end
 
-    # Determine candidate set
-    candidate_tests = if run_all
-        indexed_test_files
-    elseif !isempty(selected_indices)
+    candidate_tests = if !isempty(selected_indices)
         valid_indices = Set(i for (i, _) in indexed_test_files)
         for i in selected_indices
             if i ∉ valid_indices
@@ -90,12 +87,14 @@ function parse_args(args)
             end
         end
         filter(t -> t[1] in selected_indices, indexed_test_files)
+    elseif quick_only
+        Norma.norma_log(0, :info, "Running quick test set.")
+        filter(t -> t[1] in quick_test_indices, indexed_test_files)
     else
-        Norma.norma_log(0, :info, "No tests specified. Running default set.")
-        filter(t -> t[1] in default_test_indices, indexed_test_files)
+        Norma.norma_log(0, :info, "Running full test suite.")
+        indexed_test_files
     end
 
-    # Apply filter if present
     if !isempty(name_filter)
         candidate_tests = filter(t -> occursin(name_filter, lowercase(t[2])), candidate_tests)
         if isempty(candidate_tests)

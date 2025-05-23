@@ -154,18 +154,23 @@ cd /path/to/Norma.jl/test
 julia --project=@/path/to/Norma.jl ./runtests.jl
 ```
 
+By default, all tests are run.
+
+---
+
 ### Selective Test Execution
 
-You can control which tests to run via command-line arguments.
+You can control which tests are run using command-line arguments.
+
+#### Run a Quick Subset (Fast Tests Only)
+```bash
+julia --project=@/path/to/Norma.jl ./runtests.jl --quick
+```
+Use this when you want to verify functionality quickly without running the full suite.
 
 #### Run Specific Tests by Index
 ```bash
 julia --project=@/path/to/Norma.jl ./runtests.jl 1 3 5
-```
-
-#### Run All Tests
-```bash
-julia --project=@/path/to/Norma.jl ./runtests.jl --all
 ```
 
 #### List All Available Tests
@@ -173,17 +178,20 @@ julia --project=@/path/to/Norma.jl ./runtests.jl --all
 julia --project=@/path/to/Norma.jl ./runtests.jl --list
 ```
 
+---
+
 ### Filtering by Name
 
-To run tests whose filenames contain a string (case-insensitive):
+To run tests whose filenames contain a given string (case-insensitive):
 
 ```bash
 julia --project=@/path/to/Norma.jl ./runtests.jl --filter cube
 ```
 
-You can combine filters with `--all` or specific indices:
+You can combine filters with specific indices or `--quick`:
+
 ```bash
-julia --project=@/path/to/Norma.jl ./runtests.jl --all --filter dynamic
+julia --project=@/path/to/Norma.jl ./runtests.jl --quick --filter dynamic
 julia --project=@/path/to/Norma.jl ./runtests.jl 2 4 --filter static
 ```
 
