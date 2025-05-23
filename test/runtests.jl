@@ -12,42 +12,41 @@ using Test
 include("../src/Norma.jl")
 include("helpers.jl")
 
-# List of all test files (ordered)
-const all_test_files = [
-    "minitensor.jl",
-    "interpolation.jl",
-    "constitutive.jl",
-    "single-static-solid-cube.jl",
-    "single-static-solid-neumann-bc.jl",
-    "single-implicit-dynamic-solid-cube.jl",
-    "single-implicit-dynamic-solid-sho.jl",
-    "single-implicit-dynamic-solid-clamped.jl",
-    "single-explicit-dynamic-solid-cube.jl",
-    "single-explicit-dynamic-solid-sho.jl",
-    "single-explicit-dynamic-solid-clamped.jl",
-    "tet4-static-solid-cube.jl",
-    "tet10-static-solid-cube.jl",
-    "schwarz-overlap-static-cuboid-hex8.jl",
-    "schwarz-nonoverlap-static-cuboid-hex8.jl",
-    "transfer-operators.jl",
-    "schwarz-contact-static-cubes.jl",
-    "schwarz-contact-dynamic-cubes.jl",
-    "solid-inclined-displacement.jl",
-    "opinf-schwarz-overlap-cuboid-hex8.jl",
-    "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
-    "cubic-opinf-schwarz-overlap-cuboid-hex8.jl",
-    "adaptive-time-stepping.jl",
-    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl",
-    "schwarz-ahead-overlap-dynamic-laser-weld.jl",
-    # Must go last due to FPE traps
-    "utils.jl",
+# List of all test files (ordered, with explicit index)
+const indexed_test_files = [
+    (1,  "minitensor.jl"),
+    (2,  "interpolation.jl"),
+    (3,  "constitutive.jl"),
+    (4,  "single-static-solid-cube.jl"),
+    (5,  "single-static-solid-neumann-bc.jl"),
+    (6,  "single-implicit-dynamic-solid-cube.jl"),
+    (7,  "single-implicit-dynamic-solid-sho.jl"),
+    (8,  "single-implicit-dynamic-solid-clamped.jl"),
+    (9,  "single-explicit-dynamic-solid-cube.jl"),
+    (10, "single-explicit-dynamic-solid-sho.jl"),
+    (11, "single-explicit-dynamic-solid-clamped.jl"),
+    (12, "tet4-static-solid-cube.jl"),
+    (13, "tet10-static-solid-cube.jl"),
+    (14, "schwarz-overlap-static-cuboid-hex8.jl"),
+    (15, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
+    (16, "transfer-operators.jl"),
+    (17, "schwarz-contact-static-cubes.jl"),
+    (18, "schwarz-contact-dynamic-cubes.jl"),
+    (19, "solid-inclined-displacement.jl"),
+    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (21, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (22, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (23, "adaptive-time-stepping.jl"),
+    (24, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
+    (25, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
+    (26, "utils.jl"),  # Must go last due to FPE traps
 ]
 
-# Enumerated test files
-const indexed_test_files = collect(enumerate(all_test_files))
+# Extract test file names
+const all_test_files = [file for (_, file) in indexed_test_files]
 
 # Optional test indices
-const optional_test_indices = Int[]
+const optional_test_indices = Int[24, 25]
 
 # Default test indices: all except optional ones
 const default_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
@@ -83,7 +82,7 @@ function parse_args(args)
     candidate_tests = if run_all
         indexed_test_files
     elseif !isempty(selected_indices)
-        valid_indices = Set(1:length(all_test_files))
+        valid_indices = Set(i for (i, _) in indexed_test_files)
         for i in selected_indices
             if i ∉ valid_indices
                 Norma.norma_log(0, :error, "Invalid test index: $i")
