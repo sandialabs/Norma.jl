@@ -37,23 +37,24 @@ const all_test_files = [
     "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl", #21
     "cubic-opinf-schwarz-overlap-cuboid-hex8.jl", #22
     "adaptive-time-stepping.jl", #23
-    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl", #24
-    "schwarz-ahead-overlap-dynamic-laser-weld.jl", #25
-    "schwarz-ahead-overlap-dynamic-torsion.jl", #26
-    "schwarz-ahead-overlap-dynamic-bracket.jl", #27
-    "schwarz-ahead-overlap-dynamic-plate.jl", #28
-    "single-ahead-clamped.jl", #29
-    "single-ahead-notched-cylinder.jl", #30
-    "single-ahead-laser-weld.jl", #31
-    "single-ahead-torsion.jl", #32
-    "single-ahead-bracket.jl", #33
-    "single-ahead-plate.jl", #34
-    "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl", #35
-    "schwarz-ahead-nonoverlap-dynamic-torsion.jl", #36
-    "schwarz-ahead-nonoverlap-dynamic-plate.jl", #37
-    "schwarz-ahead-nonoverlap-dynamic-bracket.jl", #38
+    "schwarz-ahead-overlap-dynamic-clamped.jl", #24
+    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl", #25
+    "schwarz-ahead-overlap-dynamic-laser-weld.jl", #26
+    "schwarz-ahead-overlap-dynamic-torsion.jl", #27
+    "schwarz-ahead-overlap-dynamic-bracket.jl", #28
+    "schwarz-ahead-overlap-dynamic-plate.jl", #29
+    "single-ahead-clamped.jl", #30
+    "single-ahead-notched-cylinder.jl", #31
+    "single-ahead-laser-weld.jl", #32
+    "single-ahead-torsion.jl", #33
+    "single-ahead-bracket.jl", #34
+    "single-ahead-plate.jl", #35
+    "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl", #36
+    "schwarz-ahead-nonoverlap-dynamic-torsion.jl", #37
+    "schwarz-ahead-nonoverlap-dynamic-plate.jl", #38
+    "schwarz-ahead-nonoverlap-dynamic-bracket.jl", #39
     # Must go last due to FPE traps
-    "utils.jl", #39
+    "utils.jl", #40
 ]
 
 # Enumerated test files
