@@ -40,15 +40,6 @@ using YAML
     avg_stress_bracket1 = average_components(model_bracket1.stress)
     avg_stress_bracket2 = average_components(model_bracket2.stress)
 
-    println("min_disp_x_bracket1 = ", min_disp_x_bracket1, "\n")
-    println("min_disp_y_bracket1 = ", min_disp_y_bracket1, "\n")
-    println("max_disp_z_bracket1 = ", max_disp_z_bracket1, "\n")
-    println("min_disp_x_bracket2 = ", min_disp_x_bracket2, "\n")
-    println("min_disp_y_bracket2 = ", min_disp_y_bracket2, "\n")
-    println("max_disp_z_bracket2 = ", max_disp_z_bracket2, "\n")
-    println("avg_stress_bracket1 = ", avg_stress_bracket1, "\n")
-    println("avg_stress_bracket2 = ", avg_stress_bracket2, "\n")
-
     @test min_disp_x_bracket1 ≈ -2.292363909493874e-5 atol = 1e-12
     @test min_disp_y_bracket1 ≈ -2.6772610574016253e-5 atol = 1e-12
     @test max_disp_z_bracket1 ≈ 8.406701507824004e-5 atol = 1e-12

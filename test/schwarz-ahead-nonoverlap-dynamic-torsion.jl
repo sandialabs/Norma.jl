@@ -40,15 +40,6 @@ using YAML
     avg_stress_torsion1 = average_components(model_torsion1.stress)
     avg_stress_torsion2 = average_components(model_torsion2.stress)
 
-    println("min_disp_x_torsion1 = ", min_disp_x_torsion1, "\n")
-    println("min_disp_y_torsion1 = ", min_disp_y_torsion1, "\n")
-    println("max_disp_z_torsion1 = ", max_disp_z_torsion1, "\n")
-    println("min_disp_x_torsion2 = ", min_disp_x_torsion2, "\n")
-    println("min_disp_y_torsion2 = ", min_disp_y_torsion2, "\n")
-    println("max_disp_z_torsion2 = ", max_disp_z_torsion2, "\n")
-    println("avg_stress_torsion1 = ", avg_stress_torsion1, "\n")
-    println("avg_stress_torsion2 = ", avg_stress_torsion2, "\n")
-
     @test min_disp_x_torsion1 ≈ -0.005190915825901907 atol = 1e-12
     @test min_disp_y_torsion1 ≈ -0.0051909158259019 atol = 1e-12
     @test max_disp_z_torsion1 ≈ 0.00011253980579573053 atol = 1e-12

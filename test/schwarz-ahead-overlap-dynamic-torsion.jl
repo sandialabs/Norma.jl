@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz AHeaD Overlap Dynamic Torsion" begin
+@testset "Schwarz AHeaD Overlap Dynamic Torsion HEX8-HEX8" begin
     cp("../examples/ahead/overlap/torsion/dynamic/torsion.yaml", "torsion.yaml"; force=true)
     cp("../examples/ahead/overlap/torsion/dynamic/torsion-1.yaml", "torsion-1.yaml"; force=true)
     cp("../examples/ahead/overlap/torsion/dynamic/torsion-2.yaml", "torsion-2.yaml"; force=true)
@@ -39,15 +39,6 @@ using YAML
     max_disp_z_torsion2 = maximum(model_torsion2.current[3, :] - model_torsion2.reference[3, :])
     avg_stress_torsion1 = average_components(model_torsion1.stress)
     avg_stress_torsion2 = average_components(model_torsion2.stress)
-
-    println("min_disp_x_torsion1 = ", min_disp_x_torsion1, "\n")
-    println("min_disp_y_torsion1 = ", min_disp_y_torsion1, "\n")
-    println("max_disp_z_torsion1 = ", max_disp_z_torsion1, "\n")
-    println("min_disp_x_torsion2 = ", min_disp_x_torsion2, "\n")
-    println("min_disp_y_torsion2 = ", min_disp_y_torsion2, "\n")
-    println("max_disp_z_torsion2 = ", max_disp_z_torsion2, "\n")
-    println("avg_stress_torsion1 = ", avg_stress_torsion1, "\n")
-    println("avg_stress_torsion2 = ", avg_stress_torsion2, "\n")
 
     @test min_disp_x_torsion1 ≈ -0.00519091582590191 atol = 1e-12
     @test min_disp_y_torsion1 ≈ -0.005190915825902 atol = 1e-12

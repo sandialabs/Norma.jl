@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "AHeaD Single Overlap Dynamic Torsion HEX8" begin
+@testset "AHeaD Single Dynamic Torsion HEX8" begin
     cp("../examples/ahead/single/torsion/dynamic/torsion.yaml", "torsion.yaml"; force=true)
     cp("../examples/ahead/single/torsion/torsion.g", "../torsion.g"; force=true)
     input_file = "torsion.yaml"
@@ -26,20 +26,6 @@ using YAML
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
     max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
     avg_stress = average_components(model.stress)
-
-    println("min_disp_x = ", min_disp_x, "\n")
-    println("min_disp_y = ", min_disp_y, "\n")
-    println("max_disp_z = ", max_disp_z, "\n")
-    println("avg_stress = ", avg_stress, "\n")
-
-min_disp_x = -0.044380857564717574
-
-min_disp_y = -0.04438085756471812
-
-max_disp_z = 8.033797118034425e-5
-
-avg_stress = [-1.3396757511504798e6 -1.33967575115108e6 457701.97380569484 1.0842104529729113e-7 3.0323481041705237e-7 1.7932685807409144e-7]
-
 
     @test min_disp_x ≈ -0.044380857564717574 atol = 1e-6
     @test min_disp_y ≈ -0.04438085756471812 atol = 1e-6

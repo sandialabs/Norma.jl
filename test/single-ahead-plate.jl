@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "AHeaD Single Overlap Dynamic Plate HEX8" begin
+@testset "AHeaD Single Dynamic Plate HEX8" begin
     cp("../examples/ahead/single/plate/dynamic/plate.yaml", "plate.yaml"; force=true)
     cp("../examples/ahead/single/plate/plate.g", "../plate.g"; force=true)
     input_file = "plate.yaml"
@@ -26,11 +26,6 @@ using YAML
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
     max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
     avg_stress = average_components(model.stress)
-
-    println("min_disp_x = ", min_disp_x, "\n")
-    println("min_disp_y = ", min_disp_y, "\n")
-    println("max_disp_z = ", max_disp_z, "\n")
-    println("avg_stress = ", avg_stress, "\n")
 
     @test min_disp_x ≈ -0.00023921480607070472 atol = 1e-6
     @test min_disp_y ≈ -6.761422572361397e-5 atol = 1e-6

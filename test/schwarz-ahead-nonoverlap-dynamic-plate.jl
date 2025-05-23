@@ -40,15 +40,6 @@ using YAML
     avg_stress_plate1 = average_components(model_plate1.stress)
     avg_stress_plate2 = average_components(model_plate2.stress)
 
-    println("min_disp_x_plate1 = ", min_disp_x_plate1, "\n")
-    println("min_disp_y_plate1 = ", min_disp_y_plate1, "\n")
-    println("max_disp_z_plate1 = ", max_disp_z_plate1, "\n")
-    println("min_disp_x_plate2 = ", min_disp_x_plate2, "\n")
-    println("min_disp_y_plate2 = ", min_disp_y_plate2, "\n")
-    println("max_disp_z_plate2 = ", max_disp_z_plate2, "\n")
-    println("avg_stress_plate1 = ", avg_stress_plate1, "\n")
-    println("avg_stress_plate2 = ", avg_stress_plate2, "\n")
-
     @test min_disp_x_plate1 ≈ -5.2251935992955734e-5 atol = 1e-12
     @test min_disp_y_plate1 ≈ -2.6616926060499257e-5 atol = 1e-12
     @test max_disp_z_plate1 ≈ 0.0001981244917465038 atol = 1e-12

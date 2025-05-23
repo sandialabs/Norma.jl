@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz AHeaD Overlap Dynamic Laser Weld Clamped BCs" begin
+@testset "Schwarz AHeaD Overlap Dynamic Laser Weld HEX8-HEX8 Clamped BCs" begin
     cp("../examples/ahead/overlap/laser-weld/dynamic/clamped/laser-weld.yaml", "laser-weld.yaml"; force=true)
     cp("../examples/ahead/overlap/laser-weld/dynamic/clamped/holder-0.yaml", "holder-0.yaml"; force=true)
     cp("../examples/ahead/overlap/laser-weld/dynamic/clamped/holder-1.yaml", "holder-1.yaml"; force=true)

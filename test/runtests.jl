@@ -42,11 +42,11 @@ const all_test_files = [
     "schwarz-ahead-overlap-dynamic-torsion.jl", #26
     "schwarz-ahead-overlap-dynamic-bracket.jl", #27
     "schwarz-ahead-overlap-dynamic-plate.jl", #28
-    "ahead-single-notched-cylinder.jl", #29
-    "ahead-single-laser-weld.jl", #30
-    "ahead-single-torsion.jl", #31
-    "ahead-single-bracket.jl", #32
-    "ahead-single-plate.jl", #33
+    "single-ahead-notched-cylinder.jl", #29
+    "single-ahead-laser-weld.jl", #30
+    "single-ahead-torsion.jl", #31
+    "single-ahead-bracket.jl", #32
+    "single-ahead-plate.jl", #33
     "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl", #34
     "schwarz-ahead-nonoverlap-dynamic-torsion.jl", #35
     "schwarz-ahead-nonoverlap-dynamic-plate.jl", #36
