@@ -1,5 +1,5 @@
 type: single
-input mesh file: notched-cylinder-2.g
+input mesh file: ../notched-cylinder-2.g
 output mesh file: notched-cylinder-2.e
 CSV output interval: 1
 CSV write sidesets: true
@@ -37,6 +37,7 @@ boundary conditions:
       source: notched-cylinder-1
       source side set: +Z_bottomSS
       source block: fine
+      search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer
   step: full Newton

@@ -1,5 +1,5 @@
 type: single
-input mesh file: notched-cylinder-1.g
+input mesh file: ../notched-cylinder-1.g
 output mesh file: notched-cylinder-1.e
 CSV output interval: 1
 CSV write sidesets: true
