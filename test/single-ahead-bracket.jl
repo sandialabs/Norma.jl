@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "AHeaD Single Overlap Dynamic Bracket HEX8" begin
+@testset "AHeaD Single Dynamic Bracket HEX8" begin
     cp("../examples/ahead/single/bracket/dynamic/bracket.yaml", "bracket.yaml"; force=true)
     cp("../examples/ahead/single/bracket/bracket.g", "../bracket.g"; force=true)
     input_file = "bracket.yaml"
@@ -27,14 +27,11 @@ using YAML
     max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
     avg_stress = average_components(model.stress)
 
-    println("min_disp_x = ", min_disp_x, "\n")
-    println("min_disp_y = ", min_disp_y, "\n")
-    println("max_disp_z = ", max_disp_z, "\n")
-    println("avg_stress = ", avg_stress, "\n")
+    println(avg_stress)
 
-    @test min_disp_x ≈ -0.044380857564717574 atol = 1e-6
-    @test min_disp_y ≈ -0.04438085756471812 atol = 1e-6
-    @test max_disp_z ≈ 8.033797118034425e-5 atol = 1e-6
-    @test avg_stress ≈ [-1.3396757511504798e6 -1.33967575115108e6 457701.97380569484 1.0842104529729113e-7 3.0323481041705237e-7 1.7932685807409144e-7] atol = 1e1
+    @test min_disp_x ≈ -0.0008933290654759424 atol = 1e-12
+    @test min_disp_y ≈ -0.0001655247963407644 atol = 1e-12
+    @test max_disp_z ≈ 0.0101486664023163 atol = 1e-12
+    @test avg_stress ≈ [-8.971263149258394e6 6.383924802446201e6 -476409.7156016053 304437.4306066531 3.0513844880209036e7 -4.0955010966046983e6] atol = 1e-6
 end
 

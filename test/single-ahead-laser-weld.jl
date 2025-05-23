@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "AHeaD Single Overlap Dynamic Laser Weld HEX8 Clamped BCs" begin
+@testset "AHeaD Single Dynamic Laser Weld HEX8 Clamped BCs" begin
     cp("../examples/ahead/single/laser-weld/dynamic/clamped/laser-weld.yaml", "laser-weld.yaml"; force=true)
     cp("../examples/ahead/single/laser-weld/laser-weld.g", "../../laser-weld.g"; force=true)
     input_file = "laser-weld.yaml"
@@ -27,19 +27,13 @@ using YAML
     max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
     avg_stress = average_components(model.stress)
 
-    println("min_disp_x = ", min_disp_x, "\n")
-    println("min_disp_y = ", min_disp_y, "\n")
-    println("max_disp_z = ", max_disp_z, "\n")
-    println("avg_stress = ", avg_stress, "\n")
-
-
-    @test min_disp_x ≈ -6.297730171953009e-5 atol = 1e-6
-    @test min_disp_y ≈ -0.0006155829702431115 atol = 1e-6
-    @test max_disp_z ≈ 0.0007221807237683814 atol = 1e-6
-    @test avg_stress ≈ [15742.885247375629 1.6479602309168996e6 20705.484327184666 -14.635248791516172 1.5557909225756466e-8 3.578215426191114e-8] atol = 1e1
+    @test min_disp_x ≈ -6.297730171953009e-5 atol = 1e-12
+    @test min_disp_y ≈ -0.0006155829702431115 atol = 1e-12
+    @test max_disp_z ≈ 0.0007221807237683814 atol = 1e-12
+    @test avg_stress ≈ [15742.885247375629 1.6479602309168996e6 20705.484327184666 -14.635248791516172 1.5557909225756466e-8 3.578215426191114e-8] atol = 1e-6
 end
 
-@testset "AHeaD Single Overlap Quasistatic Laser Weld HEX8 Symmetry BCs" begin
+@testset "AHeaD Single Quasistatic Laser Weld HEX8 Symmetry BCs" begin
     cp("../examples/ahead/single/laser-weld/quasistatic/symmetry/laser-weld.yaml", "laser-weld.yaml"; force=true)
     cp("../examples/ahead/single/laser-weld/laser-weld.g", "../../laser-weld.g"; force=true)
     input_file = "laser-weld.yaml"
@@ -60,14 +54,8 @@ end
     max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
     avg_stress = average_components(model.stress)
 
-    println("min_disp_x = ", min_disp_x, "\n")
-    println("min_disp_y = ", min_disp_y, "\n")
-    println("max_disp_z = ", max_disp_z, "\n")
-    println("avg_stress = ", avg_stress, "\n")
-
-
-    @test min_disp_x ≈ -0.006324585400834512 atol = 1e-6
-    @test min_disp_y ≈ -0.04999999999999999 atol = 1e-6
-    @test max_disp_z ≈ 0.0014201639297437146 atol = 1e-6
-    @test avg_stress ≈ [-124951.56298187797 1.3542079941106066e8 1.5670276966246015e6 1132.7823840653277 920346.061777385 2765.970872725516] atol = 1e1
+    @test min_disp_x ≈ -0.006324585400834512 atol = 1e-12
+    @test min_disp_y ≈ -0.04999999999999999 atol = 1e-12
+    @test max_disp_z ≈ 0.0014201639297437146 atol = 1e-12
+    @test avg_stress ≈ [-124951.56298187797 1.3542079941106066e8 1.5670276966246015e6 1132.7823840653277 920346.061777385 2765.970872725516] atol = 1e-6
 end

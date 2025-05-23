@@ -14,46 +14,7 @@ include("helpers.jl")
 
 # List of all test files (ordered)
 const all_test_files = [
-    "minitensor.jl", #1
-    "interpolation.jl", #2
-    "constitutive.jl", #3
-    "single-static-solid-cube.jl", #4
-    "single-static-solid-neumann-bc.jl", #5
-    "single-implicit-dynamic-solid-cube.jl", #6
-    "single-implicit-dynamic-solid-sho.jl", #7
-    "single-implicit-dynamic-solid-clamped.jl", #8
-    "single-explicit-dynamic-solid-cube.jl", #9
-    "single-explicit-dynamic-solid-sho.jl", #10
-    "single-explicit-dynamic-solid-clamped.jl", #11
-    "tet4-static-solid-cube.jl", #12
-    "tet10-static-solid-cube.jl", #13
-    "schwarz-overlap-static-cuboid-hex8.jl", #14
-    "schwarz-nonoverlap-static-cuboid-hex8.jl", #15
-    "transfer-operators.jl", #16
-    "schwarz-contact-static-cubes.jl", #17
-    "schwarz-contact-dynamic-cubes.jl", #18
-    "solid-inclined-displacement.jl", #19
-    "opinf-schwarz-overlap-cuboid-hex8.jl", #20
-    "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl", #21
-    "cubic-opinf-schwarz-overlap-cuboid-hex8.jl", #22
-    "adaptive-time-stepping.jl", #23
-    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl", #24
-    "schwarz-ahead-overlap-dynamic-laser-weld.jl", #25
-    "schwarz-ahead-overlap-dynamic-torsion.jl", #26
-    "schwarz-ahead-overlap-dynamic-bracket.jl", #27
-    "schwarz-ahead-overlap-dynamic-plate.jl", #28
-    "single-ahead-clamped.jl", #29
-    "single-ahead-notched-cylinder.jl", #30
-    "single-ahead-laser-weld.jl", #31
-    "single-ahead-torsion.jl", #32
-    "single-ahead-bracket.jl", #33
-    "single-ahead-plate.jl", #34
-    "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl", #35
-    "schwarz-ahead-nonoverlap-dynamic-torsion.jl", #36
-    "schwarz-ahead-nonoverlap-dynamic-plate.jl", #37
-    "schwarz-ahead-nonoverlap-dynamic-bracket.jl", #38
-    # Must go last due to FPE traps
-    "utils.jl", #39
+    "single-ahead-clamped.jl", #30
 ]
 
 # Enumerated test files

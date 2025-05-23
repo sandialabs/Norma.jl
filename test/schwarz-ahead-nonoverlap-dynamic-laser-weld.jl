@@ -50,20 +50,20 @@ using YAML
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
 
-    @test min_disp_x_holder0 ≈ -4.8524923688300636e-5 atol = 1e-6
-    @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-6
-    @test max_disp_z_holder0 ≈ 0.0 atol = 1e-6
-    @test min_disp_x_gauge ≈ -7.768426106180559e-5 atol = 1e-6
-    @test min_disp_y_gauge ≈ -0.00027640414578330996 atol = 1e-6
-    @test max_disp_z_gauge ≈ 4.4372026740832626e-5 atol = 1e-6
-    @test min_disp_x_holder1 ≈ -4.8953646255081584e-5 atol = 1e-6
-    @test min_disp_y_holder1 ≈ 0.00023478463555726137 atol = 1e-6
-    @test max_disp_z_holder1 ≈ 0.0 atol = 1e-6
+    @test min_disp_x_holder0 ≈ -4.8524923688300636e-5 atol = 1e-12
+    @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-12
+    @test max_disp_z_holder0 ≈ 0.0 atol = 1e-12
+    @test min_disp_x_gauge ≈ -7.768426106180559e-5 atol = 1e-12
+    @test min_disp_y_gauge ≈ -0.00027640414578330996 atol = 1e-12
+    @test max_disp_z_gauge ≈ 4.4372026740832626e-5 atol = 1e-12
+    @test min_disp_x_holder1 ≈ -4.8953646255081584e-5 atol = 1e-12
+    @test min_disp_y_holder1 ≈ 0.00023478463555726137 atol = 1e-12
+    @test max_disp_z_holder1 ≈ 0.0 atol = 1e-12
     @test avg_stress_holder0 ≈ [-243.0717661305563 1.7798335903690055e6 -49963.13502708086 -46273.081927730775 1209.6636290360905 1525.1001490585427] atol =
-        1e1
+        1e-6
     @test avg_stress_gauge ≈ [16219.565177010196 1.845519057684895e6 122146.1419563506 4904.312109770015 29899.525543416865 94.33582939764187] atol =
-        1e1
+        1e-6
     @test avg_stress_holder1 ≈ [-1056.0441890865773 1.7715466435733493e6 -54239.702779201296 50590.033301702606 1620.6847557192993 -1375.575102437882] atol =
-        1e1
+        1e-6
     @test sim.controller.schwarz_iters ≈ [26, 38, 44, 48, 51] atol = 0
 end

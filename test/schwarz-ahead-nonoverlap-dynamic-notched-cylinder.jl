@@ -48,18 +48,18 @@ using YAML
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 
-    @test min_disp_x_1 ≈ -1.6007099461888552e-5 atol = 1e-6
-    @test min_disp_y_1 ≈ -1.6007073405502337e-5 atol = 1e-6
-    @test max_disp_z_1 ≈ 0.00011007952600178977 atol = 1e-6
-    @test min_disp_x_2 ≈ -1.6186344441136702e-5 atol = 1e-6
-    @test min_disp_y_2 ≈ -1.618628933883204e-5 atol = 1e-6
-    @test min_disp_z_2 ≈ 5.1726659805836905e-5 atol = 1e-6
+    @test min_disp_x_1 ≈ -1.6007099461888552e-5 atol = 1e-12
+    @test min_disp_y_1 ≈ -1.6007073405502337e-5 atol = 1e-12
+    @test max_disp_z_1 ≈ 0.00011007952600178977 atol = 1e-12
+    @test min_disp_x_2 ≈ -1.6186344441136702e-5 atol = 1e-12
+    @test min_disp_y_2 ≈ -1.618628933883204e-5 atol = 1e-12
+    @test min_disp_z_2 ≈ 5.1726659805836905e-5 atol = 1e-12
     @test avg_stress_1 ≈
         [119658.24151708037 119759.96550264646 2.105505961105632e6 280369.0355588143 281504.50820556487 57168.0765508701] atol =
-        1e1
+        1e-6
     @test avg_stress_2 ≈
         [-101340.89672529901 -101446.28712096746 1.5977255795638144e6 121800.33493609141 122483.30918545111 37064.478126464295] atol =
-        1e1
+        1e-6
     @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 4, 4, 4, 4, 5, 5] atol = 0
 end
 
