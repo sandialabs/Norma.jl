@@ -84,6 +84,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     side_set_node_indices::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
+    variational::Bool,
 )
     if coupled_subsim.model isa RomModel
         coupled_mesh = coupled_subsim.model.fom_model.mesh
@@ -120,6 +121,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
         interpolation_function_values,
         coupled_subsim,
         subsim,
+        variational,
     )
 end
 
@@ -148,6 +150,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     else
         norma_abort("Unknown or not implemented friction type : $friction_type_string")
     end
+    variational = get(bc_params, "variational", false)
     return SolidMechanicsContactSchwarzBoundaryCondition(
         side_set_name,
         side_set_id,
@@ -165,6 +168,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         rotation_matrix,
         active_contact,
         friction_type,
+        variational,
     )
 end
 
@@ -178,9 +182,10 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     is_dirichlet::Bool,
     swap_bcs::Bool,
+    variational::Bool,
 )
-    neumann_projector = Matrix{Float64}(undef, 0, 0)
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
@@ -198,6 +203,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         neumann_projector,
         is_dirichlet,
         swap_bcs,
+        variational,
     )
 end
 
@@ -216,9 +222,10 @@ function SMCouplingSchwarzBC(
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
+    variational = get(bc_params, "variational", false)
     if bc_type == "Schwarz overlap"
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim
+            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational
         )
     elseif bc_type == "Schwarz nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -240,6 +247,7 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             is_dirichlet,
             swap_bcs,
+            variational,
         )
     else
         norma_abort("Unknown boundary condition type : $bc_type")
