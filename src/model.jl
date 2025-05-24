@@ -789,8 +789,10 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     model.failed = true
                     model.compute_stiffness = model.compute_diag_stiffness = true
                     model.compute_mass = model.compute_lumped_mass = true
-                    norma_log(0, :error, "Non-positive Jacobian detected!")
-                    norma_log(0, :error, "This may indicate element distortion.")
+                    norma_log(0, :error, "Non-positive Jacobian detected! This may indicate element distortion.")
+                    norma_logf(4, :warning, "det(F) = %.3e", J)
+                    log_matrix(4, :info, "Reference Configuration", element_reference_position)
+                    log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
                 W, P, AA = constitutive(material, F)
