@@ -17,15 +17,15 @@ time integrator:
   γ: 0.5
 boundary conditions:
   Dirichlet:
-    - node set: nodeset_negative_y
-      component: x
-      function: "0.0"
+    #- node set: nodeset_negative_y
+    #  component: x
+    #  function: "0.0"
     - node set: nodeset_negative_y
       component: y
-      function: "-0.1 * t"
-    - node set: nodeset_negative_y
-      component: z
-      function: "0.0"
+      function: "-0.1 * (0.5 - 0.5 * cos(pi * t))"
+        #- node set: nodeset_negative_y
+        #component: z
+        #function: "0.0"
   Schwarz overlap:
     - side set: sideset_positive_y
       source: gauge

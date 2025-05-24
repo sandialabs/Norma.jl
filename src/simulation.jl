@@ -835,11 +835,11 @@ function detect_contact(sim::MultiDomainSimulation)
     end
     resize!(sim.controller.contact_hist, sim.controller.stop + 1)
     sim.controller.contact_hist[sim.controller.stop + 1] = sim.controller.active_contact
-    write_scharz_params_csv(sim)
+    write_schwarz_params_csv(sim)
     return nothing
 end
 
-function write_scharz_params_csv(sim::MultiDomainSimulation)
+function write_schwarz_params_csv(sim::MultiDomainSimulation)
     stop = sim.controller.stop
     csv_interval = get(sim.params, "CSV output interval", 0)
     if csv_interval > 0 && stop % csv_interval == 0
