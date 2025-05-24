@@ -60,15 +60,6 @@ using YAML
     acce_z_err = norm(acce_z_exact - acce_z)  
     acce_z_norm = norm(acce_z_exact)
     acce_z_relerr = acce_z_err / acce_z_norm 
-    #println("disp_z_err = ", disp_z_err, "\n") 
-    #println("disp_z_norm = ", disp_z_norm, "\n") 
-    #println("disp_z_relerr = ", disp_z_relerr, "\n") 
-    #println("velo_z_err = ", velo_z_err, "\n") 
-    #println("velo_z_norm = ", velo_z_norm, "\n") 
-    #println("velo_z_relerr = ", velo_z_relerr, "\n") 
-    #println("acce_z_err = ", acce_z_err, "\n") 
-    #println("acce_z_norm = ", acce_z_norm, "\n") 
-    #println("acce_z_relerr = ", acce_z_relerr, "\n") 
 
     @test disp_z_relerr ≈ 0.02203179834481467 atol = 1e-12
     @test velo_z_relerr ≈ 0.048747445420986746 atol = 1e-12

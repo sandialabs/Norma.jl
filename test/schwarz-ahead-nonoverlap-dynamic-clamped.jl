@@ -80,15 +80,6 @@ using YAML
     acce0_z_err = norm(acce0_z_exact - acce0_z)  
     acce0_z_norm = norm(acce0_z_exact)
     acce0_z_relerr = acce0_z_err / acce0_z_norm 
-    #println("disp0_z_err = ", disp0_z_err, "\n") 
-    #println("disp0_z_norm = ", disp0_z_norm, "\n") 
-    #println("disp0_z_relerr = ", disp0_z_relerr, "\n") 
-    #println("velo0_z_err = ", velo0_z_err, "\n") 
-    #println("velo0_z_norm = ", velo0_z_norm, "\n") 
-    #println("velo0_z_relerr = ", velo0_z_relerr, "\n") 
-    #println("acce0_z_err = ", acce0_z_err, "\n") 
-    #println("acce0_z_norm = ", acce0_z_norm, "\n") 
-    #println("acce0_z_relerr = ", acce0_z_relerr, "\n") 
 
     @test disp0_z_relerr ≈ 0.023301214198427324 atol = 1e-12
     @test velo0_z_relerr ≈ 0.04367879603325008 atol = 1e-12
@@ -119,15 +110,6 @@ using YAML
     acce1_z_err = norm(acce1_z_exact - acce1_z)  
     acce1_z_norm = norm(acce1_z_exact)
     acce1_z_relerr = acce1_z_err / acce1_z_norm 
-    #println("disp1_z_err = ", disp1_z_err, "\n") 
-    #println("disp1_z_norm = ", disp1_z_norm, "\n") 
-    #println("disp1_z_relerr = ", disp1_z_relerr, "\n") 
-    #println("velo1_z_err = ", velo1_z_err, "\n") 
-    #println("velo1_z_norm = ", velo1_z_norm, "\n") 
-    #println("velo1_z_relerr = ", velo1_z_relerr, "\n") 
-    #println("acce1_z_err = ", acce1_z_err, "\n") 
-    #println("acce1_z_norm = ", acce1_z_norm, "\n") 
-    #println("acce1_z_relerr = ", acce1_z_relerr, "\n") 
 
     @test disp1_z_relerr ≈ 0.034101038908999154 atol = 1e-12
     @test velo1_z_relerr ≈ 0.06959872860732548 atol = 1e-12
