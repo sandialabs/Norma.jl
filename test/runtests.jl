@@ -12,45 +12,44 @@ using Test
 include("../src/Norma.jl")
 include("helpers.jl")
 
-# List of all test files (ordered)
-const all_test_files = [
-    "minitensor.jl",
-    "interpolation.jl",
-    "constitutive.jl",
-    "single-static-solid-cube.jl",
-    "single-static-solid-neumann-bc.jl",
-    "single-implicit-dynamic-solid-cube.jl",
-    "single-implicit-dynamic-solid-sho.jl",
-    "single-implicit-dynamic-solid-clamped.jl",
-    "single-explicit-dynamic-solid-cube.jl",
-    "single-explicit-dynamic-solid-sho.jl",
-    "single-explicit-dynamic-solid-clamped.jl",
-    "tet4-static-solid-cube.jl",
-    "tet10-static-solid-cube.jl",
-    "schwarz-overlap-static-cuboid-hex8.jl",
-    "schwarz-nonoverlap-static-cuboid-hex8.jl",
-    "transfer-operators.jl",
-    "schwarz-contact-static-cubes.jl",
-    "schwarz-contact-dynamic-cubes.jl",
-    "solid-inclined-displacement.jl",
-    "opinf-schwarz-overlap-cuboid-hex8.jl",
-    "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl",
-    "cubic-opinf-schwarz-overlap-cuboid-hex8.jl",
-    "adaptive-time-stepping.jl",
-    "schwarz-ahead-overlap-dynamic-notched-cylinder.jl",
-    "schwarz-ahead-overlap-dynamic-laser-weld.jl",
-    # Must go last due to FPE traps
-    "utils.jl",
+# List of all test files (ordered, with explicit index)
+const indexed_test_files = [
+    (1,  "minitensor.jl"),
+    (2,  "interpolation.jl"),
+    (3,  "constitutive.jl"),
+    (4,  "single-static-solid-cube.jl"),
+    (5,  "single-static-solid-neumann-bc.jl"),
+    (6,  "single-implicit-dynamic-solid-cube.jl"),
+    (7,  "single-implicit-dynamic-solid-sho.jl"),
+    (8,  "single-implicit-dynamic-solid-clamped.jl"),
+    (9,  "single-explicit-dynamic-solid-cube.jl"),
+    (10, "single-explicit-dynamic-solid-sho.jl"),
+    (11, "single-explicit-dynamic-solid-clamped.jl"),
+    (12, "tet4-static-solid-cube.jl"),
+    (13, "tet10-static-solid-cube.jl"),
+    (14, "schwarz-overlap-static-cuboid-hex8.jl"),
+    (15, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
+    (16, "transfer-operators.jl"),
+    (17, "schwarz-contact-static-cubes.jl"),
+    (18, "schwarz-contact-dynamic-cubes.jl"),
+    (19, "solid-inclined-displacement.jl"),
+    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (21, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (22, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (23, "adaptive-time-stepping.jl"),
+    (24, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
+    (25, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
+    (26, "utils.jl"),  # Must go last due to FPE traps
 ]
 
-# Enumerated test files
-const indexed_test_files = collect(enumerate(all_test_files))
+# Extract test file names
+const all_test_files = [file for (_, file) in indexed_test_files]
 
-# Optional test indices
-const optional_test_indices = Int[]
+# Optional test indices (excluded from quick runs)
+const optional_test_indices = Int[24, 25]
 
-# Default test indices: all except optional ones
-const default_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
+# Quick test set (subset of all tests)
+const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
 
 function print_available_tests()
     Norma.norma_log(0, :info, "Available tests:")
@@ -65,13 +64,13 @@ function parse_args(args)
         exit(0)
     end
 
-    # Extract optional filter string
+    # Optional name filter
     filter_idx = findfirst(isequal("--filter"), args)
     name_filter = filter_idx !== nothing && filter_idx < length(args) ? lowercase(args[filter_idx + 1]) : ""
 
-    run_all = "--all" in args
+    quick_only = "--quick" in args
 
-    # Extract indices
+    # Parse integer indices
     selected_indices = try
         parse.(Int, filter(x -> occursin(r"^\d+$", x), args))
     catch
@@ -79,11 +78,8 @@ function parse_args(args)
         exit(1)
     end
 
-    # Determine candidate set
-    candidate_tests = if run_all
-        indexed_test_files
-    elseif !isempty(selected_indices)
-        valid_indices = Set(1:length(all_test_files))
+    candidate_tests = if !isempty(selected_indices)
+        valid_indices = Set(i for (i, _) in indexed_test_files)
         for i in selected_indices
             if i ∉ valid_indices
                 Norma.norma_log(0, :error, "Invalid test index: $i")
@@ -91,12 +87,14 @@ function parse_args(args)
             end
         end
         filter(t -> t[1] in selected_indices, indexed_test_files)
+    elseif quick_only
+        Norma.norma_log(0, :info, "Running quick test set.")
+        filter(t -> t[1] in quick_test_indices, indexed_test_files)
     else
-        Norma.norma_log(0, :info, "No tests specified. Running default set.")
-        filter(t -> t[1] in default_test_indices, indexed_test_files)
+        Norma.norma_log(0, :info, "Running full test suite.")
+        indexed_test_files
     end
 
-    # Apply filter if present
     if !isempty(name_filter)
         candidate_tests = filter(t -> occursin(name_filter, lowercase(t[2])), candidate_tests)
         if isempty(candidate_tests)

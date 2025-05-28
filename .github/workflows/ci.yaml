@@ -7,8 +7,6 @@ on:
     tags: ['*']
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '0 8 * * *'  # Midnight PST (8:00 UTC)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ['1.10', '1.11']
+        version: ['1.11']
         os: [ubuntu-latest, macos-latest]
 
     steps:

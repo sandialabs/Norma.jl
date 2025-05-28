@@ -60,6 +60,7 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     active_contact::Bool
     friction_type::Int64
     use_DDNN::Bool
+    variational::Bool
 end
 
 mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -69,6 +70,7 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     interpolation_function_values::Vector{Vector{Float64}}
     coupled_subsim::Simulation
     subsim::Simulation
+    variational::Bool
 end
 
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -85,4 +87,5 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     neumann_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
+    variational::Bool
 end

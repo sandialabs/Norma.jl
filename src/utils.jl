@@ -124,6 +124,15 @@ function norma_abortf(fmt::AbstractString, args...)
     end
 end
 
+function log_matrix(level::Int, keyword::Symbol, label::AbstractString, M::AbstractMatrix)
+    norma_log(level, keyword, "$label:")
+    for i in axes(M, 1)
+        row = M[i, :]
+        row_str = join(map(val -> @sprintf("%.3e", val), row), " ")
+        norma_log(level, keyword, row_str)
+    end
+end
+
 # Enable debugging for a specific module in the environment variable JULIA_DEBUG (all for all modules)
 function configure_logger()
     debug_level = get(ENV, "JULIA_DEBUG", "")
