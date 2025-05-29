@@ -743,10 +743,27 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     coupled_model = bc.coupled_subsim.model
     coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
     coupled_side_set_id = coupled_bc.side_set_id
+
+    # Tolerance value to calculate closest point projection, to avoid projection failure
+    # Set to 10 times the minimum characteristic edge length of the side set nodes
+    # TODO (BRP): perhaps calculate this "characteristic size" a priori, and only recalculate for finite kinematics
+    nodal_points = model.current[:, unique_node_indices]
+    # Compute minimum distances between the nodes in the side set
+    max_distance_tolerance = 10*minimum([
+        minimum([norm(p1 - p2) for (j, p2) in enumerate(eachcol(nodal_points)) if i != j])
+        for (i, p1) in enumerate(eachcol(nodal_points))
+    ])
+
     for node_index in unique_node_indices
         point = model.current[:, node_index]
+        # Precompute the face node distance
+        face_nodes, face_node_indices, min_distance = closest_face_to_point(point, coupled_model, coupled_side_set_id)
+        if min_distance > max_distance_tolerance
+            continue
+        end
         _, ξ, _, coupled_face_node_indices, _, distance = project_point_to_side_set(
-            point, coupled_model, coupled_side_set_id
+            point,
+            face_nodes, face_node_indices
         )
         num_nodes_coupled_side = length(coupled_face_node_indices)
         parametric_dim = length(ξ)
@@ -820,6 +837,7 @@ function detect_contact(sim::MultiDomainSimulation)
             end
         end
     end
+
     sim.controller.active_contact = any(contact_domain)
     for domain in 1:num_domains
         subsim = sim.subsims[domain]
