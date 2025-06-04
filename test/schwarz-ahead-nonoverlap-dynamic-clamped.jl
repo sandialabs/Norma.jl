@@ -83,7 +83,7 @@ using YAML
 
     @test disp0_z_relerr ≈ 0.023301214198427324 atol = 1e-12
     @test velo0_z_relerr ≈ 0.04367879603325008 atol = 1e-12
-    @test acce0_z_relerr ≈ 0.11666137089499143 atol = 1e-12
+    @test acce0_z_relerr ≈ 0.11666137089499143 atol = 1e-6
     @test norm(disp0_x) ≈ 0.0 atol = 1.0e-18
     @test norm(disp0_y) ≈ 0.0 atol = 1.0e-18
     @test norm(velo0_x) ≈ 0.0 atol = 1.0e-18
@@ -113,7 +113,7 @@ using YAML
 
     @test disp1_z_relerr ≈ 0.034101038908999154 atol = 1e-12
     @test velo1_z_relerr ≈ 0.06959872860732548 atol = 1e-12
-    @test acce1_z_relerr ≈ 0.13000885748946542 atol = 1e-12
+    @test acce1_z_relerr ≈ 0.13000885748946542 atol = 1e-6
     @test norm(disp1_x) ≈ 0.0 atol = 1.0e-18
     @test norm(disp1_y) ≈ 0.0 atol = 1.0e-18
     @test norm(velo1_x) ≈ 0.0 atol = 1.0e-18

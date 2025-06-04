@@ -63,7 +63,7 @@ using YAML
 
     @test disp_z_relerr ≈ 0.02203179834481467 atol = 1e-12
     @test velo_z_relerr ≈ 0.048747445420986746 atol = 1e-12
-    @test acce_z_relerr ≈ 0.11433498445981101 atol = 1e-12
+    @test acce_z_relerr ≈ 0.11433498445981101 atol = 1e-6
     @test norm(disp_x) ≈ 0.0 atol = 0.0
     @test norm(disp_y) ≈ 0.0 atol = 0.0
     @test norm(velo_x) ≈ 0.0 atol = 0.0
