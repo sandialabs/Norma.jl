@@ -13,7 +13,7 @@ include("../src/Norma.jl")
 include("helpers.jl")
 
 # List of all test files (ordered)
-const all_test_files = [
+const indexed_test_files = [
     (1, "minitensor.jl"), 
     (2, "interpolation.jl"), 
     (3, "constitutive.jl"), 
@@ -54,15 +54,14 @@ const all_test_files = [
     (38, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"), 
     (39, "schwarz-ahead-nonoverlap-dynamic-plate.jl"), 
     (40, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"), 
-    # Must go last due to FPE traps
-    (41, "utils.jl"), 
+    (41, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
 const all_test_files = [file for (_, file) in indexed_test_files]
 
 # Optional test indices (excluded from quick runs)
-const optional_test_indices = Int[24, 25]
+const optional_test_indices = Int[24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
