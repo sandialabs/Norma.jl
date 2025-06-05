@@ -80,8 +80,7 @@ end
 function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     #IKT 6/5/2025: TODO fill in.
     #Below are contents of NeumannBoundaryCondition
-    norma_log(0, :error, "Attempting to use Robin BC, which is not yet implemented!")
-    error("Norma aborted.")
+    norma_abort("Attempting to use Robin BC, which is not yet implemented!")
     #side_set_name = bc_params["side set"]
     #expression = bc_params["function"]
     #offset = component_offset_from_string(bc_params["component"])
