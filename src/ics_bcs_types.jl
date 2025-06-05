@@ -42,6 +42,16 @@ mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBo
     traction_fun::Function
 end
 
+mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+    #IKT 6/5/2025: this is for now a copy of the NeumannBoundaryCondition struct
+    name::String
+    offset::Int64
+    side_set_id::Int64
+    num_nodes_per_side::Vector{Int64}
+    side_set_node_indices::Vector{Int64}
+    traction_fun::Function
+end
+
 mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
@@ -72,6 +82,9 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     variational::Bool
 end
 
+#IKT 6/5/2025 Question: do we want to chenge the name of this to 
+#SolidMechanicsNoOverlapDNSchwarzBoundaryCondition to anticipate 
+#the Robin version of this BC?
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64

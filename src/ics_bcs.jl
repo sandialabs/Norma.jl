@@ -77,6 +77,29 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
     )
 end
 
+function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
+    #IKT 6/5/2025: TODO fill in.
+    #Below are contents of NeumannBoundaryCondition
+    norma_log(0, :error, "Attempting to use Robin BC, which is not yet implemented!")
+    error("Norma aborted.")
+    #side_set_name = bc_params["side set"]
+    #expression = bc_params["function"]
+    #offset = component_offset_from_string(bc_params["component"])
+    #side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    #num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    #side_set_node_indices = Int64.(side_set_node_indices)
+
+    ## Build symbolic expressions
+    #traction_num = eval(Meta.parse(expression))
+
+    ## Compile them into functions
+    #traction_fun = eval(build_function(traction_num, [t, x, y, z]; expression=Val(false)))
+
+    #return SolidMechanicsNeumannBoundaryCondition(
+    #    side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun
+    #)
+end
+
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
@@ -311,6 +334,25 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
             model.boundary_force[dof_index] += bc_val
         end
     end
+end
+
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryCondition)
+    #IKT 6/5/2025: TODO fill in.
+    #Below are contents of NeumannBoundaryCondition
+    #ss_node_index = 1
+    #for side in bc.num_nodes_per_side
+    #    side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+    #    side_coordinates = model.reference[:, side_nodes]
+    #    nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_fun, model.time)
+    #    ss_node_index += side
+    #    side_node_index = 1
+    #    for node_index in side_nodes
+    #        bc_val = nodal_force_component[side_node_index]
+    #        side_node_index += 1
+    #        dof_index = 3 * (node_index - 1) + bc.offset
+    #        model.boundary_force[dof_index] += bc_val
+    #    end
+    #end
 end
 
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
@@ -845,6 +887,9 @@ function create_bcs(params::Parameters)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Neumann"
                 boundary_condition = SolidMechanicsNeumannBoundaryCondition(input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "Robin"
+                boundary_condition = SolidMechanicsRobinBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
                 sim = params["parent_simulation"]
