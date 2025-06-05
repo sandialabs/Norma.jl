@@ -31,7 +31,7 @@ boundary conditions:
     - node set: surface_positive_y
       component: y
       function: "0.1 * t"
-    - node set: surface_positive_z
+    - node set: surface_negative_z
       component: z
       function: "0.0"
 solver:

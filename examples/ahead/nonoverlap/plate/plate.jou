@@ -1,7 +1,7 @@
 ${side = 0.2}
 ${height = 0.03}
 ${overlap_vol_frac = 0.0}
-${h_fine = 0.01}
+${h_fine = 0.05}
 ${h_coarse = 0.01}
 
 ${area = side * height}

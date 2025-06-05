@@ -7,6 +7,6 @@ final time: 2.5e-3
 #final time: 20.0e-3 #original final time
 time step: 1.0e-6
 minimum iterations: 1
-maximum iterations: 16
-relative tolerance: 1.0e-12
-absolute tolerance: 1.0e-08
+maximum iterations: 128
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-06
