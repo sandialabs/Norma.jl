@@ -803,12 +803,6 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
                 model.stress[block_index][block_element_index][point] = voigt_cauchy
             end
-            #IKT 6/5/2025 TODO: for Robin BC, need to add for loop like above but where integration is over 
-            #the surface where the Robin BC is specified rather than over the volume.  See get_side_set_nodal_forces
-            #routine in interpolation.jl .  
-            #IKT 6/5/2025 Question: are mass/stiffness matrices allocated somewhere? 
-            #I would just modify the local stiffness (element_arrays_tl.stiffness) to add the Robin contribution
-            #in compute_element_threadlocal_arrays, rather than creating a separate matrix.
             t = threadid()
             model.stored_energy[block_index][block_element_index] = element_arrays_tl.energy[t]
             assemble_element_threadlocal_arrays!(arrays_tl, element_arrays_tl, flags)
