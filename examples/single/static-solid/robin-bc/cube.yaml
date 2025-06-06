@@ -33,6 +33,7 @@ boundary conditions:
     - side set: ssz+
       component: z
       # IKT TODO: change to take one function for disp and one for traction
+      # For Robin BC alpha*u + beta*t = 0, we want to set alpha = 1.0e9 and beta = -1.
       #function: "1.0e+09 * t"
 solver:
   type: Hessian minimizer
