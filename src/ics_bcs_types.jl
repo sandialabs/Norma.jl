@@ -44,6 +44,7 @@ end
 
 mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     #IKT 6/5/2025: this is for now a copy of the NeumannBoundaryCondition struct
+    #IKT TODO: add disp_fun::Function
     name::String
     offset::Int64
     side_set_id::Int64
@@ -82,9 +83,8 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     variational::Bool
 end
 
-#IKT 6/5/2025 Question: do we want to chenge the name of this to 
-#SolidMechanicsNoOverlapDNSchwarzBoundaryCondition to anticipate 
-#the Robin version of this BC?
+#IKT 6/5/2025: keep the following routine for both DN and RR BCs for non-overlap Schwarz.  
+#We may need to add some variables for Robin-Robin.
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64

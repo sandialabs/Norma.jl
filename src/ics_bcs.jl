@@ -93,6 +93,8 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
 
     ## Compile them into functions
     #traction_fun = eval(build_function(traction_num, [t, x, y, z]; expression=Val(false)))
+    ##IKT TODO: add disp_fun.  Will need to add capability to read in the coefficients
+    #alpha, beta and gamma in Robin BC: alpha*u + beta*t = gamma.  
 
     #return SolidMechanicsNeumannBoundaryCondition(
     #    side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun
@@ -352,6 +354,8 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryConditio
     #        model.boundary_force[dof_index] += bc_val
     #    end
     #end
+    #IKT 6/5/2025 TODO: repeat code above but for model.stiffness.
+    #this will require calling get_side_set_nodal_forces with bc.disp_fun  
 end
 
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
