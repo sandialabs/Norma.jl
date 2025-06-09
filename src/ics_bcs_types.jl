@@ -50,7 +50,9 @@ mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoun
     side_set_id::Int64
     num_nodes_per_side::Vector{Int64}
     side_set_node_indices::Vector{Int64}
-    traction_fun::Function
+    rhs_fun::Function
+    alpha::Float64
+    beta::Float64
 end
 
 mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition

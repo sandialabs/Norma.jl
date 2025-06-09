@@ -80,25 +80,39 @@ end
 function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     #IKT 6/5/2025: TODO fill in.
     #Below are contents of NeumannBoundaryCondition
-    norma_abort("Attempting to use Robin BC, which is not yet implemented!")
-    #side_set_name = bc_params["side set"]
-    #expression = bc_params["function"]
-    #offset = component_offset_from_string(bc_params["component"])
-    #side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    #num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
-    #side_set_node_indices = Int64.(side_set_node_indices)
+    side_set_name = bc_params["side set"]
+    expression = bc_params["function"]
+    offset = component_offset_from_string(bc_params["component"])
+    alpha = bc_params["alpha"]
+    beta = bc_params["beta"]
+    println("IKT alpha, beta = ", alpha, ", ", beta, "\n") 
+    tol = 1.0e-10 
+    if (abs(alpha) < tol) 
+        norma_abort(
+                "The alpha parameter is numerically 0!  Robin BC is equivalent " *
+                "to Dirichlet BC.  Please use Dirichlet BC in input file.")
+    end 
+    if (abs(beta) < tol) 
+        norma_abort(
+                "The beta parameter is numerically 0!  Robin BC is equivalent " *
+                "to Neumann BC.  Please use Neumann BC in input file.")
+    end 
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
 
-    ## Build symbolic expressions
-    #traction_num = eval(Meta.parse(expression))
+    # Build symbolic expressions
+    rhs_num = eval(Meta.parse(expression))
 
-    ## Compile them into functions
-    #traction_fun = eval(build_function(traction_num, [t, x, y, z]; expression=Val(false)))
-    ##IKT TODO: add disp_fun.  Will need to add capability to read in the coefficients
-    #alpha, beta and gamma in Robin BC: alpha*u + beta*t = gamma.  
+    # Compile them into functions
+    rhs_fun = eval(build_function(rhs_num, [t, x, y, z]; expression=Val(false)))
+ 
+    #We want to set alpha*traction + beta*disp = rhs_fun
 
-    #return SolidMechanicsNeumannBoundaryCondition(
-    #    side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun
-    #)
+    return SolidMechanicsRobinBoundaryCondition(
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, 
+        rhs_fun, alpha, beta
+    )
 end
 
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
@@ -340,20 +354,27 @@ end
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryCondition)
     #IKT 6/5/2025: TODO fill in.
     #Below are contents of NeumannBoundaryCondition
-    #ss_node_index = 1
-    #for side in bc.num_nodes_per_side
-    #    side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
-    #    side_coordinates = model.reference[:, side_nodes]
-    #    nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_fun, model.time)
-    #    ss_node_index += side
-    #    side_node_index = 1
-    #    for node_index in side_nodes
-    #        bc_val = nodal_force_component[side_node_index]
-    #        side_node_index += 1
-    #        dof_index = 3 * (node_index - 1) + bc.offset
-    #        model.boundary_force[dof_index] += bc_val
-    #    end
-    #end
+    ss_node_index = 1
+    for side in bc.num_nodes_per_side
+        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+        side_coordinates = model.reference[:, side_nodes]
+        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
+        nodal_force_component = 1.0 / (bc.alpha) * nodal_force_component
+        #IKT TODO: modify following line to set -beta/rhs_fun * u * v, stiffness matrix 
+        #contribution.
+        #nodal_stiff_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
+        ss_node_index += side
+        side_node_index = 1
+        for node_index in side_nodes
+            bc_val = nodal_force_component[side_node_index]
+            side_node_index += 1
+            dof_index = 3 * (node_index - 1) + bc.offset
+            model.boundary_force[dof_index] += bc_val
+            #IKT TODO: modify the following line to add to stiffness matrix
+            #model.stiffness[dof_index] += bc_val
+        end
+    end
+    norma_abort("In apply_bc:  Attempting to use Robin BC, which is not yet implemented!")
     #IKT 6/5/2025 TODO: repeat code above but for model.stiffness.
     #this will require calling get_side_set_nodal_forces with bc.disp_fun  
 end
