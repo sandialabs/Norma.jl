@@ -377,7 +377,7 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
         #instead of traction.
         nodal_force_component += pressure_val * Nₚ * j * wₚ
     end
-    norma_abort("IKT in get_side_set_noal_pressure - not yet implemented!") 
+    #norma_abort("IKT in get_side_set_noal_pressure - not yet implemented!") 
     return nodal_force_component
 end
 
