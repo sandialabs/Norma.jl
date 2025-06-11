@@ -20,7 +20,7 @@ time integrator:
   time step: 0.1
 boundary conditions:
   Neumann pressure:
-    - side set: ssz+
+    - side set: all
       component: z
       function: "-1.0e+08 * t"
 solver:

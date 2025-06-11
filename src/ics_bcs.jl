@@ -78,7 +78,6 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
 end
 
 function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
-    norma_abort("IKT Neumann Pressure BC not yet implemented!") 
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
@@ -333,6 +332,22 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
     end
 end
 
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBoundaryCondition)
+    ss_node_index = 1
+    for side in bc.num_nodes_per_side
+        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+        side_coordinates = model.reference[:, side_nodes]
+        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
+        ss_node_index += side
+        side_node_index = 1
+        for node_index in side_nodes
+            bc_val = nodal_force_component[side_node_index]
+            side_node_index += 1
+            dof_index = 3 * (node_index - 1) + bc.offset
+            model.boundary_force[dof_index] += bc_val
+        end
+    end
+end
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     e1 = @SVector [1.0, 0.0, 0.0]
     angle_btwn = acos(dot(axis, e1))
