@@ -9,7 +9,7 @@
 undo on
 create brick x 1.0 y 1.0 z 1.0
 #volume 1 size 0.125
-volume 1 size 0.5
+volume 1 size 1.0
 mesh volume 1
 block 1 volume 1
 block 1 name "fine"
