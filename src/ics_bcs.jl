@@ -58,7 +58,7 @@ function SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh::ExodusData
     )
 end
 
-function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters, is_pressure_nbc::Bool)
+function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
@@ -73,9 +73,29 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
     traction_fun = eval(build_function(traction_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsNeumannBoundaryCondition(
-        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun, is_pressure_nbc
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun
     )
 end
+
+function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
+    side_set_name = bc_params["side set"]
+    expression = bc_params["function"]
+    offset = component_offset_from_string(bc_params["component"])
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
+
+    # Build symbolic expressions
+    pressure_num = eval(Meta.parse(expression))
+
+    # Compile them into functions
+    pressure_fun = eval(build_function(pressure_num, [t, x, y, z]; expression=Val(false)))
+
+    return SolidMechanicsNeumannPressureBoundaryCondition(
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, pressure_fun
+    )
+end 
+
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
@@ -297,18 +317,9 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondition)
     ss_node_index = 1
-    println("IKT is_pressure_nbc = ", bc.is_pressure_nbc) 
     for side in bc.num_nodes_per_side
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
-        # Compute normal vector from coordinates.  This is needed only for pressure NBC. 
-        A = side_coordinates[:, 1]
-        B = side_coordinates[:, 2]
-        C = side_coordinates[:, 3]
-        AB = B-A 
-        AC = C-A 
-        normal = cross(AB, AC) / norm(cross(AB, AC))
-        println("IKT normal = ", normal)
         nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_fun, model.time)
         ss_node_index += side
         side_node_index = 1
@@ -316,15 +327,50 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
             bc_val = nodal_force_component[side_node_index]
             side_node_index += 1
             dof_index = 3 * (node_index - 1) + bc.offset
-            if (bc.is_pressure_nbc == false) #regular NBC 
-              model.boundary_force[dof_index] += bc_val
-            else #pressure NBC 
-              model.boundary_force[dof_index] += bc_val * normal[bc.offset] 
-            end
+            model.boundary_force[dof_index] += bc_val
         end
     end
 end
 
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBoundaryCondition)
+    ss_node_index = 1
+    println("IKT num_nodes_per_side = ", bc.num_nodes_per_side) 
+    for side in bc.num_nodes_per_side
+        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+        side_coordinates = model.reference[:, side_nodes]
+        A = side_coordinates[:, 1]
+        B = side_coordinates[:, 2]
+        C = side_coordinates[:, 3]
+        println("IKT A = ", A) 
+        println("IKT B = ", B) 
+        println("IKT C = ", C) 
+        AB = B-A 
+        AC = C-A 
+        println("IKT AB = ", AB) 
+        println("IKT AC = ", AC)
+        normal_unscaled = cross(AB, AC) 
+        normal = normal_unscaled / norm(normal_unscaled)  
+        println("IKT normal = ", normal)
+        println("IKT side_nodes = ", side_nodes) 
+        println("IKT side_coordinates = ", side_coordinates) 
+        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
+        println("IKT nodal_force_component = ", nodal_force_component) 
+        #normals = compute_normal(model.mesh, bc.side_set_id, model)
+        #println("IKT size(normals) = ", size(normals)) 
+        #println("IKT normals = ", normals) 
+        ss_node_index += side
+        #IKT 6/9/2025 TODO: add multiplication by normal vector to set 
+        #only the normal component of boundary_force to bc_val.
+        side_node_index = 1
+        for node_index in side_nodes
+            bc_val = nodal_force_component[side_node_index]
+            side_node_index += 1
+            dof_index = 3 * (node_index - 1) + bc.offset
+            model.boundary_force[dof_index] += bc_val
+        end
+    end
+    norma_abort("IKT in apply_bc for NeumannPressure BC - not yet implemented!") 
+end
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     e1 = @SVector [1.0, 0.0, 0.0]
     angle_btwn = acos(dot(axis, e1))
@@ -855,11 +901,11 @@ function create_bcs(params::Parameters)
             if bc_type == "Dirichlet"
                 boundary_condition = SolidMechanicsDirichletBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Neumann" 
-                boundary_condition = SolidMechanicsNeumannBoundaryCondition(input_mesh, bc_setting_params, false)
+            elseif bc_type == "Neumann"
+                boundary_condition = SolidMechanicsNeumannBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Neumann pressure" 
-                boundary_condition = SolidMechanicsNeumannBoundaryCondition(input_mesh, bc_setting_params, true)
+            elseif bc_type == "Neumann pressure"
+                boundary_condition = SolidMechanicsNeumannPressureBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
                 sim = params["parent_simulation"]

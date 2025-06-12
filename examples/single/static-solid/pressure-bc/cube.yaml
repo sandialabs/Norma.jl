@@ -16,18 +16,10 @@ model:
 time integrator:
   type: quasi static
   initial time: 0.0
-    #final time: 100.0
-  final time: 0.2
+  final time: 100.0
   time step: 0.1
 boundary conditions:
   Neumann pressure:
-    #IKT question: is there a way to specify "all" components at once (x, y, and z)?
-    - side set: all
-      component: x
-      function: "-1.0e+08 * t"
-    - side set: all
-      component: y
-      function: "-1.0e+08 * t"
     - side set: all
       component: z
       function: "-1.0e+08 * t"
