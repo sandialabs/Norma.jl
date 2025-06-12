@@ -16,13 +16,20 @@ model:
 time integrator:
   type: quasi static
   initial time: 0.0
-  final time: 100.0
+  final time: 0.1
   time step: 0.1
 boundary conditions:
   Neumann pressure:
+    #IKT 6/12/2025 Q: is there a way to specify 'all' DOFs to be set in one line?
+    - side set: all
+      component: x
+      function: "-1.0e+04 * t"
+    - side set: all
+      component: y
+      function: "-1.0e+04 * t"
     - side set: all
       component: z
-      function: "-1.0e+08 * t"
+      function: "-1.0e+04 * t"
 solver:
   type: Hessian minimizer
   step: full Newton

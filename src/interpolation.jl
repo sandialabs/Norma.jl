@@ -358,7 +358,8 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::F
     return nodal_force_component
 end
 
-function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun::Function, time::Float64)
+function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun::Function, time::Float64, normal::Float64)
+    println("IKT get_side_set_nodal_pressure normal = ", normal) 
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
     num_int_points = default_num_int_pts(element_type)
@@ -373,9 +374,8 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
         point_coord = nodal_coord * Nₚ
         txzy = (time, point_coord[1], point_coord[2], point_coord[3])
         pressure_val = pressure_fun(txzy...)
-        #IKT 6/10/2025 TODO: add multiplication by normal vector to side to define pressure
-        #instead of traction.
-        nodal_force_component += pressure_val * Nₚ * j * wₚ
+        println("IKT pressure_val = ", pressure_val) 
+        nodal_force_component += pressure_val * Nₚ * j * wₚ * normal 
     end
     #norma_abort("IKT in get_side_set_noal_pressure - not yet implemented!") 
     return nodal_force_component

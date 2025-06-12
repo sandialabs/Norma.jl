@@ -334,33 +334,21 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBoundaryCondition)
     ss_node_index = 1
-    println("IKT num_nodes_per_side = ", bc.num_nodes_per_side) 
     for side in bc.num_nodes_per_side
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
         A = side_coordinates[:, 1]
         B = side_coordinates[:, 2]
         C = side_coordinates[:, 3]
-        println("IKT A = ", A) 
-        println("IKT B = ", B) 
-        println("IKT C = ", C) 
         AB = B-A 
         AC = C-A 
-        println("IKT AB = ", AB) 
-        println("IKT AC = ", AC)
-        normal_unscaled = cross(AB, AC) 
-        normal = normal_unscaled / norm(normal_unscaled)  
+        normal = cross(AB, AC) / norm(cross(AB, AC)) 
         println("IKT normal = ", normal)
-        println("IKT side_nodes = ", side_nodes) 
-        println("IKT side_coordinates = ", side_coordinates) 
-        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
+        println("IKT offset = ", bc.offset) 
+        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time, 
+                                   normal[bc.offset])
         println("IKT nodal_force_component = ", nodal_force_component) 
-        #normals = compute_normal(model.mesh, bc.side_set_id, model)
-        #println("IKT size(normals) = ", size(normals)) 
-        #println("IKT normals = ", normals) 
         ss_node_index += side
-        #IKT 6/9/2025 TODO: add multiplication by normal vector to set 
-        #only the normal component of boundary_force to bc_val.
         side_node_index = 1
         for node_index in side_nodes
             bc_val = nodal_force_component[side_node_index]
@@ -369,8 +357,8 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
             model.boundary_force[dof_index] += bc_val
         end
     end
-    norma_abort("IKT in apply_bc for NeumannPressure BC - not yet implemented!") 
 end
+
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     e1 = @SVector [1.0, 0.0, 0.0]
     angle_btwn = acos(dot(axis, e1))
