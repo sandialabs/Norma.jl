@@ -380,7 +380,6 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
         println("IKT size val = ", size(pressure_val * Nₚ * j * wₚ))
         println("IKT size nodal_force_component = ", size(nodal_force_component)) 
         println("IKT size kron = ", size(LinearAlgebra.kron(normal, pressure_val * Nₚ * j * wₚ)))
-        #nodal_force_component_vector = LinearAlgebra.kron(normal, pressure_val * Nₚ * j * wₚ)
         nodal_force_component_vector = LinearAlgebra.kron(pressure_val * Nₚ * j * wₚ, normal)
         nodal_force_component += reshape(nodal_force_component_vector, (3, num_side_nodes))
         println("IKT nodal_force_component = ", nodal_force_component)  

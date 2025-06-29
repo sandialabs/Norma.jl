@@ -339,14 +339,14 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
         nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
         ss_node_index += side
         side_node_index = 1
-        println("IKT size side_nodes = ", size(side_nodes)) 
+        println("IKT in apply_bc size side_nodes = ", size(side_nodes)) 
         for node_index in side_nodes
             #IKT 6/29/2025: the following does not work for some reason.
             #dof_indices = [3 * node_index - 2 : 3 * node_index]
-            dof_indices = [3 * node_index - 2, 3 * node_index -1,  3 * node_index]
-            println("IKT node_index = ", node_index) 
-            println("IKT dof_indices = ", dof_indices) 
-            println("IKT size nodal_force_component = ", size(nodal_force_component))
+            dof_indices = [3 * node_index - 2, 3 * node_index - 1,  3 * node_index]
+            println("IKT in apply_bc dof_indices = ", dof_indices) 
+            println("IKT in apply_bc side_node_index = ", side_node_index)
+            println("IKT in apply_bc nodal_force_componenent = ", nodal_force_component) 
             model.boundary_force[dof_indices] += nodal_force_component[:, side_node_index]
             side_node_index += 1
         end
