@@ -47,7 +47,6 @@ end
 #code duplication.
 mutable struct SolidMechanicsNeumannPressureBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
-    offset::Int64
     side_set_id::Int64
     num_nodes_per_side::Vector{Int64}
     side_set_node_indices::Vector{Int64}

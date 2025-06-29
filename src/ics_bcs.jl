@@ -80,7 +80,6 @@ end
 function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
-    offset = component_offset_from_string(bc_params["component"])
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     side_set_node_indices = Int64.(side_set_node_indices)
@@ -92,7 +91,7 @@ function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDataba
     pressure_fun = eval(build_function(pressure_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsNeumannPressureBoundaryCondition(
-        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, pressure_fun
+        side_set_name, side_set_id, num_nodes_per_side, side_set_node_indices, pressure_fun
     )
 end 
 
@@ -337,24 +336,16 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
     for side in bc.num_nodes_per_side
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
-        A = side_coordinates[:, 1]
-        B = side_coordinates[:, 2]
-        C = side_coordinates[:, 3]
-        AB = B-A 
-        AC = C-A 
-        normal = cross(AB, AC) / norm(cross(AB, AC)) 
-        println("IKT normal = ", normal)
-        println("IKT offset = ", bc.offset) 
-        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time, 
-                                   normal[bc.offset])
-        println("IKT nodal_force_component = ", nodal_force_component) 
+        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
         ss_node_index += side
         side_node_index = 1
+        println("IKT size side_nodes = ", size(side_nodes)) 
         for node_index in side_nodes
-            bc_val = nodal_force_component[side_node_index]
             side_node_index += 1
-            dof_index = 3 * (node_index - 1) + bc.offset
-            model.boundary_force[dof_index] += bc_val
+            dof_indices = [3 * node_index - 2 : 3 * node_index]
+            println("IKT size dof_indices = ", size(dof_indices)) 
+            println("IKT size nodal_force_component = ", size(nodal_force_component))
+            model.boundary_force[dof_indices] += nodal_force_component[:, node_index]
         end
     end
 end
