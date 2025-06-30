@@ -174,7 +174,7 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
                 model.current[bc.offset, bc.node_set_node_indices] -
                 model.reference[bc.offset, bc.node_set_node_indices],
             )
-        elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition
+        elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
              side_set_name = bc.name
             curr_filename = prefix * side_set_name * "-curr" * index_string * ".csv"
             disp_filename = prefix * side_set_name * "-disp" * index_string * ".csv"
