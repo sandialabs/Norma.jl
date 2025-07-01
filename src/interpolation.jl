@@ -346,7 +346,7 @@ function default_num_int_pts(element_type::String)
         return 3
     elseif element_type == "QUAD4"
         return 4
-    elseif element_type == "TETRA4"
+    elseif element_type == "TETRA4" || element_type == "TETRA"
         return 4
     elseif element_type == "TETRA10"
         return 4
@@ -406,7 +406,7 @@ function isoparametric(element_type::String, num_int::Integer)
         else
             error(msg1, num_int, msg2, element_type)
         end
-    elseif element_type == "TETRA4"
+    elseif element_type == "TETRA4" || element_type == "TETRA"
         if num_int == 1
             return barycentricD3N4G1()
         elseif num_int == 4
@@ -548,7 +548,7 @@ function interpolate(element_type::String, ξ::Vector{Float64})
         return barycentricD2N3(ξ)
     elseif element_type == "QUAD4"
         return lagrangianD2N4(ξ)
-    elseif element_type == "TETRA4"
+    elseif element_type == "TETRA4" || element_type == "TETRA"
         return barycentricD3N4(ξ)
     elseif element_type == "TETRA10"
         return barycentricD3N10(ξ)
@@ -567,7 +567,7 @@ function is_inside_parametric(element_type::String, ξ::Vector{Float64}, tol::Fl
         return reduce(*, -tol * ones(2) .≤ ξ .≤ factor * ones(2))
     elseif element_type == "QUAD4"
         return reduce(*, -factor * ones(2) .≤ ξ .≤ factor * ones(2))
-    elseif element_type == "TETRA4" || element_type == "TETRA10"
+    elseif element_type == "TETRA4" || element_type == "TETRA10" || element_type == "TETRA"
         return reduce(*, -tol * ones(3) .≤ ξ .≤ factor * ones(3))
     elseif element_type == "HEX8"
         return reduce(*, -factor * ones(3) .≤ ξ .≤ factor * ones(3))
@@ -582,7 +582,7 @@ function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{F
 end
 
 #function is_inside(element_type::String, nodes::Matrix{Float64}, point::Vector{Float64}, tol::Float64 = 1.0e-06)
-#    if element_type == "TETRA4" || element_type == "TETRA10"
+#    if element_type == "TETRA4" || element_type == "TETRA10" || element_type == "TETRA"
 #        return is_point_in_tetrahedron(point, nodes[:,1], nodes[:,2], nodes[:,3], nodes[:,4], tol)
 #    elseif element_type == "HEX8"
 #        return is_point_in_hexahedron(point, nodes[:,1], nodes[:,2], nodes[:,3], nodes[:,4], nodes[:,5], nodes[:,6], nodes[:,7], nodes[:,8], tol)

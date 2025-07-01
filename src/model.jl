@@ -196,7 +196,7 @@ function create_model(params::Dict{Any,Any})
 end
 
 function create_smooth_reference(smooth_reference::String, element_type::String, elem_ref_pos::Matrix{Float64})
-    if element_type == "TETRA4"
+    if element_type == "TETRA4" || element_type == "TETRA"
         u = elem_ref_pos[:, 2] - elem_ref_pos[:, 1]
         v = elem_ref_pos[:, 3] - elem_ref_pos[:, 1]
         w = elem_ref_pos[:, 4] - elem_ref_pos[:, 1]
@@ -491,7 +491,7 @@ function get_minimum_edge_length(
 end
 
 function get_minimum_edge_length(nodal_coordinates::Matrix{Float64}, element_type::String)
-    if element_type == "TETRA4"
+    if element_type == "TETRA4" || element_type == "TETRA"
         edges = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4), (2, 4)]
         return get_minimum_edge_length(nodal_coordinates, edges)
     elseif element_type == "HEX8"
