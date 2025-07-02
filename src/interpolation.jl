@@ -447,6 +447,12 @@ function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end
 
+function project_point_to_side_set(point::Vector{Float64},
+    face_nodes::Matrix{Float64}, face_node_indices::Vector{Int32})
+    new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
+    return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
+end
+
 function get_minimum_distance_to_nodes(nodes::Matrix{Float64}, point::Vector{Float64})
     distances = norm.(eachcol(nodes) .- Ref(point))
     return minimum(distances)
