@@ -55,8 +55,6 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     active_contact::Bool
     contact_hist::Vector{Bool}
     schwarz_iters::Vector{Int64}
-    acceleration_type::Int64
-    acceleration_history_length::Int64
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController

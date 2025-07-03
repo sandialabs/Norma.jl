@@ -90,5 +90,6 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     acceleration_type::Int64
     acceleration_f_i::Matrix{Float64}
     acceleration_g_x_i::Matrix{Float64}
+    acceleration_history_length::Int64
     iteration::Int64
 end
