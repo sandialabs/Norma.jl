@@ -262,18 +262,19 @@ function SMCouplingSchwarzBC(
 
         acceleration_type_string = get(bc_params, "acceleration", "none")
         acceleration_history_length = 0
+        acceleration_type = -1
 
         if !(acceleration_type_string in ["none", "anderson"])
             norma_abort("Unsupported acceleration type: $acceleration_type")
-        elseif acceleration_type_string == "none"
+        end
+       if acceleration_type_string == "none"
             acceleration_type = 0
         elseif acceleration_type_string == "anderson"
+            println("Setting Anderson On")
             acceleration_type = 1
         end
-        if (acceleration_type_string != "none") && ("acceleration history" in bc_params)
+        if (acceleration_type_string != "none")
             acceleration_history_length = bc_params["acceleration history"]
-        elseif (acceleration_type_string != "none")
-            norma_abort("'acceleration history' must be defined when acceleration must be used.")
         end 
         SolidMechanicsNonOverlapSchwarzBoundaryCondition(
             input_mesh,
@@ -543,7 +544,6 @@ function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, bc::
     # Perform a constrained minimization problem that finds alpha_k such that
     # the L2 norm of F_k*alpha is minimized and the sum of alpha_k = 1
     opt_model = JModel(Ipopt.Optimizer)
-    opt_model.addOption("print_level", 0)
     @JVariable(opt_model, alpha_k[1:m_k+1] >= 0)
     @JObjective(opt_model, Min, 
         sqrt(sum((F_k * alpha_k).^2))
@@ -568,9 +568,12 @@ function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOv
     global_from_local_map = bc.global_from_local_map
 
     if (bc.acceleration_type == 1)
+        println("Running Acceleration ", bc.acceleration_type)
         nodal_curr = modify_prediction_by_anderson_acceleration(nodal_curr, bc, 0)
         nodal_velo = modify_prediction_by_anderson_acceleration(nodal_velo, bc, 1)
         nodal_acce = modify_prediction_by_anderson_acceleration(nodal_acce, bc, 2)
+    else
+        println("bc.acceleration_type ", bc.acceleration_type)
     end
 
     for (i_local, i_global) in enumerate(global_from_local_map)
