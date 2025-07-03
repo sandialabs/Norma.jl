@@ -87,4 +87,8 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     is_dirichlet::Bool
     swap_bcs::Bool
     variational::Bool
+    acceleration_type::Int64
+    acceleration_f_i::Matrix{Float64}
+    acceleration_g_x_i::Matrix{Float64}
+    iteration::Int64
 end

@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 
 using Exodus
+using JuMP, Ipopt # Constrained Optimization
 
 @variables t x y z
 D = Differential(t)
@@ -183,12 +184,20 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     is_dirichlet::Bool,
     swap_bcs::Bool,
     variational::Bool,
+    acceleration_type::Int64,
+    acceleration_history_length::Int64,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
+
+    # 3 DOFs x 3 Variables x Number of Nodes in Side Set 
+    acceleration_f_i = Matrix{Float64}(undef, 9*num_nodes_sides, acceleration_history_length + 1)  
+    acceleration_g_x_i = Matrix{Float64}(undef, 9*num_nodes_sides, acceleration_history_length + 1)  
+    iteration = 0 
+    
     return SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         side_set_name,
         side_set_id,
@@ -204,6 +213,10 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         is_dirichlet,
         swap_bcs,
         variational,
+        acceleration_type,
+        acceleration_f_i,
+        acceleration_g_x_i,
+        iteration
     )
 end
 
@@ -237,6 +250,22 @@ function SMCouplingSchwarzBC(
             norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
         end
         swap_bcs = get(bc_params, "swap BC types", false)
+
+        acceleration_type_string = get(bc_params, "acceleration", "none")
+        acceleration_history_length = 0
+
+        if !(acceleration_type_string in ["none", "anderson"])
+            norma_abort("Unsupported acceleration type: $acceleration_type")
+        elseif acceleration_type_string == "none"
+            acceleration_type = 0
+        elseif acceleration_type_string == "anderson"
+            acceleration_type = 1
+        end
+        if (acceleration_type_string != "none") && ("acceleration history" in bc_params)
+            acceleration_history_length = bc_params["acceleration history"]
+        else
+            norma_abort("'acceleration history' must be defined when acceleration must be used.")
+        end 
         SolidMechanicsNonOverlapSchwarzBoundaryCondition(
             input_mesh,
             side_set_name,
@@ -248,6 +277,8 @@ function SMCouplingSchwarzBC(
             is_dirichlet,
             swap_bcs,
             variational,
+            acceleration_type,
+            acceleration_history_length,
         )
     else
         norma_abort("Unknown boundary condition type : $bc_type")
@@ -474,9 +505,49 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
     end
 end
 
+function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, F_k_history::Matrix{Float64}, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    # variable names based on Homer and Ni (2011)
+    history_length = size(history, 2)
+    current_schwarz_iter = bc.iteration
+
+    m_k = current_schwarz_iter ? current_schwarz_iter <= history_length : history_length
+    if iteration == 1
+        F_k_history[:, 2] = g_x_i - F_k_history[:, 1]
+    end
+    F_k = F_k_history[:, (iteration - m_k + 1):m_k+1]
+
+    alpha_k = zeros(m_k+1)
+
+    # Perform a constrained minimization problem that finds alpha_k such that
+    # the L2 norm of F_k*alpha is minimized and the sum of alpha_k = 1
+    opt_model = Model(Ipopt.Optimizer)
+    @variable(opt_model, alpha_k[1:m_k+1] >= 0)
+    @objective(opt_model, Min, norm(F_k * alpha_k))
+    @constraint(opt_model, sum(alpha_k) == 1)
+
+    # Solve the optimization problem
+    optimize!(opt_model)
+
+    # Get the optimized alpha_k
+    alpha_k .= value.(alpha_k)
+
+    
+    x_2 = F_k * alpha_k
+    history[:, m_k+2] = x_2 - g_x_i
+    # Return the sum of the linear combination of F_k and alpha_k
+    return x_2
+
+end
+
 function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
-    global_from_local_map = bc.global_from_local_map
+    
+    variable_blocks = 3 * bc.num_nodes_sides
+
+    nodal_curr = modify_prediction_by_anderson_acceleration(nodal_curr, bc.acceleration_histories[1:variable_blocks, :], bc)
+    nodal_velo = modify_prediction_by_anderson_acceleration(nodal_velo, bc.acceleration_histories[variable_blocks:2*variable_blocks, :], bc)
+    nodal_acce = modify_prediction_by_anderson_acceleration(nodal_acce, bc.acceleration_histories[2*variable_blocks:3*variable_blocks, :], bc)
+
     for (i_local, i_global) in enumerate(global_from_local_map)
         @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
         @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
@@ -567,6 +638,12 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
         θ = controller.relaxation_parameter
         iter = controller.iteration_number
+
+        # Acceleration initialization TODO: also apply to contact
+        if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+            bc.iteration = iter
+            bc.acceleration[1:3, 0] = model.current
+        end
 
         λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]

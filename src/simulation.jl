@@ -134,6 +134,20 @@ function SolidMultiDomainTimeController(params::Parameters)
     contact_hist = Vector{Bool}[]
     schwarz_iters = zeros(Int64, num_stops-1)
 
+    acceleration_type_string = get(params, "acceleration", "none")
+    acceleration_history_length = 0
+    if !(acceleration_type_string in ["none", "anderson"])
+        norma_abort("Unsupported acceleration type: $acceleration_type")
+    elseif acceleration_type_string == "none"
+        acceleration_type = 0
+    elseif acceleration_type_string == "anderson"
+        acceleration_type = 1
+    end
+    if acceleration_type_string != "none"
+        acceleration_history_length = get(params, "acceleration history", minimum_iterations // 2)
+    end
+
+
     return SolidMultiDomainTimeController(
         minimum_iterations,
         maximum_iterations,
@@ -172,6 +186,8 @@ function SolidMultiDomainTimeController(params::Parameters)
         active_contact,
         contact_hist,
         schwarz_iters,
+        acceleration_type,
+        acceleration_history_length,
     )
 end
 
