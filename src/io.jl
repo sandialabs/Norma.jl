@@ -180,11 +180,12 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             disp_filename = prefix * side_set_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
-            writedlm_nodal_array(curr_filename, model.current[:, bc.side_set_node_indices])
-            writedlm_nodal_array(velo_filename, model.velocity[:, bc.side_set_node_indices])
-            writedlm_nodal_array(acce_filename, model.acceleration[:, bc.side_set_node_indices])
+            unique_indices = unique(bc.side_set_node_indices)
+            writedlm_nodal_array(curr_filename, model.current[:, unique_indices])
+            writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
+            writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
             writedlm_nodal_array(
-                disp_filename, model.current[:, bc.side_set_node_indices] - model.reference[:, bc.side_set_node_indices]
+                disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices]
             )
         end
     end
