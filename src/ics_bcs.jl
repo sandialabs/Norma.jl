@@ -425,7 +425,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchw
 end
 
 function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics
+    if bc.coupled_subsim.model isa SolidMechanics || bc.coupled_subsim.model isa OpInfModel
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
