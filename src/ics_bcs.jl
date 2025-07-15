@@ -9,7 +9,7 @@ using JuMP: Model as JModel
 using JuMP: @variable as @JVariable
 using JuMP: @constraint as @JConstraint
 using JuMP: @objective as @JObjective
-using JuMP: optimize!, value
+using JuMP: optimize!, value, set_optimizer_attribute
 using Ipopt # Constrained Optimization
 
 @variables t x y z
@@ -522,15 +522,15 @@ function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, bc::
 
     low_range = (derivative)*variable_blocks + 1
     high_range = ((derivative + 1))*variable_blocks 
-    println(low_range, ' ', high_range)
+    
     history_length = bc.acceleration_history_length
     k_iter = bc.iteration
     # variable names based on Homer and Ni (2011)
-    if k_iter == 1
-        bc.acceleration_g_x_i[low_range:high_range, k_iter] .= vec(g_x_i)
+    if k_iter == 0
+        bc.acceleration_g_x_i[low_range:high_range, 1] .= vec(g_x_i)
         # Set x1 = g(x0)
-        bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
-        bc.acceleration_f_i[low_range:high_range, k_iter] .= 0
+        #bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
+        bc.acceleration_f_i[low_range:high_range, 1] .= 0
     end
 
     m_k = k_iter <= history_length ? k_iter : history_length
@@ -540,10 +540,14 @@ function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, bc::
     # Grab the local F_k
     F_k = bc.acceleration_f_i[low_range:high_range, (k_iter+1-m_k):(k_iter+1)]
     alpha_k = zeros(m_k+1)
+    println("Schwarz iteration ", k_iter)
+    println("Optimizing F_k ", F_k)
+    println("alpha_k ", alpha_k)
 
     # Perform a constrained minimization problem that finds alpha_k such that
     # the L2 norm of F_k*alpha is minimized and the sum of alpha_k = 1
     opt_model = JModel(Ipopt.Optimizer)
+    set_optimizer_attribute(opt_model, "print_level", 0)
     @JVariable(opt_model, alpha_k[1:m_k+1] >= 0)
     @JObjective(opt_model, Min, 
         sqrt(sum((F_k * alpha_k).^2))
@@ -559,6 +563,9 @@ function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, bc::
 
     # Update acceleration history
     bc.acceleration_g_x_i[low_range:high_range, k_iter+2] .= x_k_plus_1
+    
+    println("Acceleration G_X_I ", bc.acceleration_g_x_i[low_range:high_range, 1:k_iter+2])
+    println("Acceleration F_I ", bc.acceleration_f_i[low_range:high_range, 1:k_iter+2])
 
     return reshape(x_k_plus_1, input_shape[1], input_shape[2])
 end
@@ -570,8 +577,8 @@ function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOv
     if (bc.acceleration_type == 1)
         println("Running Acceleration ", bc.acceleration_type)
         nodal_curr = modify_prediction_by_anderson_acceleration(nodal_curr, bc, 0)
-        nodal_velo = modify_prediction_by_anderson_acceleration(nodal_velo, bc, 1)
-        nodal_acce = modify_prediction_by_anderson_acceleration(nodal_acce, bc, 2)
+        # nodal_velo = modify_prediction_by_anderson_acceleration(nodal_velo, bc, 1)
+        # nodal_acce = modify_prediction_by_anderson_acceleration(nodal_acce, bc, 2)
     else
         println("bc.acceleration_type ", bc.acceleration_type)
     end
