@@ -1,0 +1,55 @@
+type: single
+input mesh file: awful-cube.g
+output mesh file: awful-cube.e
+Exodus output interval: 10
+CSV output interval: 10
+model:
+  type: mesh smoothing
+  smooth reference: max
+  material:
+    blocks:
+      awful: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0e-00
+  time step: 1.0e-04
+  maximum time step: 1.0e-4
+  minimum time step: 1.0e-15
+  increase factor: 1.1
+  decrease factor: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: steepest descent
+  step:  steepest descent
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-8

@@ -810,9 +810,6 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     end
     merge_threadlocal_arrays(model, arrays_tl, num_dofs, flags)
     model.body_force = body_force_vector
-    if flags.mesh_smoothing == true
-        model.internal_force -= integrator.velocity
-    end
     return nothing
 end
 
