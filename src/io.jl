@@ -143,7 +143,6 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     return nothing
 end
 
-
 function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     stop = sim.controller.stop
     integrator = sim.integrator
@@ -174,8 +173,9 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
                 model.current[bc.offset, bc.node_set_node_indices] -
                 model.reference[bc.offset, bc.node_set_node_indices],
             )
-        elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-             side_set_name = bc.name
+        elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition ||
+            bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+            side_set_name = bc.name
             curr_filename = prefix * side_set_name * "-curr" * index_string * ".csv"
             disp_filename = prefix * side_set_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
@@ -184,13 +184,11 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             writedlm_nodal_array(curr_filename, model.current[:, unique_indices])
             writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
             writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
-            writedlm_nodal_array(
-                disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices]
-            )
+            writedlm_nodal_array(disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices])
         end
     end
-    return nothing 
-end 
+    return nothing
+end
 
 function write_stop_csv(sim::SingleDomainSimulation, model::RomModel)
     stop = sim.controller.stop

@@ -132,7 +132,7 @@ function SolidMultiDomainTimeController(params::Parameters)
     schwarz_contact = false
     active_contact = false
     contact_hist = Vector{Bool}[]
-    schwarz_iters = zeros(Int64, num_stops-1)
+    schwarz_iters = zeros(Int64, num_stops - 1)
 
     return SolidMultiDomainTimeController(
         minimum_iterations,
@@ -749,10 +749,11 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     # TODO (BRP): perhaps calculate this "characteristic size" a priori, and only recalculate for finite kinematics
     nodal_points = model.current[:, unique_node_indices]
     # Compute minimum distances between the nodes in the side set
-    max_distance_tolerance = 10*minimum([
-        minimum([norm(p1 - p2) for (j, p2) in enumerate(eachcol(nodal_points)) if i != j])
-        for (i, p1) in enumerate(eachcol(nodal_points))
-    ])
+    max_distance_tolerance =
+        10 * minimum([
+            minimum([norm(p1 - p2) for (j, p2) in enumerate(eachcol(nodal_points)) if i != j]) for
+            (i, p1) in enumerate(eachcol(nodal_points))
+        ])
 
     for node_index in unique_node_indices
         point = model.current[:, node_index]
@@ -762,8 +763,7 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
             continue
         end
         _, ξ, _, coupled_face_node_indices, _, distance = project_point_to_side_set(
-            point,
-            face_nodes, face_node_indices
+            point, face_nodes, face_node_indices
         )
         num_nodes_coupled_side = length(coupled_face_node_indices)
         parametric_dim = length(ξ)

@@ -7,8 +7,16 @@
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/opinf-operator-1.npz", "opinf-operator-1.npz"; force=true)
-    cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/opinf-operator-2.npz", "opinf-operator-2.npz"; force=true)
+    cp(
+        "../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/opinf-operator-1.npz",
+        "opinf-operator-1.npz";
+        force=true,
+    )
+    cp(
+        "../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/opinf-operator-2.npz",
+        "opinf-operator-2.npz";
+        force=true,
+    )
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/cuboid-1.g", "cuboid-1.g"; force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-opinf-rom-rom/cuboid-2.g", "cuboid-2.g"; force=true)
     sim = Norma.run("cuboids.yaml")
@@ -27,8 +35,8 @@
 
     @test model_coarse.reduced_state[1] ≈ -0.0008153342945627467 rtol = 1.0e-06
     @test model_coarse.reduced_state[2] ≈ -0.0008153342949887136 rtol = 1.0e-06
-    @test model_coarse.reduced_state[3] ≈ 0.19986541967787202    rtol = 1.0e-06
+    @test model_coarse.reduced_state[3] ≈ 0.19986541967787202 rtol = 1.0e-06
     @test model_fine.reduced_state[1] ≈ -0.0061291008333238 rtol = 1.0e-06
     @test model_fine.reduced_state[2] ≈ -0.006129100833376133 rtol = 1.0e-06
-    @test model_fine.reduced_state[3] ≈ -0.34397149691049    rtol = 1.0e-06
+    @test model_fine.reduced_state[3] ≈ -0.34397149691049 rtol = 1.0e-06
 end

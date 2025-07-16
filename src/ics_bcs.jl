@@ -974,6 +974,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
         end
     end
     copy_solution_source_targets(model, integrator, solver)
+    return nothing
 end
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
