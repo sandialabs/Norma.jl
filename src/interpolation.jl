@@ -257,17 +257,17 @@ function lagrangian(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
 end
 
 function element_type_from_string(s::AbstractString)::ElementType
-    if s == "BAR2"
+    if s == "BAR2" || s == "BAR"
         return BAR2
-    elseif s == "TRI3"
+    elseif s == "TRI3" || s == "TRI"
         return TRI3
-    elseif s == "QUAD4"
+    elseif s == "QUAD4" || s == "QUAD"
         return QUAD4
-    elseif s == "TETRA4"
+    elseif s == "TETRA4" || s == "TETRA"
         return TETRA4
     elseif s == "TETRA10"
         return TETRA10
-    elseif s == "HEX8"
+    elseif s == "HEX8" || s == "HEX"
         return HEX8
     else
         norma_abort("Unknown element type string: $s")
