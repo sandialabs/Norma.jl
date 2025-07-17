@@ -85,6 +85,7 @@ function norma_logf(level::Int, keyword::Symbol, fmt::AbstractString, args...)
     fstr = Printf.Format(fmt)
     msg = Printf.format(fstr, args...)
     norma_log(level, keyword, msg)
+    return nothing
 end
 
 # Internal, testable logic

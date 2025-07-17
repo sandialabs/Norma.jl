@@ -257,17 +257,17 @@ function lagrangian(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
 end
 
 function element_type_from_string(s::AbstractString)::ElementType
-    if s == "BAR2"
+    if s == "BAR2" || s == "BAR"
         return BAR2
-    elseif s == "TRI3"
+    elseif s == "TRI3" || s == "TRI"
         return TRI3
-    elseif s == "QUAD4"
+    elseif s == "QUAD4" || s == "QUAD"
         return QUAD4
-    elseif s == "TETRA4"
+    elseif s == "TETRA4" || s == "TETRA"
         return TETRA4
     elseif s == "TETRA10"
         return TETRA10
-    elseif s == "HEX8"
+    elseif s == "HEX8" || s == "HEX"
         return HEX8
     else
         norma_abort("Unknown element type string: $s")
@@ -466,6 +466,13 @@ end
 # and not match each other exactly. We assume that we know the contact surfaces in advance
 function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
+    new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
+    return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
+end
+
+function project_point_to_side_set(
+    point::Vector{Float64}, face_nodes::Matrix{Float64}, face_node_indices::Vector{Int32}
+)
     new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end
