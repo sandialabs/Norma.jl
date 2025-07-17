@@ -54,7 +54,8 @@ const indexed_test_files = [
     (38, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"), 
     (39, "schwarz-ahead-nonoverlap-dynamic-plate.jl"), 
     (40, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"), 
-    (41, "utils.jl"), # Must go last due to FPE traps
+    (41, "single-static-solid-pressure-bc.jl"), 
+    (42, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
