@@ -13,6 +13,8 @@ abstract type SolidMechanicsCouplingSchwarzBoundaryCondition <: SolidMechanicsSc
 
 using Symbolics
 
+
+
 mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     offset::Int64
@@ -22,6 +24,7 @@ mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegular
     velo_fun::Function
     acce_fun::Function
 end
+
 
 mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
@@ -88,3 +91,31 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     swap_bcs::Bool
     variational::Bool
 end
+
+
+mutable struct SolidMechanicsOpInfOverlapSchwarzBC <: SolidMechanicsSchwarzBoundaryCondition 
+    name::String
+    side_set_node_indices::Vector{Int64}
+    coupled_nodes_indices::Vector{Vector{Int64}}
+    interpolation_function_values::Vector{Vector{Float64}}
+    coupled_subsim::Simulation
+    subsim::Simulation
+    variational::Bool
+    fom_bc::SolidMechanicsOverlapSchwarzBoundaryCondition
+    nn_model::Any
+    basis::Array{Float64}
+end
+
+mutable struct SolidMechanicsOpInfDirichletBC <: SolidMechanicsRegularBoundaryCondition 
+    name::String
+    offset::Int64
+    node_set_id::Int64
+    node_set_node_indices::Vector{Int64}
+    disp_num::Num
+    velo_num::Num
+    acce_num::Num
+    fom_bc::SolidMechanicsDirichletBoundaryCondition
+    nn_model::Any
+    basis::Array{Float64}
+end
+

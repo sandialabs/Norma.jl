@@ -10,6 +10,7 @@ include("ics_bcs.jl")
 
 using Base.Threads: @threads, threadid, nthreads
 using NPZ
+using PyCall
 
 function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
@@ -113,6 +114,54 @@ function CubicOpInfRom(params::Parameters)
         fom_model,
         reference,
         false,
+    )
+end
+
+function NeuralNetworkOpInfRom(params::Dict{String,Any})
+    params["mesh smoothing"] = false
+    fom_model = SolidMechanics(params)
+    reference = fom_model.reference
+    opinf_model_directory = params["model"]["model-directory"]
+    basis_file = opinf_model_directory * "/nn-opinf-basis.npz"
+    basis = NPZ.npzread(basis_file)
+    basis = basis["basis"]
+    py""" 
+    import torch
+    def get_model(model_file):
+      return torch.load(model_file)
+    """ 
+    ensemble_size = params["model"]["ensemble-size"]
+    model = []
+    for i in 1:ensemble_size
+      tmp =  py"get_model"(opinf_model_directory * "/stiffness-" * string(i-1) * ".pt")
+      push!(model,tmp)
+    end
+    num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
+    num_dofs = reduced_dim
+    
+    time = 0.0
+    failed = false
+    null_vec = zeros(num_dofs)
+    
+    reduced_state = zeros(num_dofs)
+    reduced_velocity = zeros(num_dofs)
+    reduced_boundary_forcing = zeros(num_dofs)
+    free_dofs = trues(num_dofs)
+    boundary_conditions = Vector{BoundaryCondition}()
+    NeuralNetworkOpInfRom(
+        model,
+        basis,
+        reduced_state,
+        reduced_velocity,
+        reduced_boundary_forcing,
+        null_vec,
+        free_dofs,
+        boundary_conditions,
+        time,
+        failed,
+        fom_model,
+        reference,
+        false
     )
 end
 
@@ -256,7 +305,8 @@ function create_model(params::Parameters)
         return QuadraticOpInfRom(params)
     elseif model_name == "cubic opinf rom"
         return CubicOpInfRom(params)
-
+    elseif model_name == "neural network opinf rom"
+        return NeuralNetworkOpInfRom(params)
     else
         norma_abort("Unknown type of model : $model_name")
     end
