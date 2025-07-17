@@ -1,8 +1,7 @@
 type: single
 input mesh file: awful-cube.g
 output mesh file: awful-cube.e
-Exodus output interval: 10
-CSV output interval: 10
+Exodus output interval: 1
 model:
   type: mesh smoothing
   smooth reference: max
@@ -19,12 +18,8 @@ model:
 time integrator:
   type: quasi static
   initial time: 0.0
-  final time: 1.0e-00
-  time step: 1.0e-04
-  maximum time step: 1.0e-4
-  minimum time step: 1.0e-15
-  increase factor: 1.1
-  decrease factor: 0.5
+  final time: 10.0
+  time step: 1.0
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -49,7 +44,12 @@ solver:
   type: steepest descent
   step:  steepest descent
   minimum iterations: 1
-  maximum iterations: 16
+  maximum iterations: 64
   relative tolerance: 1.0e-12
   absolute tolerance: 1.0e-08
-  step length: 1.0e-8
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
+
