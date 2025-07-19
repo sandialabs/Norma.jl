@@ -3,9 +3,9 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "Single Static Solid Pressure Neumann BC" begin
-    cp("../examples/single/static-solid/pressure-bc/cube.yaml", "cube.yaml"; force=true)
-    cp("../examples/single/static-solid/pressure-bc/cube.g", "cube.g"; force=true)
+@testset "Single Implicit Dynamic Solid Cube Pressure BC Expand" begin
+    cp("../examples/single/implicit-dynamic-solid/pressure-bc-expand/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/single/implicit-dynamic-solid/pressure-bc-expand/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model
@@ -14,12 +14,12 @@
     rm("cube.e")
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
-    @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06
-    @test avg_disp[2] ≈ -0.125 rtol = 1.0e-06
-    @test avg_disp[3] ≈ 0.500 rtol = 1.0e-06
-    @test avg_stress[1] ≈ 0.0 atol = 1.0e-06
-    @test avg_stress[2] ≈ 0.0 atol = 1.0e-06
-    @test avg_stress[3] ≈ 1.0e+09 rtol = 1.0e-06
+    @test avg_disp[1] ≈ 0.0 atol = 1.0e-06
+    @test avg_disp[2] ≈ 0.0 atol = 1.0e-06
+    @test avg_disp[3] ≈ -7.396860901565105e-15 rtol = 1.0e-06
+    @test avg_stress[1] ≈ 1.0000001666648064e9 atol = 1.0e-06
+    @test avg_stress[2] ≈ 1.0000001666648064e9 atol = 1.0e-06
+    @test avg_stress[3] ≈ 1.0000001666648064e9 atol = 1.0e-06
     @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
