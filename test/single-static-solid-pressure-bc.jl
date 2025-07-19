@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "Single Static Solid Pressure Neumann Bc" begin
+@testset "Single Static Solid Pressure Neumann BC" begin
     cp("../examples/single/static-solid/pressure-bc/cube.yaml", "cube.yaml"; force=true)
     cp("../examples/single/static-solid/pressure-bc/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
