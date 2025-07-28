@@ -282,7 +282,7 @@ function SMCouplingSchwarzBC(
         acceleration_history_length = 0
         acceleration_type = -1
 
-        if !(acceleration_type_string in ["none", "anderson"])
+        if !(acceleration_type_string in ["none", "anderson", "aitken"])
             norma_abort("Unsupported acceleration type: $acceleration_type")
         end
        if acceleration_type_string == "none"
@@ -290,6 +290,9 @@ function SMCouplingSchwarzBC(
         elseif acceleration_type_string == "anderson"
             println("Setting Anderson On")
             acceleration_type = 1
+        elseif acceleration_type_string == "aitken"
+            println("Setting Aitken On")
+            acceleration_type = 2
         end
         if (acceleration_type_string != "none")
             acceleration_history_length = bc_params["acceleration history"]
@@ -549,7 +552,62 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
     end
 end
 
-function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, derivative::Int64)
+# function modify_prediction_by_anderson_acceleration_constrained_optimization(g_x_i::Matrix{Float64}, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, derivative::Int64)
+#     # Derivative: 0 - position, 1 - velocity, 2 - acceleration
+#     input_shape = size(g_x_i)
+#     variable_blocks = 3 * length(bc.side_set_node_indices)
+
+#     low_range = (derivative)*variable_blocks + 1
+#     high_range = ((derivative + 1))*variable_blocks 
+    
+#     history_length = bc.acceleration_history_length
+#     k_iter = bc.iteration
+#     # variable names based on Homer and Ni (2011)
+#     if k_iter == 0
+#         bc.acceleration_g_x_i[low_range:high_range, 1] .= vec(g_x_i)
+#         # Set x1 = g(x0)
+#         #bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
+#         bc.acceleration_f_i[low_range:high_range, 1] .= 0
+#     end
+
+#     m_k = k_iter <= history_length ? k_iter : history_length
+
+#     # Set F_k for this iteration
+#     bc.acceleration_f_i[low_range:high_range, k_iter+1] .= vec(g_x_i) - bc.acceleration_g_x_i[low_range:high_range, k_iter+1]
+#     # Grab the local F_k
+#     F_k = bc.acceleration_f_i[low_range:high_range, (k_iter+1-m_k):(k_iter+1)]
+#     alpha_k = zeros(m_k+1)
+#     println("Schwarz iteration ", k_iter)
+#     println("Optimizing F_k ", F_k)
+#     println("alpha_k ", alpha_k)
+
+#     # Perform a constrained minimization problem that finds alpha_k such that
+#     # the L2 norm of F_k*alpha is minimized and the sum of alpha_k = 1
+#     opt_model = JModel(Ipopt.Optimizer)
+#     set_optimizer_attribute(opt_model, "print_level", 0)
+#     @JVariable(opt_model, alpha_k[1:m_k+1] >= 0)
+#     @JObjective(opt_model, Min, 
+#         sqrt(sum((F_k * alpha_k).^2))
+#     )
+#     @JConstraint(opt_model, sum(alpha_k) == 1)
+#     # Solve the optimization problem
+#     optimize!(opt_model)
+#     # Get the optimized alpha_k
+#     alpha_k = value.(alpha_k)
+
+#     # New prediction is the linear combination of F_k and alpha_k
+#     x_k_plus_1 = F_k * alpha_k
+
+#     # Update acceleration history
+#     bc.acceleration_g_x_i[low_range:high_range, k_iter+2] .= x_k_plus_1
+    
+#     println("Acceleration G_X_I ", bc.acceleration_g_x_i[low_range:high_range, 1:k_iter+2])
+#     println("Acceleration F_I ", bc.acceleration_f_i[low_range:high_range, 1:k_iter+2])
+
+#     return reshape(x_k_plus_1, input_shape[1], input_shape[2])
+# end
+
+function modify_prediction_by_linear_combination_acceleration(g_x_i::Matrix{Float64}, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, derivative::Int64)
     # Derivative: 0 - position, 1 - velocity, 2 - acceleration
     input_shape = size(g_x_i)
     variable_blocks = 3 * length(bc.side_set_node_indices)
@@ -557,62 +615,119 @@ function modify_prediction_by_anderson_acceleration(g_x_i::Matrix{Float64}, bc::
     low_range = (derivative)*variable_blocks + 1
     high_range = ((derivative + 1))*variable_blocks 
     
-    history_length = bc.acceleration_history_length
+    history_length = 5 #bc.acceleration_history_length
     k_iter = bc.iteration
     # variable names based on Homer and Ni (2011)
     if k_iter == 0
-        bc.acceleration_g_x_i[low_range:high_range, 1] .= vec(g_x_i)
+        # bc.acceleration_g_x_i[low_range:high_range, 1] .= vec(g_x_i)
         # Set x1 = g(x0)
         #bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
-        bc.acceleration_f_i[low_range:high_range, 1] .= 0
+        
     end
 
-    m_k = k_iter <= history_length ? k_iter : history_length
+    bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
+    bc.acceleration_f_i[low_range:high_range, k_iter+1] .= 0
 
+    m_k = k_iter <= history_length ? k_iter : history_length
+    println("k_iter ", k_iter)
+    println("m_k ", m_k)
     # Set F_k for this iteration
     bc.acceleration_f_i[low_range:high_range, k_iter+1] .= vec(g_x_i) - bc.acceleration_g_x_i[low_range:high_range, k_iter+1]
     # Grab the local F_k
-    F_k = bc.acceleration_f_i[low_range:high_range, (k_iter+1-m_k):(k_iter+1)]
-    alpha_k = zeros(m_k+1)
+    low_iter = m_k >= 5 ? (k_iter+1) - 4 : (k_iter+1-m_k)
+    println("low_iter:(k_iter+1) ", low_iter, ":", (k_iter+1))
+    println("lo wand high iter", low_range, " ", high_range)
+    
+
+    F_k = bc.acceleration_g_x_i[low_range:high_range, low_iter:(k_iter+1)]
+    alpha_k = [ 0.05, 0.1, 0.1 , 0.25, 0.5]
+    if m_k < length(alpha_k)
+        alpha_k = alpha_k[1:m_k+1]
+    end
+    alpha_k = alpha_k / sum(alpha_k) # Normalize to sum to 1
+    
+    println("F_k shape ", size(F_k))
+    println("F_k ", F_k)
+    x_k_plus_1 = F_k * alpha_k
+
+
+    # Update acceleration history
+    bc.acceleration_g_x_i[low_range:high_range, k_iter+2] .= x_k_plus_1
     println("Schwarz iteration ", k_iter)
     println("Optimizing F_k ", F_k)
     println("alpha_k ", alpha_k)
 
-    # Perform a constrained minimization problem that finds alpha_k such that
-    # the L2 norm of F_k*alpha is minimized and the sum of alpha_k = 1
-    opt_model = JModel(Ipopt.Optimizer)
-    set_optimizer_attribute(opt_model, "print_level", 0)
-    @JVariable(opt_model, alpha_k[1:m_k+1] >= 0)
-    @JObjective(opt_model, Min, 
-        sqrt(sum((F_k * alpha_k).^2))
-    )
-    @JConstraint(opt_model, sum(alpha_k) == 1)
-    # Solve the optimization problem
-    optimize!(opt_model)
-    # Get the optimized alpha_k
-    alpha_k = value.(alpha_k)
-
-    # New prediction is the linear combination of F_k and alpha_k
-    x_k_plus_1 = F_k * alpha_k
-
-    # Update acceleration history
-    bc.acceleration_g_x_i[low_range:high_range, k_iter+2] .= x_k_plus_1
-    
-    println("Acceleration G_X_I ", bc.acceleration_g_x_i[low_range:high_range, 1:k_iter+2])
-    println("Acceleration F_I ", bc.acceleration_f_i[low_range:high_range, 1:k_iter+2])
-
     return reshape(x_k_plus_1, input_shape[1], input_shape[2])
+
+end
+
+function modify_prediction_by_aitken_acceleration(g_x_i::Matrix{Float64}, other_gxi::Matrix{Float64}, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, derivative::Int64)
+    # Implement Aitken acceleration here
+    variable_blocks = 3 * length(bc.side_set_node_indices)
+    k_iter = bc.iteration
+
+    low_range = (derivative)*variable_blocks + 1
+    high_range = ((derivative + 1))*variable_blocks
+
+    if (k_iter == 0)
+        return g_x_i
+    end
+
+    # Aitken acceleration formula
+    for node_id in range(length(bc.side_set_node_indices))
+        for dof in range(3)
+            # It's 3xnumber_of_nodes
+            upper = (g_x_i[node_id*3 + dof] - other_gxi[node_id*3 + dof] - )
+            bc.acceleration_g_x_i[node_id*3 + dof, k_iter+1] = 
+        end
+    end
+
+    return g_x_i
+end
+
+function save_acceleration_history(g_x_i::Matrix{Float64}, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, derivative::Int64)
+    # Save the acceleration history to a file or a data structure
+    # This is a placeholder function and should be implemented as needed
+    println("Saving acceleration history...")
+    input_shape = size(g_x_i)
+    variable_blocks = 3 * length(bc.side_set_node_indices)
+    k_iter = bc.iteration
+
+    low_range = (derivative)*variable_blocks + 1
+    high_range = ((derivative + 1))*variable_blocks 
+    println("ranges", low_range, " ",  high_range)
+    if k_iter == 0
+        bc.acceleration_g_x_i[low_range:high_range, 1] .= vec(g_x_i)
+        # Set x1 = g(x0)
+        #bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
+        bc.acceleration_f_i[low_range:high_range, 1] .= vec(g_x_i)
+    end
+
+    bc.acceleration_g_x_i[low_range:high_range, k_iter+1] .= vec(g_x_i)
+    bc.acceleration_f_i[low_range:high_range, k_iter+1] .= vec(g_x_i) #  - bc.acceleration_g_x_i[low_range:high_range, k_iter+1]
+    println("Schwarz iteration ", k_iter)
+    println("Optimizing F_k ", bc.acceleration_f_i[low_range:high_range, k_iter+1])
 end
 
 function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
 
-    if (bc.acceleration_type == 1)
-        println("Running Acceleration ", bc.acceleration_type)
-        nodal_curr = modify_prediction_by_anderson_acceleration(nodal_curr, bc, 0)
+    if (bc.acceleration_type == 0)
+        # If no acceleration type, update acceleration f_i for history 
+        println("Running NO Acceleration on ", nodal_curr)
+        save_acceleration_history(nodal_curr, bc, 0)
+        println("Modified nodal_curr ", nodal_curr)
         # nodal_velo = modify_prediction_by_anderson_acceleration(nodal_velo, bc, 1)
         # nodal_acce = modify_prediction_by_anderson_acceleration(nodal_acce, bc, 2)
+    elseif (bc.acceleration_type == 1)
+        println("Running Anderson Acceleration on ", nodal_curr)
+        nodal_curr = modify_prediction_by_linear_combination_acceleration(nodal_curr, bc, 0)
+        println("Modified nodal_curr ", nodal_curr)
+        # nodal_velo = modify_prediction_by_aitken_acceleration(nodal_velo, bc, 1)
+        # nodal_acce = modify_prediction_by_aitken_acceleration(nodal_acce, bc, 2)
+    elseif (bc.acceleration_type == 2)
+        nodal_curr = modify_prediction_by_aitken_acceleration(nodal_curr, model.current[:, i_global], bc, 0)
     else
         println("bc.acceleration_type ", bc.acceleration_type)
     end
@@ -629,11 +744,21 @@ end
 function coupling_variational_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_force = get_dst_force(bc)
     global_from_local_map = bc.global_from_local_map
+
+    nodal_curr = zeros(3, len(global_from_local_map))
+
     for (i_local, i_global) in enumerate(global_from_local_map)
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
         local_range = (3 * (i_local - 1) + 1):(3 * i_local)
         @inbounds model.boundary_force[global_range] += nodal_force[local_range]
+
+        nodal_curr[:, i_local] = model.current[:, i_global]
     end
+
+    if (bc.acceleration_type == 2)
+        save_acceleration_history(nodal_curr, bc, 0)
+    end
+
 end
 
 function get_internal_force(model::SolidMechanics)
