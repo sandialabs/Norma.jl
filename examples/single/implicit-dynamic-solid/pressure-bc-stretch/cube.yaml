@@ -20,14 +20,23 @@ time integrator:
   time step: 0.1
   β: 0.25
   γ: 0.5
-initial conditions:
-  velocity:
-    - node set: nsall
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
       component: z
-      function: "1.0"
+      function: "0.0"
+  Neumann pressure:
+    - side set: ssz+
+      function: "1.0e9 * t"
 solver:
-  type: steepest descent
-  step: steepest descent
+  type: Hessian minimizer
+  step: full Newton
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-10

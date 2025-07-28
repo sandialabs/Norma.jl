@@ -7,7 +7,11 @@
 using YAML
 
 @testset "Schwarz AHeaD Non-Overlap Dynamic Notched Cylinder HEX8-HEX8" begin
-    cp("../examples/ahead/nonoverlap/notched-cylinder/dynamic/notched-cylinder.yaml", "notched-cylinder.yaml"; force=true)
+    cp(
+        "../examples/ahead/nonoverlap/notched-cylinder/dynamic/notched-cylinder.yaml",
+        "notched-cylinder.yaml";
+        force=true,
+    )
     cp(
         "../examples/ahead/nonoverlap/notched-cylinder/dynamic/notched-cylinder-1.yaml",
         "notched-cylinder-1.yaml";
@@ -62,4 +66,3 @@ using YAML
         1.0e1
     @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 4, 4, 4, 4, 5, 5] atol = 0
 end
-

@@ -1,0 +1,35 @@
+type: single
+input mesh file: cuboid-2.g
+output mesh file: cuboid-2.e
+model:
+  type: linear opinf rom
+  model-file: opinf-operator-2.npz
+  material:
+    blocks:
+      coarse: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: nsz+
+      component: z
+      function: "1.0 * t"
+  Schwarz overlap:
+    - side set: ssz-
+      source: cuboid-1
+      source block: fine
+      source side set: ssz+
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

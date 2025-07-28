@@ -1,0 +1,40 @@
+reset
+logging off
+${set_warning_count(0)}
+
+${radius_large = 0.5}
+${height_large = 2.0}
+${radius_small = 0.3}
+${height_small = 1.8} 
+${h = 0.1}
+${intervals = 10}
+
+# volume 1
+create cylinder radius {radius_large} z {height_large}
+webcut volume 1 cylinder radius {radius_small} axis z
+delete volume 2
+create cylinder radius {radius_large} z {height_large - height_small} 
+move volume 3 z {height_large/2 + 0.1} include_merged
+create cylinder radius {radius_large} z {height_large - height_small} 
+move volume 4 z {-height_large/2 - 0.1} include_merged
+merge volume all
+unite volume 1 3 4 
+volume all scheme tetmesh
+volume all size {h}
+volume all sizing function constant
+mesh volume all
+block 1 volume all
+#block 1 element type tetra10
+block 1 name "can"
+nodeset 1 surface 12
+nodeset 1 name "top"
+nodeset 2 surface 14
+nodeset 2 name "bottom"
+sideset 1 surface 4 16 17 
+sideset 1 name "interior_ss"
+set large exodus file off
+export mesh "can.g" overwrite
+
+
+
+

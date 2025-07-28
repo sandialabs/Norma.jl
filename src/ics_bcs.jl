@@ -83,6 +83,24 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
     )
 end
 
+function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
+    side_set_name = bc_params["side set"]
+    expression = bc_params["function"]
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
+
+    # Build symbolic expressions
+    pressure_num = eval(Meta.parse(expression))
+
+    # Compile them into functions
+    pressure_fun = eval(build_function(pressure_num, [t, x, y, z]; expression=Val(false)))
+
+    return SolidMechanicsNeumannPressureBoundaryCondition(
+        side_set_name, side_set_id, num_nodes_per_side, side_set_node_indices, pressure_fun
+    )
+end 
+
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
@@ -354,6 +372,22 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
     end
 end
 
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBoundaryCondition)
+    ss_node_index = 1
+    for side in bc.num_nodes_per_side
+        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+        side_coordinates = model.reference[:, side_nodes]
+        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
+        ss_node_index += side
+        side_node_index = 1
+        for node_index in side_nodes
+            dof_indices = [3 * node_index - 2, 3 * node_index - 1,  3 * node_index]
+            model.boundary_force[dof_indices] += nodal_force_component[:, side_node_index]
+            side_node_index += 1
+        end
+    end
+end
+
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     e1 = @SVector [1.0, 0.0, 0.0]
     angle_btwn = acos(dot(axis, e1))
@@ -466,7 +500,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchw
 end
 
 function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics
+    if bc.coupled_subsim.model isa SolidMechanics || bc.coupled_subsim.model isa OpInfModel
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
@@ -957,6 +991,9 @@ function create_bcs(params::Parameters)
             elseif bc_type == "Neumann"
                 boundary_condition = SolidMechanicsNeumannBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "Neumann pressure"
+                boundary_condition = SolidMechanicsNeumannPressureBoundaryCondition(input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
                 sim = params["parent_simulation"]
                 sim.controller.schwarz_contact = true
@@ -1085,6 +1122,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
         end
     end
     copy_solution_source_targets(model, integrator, solver)
+    return nothing
 end
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)

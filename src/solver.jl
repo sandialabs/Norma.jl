@@ -82,7 +82,6 @@ function SteepestDescent(params::Parameters, model::Model)
     relative_error = 0.0
     value = 0.0
     gradient = zeros(num_dof)
-    lumped_hessian = zeros(num_dof)
     solution = zeros(num_dof)
     initial_norm = 0.0
     converged = false
@@ -105,7 +104,6 @@ function SteepestDescent(params::Parameters, model::Model)
         relative_error,
         value,
         gradient,
-        lumped_hessian,
         solution,
         initial_norm,
         converged,
@@ -496,10 +494,8 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         solver.gradient = model.global_transform * (model.internal_force - external_force)
-        solver.lumped_hessian = model.global_transform * model.diag_stiffness
     else
         solver.gradient = model.internal_force - external_force
-        solver.lumped_hessian = model.diag_stiffness
     end
     return nothing
 end
@@ -525,32 +521,6 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
         stiffness = global_transform * stiffness * global_transform'
     end
     solver.hessian = stiffness + model.mass / β / Δt / Δt
-    solver.gradient = internal_force - external_force + inertial_force
-    solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
-    return nothing
-end
-
-function evaluate(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
-    evaluate(model, integrator, solver)
-    if model.failed == true
-        return nothing
-    end
-    integrator.stored_energy = model.strain_energy
-    β = integrator.β
-    Δt = integrator.time_step
-    inertial_force = model.lumped_mass .* integrator.acceleration
-    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
-    integrator.kinetic_energy = kinetic_energy
-    internal_force = model.internal_force
-    external_force = model.body_force + model.boundary_force
-    diag_stiffness = model.diag_stiffness
-    if model.inclined_support == true
-        global_transform = model.global_transform
-        internal_force = global_transform * internal_force
-        external_force = global_transform * external_force
-        diag_stiffness = global_transform * diag_stiffness
-    end
-    solver.lumped_hessian = diag_stiffness + model.lumped_mass / β / Δt / Δt
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     return nothing
@@ -607,7 +577,8 @@ function backtrack_line_search(
         copy_solution_source_targets(solver, model, integrator)
         evaluate(integrator, solver, model)
         if model.failed == true
-            return step
+            step_length *= backtrack_factor
+            continue
         end
         resid = solver.gradient[free]
         merit = 0.5 * dot(resid, resid)
@@ -640,7 +611,7 @@ end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::MatrixFree, _::SteepestDescentStep)
     free = model.free_dofs
-    direction = -solver.gradient[free] ./ solver.lumped_hessian[free]
+    direction = LinearAlgebra.normalize(-solver.gradient[free])
     return backtrack_line_search(integrator, solver, model, direction)
 end
 

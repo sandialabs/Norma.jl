@@ -35,8 +35,12 @@ boundary conditions:
 solver:
   type: steepest descent
   step: steepest descent
-  step length: 1.0
+  step length: 1.0e-01
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 64
   minimum iterations: 1
-  maximum iterations: 1024
+  maximum iterations: 64
   relative tolerance: 1.0e-15
   absolute tolerance: 1.0e-08
