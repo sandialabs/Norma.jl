@@ -1,0 +1,11 @@
+type: multi
+domains: ["plate-1.yaml", "plate-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: 0.0
+final time: 20.0e-3
+time step: 1.0e-5
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

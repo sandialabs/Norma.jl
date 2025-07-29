@@ -14,7 +14,7 @@ model:
 time integrator:
   type: quasi static
   time step: 0.5
-  initial equilibrium: true
+  initial equilibrium: false
 initial conditions:
   displacement:
     - node set: nsall
@@ -33,13 +33,14 @@ boundary conditions:
       function: "0.0"
   Schwarz contact:
     - side set: ssx-
-      source: "cube-1.yaml"
+      source: cube-1
       source block: fine
       source side set: ssx+
+      friction type: frictionless
 solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1
   maximum iterations: 16
-  relative tolerance: 1.0e-10
-  absolute tolerance: 1.0e-06
+  relative tolerance: 1.0e-14
+  absolute tolerance: 1.0e-10

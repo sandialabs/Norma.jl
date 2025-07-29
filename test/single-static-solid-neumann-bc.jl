@@ -1,6 +1,11 @@
-@testset "single-static-solid-neumann-bc" begin
-    cp("../examples/single/static-solid/neumann-bc/cube.yaml", "cube.yaml", force=true)
-    cp("../examples/single/static-solid/neumann-bc/cube.g", "cube.g", force=true)
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
+@testset "Single Static Solid Neumann Bc" begin
+    cp("../examples/single/static-solid/neumann-bc/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/single/static-solid/neumann-bc/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model

@@ -1,0 +1,39 @@
+type: single
+input mesh file: cylinder-1.g
+output mesh file: cylinder-1.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      fine: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: -X_bottom
+      component: x
+      function: "0.0"
+    - node set: -Y_bottom
+      component: y
+      function: "0.0"
+    - node set: -Z_bottom
+      component: z
+      function: "0.0"
+  Schwarz nonoverlap:
+    - side set: +Z_bottomSS
+      source: cylinder-2
+      source block: coarse
+      source side set: -Z_topSS
+      search tolerance: 5.0e-02
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

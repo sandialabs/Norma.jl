@@ -1,0 +1,12 @@
+type: multi
+domains: ["notched-cylinder-1.yaml", "notched-cylinder-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 1
+CSV write sidesets: true
+initial time: 0.0
+final time: 1.5
+time step: 0.005
+minimum iterations: 1
+maximum iterations: 32
+relative tolerance: 1.0e-05
+absolute tolerance: 1.0e-03

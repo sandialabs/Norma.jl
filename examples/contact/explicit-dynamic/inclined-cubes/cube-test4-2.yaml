@@ -1,0 +1,45 @@
+type: single
+input mesh file: cube-test4-2.g
+output mesh file: cube-test4-2.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      coarse: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: central difference
+  initial time: 0.0
+  final time: 1
+  time step: 0.01
+  CFL: 0.1
+  γ: 0.5
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: x
+      function: "1.0e-04 * 6.123233995736766e-17"
+    - node set: nsall
+      component: y
+      function: "1.0e-04 * 1.0"
+  velocity:
+    - node set: nsall
+      component: x
+      function: "-100.0 * 6.123233995736766e-17"
+    - node set: nsall
+      component: y
+      function: "-100.0 * 1.0"
+boundary conditions:
+  Schwarz contact:
+    - side set: ssx-
+      source: cube-test4-1
+      source block: fine
+      source side set: ssx+
+      friction type: frictionless
+solver:
+  type: explicit solver
+  step: explicit

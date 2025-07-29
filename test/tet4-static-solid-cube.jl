@@ -1,6 +1,11 @@
-@testset "tet4-static-solid-cube" begin
-    cp("../examples/element-types/tet4/cube/cube.yaml", "cube.yaml", force=true)
-    cp("../examples/element-types/tet4/cube/cube.g", "cube.g", force=true)
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
+@testset "Tet4 Static Solid Cube" begin
+    cp("../examples/element-types/tet4/cube/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/element-types/tet4/cube/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model
@@ -13,7 +18,7 @@
     avg_stress = average_components(model.stress)
     @test min_disp_x ≈ -0.25 rtol = 1.0e-06
     @test min_disp_y ≈ -0.25 rtol = 1.0e-06
-    @test max_disp_z ≈  1.00 rtol = 1.0e-06
+    @test max_disp_z ≈ 1.00 rtol = 1.0e-06
     @test avg_stress[1] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[2] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[3] ≈ 1.0e+09 rtol = 1.0e-06

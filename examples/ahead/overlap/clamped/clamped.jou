@@ -2,17 +2,21 @@ ${m = 1.0}
 ${mm = 0.001 * m}
 ${side = 1.0 * mm}
 ${length = 1.0 * m}
-${h_coarse_size = 1.0 * mm}
-${h_fine_size = h_coarse_size / 2.0}
+${h_size_face = 1.0 * mm}
+${intervals_coarse = 750}
+${intervals_fine = 750}
 
-${overlap_length = h_coarse_size * 30}
+${overlap_length = side * 500}
 ${domain_length = (length + overlap_length) / 2.0}
 ${offset = abs(domain_length - overlap_length) / 2.0}
 
 create brick x {side} y {side} z {domain_length}
 move volume 1 z {-offset} include_merged
-volume all size {h_coarse_size}
-mesh volume all
+surface 1 2 size {h_size_face}
+surface 1 2 scheme submap
+mesh surface 1 2
+curve 9 10 11 12 interval {intervals_coarse}
+mesh volume 1
 block 1 volume 1
 block 1 name "coarse"
 nodeset 1 surface with x_coord < 0
@@ -24,25 +28,37 @@ nodeset 3 name "nsy-"
 nodeset 4 surface with y_coord > 0
 nodeset 4 name "nsy+"
 #nodeset 5 surface with z_coord < 0
-nodeset 5 surface 2 
+nodeset 5 surface 2
 nodeset 5 name "nsz-"
 #nodeset 6 surface with z_coord > 0
 nodeset 6 surface 1
 nodeset 6 name "nsz+"
 nodeset 7 volume all
 nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0
+sideset 1 name "ssx-"
+sideset 2 surface with x_coord > 0
+sideset 2 name "ssx+"
+sideset 3 surface with y_coord < 0
+sideset 3 name "ssy-"
+sideset 4 surface with y_coord > 0
+sideset 4 name "ssy+"
+#sideset 5 surface with z_coord < 0
+sideset 5 surface 2
+sideset 5 name "ssz-"
+#sideset 6 surface with z_coord > 0
+sideset 6 surface 1
+sideset 6 name "ssz+"
 set large exodus file off
 export mesh "clamped-1.g" overwrite
 
 delete mesh
 move volume 1 z {2 * offset} include_merged
-#IKT question 11/6/2024: how do I set number of elements in z-direction
-#when I do sweep?  This should be given by the h_fine_size. 
-#surface 1 size {side}
-#surface 1 scheme pave
-#volume 1 scheme sweep source surface 1 target surface 2 sweep_smooth linear sweep_transform translate propagate_bias autosmooth_target off
-volume all size {h_coarse_size}
-mesh volume all
+surface 1 2 size {h_size_face}
+surface 1 2 scheme submap
+mesh surface 1 2
+curve 9 10 11 12 interval {intervals_fine}
+mesh volume 1
 block 1 volume 1
 block 1 name "fine"
 nodeset 1 surface with x_coord < 0
@@ -61,5 +77,22 @@ nodeset 6 surface 1
 nodeset 6 name "nsz+"
 nodeset 7 volume all
 nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0
+sideset 1 name "ssx-"
+sideset 2 surface with x_coord > 0
+sideset 2 name "ssx+"
+sideset 3 surface with y_coord < 0
+sideset 3 name "ssy-"
+sideset 4 surface with y_coord > 0
+sideset 4 name "ssy+"
+#sideset 5 surface with z_coord < 0
+sideset 5 surface 2
+sideset 5 name "ssz-"
+#sideset 6 surface with z_coord > 0
+sideset 6 surface 1
+sideset 6 name "ssz+"
 set large exodus file off
 export mesh "clamped-2.g" overwrite
+
+
+

@@ -1,0 +1,60 @@
+type: single
+input mesh file: sphere.g
+output mesh file: sphere.e
+Exodus output interval: 1
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      sphere: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 200e9
+      Poisson's ratio: 0.27
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 0.1
+boundary conditions:
+    Inclined Dirichlet:
+    - node set: sphere_surf
+      normal vector: [ "x", "y", "z" ]
+      function: "-0.0005*t"
+    Dirichlet:
+    - node set: x_fix
+      component: x
+      function: "-0.0005*t"
+    - node set: x_fix
+      component: y
+      function: "0.0"
+    - node set: x_fix
+      component: z
+      function: "0.0"
+    - node set: y_fix
+      component: x
+      function: "0.0"
+    - node set: y_fix
+      component: y
+      function: "-0.0005*t"
+    - node set: y_fix
+      component: z
+      function: "0.0"
+    - node set: z_fix
+      component: x
+      function: "0.0"
+    - node set: z_fix
+      component: y
+      function: "0.0"
+    - node set: z_fix
+      component: z
+      function: "-0.0005*t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 32
+  relative tolerance: 1.0e-04
+  absolute tolerance: 1.0e-03

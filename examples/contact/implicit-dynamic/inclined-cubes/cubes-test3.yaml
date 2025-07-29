@@ -1,0 +1,13 @@
+type: multi
+domains: ["cube-test3-1.yaml", "cube-test3-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: -1.e-4
+time step: 1.e-4
+final time: 3.0
+relaxation parameter: 1.0
+naive stabilized: false
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

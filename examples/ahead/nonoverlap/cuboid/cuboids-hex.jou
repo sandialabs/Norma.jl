@@ -1,0 +1,99 @@
+${side = 1.0}
+${height = 1.5}
+${overlap_vol_frac = 0.0}
+${h_fine = 0.25}
+${h_coarse = 0.50}
+
+${area = side * side}
+${volume = area * height}
+${overlap_volume = overlap_vol_frac * volume}
+${overlap_length = overlap_volume / area}
+${domain_height = (height + overlap_length) / 2.0}
+${offset = abs(domain_height - overlap_length) / 2.0}
+
+create brick x {side} y {side} z {domain_height}
+move volume 1 z {-offset} include_merged
+volume 1 size {h_fine}
+mesh volume 1
+block 1 volume 1
+block 1 name "fine"
+nodeset 1 surface 4
+nodeset 1 name "nsx-"
+nodeset 2 surface 6
+nodeset 2 name "nsx+"
+
+${area = side * side}
+${volume = area * height}
+${overlap_volume = overlap_vol_frac * volume}
+${overlap_length = overlap_volume / area}
+${domain_height = (height + overlap_length) / 2.0}
+${offset = abs(domain_height - overlap_length) / 2.0}
+
+create brick x {side} y {side} z {domain_height}
+move volume 1 z {-offset} include_merged
+#volume 1 scheme tetmesh
+volume 1 size {h_fine}
+mesh volume 1
+block 1 volume 1
+#block 1 element type tetra4
+block 1 name "fine"
+nodeset 1 surface 4
+nodeset 1 name "nsx-"
+nodeset 2 surface 6
+nodeset 2 name "nsx+"
+nodeset 3 surface 3
+nodeset 3 name "nsy-"
+nodeset 4 surface 5
+nodeset 4 name "nsy+"
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+sideset 1 surface 4
+sideset 1 name "ssx-"
+sideset 2 surface 6
+sideset 2 name "ssx+"
+sideset 3 surface 3
+sideset 3 name "ssy-"
+sideset 4 surface 5
+sideset 4 name "ssy+"
+sideset 5 surface 2
+sideset 5 name "ssz-"
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "cuboid-1.g" overwrite
+delete mesh
+move volume 1 z {2 * offset} include_merged
+#volume 1 scheme tetmesh
+volume 1 size {h_coarse}
+mesh volume 1
+block 1 volume 1
+#block 1 element type tetra4
+block 1 name "coarse"
+nodeset 1 surface 4
+nodeset 1 name "nsx-"
+nodeset 2 surface 6
+nodeset 2 name "nsx+"
+nodeset 3 surface 3
+nodeset 3 name "nsy-"
+nodeset 4 surface 5
+nodeset 4 name "nsy+"
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+sideset 1 surface 4
+sideset 1 name "ssx-"
+sideset 2 surface 6
+sideset 2 name "ssx+"
+sideset 3 surface 3
+sideset 3 name "ssy-"
+sideset 4 surface 5
+sideset 4 name "ssy+"
+sideset 5 surface 2
+sideset 5 name "ssz-"
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "cuboid-2.g" overwrite

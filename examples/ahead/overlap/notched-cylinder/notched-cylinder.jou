@@ -14,12 +14,8 @@ ${offset = fine_height + (coarse_height - overlap)/ 2.0}
 ${h_fine = 0.002}
 ${h_coarse = h_fine}
 ${intervals = 16}
-${rel_tol = 0.0001}
-${lo = 1.0 - rel_tol}
-${hi = 1.0 + rel_tol}
 ${refinement_level = 1}
 
-# volume 1
 create cylinder radius {radius} z {2.0 * (fine_height - overlap)}
 create brick x {2.0 * radius} y {2.0 * radius} z {2.0 * notch_radius}
 webcut volume 2 cylinder radius {neck_radius + notch_radius} axis z
@@ -86,39 +82,31 @@ refine volume 9 12 14 16 numsplit {refinement_level}
 block 2 volume 11 15 17 18
 block 1 name "fine"
 block 2 name "coarse"
-#${bot_1 = -rel_tol}
-#${top_1 = rel_tol}
-#nodeset 1 surface with z_coord > {bot_1} && z_coord < {top_1}
-#${z2 = fine_height}
-#${bot_2 = lo * z2}
-#${top_2 = hi * z2}
-#nodeset 2 surface with z_coord > {bot_2} && z_coord < {top_2}
-#${z3 = fine_height - overlap}
-#${bot_3 = lo * z3}
-#${top_3 = hi * z3}
-#nodeset 3 surface with z_coord > {bot_3} && z_coord < {top_3}
-#${z4 = height}
-#${bot_4 = lo * z4}
-#${top_4 = hi * z4}
-#nodeset 4 surface with z_coord > {bot_4} && z_coord < {top_4}
-#nodeset 5 node with x_coord > {bot_1} && x_coord < {top_1}
-#nodeset 6 node with y_coord > {bot_1} && y_coord < {top_1}
 nodeset 1 surface 81 83 #bottom of bottom domain
 nodeset 1 name "-Z_bottom"
 nodeset 2 surface 124 117 #top of bottom domain
-nodeset 2 name "+Z_bottom" 
+nodeset 2 name "+Z_bottom"
 nodeset 3 surface 84 80 118 122 #parallel in x, bottom domain
-nodeset 3 name "+X_bottom"
-nodeset 4 surface 85 78 116 123 #parallel in y, bottom domain 
-nodeset 4 name "+Y_bottom"
+nodeset 3 name "-Y_bottom"
+nodeset 4 surface 85 78 116 123 #parallel in y, bottom domain
+nodeset 4 name "-X_bottom"
 nodeset 5 surface 129 132 #bottom of top domain
-nodeset 5 name "-Z_top" 
+nodeset 5 name "-Z_top"
 nodeset 6 surface 107 114 #top of top domain
-nodeset 6 name "+Z_top" 
+nodeset 6 name "+Z_top"
 nodeset 7 surface 134 113 106 126 #parallel in y, top domain
-nodeset 7 name "+Y_top" 
-nodeset 8 surface 112 108 128 133 #parallel in x, top domain 
-nodeset 8 name "+X_top" 
+nodeset 7 name "-X_top"
+nodeset 8 surface 112 108 128 133 #parallel in x, top domain
+nodeset 8 name "-Y_top"
+sideset 1 surface 81 83 #bottom of bottom domain
+sideset 1 name "-Z_bottomSS"
+sideset 2 surface 124 117 #top of bottom domain
+sideset 2 name "+Z_bottomSS"
+sideset 5 surface 129 132 #bottom of top domain
+sideset 5 name "-Z_topSS"
+sideset 6 surface 107 114 #top of top domain
+sideset 6 name "+Z_topSS"
 set large exodus file off
 export mesh "notched-cylinder-1.g" block 1 overwrite
 export mesh "notched-cylinder-2.g" block 2 overwrite
+

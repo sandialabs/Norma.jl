@@ -1,0 +1,12 @@
+${h_size = 0.1}
+
+create sphere radius 1
+#move vol 1 x -0.5 y -0.5 z -0.5
+volume all size {h_size}
+mesh volume all
+block 1 volume 1
+block 1 name "sphere"
+nodeset 1 add surface 1
+nodeset 1 name "sphere_surf"
+set large exodus file off
+export mesh "sphere.g" overwrite

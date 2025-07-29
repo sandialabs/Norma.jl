@@ -1,0 +1,49 @@
+type: single
+input mesh file: ../cuboid.g
+output mesh file: cuboid.e
+Exodus output interval: 1
+CSV output interval: 1
+CSV write sidesets: true
+
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cuboid: hyperelastic
+    hyperelastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+  initial time: 0.0
+  final time: 1.0
+  time step: 0.005
+  maximum time step: 1.0
+  minimum time step: 0.0005
+  increase factor: 1.0
+  decrease factor: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "1.0 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08

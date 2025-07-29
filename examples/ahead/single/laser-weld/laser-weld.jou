@@ -191,7 +191,7 @@ block 1 volume 2
 
 block 1 name "bead_weld"
 
-block 2 volume 5 6 
+block 2 volume 5 6
 
 block 2 name "region_weld_0"
 
@@ -234,7 +234,7 @@ block 8 volume 3 5 6
 block 8 name "holder0"
 
 block 9 volume 1 4 7
-block 9 name "holder1" 
+block 9 name "holder1"
 
 block 10 volume 2 3 5 6 1 4 7
 
@@ -246,7 +246,7 @@ block 10 volume 2 3 5 6 1 4 7
 #{ratioSizeCoarseFine = 2}
 #{sizeElementFine = (sizeElementCoarse) / (ratioSizeCoarseFine)}
 ##{ratioSizeCoarseMedium = 3} #IKT 11/5/2024: this was orig resolution
-#{ratioSizeCoarseMedium = 1 
+#{ratioSizeCoarseMedium = 1}
 #{sizeElementMedium = (sizeElementCoarse) / (ratioSizeCoarseMedium)}
 
 
@@ -262,35 +262,11 @@ refine surface 29 39 numsplit 1 depth 1
 
 mesh volume 4 6
 
-refine surface 23 26 numsplit 1 depth 1
-
 mesh volume 1 2 5
 
-nodeset 1 surface 30 37 26 8 20 41 47
-nodeset 1 name "surface_symmetry"
-
-nodeset 2 surface 16
-nodeset 2 name "surface_negative_y"
-
-nodeset 3 surface 1
-nodeset 3 name "surface_positive_y"
-
-set large exodus file on
-export mesh "LaserWeldSimplified_SingleDomain_MeshBiased_Specimen.g" dimension 3 block 1 8 9 overwrite
-
-set large exodus file on
-export mesh "LaserWeldSimplified_SingleDomain_MeshBiased_SingleBlock_Specimen.g" dimension 3 block 10 overwrite
-
-delete mesh volume all propagate
-
-#  Mesh for single domain fine mesh computation ------------------------------------------------
-
-volume all size {sizeElementFine}
-
-mesh volume all 
 
 nodeset 1 surface 30 37 26 8 20 41 47
-nodeset 1 name "surface_symmetry"
+nodeset 1 name "surface_negative_x"
 
 nodeset 2 surface 16
 nodeset 2 name "surface_negative_y"
@@ -298,85 +274,35 @@ nodeset 2 name "surface_negative_y"
 nodeset 3 surface 1
 nodeset 3 name "surface_positive_y"
 
-set large exodus file on
-export mesh "LaserWeldSimplified_SingleDomain_MeshFine_Specimen.g" dimension 3 block 1 8 9 overwrite
+nodeset 4 surface 46 42 21 5 25 38 31
+nodeset 4 name "surface_negative_z"
 
 set large exodus file on
-export mesh "LaserWeldSimplified_SingleDomain_MeshFine_SingleBlock_Specimen.g" dimension 3 block 10 overwrite
+export mesh "laser-weld.g" dimension 3 block 1 8 9 overwrite
 
-delete mesh volume all propagate
+#set large exodus file on
+#export mesh "LaserWeldSimplified_SingleDomain_MeshBiased_SingleBlock_Specimen.g" dimension 3 block 10 overwrite
 
-# --------------------------------------------------------------------------------------------------
-#  Mesh for Shwarz coupling computation ------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------
-
-#  Weld region domain ------------------------------------------------------------------------------
-
-volume all size {sizeElementFine}
-
-mesh volume 1 2 4 5 6
-
-reset nodeset
-
-nodeset 1 surface 30 37 26 8 20 41 47 
-
-nodeset 1 name "surface_symmetry"
-
-nodeset 2 surface 29
-nodeset 2 name "surface_negative_y"
-
-nodeset 3 surface 39
-nodeset 3 name "surface_positive_y"
-
-set large exodus file on
-export mesh "LaserWeldSimplified_Specimen_Gauge.g" dimension 3 block 1 2 5 overwrite
-
-export mesh "LaserWeldSimplified_Specimen_Gauge_SingleBlock.g" dimension 3 block 11 overwrite
-
-delete mesh volume all propagate
-
-
-#  Holder 0 domain ---------------------------------------------------------------------------------
-
-volume 3 6 size {sizeElementCoarse}
-
-mesh volume 3 6
-
-reset nodeset
-
-nodeset 1 surface 30 37
-
-nodeset 1 name "surface_symmetry"
-
-nodeset 2 surface 16
-nodeset 2 name "surface_negative_y"
-
-nodeset 3 surface 23
-nodeset 3 name "surface_positive_y"
-
-
-set large exodus file on
-export mesh "LaserWeldSimplified_Specimen_Holder0.g" dimension 3 block 3 overwrite
-
-
-#  Holder 1 domain ---------------------------------------------------------------------------------
-
-volume 4 7 size {sizeElementCoarse}
-
-mesh volume 4 7
-
-reset nodeset
-
-nodeset 1 surface 41 47
-
-nodeset 1 name "surface_symmetry"
-
-nodeset 2 surface 17
-nodeset 2 name "surface_negative_y"
-
-nodeset 3 surface 1
-nodeset 3 name "surface_positive_y"
-
-set large exodus file on
-export mesh "LaserWeldSimplified_Specimen_Holder1.g" dimension 3 block 7 overwrite
-
+#delete mesh volume all propagate
+#
+##  Mesh for single domain fine mesh computation ------------------------------------------------
+#
+#volume all size {sizeElementFine}
+#
+#mesh volume all
+#
+#nodeset 1 surface 30 37 26 8 20 41 47
+#nodeset 1 name "surface_symmetry"
+#
+#nodeset 2 surface 16
+#nodeset 2 name "surface_negative_y"
+#
+#nodeset 3 surface 1
+#nodeset 3 name "surface_positive_y"
+#
+##set large exodus file on
+##export mesh "LaserWeldSimplified_SingleDomain_MeshFine_Specimen.g" dimension 3 block 1 8 9 overwrite
+#
+##set large exodus file on
+##export mesh "LaserWeldSimplified_SingleDomain_MeshFine_SingleBlock_Specimen.g" dimension 3 block 10 overwrite
+#

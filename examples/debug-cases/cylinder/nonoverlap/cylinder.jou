@@ -1,0 +1,73 @@
+reset
+logging off
+${set_warning_count(0)}
+
+${radius = 0.5}
+${height = 1.0}
+${domain_height = height / 2.0}
+${offset = abs(domain_height) / 2.0}
+${h_fine = 0.025}
+${h_coarse = h_fine}
+${intervals = 16}
+${refinement_level = 1}
+
+# bottom cylinder
+create cylinder radius {radius} z {domain_height}
+move volume 1 z {-offset}
+#top cylinder
+create cylinder radius {radius} z {domain_height}
+move volume 2 z {offset} include_merged
+webcut volume 1 2 with plane xplane
+delete volume 3 4
+webcut volume 1 2 with plane yplane
+delete volume 1 2
+surface 41 size {h_fine}
+surface 41 scheme pave
+surface 41 smooth scheme laplacian
+mesh surface 41
+curve 55 53 19 interval {intervals}
+mesh volume 6
+surface 29 size {h_coarse}
+surface 29 scheme pave
+surface 29 smooth scheme laplacian
+mesh surface 29
+curve 37 7 39 interval {intervals}
+mesh volume 5
+nodeset 1 surface 29 #bottom of bottom domain
+nodeset 1 name "-Z_bottom"
+nodeset 2 surface 31 #top of bottom domain
+nodeset 2 name "+Z_bottom"
+nodeset 3 surface 28 #parallel in x, bottom domain
+nodeset 3 name "-Y_bottom"
+nodeset 4 surface 30 #parallel in y, bottom domain
+nodeset 4 name "-X_bottom"
+nodeset 5 surface 39 #bottom of top domain
+nodeset 5 name "-Z_top"
+nodeset 6 surface 41 #top of top domain
+nodeset 6 name "+Z_top"
+nodeset 7 surface 40 #parallel in y, top domain
+nodeset 7 name "-X_top"
+nodeset 8 surface 38 #parallel in x, top domain
+nodeset 8 name "-Y_top"
+sideset 1 surface 29 #bottom of bottom domain
+sideset 1 name "-Z_bottomSS"
+sideset 2 surface 31 #top of bottom domain
+sideset 2 name "+Z_bottomSS"
+sideset 5 surface 39 #bottom of top domain
+sideset 5 name "-Z_topSS"
+sideset 6 surface 41 #top of top domain
+sideset 6 name "+Z_topSS"
+set large exodus file off
+set duplicate block elements on
+block 1 volume 5
+block 1 name "fine"
+block 2 volume 6
+block 2 name "coarse"
+export mesh "cylinder-1.g" block 1 overwrite
+export mesh "cylinder-2.g" block 2 overwrite
+
+
+
+
+
+

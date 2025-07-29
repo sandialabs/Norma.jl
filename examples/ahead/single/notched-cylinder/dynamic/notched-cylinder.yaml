@@ -9,8 +9,8 @@ model:
     blocks:
       fine: hyperelastic
     hyperelastic:
-      model: Saint-Venant Kirchhoff
-      elastic modulus: 1440.0
+      model: neohookean
+      elastic modulus: 1.0e+09
       Poisson's ratio: 0.25
       density: 1000.0
 time integrator:
@@ -33,7 +33,7 @@ boundary conditions:
       function: "0.0"
     - node set: nodelist_4
       component: z
-      function: "0.0064 * t"
+      function: "0.0064 * (0.5 - 0.5 * cos(pi * t))"
 solver:
   type: Hessian minimizer
   step: full Newton

@@ -19,7 +19,11 @@ time integrator:
   γ: 0.5
   initial time: 0.0
   final time: 1.0
-  time step: 0.005
+  time step: 0.1
+  maximum time step: 0.1
+  minimum time step: 1.0e-06
+  increase factor: 1.1
+  decrease factor: 0.5
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -33,11 +37,11 @@ boundary conditions:
       function: "0.0"
     - node set: nsz+
       component: z
-      function: "1.0 * t"
+      function: "0.5 - 0.5 * cos(pi * t)"
 solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-12
-  absolute tolerance: 1.0e-08
+  absolute tolerance: 1.0e-06

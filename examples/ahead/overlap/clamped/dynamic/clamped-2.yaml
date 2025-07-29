@@ -1,6 +1,7 @@
 type: single
 input mesh file: ../clamped-2.g
 output mesh file: clamped-2.e
+CSV write sidesets: true
 model:
   type: solid mechanics
   material:
@@ -9,7 +10,7 @@ model:
     hyperelastic:
       model: neohookean
       elastic modulus: 1.0e+09
-      Poisson's ratio: 0.25
+      Poisson's ratio: 0.0
       density: 1000.0
 time integrator:
   type: Newmark
@@ -19,7 +20,7 @@ initial conditions:
   displacement:
     - node set: nsall
       component: z
-      function: "a=0.001; s=0.02; a/2*exp(-z*z/s/s/2)"
+      function: "a=0.001; s=0.02; a*exp(-z*z/s/s/2)"
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -37,10 +38,11 @@ boundary conditions:
     - node set: nsz+
       component: z
       function: "0.0"
-  Schwarz Dirichlet:
-    - node set: nsz-
-      source: clamped-1.yaml
+  Schwarz overlap:
+    - side set: ssz-
+      source: clamped-1
       source block: coarse
+      source side set: ssz+
 solver:
   type: Hessian minimizer
   step: full Newton

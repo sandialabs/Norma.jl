@@ -1,0 +1,36 @@
+type: single
+input mesh file: ../clamped.g
+output mesh file: clamped.e
+Exodus output interval: 10
+CSV output interval: 10
+model:
+  type: linear opinf rom
+  model-file: opinf-operator.npz
+  material:
+    blocks:
+      clamped: hyperelastic
+    hyperelastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.0
+      density: 1000.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+  initial time: 0.0
+  final time: 1.0e-03
+  time step: 1.0e-07
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: z
+      function: "a=0.001; s=0.02; a/2*exp(-z*z/s/s/2)"
+      #function: "a=0.0005; b=100; s=0.6; a * (tanh(-b*(z+0.5-s)) + tanh(b*(z-1+0.5+s)))"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08

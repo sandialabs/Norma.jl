@@ -1,4 +1,12 @@
-function elastic_constants(params::Dict{Any,Any})
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
+
+using StaticArrays
+
+function elastic_constants(params::Parameters)
     E = 0.0
     ν = 0.0
     κ = 0.0
@@ -28,7 +36,7 @@ function elastic_constants(params::Dict{Any,Any})
             κ = E * μ / 3(3μ - E)
             λ = μ * (E - 2μ) / (3μ - E)
         else
-            error("Two elastic constants are required but only elastic modulus found")
+            norma_abort("Two elastic constants are required but only elastic modulus found")
         end
     elseif haskey(params, "Poisson's ratio") == true
         ν = params["Poisson's ratio"]
@@ -48,7 +56,7 @@ function elastic_constants(params::Dict{Any,Any})
             κ = 2μ * (1 + ν) / 3(1 - 2ν)
             λ = 2μ * ν / (1 - 2ν)
         else
-            error("Two elastic constants are required but only Poisson's ratio found")
+            norma_abort("Two elastic constants are required but only Poisson's ratio found")
         end
     elseif haskey(params, "bulk modulus") == true
         κ = params["bulk modulus"]
@@ -63,7 +71,7 @@ function elastic_constants(params::Dict{Any,Any})
             ν = (3κ - 2μ) / 2(3κ + μ)
             λ = κ - 2μ / 3
         else
-            error("Two elastic constants are required but only bulk modulus found")
+            norma_abort("Two elastic constants are required but only bulk modulus found")
         end
     elseif haskey(params, "Lamé's first constant") == true
         λ = params["Lamé's first constant"]
@@ -73,12 +81,12 @@ function elastic_constants(params::Dict{Any,Any})
             ν = λ / 2(λ + μ)
             κ = λ + 2μ / 3
         else
-            error("Two elastic constants are required but only Lamé's first constant found")
+            norma_abort("Two elastic constants are required but only Lamé's first constant found")
         end
     elseif haskey(params, "shear modulus") == true
-        error("Two elastic constants are required but only shear modulus found")
+        norma_abort("Two elastic constants are required but only shear modulus found")
     else
-        error("Two elastic constants are required but none found")
+        norma_abort("Two elastic constants are required but none found")
     end
     return E, ν, κ, λ, μ
 end
@@ -90,10 +98,10 @@ mutable struct SaintVenant_Kirchhoff <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function SaintVenant_Kirchhoff(params::Dict{Any,Any})
+    function SaintVenant_Kirchhoff(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
+        ρ = get(params, "density", 0.0)
+        return new(E, ν, κ, λ, μ, ρ)
     end
 end
 
@@ -104,10 +112,10 @@ mutable struct Linear_Elastic <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function Linear_Elastic(params::Dict{Any,Any})
+    function Linear_Elastic(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
+        ρ = get(params, "density", 0.0)
+        return new(E, ν, κ, λ, μ, ρ)
     end
 end
 
@@ -118,24 +126,10 @@ mutable struct Neohookean <: Solid
     λ::Float64
     μ::Float64
     ρ::Float64
-    function Neohookean(params::Dict{Any,Any})
+    function Neohookean(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
-    end
-end
-
-mutable struct NeohookeanAD <: Solid
-    E::Float64
-    ν::Float64
-    κ::Float64
-    λ::Float64
-    μ::Float64
-    ρ::Float64
-    function NeohookeanAD(params::Dict{Any,Any})
-        E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ)
+        ρ = get(params, "density", 0.0)
+        return new(E, ν, κ, λ, μ, ρ)
     end
 end
 
@@ -148,10 +142,10 @@ mutable struct SethHill <: Solid
     ρ::Float64
     m::Int
     n::Int
-    function SethHill(params::Dict{Any,Any})
+    function SethHill(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
+        ρ = get(params, "density", 0.0)
+        return new(E, ν, κ, λ, μ, ρ, params["m"], params["n"])
     end
 end
 
@@ -173,10 +167,10 @@ mutable struct J2 <: Solid
     T₀::Float64
     Tₘ::Float64
     M::Float64
-    function J2(params::Dict{Any,Any})
+    function J2(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = params["density"]
-        Y₀ = params["yield stress"]
+        ρ = get(params, "density", 0.0)
+        Y₀ = get(params, "yield stress", 0.0)
         n = get(params, "hardening exponent", 0.0)
         ε₀ = get(params, "reference plastic strain", 0.0)
         Sᵥᵢₛ₀ = get(params, "reference viscoplastic stress", 0.0)
@@ -189,7 +183,7 @@ mutable struct J2 <: Solid
         M = get(params, "thermal softening exponent", 0.0)
         κ = E / (1.0 - 2.0 * ν) / 3.0
         μ = E / (1.0 + ν) / 2.0
-        new(E, ν, κ, λ, μ, ρ, Y₀, n, ε₀, Sᵥᵢₛ₀, m, ∂ε∂t₀, Cₚ, β, T₀, Tₘ, M)
+        return new(E, ν, κ, λ, μ, ρ, Y₀, n, ε₀, Sᵥᵢₛ₀, m, ∂ε∂t₀, Cₚ, β, T₀, Tₘ, M)
     end
 end
 
@@ -197,7 +191,7 @@ function temperature_multiplier(material::J2, T::Float64)
     T₀ = material.T₀
     Tₘ = material.Tₘ
     M = material.M
-    M > 0.0 ? 1.0 - ((T - T₀) / (Tₘ - T₀))^M : 1.0
+    return M > 0.0 ? 1.0 - ((T - T₀) / (Tₘ - T₀))^M : 1.0
 end
 
 function hardening_potential(material::J2, ε::Float64)
@@ -205,7 +199,7 @@ function hardening_potential(material::J2, ε::Float64)
     n = material.n
     ε₀ = material.ε₀
     exponent = (1.0 + n) / n
-    n > 0.0 ? Y₀ * ε₀ / exponent * ((1.0 + ε / ε₀)^exponent - 1.0) : Y₀ * ε
+    return n > 0.0 ? Y₀ * ε₀ / exponent * ((1.0 + ε / ε₀)^exponent - 1.0) : Y₀ * ε
 end
 
 function hardening_rate(material::J2, ε::Float64)
@@ -213,14 +207,14 @@ function hardening_rate(material::J2, ε::Float64)
     n = material.n
     ε₀ = material.ε₀
     exponent = (1.0 - n) / n
-    n > 0.0 ? Y₀ / ε₀ / n * (1.0 + ε / ε₀)^exponent : 0.0
+    return n > 0.0 ? Y₀ / ε₀ / n * (1.0 + ε / ε₀)^exponent : 0.0
 end
 
 function flow_strength(material::J2, ε::Float64)
     Y₀ = material.Y₀
     n = material.n
     ε₀ = material.ε₀
-    n > 0.0 ? Y₀ * (1.0 + ε / ε₀)^(1.0 / n) : Y₀
+    return n > 0.0 ? Y₀ * (1.0 + ε / ε₀)^(1.0 / n) : Y₀
 end
 
 function viscoplastic_dual_kinetic_potential(material::J2, Δε::Float64, Δt::Float64)
@@ -228,23 +222,29 @@ function viscoplastic_dual_kinetic_potential(material::J2, Δε::Float64, Δt::F
     m = material.m
     ∂ε∂t₀ = material.∂ε∂t₀
     exponent = (1.0 + m) / m
-    Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ?
-    Δt * Sᵥᵢₛ₀ * ∂ε∂t₀ / exponent * (Δε / Δt / ∂ε∂t₀)^exponent : 0.0
+    return if Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0
+        Δt * Sᵥᵢₛ₀ * ∂ε∂t₀ / exponent * (Δε / Δt / ∂ε∂t₀)^exponent
+    else
+        0.0
+    end
 end
 
 function viscoplastic_stress(material::J2, Δε::Float64, Δt::Float64)
     Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
     m = material.m
     ∂ε∂t₀ = material.∂ε∂t₀
-    Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ?
-    Sᵥᵢₛ₀ / ∂ε∂t₀ / Δt / m * (Δε / Δt / ∂ε∂t₀)^((1.0 - m) / m) : 0.0
+    return if Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0
+        Sᵥᵢₛ₀ / ∂ε∂t₀ / Δt / m * (Δε / Δt / ∂ε∂t₀)^((1.0 - m) / m)
+    else
+        0.0
+    end
 end
 
 function viscoplastic_hardening_rate(material::J2, Δε::Float64, Δt::Float64)
     Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
     m = material.m
     ∂ε∂t₀ = material.∂ε∂t₀
-    Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ? Sᵥᵢₛ₀ * (Δε / Δt / ∂ε∂t₀)^(1.0 / m) : 0.0
+    return Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ? Sᵥᵢₛ₀ * (Δε / Δt / ∂ε∂t₀)^(1.0 / m) : 0.0
 end
 
 function vol(A::Matrix{Float64})
@@ -255,13 +255,7 @@ function dev(A::Matrix{Float64})
     return A - vol(A)
 end
 
-function stress_update(
-    material::J2,
-    F::Matrix{Float64},
-    Fᵖ::Matrix{Float64},
-    εᵖ::Float64,
-    Δt::Float64,
-)
+function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64)
     max_rma_iter = 64
     max_ls_iter = 64
 
@@ -294,9 +288,7 @@ function stress_update(
         end
         Δεᵖ₀ = Δεᵖ
         merit_old = r * r
-        H =
-            hardening_rate(material, εᵖ + Δεᵖ) +
-            viscoplastic_hardening_rate(material, Δεᵖ, Δt)
+        H = hardening_rate(material, εᵖ + Δεᵖ) + viscoplastic_hardening_rate(material, Δεᵖ, Δt)
         ∂r = -3.0 * μ - H
         δεᵖ = -r / ∂r
 
@@ -335,7 +327,7 @@ function stress_update(
         rma_iter += 1
     end
     if rma_converged == false
-        println("J2 stress update did not converge to specified tolerance")
+        norma_log(2, :warning, "J2 stress update did not converge to specified tolerance")
     end
 
     Nᵖ = σᵛᵐ > 0.0 ? 1.5 * Mᵈᵉᵛ / σᵛᵐ : zeros(3, 3)
@@ -358,222 +350,198 @@ function stress_update(
     return Fᵉ, Fᵖ, εᵖ, σ
 end
 
-struct Linear_Isotropic <: Thermal
-    κ::Float64
-    function Linear_Isotropic(params::Dict{Any,Any})
-        κ = params["thermal conductivity"]
-        new(κ)
-    end
-end
-
-function odot(A::Matrix{Float64}, B::Matrix{Float64})
-    n, _ = size(A)
-    C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
-                    C[a, b, c, d] = A[a, c] * B[b, d] + A[a, d] * B[b, c]
+function odot(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                for d in 1:3
+                    C[a, b, c, d] = 0.5 * (A[a, c] * B[b, d] + A[a, d] * B[b, c])
                 end
             end
         end
     end
-    C = 0.5 * C
-    return C
+    return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function ox(A::Matrix{Float64}, B::Matrix{Float64})
-    n, _ = size(A)
-    C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
+function ox(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                for d in 1:3
                     C[a, b, c, d] = A[a, b] * B[c, d]
                 end
             end
         end
     end
-    return C
+    return SArray{Tuple{3,3,3,3}}(C)
 end
 
-function oxI(A::Matrix{Float64})
-    n, _ = size(A)
-    C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
-                    C[a, b, c, d] = A[a, b] * I[c, d]
-                end
-            end
+function oxI(A::SMatrix{3,3,Float64,9})
+    C = zeros(MArray{Tuple{3,3,3,3},Float64})
+    for a in 1:3
+        C[:, :, a, a] .= A  # Fill diagonal blocks directly
+    end
+    return SArray{Tuple{3,3,3,3}}(C)
+end
+
+function Iox(B::SMatrix{3,3,Float64,9})
+    C = zeros(MArray{Tuple{3,3,3,3},Float64})
+    for a in 1:3
+        C[a, a, :, :] .= B  # Fill diagonal blocks directly
+    end
+    return SArray{Tuple{3,3,3,3}}(C)
+end
+
+function convect_tangent(CC::SArray{Tuple{3,3,3,3},Float64}, S::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9})
+    # Pre-allocate the 4D output as mutable static array
+    AA = MArray{Tuple{3,3,3,3},Float64}(undef)
+
+    # Identity matrix for 3D
+    I_n = @SMatrix [
+        1.0 0.0 0.0
+        0.0 1.0 0.0
+        0.0 0.0 1.0
+    ]
+
+    for j in 1:3
+        for l in 1:3
+            # Extract slice M[p,q] = CC[p, j, l, q]
+            M = @SMatrix [
+                CC[1, j, l, 1] CC[1, j, l, 2] CC[1, j, l, 3]
+                CC[2, j, l, 1] CC[2, j, l, 2] CC[2, j, l, 3]
+                CC[3, j, l, 1] CC[3, j, l, 2] CC[3, j, l, 3]
+            ]
+
+            # Compute G = F * M * Fᵀ
+            G = F * M * F'
+
+            # Fill the result tensor
+            AA[:, j, :, l] .= S[l, j] .* I_n .+ G
         end
     end
-    return C
+    return SArray{Tuple{3,3,3,3}}(AA)  # Convert to immutable for better efficiency
 end
 
-function Iox(B::Matrix{Float64})
-    n, _ = size(B)
-    C = zeros(n, n, n, n)
-    for a ∈ 1:n
-        for b ∈ 1:n
-            for c ∈ 1:n
-                for d ∈ 1:n
-                    C[a, b, c, d] = I[a, b] * B[c, d]
-                end
-            end
-        end
-    end
-    return C
+function second_from_fourth(AA::SArray{Tuple{3,3,3,3},Float64,4})
+    # Reshape the 3x3x3x3 tensor to 9x9 directly
+    return SMatrix{9,9,Float64,81}(reshape(AA, 9, 9)')
 end
 
-function convect_tangent(CC::Array{Float64}, S::Matrix{Float64}, F::Matrix{Float64})
-    n, _ = size(F)
-    AA = zeros(n, n, n, n)
-    for i ∈ 1:n
-        for j ∈ 1:n
-            for k ∈ 1:n
-                for l ∈ 1:n
-                    s = 0.0
-                    for p ∈ 1:n
-                        for q ∈ 1:n
-                            s = s + F[i, p] * CC[p, j, l, q] * F[k, q]
-                        end
-                    end
-                    AA[i, j, k, l] = S[l, j] * I[i, k] + s
-                end
-            end
-        end
-    end
-    return AA
-end
+const I3 = @SMatrix [
+    1.0 0.0 0.0
+    0.0 1.0 0.0
+    0.0 0.0 1.0
+]
 
-function second_from_fourth(AA::Array{Float64})
-    n, _, _, _ = size(AA)
-    A = zeros(n * n, n * n)
-    for i ∈ 1:n
-        for j ∈ 1:n
-            p = n * (i - 1) + j
-            for k ∈ 1:n
-                for l ∈ 1:n
-                    q = n * (k - 1) + l
-                    A[p, q] = AA[i, j, k, l]
-                end
-            end
-        end
-    end
-    return A
-end
-
-function constitutive(material::SaintVenant_Kirchhoff, F::Matrix{Float64})
+function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9})
     C = F' * F
-    E = 0.5 * (C - I)
+    E = 0.5 .* (C - I3)
+
     λ = material.λ
     μ = material.μ
+
     trE = tr(E)
-    W = 0.5 * λ * trE * trE + μ * tr(E * E)
-    S = λ * trE * I + 2.0 * μ * E
-    CC = zeros(3, 3, 3, 3)
-    for i = 1:3
-        for j = 1:3
-            δᵢⱼ = I[i, j]
-            for k = 1:3
-                δᵢₖ = I[i, k]
-                δⱼₖ = I[j, k]
-                for l = 1:3
-                    δᵢₗ = I[i, l]
-                    δⱼₗ = I[j, l]
-                    δₖₗ = I[k, l]
-                    CC[i, j, k, l] = λ * δᵢⱼ * δₖₗ + μ * (δᵢₖ * δⱼₗ + δᵢₗ * δⱼₖ)
+    # Strain energy
+    W = 0.5 * λ * (trE^2) + μ * tr(E * E)
+
+    # 2nd Piola-Kirchhoff stress
+    S = λ * trE .* I3 .+ 2.0 .* μ .* E
+
+    # 4th-order elasticity tensor CC
+    # Build it in an MArray, then convert to SArray
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
+
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
     end
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
+
+    # 1st Piola-Kirchhoff stress
     P = F * S
-    AA = convect_tangent(CC, S, F)
+
+    # Convert the 4th-order tensor for large-deformation convect_tangent
+    AA = convect_tangent(CC_s, S, F)
+
     return W, P, AA
 end
 
-function constitutive(material::Linear_Elastic, F::Matrix{Float64})
-    ∇u = F - I
-    ϵ = MiniTensor.symm(∇u)
+function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
+    ∇u = F - I3
+    ϵ = 0.5 .* (∇u + ∇u')
+
     λ = material.λ
     μ = material.μ
+
     trϵ = tr(ϵ)
-    W = 0.5 * λ * trϵ * trϵ + μ * tr(ϵ * ϵ)
-    σ = λ * trϵ * I + 2.0 * μ * ϵ
-    CC = zeros(3, 3, 3, 3)
-    for i = 1:3
-        for j = 1:3
-            δᵢⱼ = I[i, j]
-            for k = 1:3
-                δᵢₖ = I[i, k]
-                δⱼₖ = I[j, k]
-                for l = 1:3
-                    δᵢₗ = I[i, l]
-                    δⱼₗ = I[j, l]
-                    δₖₗ = I[k, l]
-                    CC[i, j, k, l] = λ * δᵢⱼ * δₖₗ + μ * (δᵢₖ * δⱼₗ + δᵢₗ * δⱼₖ)
+    # Strain energy
+    W = 0.5 * λ * (trϵ^2) + μ * tr(ϵ * ϵ)
+
+    σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
+
+    # 4th-order elasticity tensor
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
                 end
             end
         end
     end
-    return W, σ, CC
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
+
+    return W, σ, CC_s
 end
 
-function constitutive(material::Neohookean, F::Matrix{Float64})
+function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9})
     C = F' * F
     J2 = det(C)
-    Jm23 = 1.0 / cbrt(J2)
+    Jm23 = inv(cbrt(J2))
+
     trC = tr(C)
     κ = material.κ
     μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
+
+    # Decompose energy: volumetric + deviatoric
+    Wvol = 0.25 * κ * (J2 - log(J2) - 1.0)
+    Wdev = 0.5 * μ * (Jm23 * trC - 3.0)
     W = Wvol + Wdev
+
+    # Inverse of C
     IC = inv(C)
-    Svol = 0.5 * κ * (J2 - 1) * IC
-    Sdev = μ * Jm23 * (I - IC * trC / 3)
-    S = Svol + Sdev
+
+    # S = Svol + Sdev
+    Svol = 0.5 * κ * (J2 - 1.0) .* IC
+    Sdev = μ .* Jm23 .* (I3 .- (IC .* (trC / 3.0)))
+    S = Svol .+ Sdev
+
     ICxIC = ox(IC, IC)
     ICoIC = odot(IC, IC)
-    μJ2n = 2.0 * μ * Jm23 / 3
-    CCvol = κ * (J2 * ICxIC - (J2 - 1) * ICoIC)
-    CCdev = μJ2n * (trC * (ICxIC / 3 + ICoIC) - oxI(IC) - Iox(IC))
-    CC = CCvol + CCdev
+    μJ2n = 2.0 * μ * Jm23 / 3.0
+
+    CCvol = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC)
+    CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
+
+    CC = CCvol .+ CCdev
+
+    # 1st Piola stress
     P = F * S
+    # Large-deformation tangent
     AA = convect_tangent(CC, S, F)
+
     return W, P, AA
 end
 
-function energy_neohookean(F::Matrix{Float64}, material::NeohookeanAD)
-    C = F' * F
-    J2 = det(C)
-    Jm23 = 1.0 / cbrt(J2)
-    trC = tr(C)
-    κ = material.κ
-    μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
-    W = Wvol + Wdev
-    return W
-end
-
-function constitutive(material::NeohookeanAD, F::Matrix{Float64})
-    C = F' * F
-    J2 = det(C)
-    Jm23 = 1.0 / cbrt(J2)
-    trC = tr(C)
-    κ = material.κ
-    μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
-    energy(F) = Wvol + Wdev
-    W, P, AA = constitutive(material, energy, F)
-    return W, P, AA
-end
-
-function constitutive(material::SethHill, F::Matrix{Float64})
+function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
     C = F' * F
     F⁻¹ = inv(F)
     F⁻ᵀ = F⁻¹'
@@ -582,8 +550,8 @@ function constitutive(material::SethHill, F::Matrix{Float64})
     J⁻ᵐ = 1.0 / Jᵐ
     J²ᵐ = Jᵐ * Jᵐ
     J⁻²ᵐ = 1.0 / J²ᵐ
-    Cbar = J^(-2/3) * C
-    Cbar⁻¹ = J^(2/3) * F⁻¹ * F⁻ᵀ
+    Cbar = J^(-2 / 3) * C
+    Cbar⁻¹ = J^(2 / 3) * F⁻¹ * F⁻ᵀ
     Cbarⁿ = Cbar^material.n
     Cbar⁻ⁿ = Cbar⁻¹^material.n
     Cbar²ⁿ = Cbarⁿ * Cbarⁿ
@@ -593,38 +561,19 @@ function constitutive(material::SethHill, F::Matrix{Float64})
     trCbar²ⁿ = tr(Cbar²ⁿ)
     trCbar⁻²ⁿ = tr(Cbar⁻²ⁿ)
     Wbulk = material.κ / 4 / material.m^2 * ((Jᵐ - 1)^2 + (J⁻ᵐ - 1)^2)
-    Wshear = material.μ / 4 / material.n^2 * (trCbar²ⁿ + trCbar⁻²ⁿ - 2 * trCbarⁿ  - 2 * trCbar⁻ⁿ + 6)
+    Wshear = material.μ / 4 / material.n^2 * (trCbar²ⁿ + trCbar⁻²ⁿ - 2 * trCbarⁿ - 2 * trCbar⁻ⁿ + 6)
     W = Wbulk + Wshear
     Pbulk = material.κ / 2 / material.m * (J²ᵐ - Jᵐ - J⁻²ᵐ + J⁻ᵐ) * F⁻ᵀ
-    Pshear = material.μ / material.n * (1/3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
+    Pshear =
+        material.μ / material.n *
+        (1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
     P = Pbulk + Pshear
-    AA = zeros(3, 3, 3, 3)
+    AA_m = zeros(MArray{Tuple{3,3,3,3},Float64})
+    AA = SArray{Tuple{3,3,3,3}}(AA_m)
     return W, P, AA
 end
 
-function constitutive(material::Solid, energy::Function, F::Matrix{Float64})
-    C = MiniTensor.dot(MiniTensor.transpose(F), F)
-    J2 = MiniTensor.determinant(C)
-    Jm23 = 1.0 / cbrt(J2)
-    trC = MiniTensor.trace(C)
-    κ = material.κ
-    μ = material.μ
-    Wvol = 0.25 * κ * (J2 - log(J2) - 1)
-    Wdev = 0.5 * μ * (Jm23 * trC - 3)
-    f(F) = Wvol + Wdev
-    #f(F) = MiniTensor.determinant(F)
-    W = energy(F)
-    #P = reshape(collect(gradient(Forward, f, F)), 3, 3)
-    println("*** DEBUG DEFGRAD : ", F)
-    println("*** DEBUG ENERGY : ", typeof(f), f(F))
-    println("*** DEBUG STRESS : ", gradient(Forward, f, F))
-    stop
-    AA = zeros(3,3,3,3)
-    #AA = reshape(collect(gradient(Forward, (FF) -> reshape(collect(gradient(Forward, energy, FF)), 3, 3), F)), 3, 3, 3, 3)
-    return W, P, AA
-end
-
-function create_material(params::Dict{Any,Any})
+function create_material(params::Parameters)
     model_name = params["model"]
     if model_name == "linear elastic"
         return Linear_Elastic(params)
@@ -632,13 +581,26 @@ function create_material(params::Dict{Any,Any})
         return SaintVenant_Kirchhoff(params)
     elseif model_name == "neohookean"
         return Neohookean(params)
-    elseif model_name == "neohookeanAD"
-        return NeohookeanAD(params)
     elseif model_name == "seth-hill"
         return SethHill(params)
     else
-        error("Unknown material model : ", model_name)
+        norma_abort("Unknown material model : $model_name")
     end
+    return nothing
+end
+
+function get_kinematics(material::Solid)
+    if material isa Linear_Elastic
+        return Infinitesimal
+    elseif material isa SaintVenant_Kirchhoff
+        return Finite
+    elseif material isa Neohookean
+        return Finite
+    elseif material isa SethHill
+        return Finite
+    end
+    norma_abort("Unknown material model : $(typeof(material))")
+    return nothing
 end
 
 function get_p_wave_modulus(material::Solid)

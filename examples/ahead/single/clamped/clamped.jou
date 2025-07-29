@@ -2,11 +2,16 @@ ${m = 1.0}
 ${mm = 0.001 * m}
 ${side = 1.0 * mm}
 ${length = 1.0 * m}
-${h_size = 1.0 * mm}
+${h_size_face = 1.0 * mm}
+${intervals = 1000}
 
 create brick x {side} y {side} z {length}
+surface 1 2 size {h_size_face}
+surface 1 2 scheme submap
+mesh surface 1 2
+curve 9 10 11 12 interval {intervals}
 volume all size {h_size}
-mesh volume all
+mesh volume 1
 block 1 volume 1
 block 1 name "clamped"
 nodeset 1 surface with x_coord < 0
@@ -25,3 +30,5 @@ nodeset 7 volume all
 nodeset 7 name "nsall"
 set large exodus file off
 export mesh "clamped.g" overwrite
+
+

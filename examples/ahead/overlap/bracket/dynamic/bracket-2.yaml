@@ -1,0 +1,41 @@
+type: single
+input mesh file: ../bracket-2.g
+output mesh file: bracket-2.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      right: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 200.0e+09
+      Poisson's ratio: 0.25
+      density: 7800.0
+time integrator:
+  type: Newmark
+  β: 0.49
+  γ: 0.9
+initial conditions:
+  velocity:
+    - node set: right-nsall
+      component: x
+      function: "0.0"
+    - node set: right-nsall
+      component: y
+      function: "0.0"
+    - node set: right-nsall
+      component: z
+      function: "ifelse(x > 0.099, 100.0, 0.0)"
+boundary conditions:
+  Schwarz overlap:
+    - side set: right-backSS
+      source: bracket-1
+      source block: left
+      source side set: left-frontSS
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

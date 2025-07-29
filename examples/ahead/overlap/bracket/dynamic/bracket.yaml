@@ -1,0 +1,12 @@
+type: multi
+domains: ["bracket-1.yaml", "bracket-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: 0.0
+final time: 2.5e-3
+#final time: 20.0e-3 #original final time
+time step: 1.0e-6
+minimum iterations: 1
+maximum iterations: 128
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-06

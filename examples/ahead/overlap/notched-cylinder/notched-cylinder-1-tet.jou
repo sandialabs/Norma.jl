@@ -1,10 +1,11 @@
-#Please run notched-cylinder.jou first before running this tile 
+#Please run notched-cylinder.jou first before running this tile
 import mesh geometry "notched-cylinder-1.g" feature_angle 135 merge
+delete mesh
+delete mesh volume all
+delete mesh surface all
 ${h_size = 0.005}
 volume all size {h_size}
 volume all sizing function constant
-delete mesh volume all
-delete mesh surface all
 volume all scheme tetmesh
 mesh volume all
 #refine volume all numsplit 1

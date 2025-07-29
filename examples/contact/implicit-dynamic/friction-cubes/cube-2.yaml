@@ -1,0 +1,36 @@
+type: single
+input mesh file: cube-2.g
+output mesh file: cube-2.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      coarse: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: x
+      function: "-0.5099 - 100.0 * t"
+boundary conditions:
+  Schwarz contact:
+    - side set: ssx-
+      source: cube-1
+      source block: fine
+      source side set: ssx+
+      friction type: tied
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-07
+  absolute tolerance: 1.0e-03

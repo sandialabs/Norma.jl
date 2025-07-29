@@ -1,0 +1,141 @@
+${side = 1.0}
+${length = 1.0}
+${separation = 0.0}
+${nel_fine = 3}
+${nel_coarse = 2}
+${h_fine = length / nel_fine}
+${h_coarse = length / nel_coarse}
+
+${area = side * side}
+${offset = (length + separation) / 2.0}
+
+create brick x {length} y {side} z {side}
+move volume 1 x {-offset} include_merged
+#volume 1 scheme tetmesh
+volume 1 size {h_fine}
+mesh volume 1
+block 1 volume 1
+#block 1 element type tetra4
+block 1 name "fine"
+nodeset 1 surface 4
+nodeset 1 name "nsx-"
+nodeset 2 surface 6
+nodeset 2 name "nsx+"
+nodeset 3 surface 3
+nodeset 3 name "nsy-"
+nodeset 4 surface 5
+nodeset 4 name "nsy+"
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface 4
+sideset 1 name "ssx-"
+sideset 2 surface 6
+sideset 2 name "ssx+"
+sideset 3 surface 3
+sideset 3 name "ssy-"
+sideset 4 surface 5
+sideset 4 name "ssy+"
+sideset 5 surface 2
+sideset 5 name "ssz-"
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "cube-test1-1.g" overwrite
+move volume 1 x {offset} include_merged
+
+${rot_angle = 22.5}
+rotate volume 1 about z angle {rot_angle}
+${cosangle = 0.9238795325112867}
+${sinangle = 0.3826834323650898}
+move volume 1 x {-offset*cosangle} y {-offset*sinangle} include_merged
+export mesh "cube-test2-1.g" overwrite
+move volume 1 x {offset*cosangle} y {offset*sinangle} include_merged
+rotate volume 1 about z angle -{rot_angle}
+
+${rot_angle = 45}
+rotate volume 1 about z angle {rot_angle}
+${cosangle = 0.7071067811865476}
+${sinangle = 0.7071067811865476}
+move volume 1 x {-offset*cosangle} y {-offset*sinangle} include_merged
+export mesh "cube-test3-1.g" overwrite
+move volume 1 x {offset*cosangle} y {offset*sinangle} include_merged
+rotate volume 1 about z angle -{rot_angle}
+
+${rot_angle = 90}
+rotate volume 1 about z angle {rot_angle}
+${cosangle = 0.0}
+${sinangle = 1.0}
+move volume 1 x {-offset*cosangle} y {-offset*sinangle} include_merged
+export mesh "cube-test4-1.g" overwrite
+move volume 1 x {offset*cosangle} y {offset*sinangle} include_merged
+rotate volume 1 about z angle -{rot_angle}
+
+delete mesh
+move volume 1 x {-offset} include_merged
+move volume 1 x {2 * offset}  include_merged
+volume 1 scheme tetmesh
+volume 1 size {h_coarse}
+mesh volume 1
+block 1 volume 1
+block 1 element type tetra4
+block 1 name "coarse"
+nodeset 1 surface 4
+nodeset 1 name "nsx-"
+nodeset 2 surface 6
+nodeset 2 name "nsx+"
+nodeset 3 surface 3
+nodeset 3 name "nsy-"
+nodeset 4 surface 5
+nodeset 4 name "nsy+"
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface 4
+sideset 1 name "ssx-"
+sideset 2 surface 6
+sideset 2 name "ssx+"
+sideset 3 surface 3
+sideset 3 name "ssy-"
+sideset 4 surface 5
+sideset 4 name "ssy+"
+sideset 5 surface 2
+sideset 5 name "ssz-"
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "cube-test1-2.g" overwrite
+move volume 1 x {-2 * offset} include_merged
+
+${rot_angle = 22.5}
+rotate volume 1 about z angle {rot_angle}
+${cosangle = 0.9238795325112867}
+${sinangle = 0.3826834323650898}
+move volume 1 x {2 * offset * cosangle} y {2 * offset * sinangle} include_merged
+export mesh "cube-test2-2.g" overwrite
+move volume 1 x {-2 * offset * cosangle} y {-2 * offset * sinangle} include_merged
+rotate volume 1 about z angle -{rot_angle}
+
+${rot_angle = 45}
+rotate volume 1 about z angle {rot_angle}
+${cosangle = 0.7071067811865476}
+${sinangle = 0.7071067811865476}
+move volume 1 x {2 * offset * cosangle} y {2 * offset * sinangle} include_merged
+export mesh "cube-test3-2.g" overwrite
+move volume 1 x {-2 * offset * cosangle} y {-2 * offset * sinangle} include_merged
+rotate volume 1 about z angle -{rot_angle}
+
+${rot_angle = 90}
+rotate volume 1 about z angle {rot_angle}
+${cosangle = 0.0}
+${sinangle = 1.0}
+move volume 1 x {2 * offset * cosangle} y {2 * offset * sinangle} include_merged
+export mesh "cube-test4-2.g" overwrite
+move volume 1 x {-2 * offset * cosangle} y {-2 * offset * sinangle} include_merged
+rotate volume 1 about z angle -{rot_angle}

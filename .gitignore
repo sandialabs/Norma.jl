@@ -1,3 +1,6 @@
+# julia manifest, do not push this
+Manifest.toml
+
 # git ls-files --others --exclude-from=.git/info/exclude
 # Lines that start with '#' are comments.
 # For a project mostly in C, the following would be a good set of
@@ -10,5 +13,19 @@
 .vscode
 *.e
 *.exo
+.JuliaFormatter.toml
+
+# CSV Output Interval Outputs
 **/*-potential-*.csv
 **/*-disp-*.csv
+**/*-curr-*.csv
+**/*-free_dofs-*.csv
+**/*-velo-*.csv
+**/*-time-*.csv
+**/*-acce-*.csv
+**/*-kinetic-*.csv
+**/*-refe.csv
+**/contact-*.csv
+**/convergence-*.csv
+**/iterations-*.csv
+**/convergence_values-*.csv

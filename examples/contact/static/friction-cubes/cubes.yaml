@@ -1,0 +1,10 @@
+type: multi
+domains: ["cube-1.yaml", "cube-2.yaml"]
+initial time: -4.0
+final time: 4.0
+time step: 0.5
+relaxation parameter: .1
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

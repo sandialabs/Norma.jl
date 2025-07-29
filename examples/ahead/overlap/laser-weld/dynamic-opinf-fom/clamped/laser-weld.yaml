@@ -1,0 +1,12 @@
+type: multi
+domains: ["holder-0.yaml", "gauge.yaml", "holder-1.yaml"]
+CSV output interval: 1
+CSV write sidesets: true
+Exodus output interval: 1
+initial time: 0.0
+final time: 0.1
+time step: 0.001
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-06
