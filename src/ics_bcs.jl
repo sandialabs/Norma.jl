@@ -302,9 +302,9 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCond
             model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
         )
 
-        disp_val = bc.disp_fun(txzy...)
-        velo_val = bc.velo_fun(txzy...)
-        acce_val = bc.acce_fun(txzy...)
+        disp_val = bc.disp_fun(txzy)
+        velo_val = bc.velo_fun(txzy)
+        acce_val = bc.acce_fun(txzy)
 
         dof_index = 3 * (node_index - 1) + bc.offset
         model.current[bc.offset, node_index] = model.reference[bc.offset, node_index] + disp_val
