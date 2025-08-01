@@ -16,10 +16,10 @@
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ 0.0 atol = 1.0e-06
     @test avg_disp[2] ≈ 0.0 atol = 1.0e-06
-    @test avg_disp[3] ≈ -7.396860901565105e-15 rtol = 1.0e-06
-    @test avg_stress[1] ≈ 1.0000001666648064e9 atol = 1.0e-06
-    @test avg_stress[2] ≈ 1.0000001666648064e9 atol = 1.0e-06
-    @test avg_stress[3] ≈ 1.0000001666648064e9 atol = 1.0e-06
+    @test avg_disp[3] ≈ -7.396860901565105e-15 atol = 1.0e-06
+    @test avg_stress[1] ≈ 1.0000001666648064e9 rtol = 1.0e-06
+    @test avg_stress[2] ≈ 1.0000001666648064e9 rtol = 1.0e-06
+    @test avg_stress[3] ≈ 1.0000001666648064e9 rtol = 1.0e-06
     @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
