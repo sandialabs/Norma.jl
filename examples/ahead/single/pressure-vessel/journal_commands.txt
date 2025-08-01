@@ -1,0 +1,13 @@
+To create new tet mesh of previously-meshed object:
+delete mesh
+volume all size 0.01
+volume all scheme tetmesh
+mesh volume all
+volume all smooth scheme condition number beta 1.5 cpu 10
+block 1 volume 1
+block 1 name "vessel"
+
+To coarsen existing mesh in previously-meshed object: 
+set developer commands on
+coarsen mesh curve 1 factor 2
+export mesh "name.g" overwrite
