@@ -1016,8 +1016,8 @@ end
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
     ## Need to create a fake time integrator and solver for the FOM IC routine
-    dum_integrator = Newmark(params,model.fom_model) 
-    dum_solver = HessianMinimizer(params,model.fom_model)                                                                              
+    dum_integrator = create_time_integrator(params,model.fom_model)
+    dum_solver = create_solver(params,model.fom_model)   
     apply_ics(params, model.fom_model, dum_integrator, dum_solver)     
 
     if haskey(params, "initial conditions") == false
