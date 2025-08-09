@@ -1015,7 +1015,8 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
 end
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
-    apply_ics(params, model.fom_model, integrator, solver)
+    ## Need to create a fake time integrator and solver for the FOM IC routine
+    apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)     
 
     if haskey(params, "initial conditions") == false
         return nothing
