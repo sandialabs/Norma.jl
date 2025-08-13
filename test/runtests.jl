@@ -67,7 +67,7 @@ const indexed_test_files = [
 const all_test_files = [file for (_, file) in indexed_test_files]
 
 # Optional test indices (excluded from quick runs)
-const optional_test_indices = Int[24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]

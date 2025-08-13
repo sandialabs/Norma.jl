@@ -583,23 +583,23 @@ function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags
     internal_force = create_threadlocal_coo_vectors(num_dofs)
 
     lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
-    if flags.compute_lumped_mass
+    if flags.compute_lumped_mass == true
         model.compute_lumped_mass = false
     end
 
-    if flags.compute_stiffness || flags.compute_mass
+    if flags.compute_stiffness == true || flags.compute_mass == true
         coo_matrix_nnz = count_coo_matrix_nnz(model)
     else
         coo_matrix_nnz = 0
     end
 
     stiffness = create_threadlocal_coo_matrices(flags.compute_stiffness ? coo_matrix_nnz : 0)
-    if flags.compute_stiffness && model.kinematics == Infinitesimal
+    if flags.compute_stiffness == true && model.kinematics == Infinitesimal
         model.compute_stiffness = false
     end
 
     mass = create_threadlocal_coo_matrices(flags.compute_mass ? coo_matrix_nnz : 0)
-    if flags.compute_mass
+    if flags.compute_mass == true
         model.compute_mass = false
     end
     return SMThreadLocalArrays(energy, internal_force, lumped_mass, stiffness, mass)
@@ -753,6 +753,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 if J ≤ 0.0 || isfinite(J) == false
                     model.failed = true
                     model.compute_mass = model.compute_lumped_mass = true
+                    model.compute_stiffness = true
                     norma_log(0, :error, "Non-positive Jacobian detected! This may indicate element distortion.")
                     norma_logf(4, :warning, "det(F) = %.3e", J)
                     log_matrix(4, :info, "Reference Configuration", element_reference_position)

@@ -23,4 +23,4 @@ nodeset 6 surface 1
 sideset 1 surface 1 2 3 4 5 6 
 sideset 1 name "all"
 set large exodus file off
-export mesh "cube-pnbc.g" overwrite
+export mesh "cube.g" overwrite
