@@ -60,7 +60,9 @@ const indexed_test_files = [
     (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"), 
     (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"), 
     (46, "single-static-solid-cube-sd-dbc.jl"), 
-    (47, "utils.jl"), # Must go last due to FPE traps
+    (47, "constitutive-model-energy-gradient.jl"),
+    (48, "smoothing.jl"),
+    (49, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
