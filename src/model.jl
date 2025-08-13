@@ -268,8 +268,6 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
             h = equal_volume_tet_h(u, v, w)
         elseif smooth_reference == "average edge length"
             h = avg_edge_length_tet_h(u, v, w)
-        elseif smooth_reference == "max"
-            h = max(equal_volume_tet_h(u, v, w), avg_edge_length_tet_h(u, v, w))
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
