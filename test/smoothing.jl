@@ -317,7 +317,7 @@ output_mesh_file = "tet_smoothing.e"
             rm(output_mesh_file)
         end
     end
-    #
+    
     # This test creates a tetrahedron from a regular tetrahedron with a base
     # triangle in the xy-plane by applying equal uniaxial xy deformation gradients
     # to all vertices and then adjusting the z coordinate of the top vertex to
