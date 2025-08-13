@@ -8,6 +8,58 @@ using IterativeSolvers
 using LinearAlgebra
 using Printf
 
+
+function RomHessianMinimizer(params::Parameters, model::RomModel)
+    solver_params = params["solver"]
+    num_dof = length(model.free_dofs)
+    minimum_iterations = solver_params["minimum iterations"]
+    maximum_iterations = solver_params["maximum iterations"]
+    absolute_tolerance = solver_params["absolute tolerance"]
+    relative_tolerance = solver_params["relative tolerance"]
+    # See documentation for IterativeSolvers.cg and others for this
+    default_abs_tol = 0.0
+    default_rel_tol = sqrt(eps(Float64))
+    linear_solver_absolute_tolerance = get(solver_params, "linear solver absolute tolerance", default_abs_tol)
+    linear_solver_relative_tolerance = get(solver_params, "linear solver relative tolerance", default_rel_tol)
+    absolute_error = 0.0
+    relative_error = 0.0
+    value = 0.0
+    gradient = zeros(num_dof)
+    hessian = spzeros(num_dof, num_dof)
+    solution = zeros(num_dof)
+    initial_norm = 0.0
+    converged = false
+    failed = false
+    step = create_step(solver_params)
+    use_line_search = get(solver_params, "use line search", false)
+    ls_backtrack_factor = get(solver_params, "line search backtrack factor", 0.5)
+    ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
+    ls_max_iters = get(solver_params, "line search maximum iterations", 16)
+    line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
+    fom_solver = HessianMinimizer(params,model.fom_model)
+    return RomHessianMinimizer(
+        minimum_iterations,
+        maximum_iterations,
+        absolute_tolerance,
+        relative_tolerance,
+        absolute_error,
+        relative_error,
+        linear_solver_absolute_tolerance,
+        linear_solver_relative_tolerance,
+        value,
+        gradient,
+        hessian,
+        solution,
+        initial_norm,
+        converged,
+        failed,
+        step,
+        line_search,
+        use_line_search,
+        fom_solver,
+    )
+end
+
 function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
@@ -55,6 +107,21 @@ function HessianMinimizer(params::Parameters, model::Model)
         line_search,
         use_line_search,
     )
+end
+
+function RomExplicitSolver(params::Parameters, model::RomModel)
+    solver_params = params["solver"]
+    num_dof = length(model.free_dofs)
+    value = 0.0
+    gradient = zeros(num_dof)
+    lumped_hessian = zeros(num_dof)
+    solution = zeros(num_dof)
+    initial_norm = 0.0
+    converged = false
+    failed = false
+    step = create_step(solver_params)
+    fom_solver = ExplicitSolver(params,model.fom_model)
+    return RomExplicitSolver(value, gradient, lumped_hessian, solution, initial_norm, converged, failed, step,fom_solver)
 end
 
 function ExplicitSolver(params::Parameters, model::Model)
@@ -113,7 +180,7 @@ function SteepestDescent(params::Parameters, model::Model)
     )
 end
 
-function create_solver(params::Parameters, model::Model)
+function create_solver(params::Parameters, model::SolidMechanics)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
@@ -126,6 +193,21 @@ function create_solver(params::Parameters, model::Model)
         norma_abort("Unknown type of solver : $solver_name")
     end
 end
+
+function create_solver(params::Parameters, model::RomModel)
+    solver_params = params["solver"]
+    solver_name = solver_params["type"]
+    if solver_name == "Hessian minimizer"
+        return RomHessianMinimizer(params, model)
+    elseif solver_name == "explicit solver"
+        return RomExplicitSolver(params, model)
+    elseif solver_name == "steepest descent"
+        norma_abort("Not supported for ROM : $solver_name")
+    else
+        norma_abort("Unknown type of solver : $solver_name")
+    end
+end
+
 
 function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
@@ -199,7 +281,7 @@ function copy_solution_source_targets(solver::Solver, model::SolidMechanics, int
     return nothing
 end
 
-function copy_solution_source_targets(integrator::Newmark, _::HessianMinimizer, model::RomModel)
+function copy_solution_source_targets(integrator::DynamicTimeIntegrator, solver::Solver, model::RomModel)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
@@ -384,7 +466,7 @@ function copy_solution_source_targets(model::SolidMechanics, integrator::Central
     return nothing
 end
 
-function evaluate(integrator::Newmark, solver::HessianMinimizer, model::QuadraticOpInfRom)
+function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::QuadraticOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
     dt = integrator.time_step
@@ -409,7 +491,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::Quadrati
     return nothing
 end
 
-function evaluate(integrator::Newmark, solver::HessianMinimizer, model::CubicOpInfRom)
+function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::CubicOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
     dt = integrator.time_step
@@ -442,18 +524,18 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::CubicOpI
     return nothing
 end
 
-function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
+function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, model::LinearOpInfRom)
+    gamma = integrator.γ
+    dt = integrator.time_step
+    ## Value for accelertaion - assumes bases are orthonormal to avoid solve
+    solver.solution[:] = model.opinf_rom["f"] + model.reduced_boundary_forcing  - model.opinf_rom["K"] * integrator.displacement[:]
+    return nothing
+end
+
+function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::LinearOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
     dt = integrator.time_step
-
-    #Ax* = b
-    # Put in residual format
-    #e = [x* - x] -> x* = x + e
-    #Ax + Ae = b
-    #Ax - b = -Ae
-    #Ae = r, r = b - Ax
-    ##M uddot + Ku = f
 
     num_dof = length(model.free_dofs)
     I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
@@ -615,7 +697,7 @@ function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver:
     return backtrack_line_search(integrator, solver, model, direction)
 end
 
-function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
+function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::RomHessianMinimizer, _::NewtonStep)
     atol = solver.linear_solver_absolute_tolerance
     rtol = solver.linear_solver_relative_tolerance
     return -solve_linear(solver.hessian, solver.gradient, atol, rtol)
@@ -626,7 +708,21 @@ function compute_step(_::CentralDifference, model::SolidMechanics, solver::Expli
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
 end
 
+function compute_step(_::RomCentralDifference, model::RomModel, solver::RomExplicitSolver, _::ExplicitStep)
+    free = model.free_dofs
+    return zeros(size(model.free_dofs)) 
+end
+
+
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
+    solver.absolute_error = absolute_error
+    solver.relative_error = solver.initial_norm > 0.0 ? absolute_error / solver.initial_norm : absolute_error
+    converged_absolute = solver.absolute_error ≤ solver.absolute_tolerance
+    converged_relative = solver.relative_error ≤ solver.relative_tolerance
+    return solver.converged = converged_absolute || converged_relative
+end
+
+function update_solver_convergence_criterion(solver::RomHessianMinimizer, absolute_error::Float64)
     solver.absolute_error = absolute_error
     solver.relative_error = solver.initial_norm > 0.0 ? absolute_error / solver.initial_norm : absolute_error
     converged_absolute = solver.absolute_error ≤ solver.absolute_tolerance
@@ -645,6 +741,10 @@ end
 function update_solver_convergence_criterion(solver::ExplicitSolver, _::Float64)
     return solver.converged = true
 end
+function update_solver_convergence_criterion(solver::RomExplicitSolver, _::Float64)
+    return solver.converged = true
+end
+
 
 function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     if solver.failed == true
@@ -664,6 +764,26 @@ function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     end
     return solver.converged
 end
+
+function stop_solve(solver::RomHessianMinimizer, iteration_number::Int64)
+    if solver.failed == true
+        return true
+    end
+    zero_residual = solver.absolute_error == 0.0
+    if zero_residual == true
+        return true
+    end
+    exceeds_minimum_iterations = iteration_number > solver.minimum_iterations
+    if exceeds_minimum_iterations == false
+        return false
+    end
+    exceeds_maximum_iterations = iteration_number > solver.maximum_iterations
+    if exceeds_maximum_iterations == true
+        return true
+    end
+    return solver.converged
+end
+
 
 function stop_solve(solver::SteepestDescent, iteration_number::Int64)
     if solver.failed == true
@@ -687,9 +807,12 @@ end
 function stop_solve(_::ExplicitSolver, _::Int64)
     return true
 end
+function stop_solve(_::RomExplicitSolver, _::Int64)
+    return true
+end
 
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
-    is_explicit_dynamic = integrator isa CentralDifference
+    is_explicit_dynamic = integrator isa ExplicitDynamicTimeIntegrator 
     predict(integrator, solver, model)
     evaluate(integrator, solver, model)
     if model.failed == true

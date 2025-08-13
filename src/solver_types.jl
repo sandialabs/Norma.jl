@@ -19,6 +19,7 @@ struct BackTrackLineSearch <: LineSearch
     max_iters::Int64
 end
 
+
 mutable struct HessianMinimizer <: Minimizer
     minimum_iterations::Int64
     maximum_iterations::Int64
@@ -40,6 +41,29 @@ mutable struct HessianMinimizer <: Minimizer
     use_line_search::Bool
 end
 
+mutable struct RomHessianMinimizer <: Minimizer
+    minimum_iterations::Int64
+    maximum_iterations::Int64
+    absolute_tolerance::Float64
+    relative_tolerance::Float64
+    absolute_error::Float64
+    relative_error::Float64
+    linear_solver_absolute_tolerance::Float64
+    linear_solver_relative_tolerance::Float64
+    value::Float64
+    gradient::Vector{Float64}
+    hessian::SparseMatrixCSC{Float64,Int64}
+    solution::Vector{Float64}
+    initial_norm::Float64
+    converged::Bool
+    failed::Bool
+    step::Step
+    line_search::BackTrackLineSearch
+    use_line_search::Bool
+    fom_solver::HessianMinimizer
+end
+
+
 mutable struct ExplicitSolver <: Explicit
     value::Float64
     gradient::Vector{Float64}
@@ -50,6 +74,19 @@ mutable struct ExplicitSolver <: Explicit
     failed::Bool
     step::Step
 end
+
+mutable struct RomExplicitSolver <: Explicit
+    value::Float64
+    gradient::Vector{Float64}
+    lumped_hessian::Vector{Float64}
+    solution::Vector{Float64}
+    initial_norm::Float64
+    converged::Bool
+    failed::Bool
+    step::Step
+    fom_solver::ExplicitSolver
+end
+
 
 mutable struct SteepestDescent <: MatrixFree
     minimum_iterations::Int64

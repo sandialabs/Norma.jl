@@ -302,9 +302,9 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCond
             model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
         )
 
-        disp_val = bc.disp_fun(txzy...)
-        velo_val = bc.velo_fun(txzy...)
-        acce_val = bc.acce_fun(txzy...)
+        disp_val = bc.disp_fun(txzy)
+        velo_val = bc.velo_fun(txzy)
+        acce_val = bc.acce_fun(txzy)
 
         dof_index = 3 * (node_index - 1) + bc.offset
         model.current[bc.offset, node_index] = model.reference[bc.offset, node_index] + disp_val
@@ -1015,7 +1015,8 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
 end
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
-    apply_ics(params, model.fom_model, integrator, solver)
+    ## Need to create a fake time integrator and solver for the FOM IC routine
+    apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)     
 
     if haskey(params, "initial conditions") == false
         return nothing
