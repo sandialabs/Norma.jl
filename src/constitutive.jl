@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 
 using StaticArrays
+include("simulation_types.jl")
 
 function elastic_constants(params::Parameters)
     E = 0.0

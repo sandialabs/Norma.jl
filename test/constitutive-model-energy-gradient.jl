@@ -6,10 +6,10 @@
 using Random
 
 include("../src/minitensor.jl")
-include("../src/constitutive_types.jl")
 include("../src/constitutive.jl")
+include("../src/simulation.jl")
 
-function finite_difference(material::Solid, F::Matrix{Float64}, dF::Matrix{Float64}, h::Float64)
+function finite_difference(material::Solid, F::SMatrix{3,3,Float64}, dF::SMatrix{3,3,Float64}, h::Float64)
     return (
         constitutive(material, F - 2 * h * dF)[1] - 8 * constitutive(material, F - h * dF)[1] +
         8 * constitutive(material, F + h * dF)[1] - constitutive(material, F + 2 * h * dF)[1]
@@ -27,10 +27,10 @@ end
 
     for model in models
         for _ in 1:F_n
-            F = Random.randn(3, 3) * 0.1 + I
+            F = SMatrix{3,3,Float64}(randn(3,3) * 0.1 + I)
             dWdF = constitutive(model, F)[2]
             for _ in 1:dF_n
-                dF = Random.randn(3, 3) * 0.1
+                dF = SMatrix{3,3,Float64}(randn(9) * 0.1)
                 dWdF_fd = finite_difference(model, F, dF, 1e-6)
                 @test isapprox(sum(dWdF .* dF), dWdF_fd, atol=1e-6)
             end
