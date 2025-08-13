@@ -61,10 +61,13 @@ nodeset 3 surface 81
 nodeset 3 name "y-symm"
 nodeset 4 surface 106
 nodeset 4 name "x-symm"
+nodeset 5 node in volume 14 with x_coord = 0.0 and with y_coord = 0.0 and with z_coord > 0.04
+nodeset 5 name "top-one-point"
 sideset 1 surface 47 68 80 104 103
 sideset 1 name "interior_ss"
 set large exodus file off
 export mesh "vessel.g" overwrite
+
 
 
 
