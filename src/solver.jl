@@ -829,27 +829,8 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     iteration_number = 1
     solver.failed = solver.failed || model.failed
     step_type = solver.step
-    prev_solution = 1.0 * solver.solution
     while true
         step = compute_step(integrator, model, solver, step_type)
-        if model.failed == true
-            if solver.step.step_length isa AdaptiveStepLength
-                if (solver.step.reduction_factor < 1.0 
-                    && solver.step.reduction_factor > 0.0
-                    && solver.step.step_length.value * solver.step.reduction_factor > solver.step.min_step_length)
-                    @info "Reducing step length from $(solver.step.step_length.value) to $(solver.step.step_length.value * solver.step.reduction_factor)"
-                    solver.step.step_length.value *= solver.step.reduction_factor
-                    model.failed = false
-                    solver.solution = 1.0 * prev_solution
-                    continue
-                else
-                    error("evaluation of model has failed and step length cannot be reduced")
-                end
-            else
-                error("evaluation of model has failed")
-            end
-        end
-        prev_solution = 1.0 * solver.solution
         solver.solution[model.free_dofs] += step
         correct(integrator, solver, model)
         evaluate(integrator, solver, model)

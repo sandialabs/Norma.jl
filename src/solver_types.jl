@@ -105,27 +105,14 @@ mutable struct SteepestDescent <: MatrixFree
     line_search::BackTrackLineSearch
 end
 
-struct FixedStepLength <: StepLength
-    value::Float64
-end
-
-mutable struct AdaptiveStepLength <: StepLength
-    value::Float64
-end
-
-
 struct NewtonStep <: Step
-    step_length::FixedStepLength
+    step_length::Float64
 end
 
 struct ExplicitStep <: Step
-    step_length::FixedStepLength
+    step_length::Float64
 end
 
 struct SteepestDescentStep <: Step
-    step_length::StepLength
-    max_step_length::Float64
-    min_step_length::Float64
-    reduction_factor::Float64
-    increase_factor::Float64
+    step_length::Float64
 end
