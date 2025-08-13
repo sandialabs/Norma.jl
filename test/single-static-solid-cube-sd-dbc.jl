@@ -14,7 +14,7 @@
     rm("cube-sd-dbc.e")
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
-    @test avg_disp[1] ≈ -3.927730955758816e-18 rtol = 1.0e-06
+    @test avg_disp[1] ≈ 0.0 atol = 1.0e-06
     @test avg_disp[2] ≈ -0.15807560137457044 rtol = 1.0e-06
     @test avg_disp[3] ≈ 0.3810708848289451 rtol = 1.0e-06
     @test avg_stress[1] ≈ 2.6666666666666663e8 atol = 1.0e-06

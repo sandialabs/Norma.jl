@@ -75,7 +75,6 @@ function QuasiStatic(params::Parameters, model::Model)
     )
 end
 
-
 function RomNewmark(params::Parameters, model::RomModel)
     integrator_params = params["time integrator"]
     time_step = integrator_params["time step"]
@@ -167,7 +166,6 @@ function Newmark(params::Parameters, model::Model)
         kinetic_energy,
     )
 end
-
 
 function RomCentralDifference(params::Parameters, model::RomModel)
     integrator_params = params["time integrator"]
@@ -281,7 +279,6 @@ function create_time_integrator(params::Parameters, model::RomModel)
     end
 end
 
-
 function is_static(integrator::TimeIntegrator)
     return integrator isa QuasiStatic
 end
@@ -290,30 +287,12 @@ function is_dynamic(integrator::TimeIntegrator)
     return is_static(integrator) == false
 end
 
-
 function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::RomModel)
     # Compute initial accelerations
     initialize(integrator.fom_integrator,solver.fom_solver,model.fom_model)     
-#    evaluate(model.fom_model, integrator, solver)
-#    free = model.fom_model.free_dofs
-#    internal_force = model.fom_model.internal_force
-#    external_force = model.fom_model.body_force + model.fom_model.boundary_force
-#    if model.fom_model.inclined_support == true
-#        external_force = model.fom_model.global_transform * external_force
-#        internal_force = model.fom_model.global_transform * internal_force
-#    end
-#    inertial_force = external_force - internal_force
-
 
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
-    num_nodes = n_node
-    #_, num_nodes = size(model.fom_model.reference)
-    #acceleration = zeros(3 * num_nodes)
-    #acceleration[free] = model.fom_model.mass[free, free] \ inertial_force[free]
-
-    free = model.fom_model.free_dofs
-    
     integrator.displacement[:] = model.reduced_state[:]
     integrator.velocity[:] = model.reduced_velocity[:]
     solver.solution[:] = model.reduced_state[:]
@@ -343,7 +322,6 @@ function predict(integrator::RomNewmark, solver::Solver, model::RomModel)
     model.reduced_state[:] = integrator.displacement[:]
     return nothing
 end
-
 
 function correct(integrator::RomNewmark, solver::Solver, model::RomModel)
     dt = integrator.time_step
@@ -402,29 +380,6 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     return nothing
 end
 
-function initialize(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
-    norma_log(0, :acceleration, "Computing Initial Acceleration...")
-    copy_solution_source_targets(model, integrator, solver)
-    free = model.free_dofs
-    evaluate(model, integrator, solver)
-    if model.failed == true
-        norma_abort("Finite element model failed to initialize")
-    end
-    internal_force = model.internal_force
-    external_force = model.body_force + model.boundary_force
-    if model.inclined_support == true
-        external_force = model.global_transform * external_force
-        internal_force = model.global_transform * internal_force
-    end
-    inertial_force = external_force - internal_force
-    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
-    integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = model.strain_energy
-    integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
-    copy_solution_source_targets(integrator, solver, model)
-    return nothing
-end
-
 function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(model, integrator, solver)
     free = model.free_dofs
@@ -458,8 +413,6 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
     copy_solution_source_targets(integrator, solver, model)
     return nothing
 end
-
-
 
 function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
@@ -510,38 +463,11 @@ function correct(integrator::CentralDifference, solver::ExplicitSolver, model::S
     return nothing
 end
 
-
-function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    norma_log(0, :acceleration, "Computing Initial Acceleration...")
-    copy_solution_source_targets(model, integrator, solver)
-    free = model.free_dofs
-    set_time_step(integrator, model)
-    evaluate(model, integrator, solver)
-    if model.failed == true
-        norma_abort("The finite element model has failed to initialize")
-    end
-    internal_force = model.internal_force
-    external_force = model.body_force + model.boundary_force
-    if model.inclined_support == true
-        external_force = model.global_transform * external_force
-        internal_force = model.global_transform * internal_force
-    end
-    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
-    integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = model.strain_energy
-    inertial_force = external_force - internal_force
-    integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
-    copy_solution_source_targets(integrator, solver, model)
-    return nothing
-end
-
 function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver, model::RomModel)
     # Compute initial accelerations
     initialize(integrator.fom_integrator,solver.fom_solver,model.fom_model)     
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
-    num_nodes = n_node
-    free = model.fom_model.free_dofs
     integrator.displacement[:] = model.reduced_state[:]
     integrator.velocity[:] = model.reduced_velocity[:]
     solver.solution[:] = model.reduced_state[:]
@@ -577,5 +503,3 @@ function correct(integrator::RomCentralDifference, solver::RomExplicitSolver, mo
     integrator.velocity[:] = integrator.velocity[:] + dt * gamma * integrator.acceleration[:]
     return nothing
 end
-
-

@@ -32,7 +32,7 @@ boundary conditions:
     - node set: y-symm
       component: y
       function: "0.0"
-    - node set: top
+    - node set: top-one-point
       component: z
       function: "0.0"
   Neumann pressure:
