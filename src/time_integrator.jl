@@ -96,7 +96,7 @@ function RomNewmark(params::Parameters, model::RomModel)
     velo_pre = zeros(num_dof)
     stored_energy = 0.0
     kinetic_energy = 0.0
-    fom_newmark = Newmark(params,model.fom_model)
+    fom_newmark = Newmark(params, model.fom_model)
     return RomNewmark(
         prev_time,
         time,
@@ -186,7 +186,7 @@ function RomCentralDifference(params::Parameters, model::RomModel)
     prev_∂Ω_f = Float64[]
     stored_energy = 0.0
     kinetic_energy = 0.0
-    fom_integrator = CentralDifference(params,model.fom_model)
+    fom_integrator = CentralDifference(params, model.fom_model)
     return RomCentralDifference(
         prev_time,
         time,
@@ -289,7 +289,7 @@ end
 
 function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::RomModel)
     # Compute initial accelerations
-    initialize(integrator.fom_integrator,solver.fom_solver,model.fom_model)     
+    initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model)
 
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
@@ -301,7 +301,8 @@ function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::
         integrator.acceleration[k] = 0.0
         for j in 1:n_node
             for n in 1:n_var
-                integrator.acceleration[k] += model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
+                integrator.acceleration[k] +=
+                    model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
             end
         end
     end
@@ -465,7 +466,7 @@ end
 
 function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver, model::RomModel)
     # Compute initial accelerations
-    initialize(integrator.fom_integrator,solver.fom_solver,model.fom_model)     
+    initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model)
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
     integrator.displacement[:] = model.reduced_state[:]
@@ -476,7 +477,8 @@ function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver,
         integrator.acceleration[k] = 0.0
         for j in 1:n_node
             for n in 1:n_var
-                integrator.acceleration[k] += model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
+                integrator.acceleration[k] +=
+                    model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
             end
         end
     end
@@ -487,9 +489,7 @@ function predict(integrator::RomCentralDifference, solver::RomExplicitSolver, mo
     dt = integrator.time_step
     gamma = integrator.γ
     integrator.displacement[:] =
-            integrator.displacement[:] +
-            dt * integrator.velocity +
-            1.0 / 2.0 * dt * dt * integrator.acceleration
+        integrator.displacement[:] + dt * integrator.velocity + 1.0 / 2.0 * dt * dt * integrator.acceleration
     integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
     model.reduced_state[:] = integrator.displacement[:]
     return nothing
@@ -499,7 +499,7 @@ function correct(integrator::RomCentralDifference, solver::RomExplicitSolver, mo
     dt = integrator.time_step
     gamma = integrator.γ
     # Displacement doesn't change
-    integrator.acceleration[:] = solver.solution[:] 
+    integrator.acceleration[:] = solver.solution[:]
     integrator.velocity[:] = integrator.velocity[:] + dt * gamma * integrator.acceleration[:]
     return nothing
 end

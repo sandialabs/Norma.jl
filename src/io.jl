@@ -85,12 +85,12 @@ function write_stop(sim::SingleDomainSimulation)
         digits = max(0, Int64(ceil(log10(num_steps))) - 2)
         norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
     end
-    exodus_interval = get(params, "Exodus output interval", 1)
+    exodus_interval = get(params, "Exodus output interval", 1)::Int64
     if exodus_interval > 0 && stop % exodus_interval == 0
         norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
-    csv_interval = get(params, "CSV output interval", 0)
+    csv_interval = get(params, "CSV output interval", 0)::Int64
     if csv_interval > 0 && stop % csv_interval == 0
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)

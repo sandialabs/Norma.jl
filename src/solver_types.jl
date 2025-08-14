@@ -19,7 +19,6 @@ struct BackTrackLineSearch <: LineSearch
     max_iters::Int64
 end
 
-
 mutable struct HessianMinimizer <: Minimizer
     minimum_iterations::Int64
     maximum_iterations::Int64
@@ -63,7 +62,6 @@ mutable struct RomHessianMinimizer <: Minimizer
     fom_solver::HessianMinimizer
 end
 
-
 mutable struct ExplicitSolver <: Explicit
     value::Float64
     gradient::Vector{Float64}
@@ -86,7 +84,6 @@ mutable struct RomExplicitSolver <: Explicit
     step::Step
     fom_solver::ExplicitSolver
 end
-
 
 mutable struct SteepestDescent <: MatrixFree
     minimum_iterations::Int64

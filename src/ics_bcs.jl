@@ -93,7 +93,7 @@ function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDataba
     return SolidMechanicsNeumannPressureBoundaryCondition(
         side_set_name, side_set_id, num_nodes_per_side, side_set_node_indices, pressure_fun
     )
-end 
+end
 
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
@@ -340,7 +340,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes
-            dof_indices = [3 * node_index - 2, 3 * node_index - 1,  3 * node_index]
+            dof_indices = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
             model.boundary_force[dof_indices] += nodal_force_component[:, side_node_index]
             side_node_index += 1
         end
@@ -1016,7 +1016,7 @@ end
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
     ## Need to create a fake time integrator and solver for the FOM IC routine
-    apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)     
+    apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)
 
     if haskey(params, "initial conditions") == false
         return nothing

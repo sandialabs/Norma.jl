@@ -28,7 +28,6 @@ mutable struct QuasiStatic <: StaticTimeIntegrator
     initial_equilibrium::Bool
 end
 
-
 mutable struct Newmark <: DynamicTimeIntegrator
     prev_time::Float64
     time::Float64
@@ -97,8 +96,6 @@ mutable struct CentralDifference <: ExplicitDynamicTimeIntegrator
     kinetic_energy::Float64
 end
 
-
-
 mutable struct RomCentralDifference <: ExplicitDynamicTimeIntegrator
     prev_time::Float64
     time::Float64
@@ -120,4 +117,3 @@ mutable struct RomCentralDifference <: ExplicitDynamicTimeIntegrator
     kinetic_energy::Float64
     fom_integrator::CentralDifference
 end
-

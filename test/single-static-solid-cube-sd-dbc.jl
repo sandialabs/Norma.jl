@@ -24,4 +24,3 @@
     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
 end
-

@@ -369,7 +369,7 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
         dNdξₚ = dNdξ[:, :, point]
         dXdξ = dNdξₚ * nodal_coord'
         perp_vector = cross(dXdξ[1, :], dXdξ[2, :])
-        normal = LinearAlgebra.normalize(perp_vector)  
+        normal = LinearAlgebra.normalize(perp_vector)
         j = norm(perp_vector)
         wₚ = w[point]
         point_coord = nodal_coord * Nₚ

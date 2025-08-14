@@ -8,7 +8,6 @@ using IterativeSolvers
 using LinearAlgebra
 using Printf
 
-
 function RomHessianMinimizer(params::Parameters, model::RomModel)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
@@ -36,7 +35,7 @@ function RomHessianMinimizer(params::Parameters, model::RomModel)
     ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
     ls_max_iters = get(solver_params, "line search maximum iterations", 16)
     line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
-    fom_solver = HessianMinimizer(params,model.fom_model)
+    fom_solver = HessianMinimizer(params, model.fom_model)
     return RomHessianMinimizer(
         minimum_iterations,
         maximum_iterations,
@@ -120,8 +119,10 @@ function RomExplicitSolver(params::Parameters, model::RomModel)
     converged = false
     failed = false
     step = create_step(solver_params)
-    fom_solver = ExplicitSolver(params,model.fom_model)
-    return RomExplicitSolver(value, gradient, lumped_hessian, solution, initial_norm, converged, failed, step,fom_solver)
+    fom_solver = ExplicitSolver(params, model.fom_model)
+    return RomExplicitSolver(
+        value, gradient, lumped_hessian, solution, initial_norm, converged, failed, step, fom_solver
+    )
 end
 
 function ExplicitSolver(params::Parameters, model::Model)
@@ -207,7 +208,6 @@ function create_solver(params::Parameters, model::RomModel)
         norma_abort("Unknown type of solver : $solver_name")
     end
 end
-
 
 function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
@@ -528,7 +528,8 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     gamma = integrator.γ
     dt = integrator.time_step
     ## Value for accelertaion - assumes bases are orthonormal to avoid solve
-    solver.solution[:] = model.opinf_rom["f"] + model.reduced_boundary_forcing  - model.opinf_rom["K"] * integrator.displacement[:]
+    solver.solution[:] =
+        model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * integrator.displacement[:]
     return nothing
 end
 
@@ -710,9 +711,8 @@ end
 
 function compute_step(_::RomCentralDifference, model::RomModel, solver::RomExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
-    return zeros(size(model.free_dofs)) 
+    return zeros(size(model.free_dofs))
 end
-
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
     solver.absolute_error = absolute_error
@@ -744,7 +744,6 @@ end
 function update_solver_convergence_criterion(solver::RomExplicitSolver, _::Float64)
     return solver.converged = true
 end
-
 
 function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     if solver.failed == true
@@ -784,7 +783,6 @@ function stop_solve(solver::RomHessianMinimizer, iteration_number::Int64)
     return solver.converged
 end
 
-
 function stop_solve(solver::SteepestDescent, iteration_number::Int64)
     if solver.failed == true
         return true
@@ -812,7 +810,7 @@ function stop_solve(_::RomExplicitSolver, _::Int64)
 end
 
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
-    is_explicit_dynamic = integrator isa ExplicitDynamicTimeIntegrator 
+    is_explicit_dynamic = integrator isa ExplicitDynamicTimeIntegrator
     predict(integrator, solver, model)
     evaluate(integrator, solver, model)
     if model.failed == true
