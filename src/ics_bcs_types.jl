@@ -4,6 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+include("opinf/opinf_ics_bcs_types.jl")
 abstract type BoundaryCondition end
 abstract type InitialCondition end
 abstract type SolidMechanicsBoundaryCondition <: BoundaryCondition end
@@ -53,6 +54,17 @@ mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoun
     rhs_fun::Function
     alpha::Float64
     beta::Float64
+end
+
+#IKT 6/9/2025 TODO: check with Alejandro if want to have separate NeumannPressure struct
+#or integrate it into the Neumann struct.  The latter is possible and avoids some
+#code duplication.
+mutable struct SolidMechanicsNeumannPressureBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+    name::String
+    side_set_id::Int64
+    num_nodes_per_side::Vector{Int64}
+    side_set_node_indices::Vector{Int64}
+    pressure_fun::Function
 end
 
 mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition

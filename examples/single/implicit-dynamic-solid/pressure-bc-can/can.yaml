@@ -1,0 +1,52 @@
+type: single
+input mesh file: can.g
+output mesh file: can.e
+Exodus output interval: 1
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      can: elastic
+    elastic:
+      model: neohookean
+      elastic modulus: 200.0e+09
+      Poisson's ratio: 0.25
+      density: 7800.0
+time integrator:
+  type: Newmark
+  initial time: 0.0
+  final time: 10.0
+  time step: 1.0
+  β: 0.25
+  γ: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: top
+      component: x
+      function: "0.0"
+    - node set: top
+      component: y
+      function: "0.0"
+    - node set: top
+      component: z
+      function: "0.0"
+    - node set: bottom
+      component: x
+      function: "0.0"
+    - node set: bottom
+      component: y
+      function: "0.0"
+    - node set: bottom
+      component: z
+      function: "0.0"
+  Neumann pressure:
+    - side set: interior_ss
+      function: "-1.0e+08 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

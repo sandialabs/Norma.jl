@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../../torsion-2.g
+input mesh file: ../torsion-2.g
 output mesh file: torsion-2.e
 model:
   type: cubic opinf rom
@@ -40,7 +40,7 @@ initial conditions:
 boundary conditions:
   Schwarz overlap:
     - side set: -Z_ss
-      source: torsion-1.yaml
+      source: torsion-1
       source block: bottom
       source side set: +Z_ss
 solver:

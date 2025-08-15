@@ -1,6 +1,6 @@
 close all; clear all;
 
-coords = csvread('01-refe.csv');
+coords = csvread('clamped-1-refe.csv');
 x = coords(:, 1);
 y = coords(:, 2);
 z = coords(:, 3);
@@ -17,33 +17,33 @@ save_figs = 1;
 ctr = 1;
 for i=0:100:10000
   if (i < 10)
-    pe_file_name = strcat('01-potential-000', num2str(i), '.csv');
-    ke_file_name = strcat('01-kinetic-000', num2str(i), '.csv');
-    disp_file_name = strcat('01-disp-000', num2str(i), '.csv');
-    velo_file_name = strcat('01-velo-000', num2str(i), '.csv');
-    acce_file_name = strcat('01-acce-000', num2str(i), '.csv');
-    time_file_name = strcat('01-time-000', num2str(i), '.csv');
+    pe_file_name = strcat('clamped-1-potential-000', num2str(i), '.csv');
+    ke_file_name = strcat('clamped-1-kinetic-000', num2str(i), '.csv');
+    disp_file_name = strcat('clamped-1-disp-000', num2str(i), '.csv');
+    velo_file_name = strcat('clamped-1-velo-000', num2str(i), '.csv');
+    acce_file_name = strcat('clamped-1-acce-000', num2str(i), '.csv');
+    time_file_name = strcat('clamped-1-time-000', num2str(i), '.csv');
   elseif (i < 100)
-    pe_file_name = strcat('01-potential-00', num2str(i), '.csv');
-    ke_file_name = strcat('01-kinetic-00', num2str(i), '.csv');
-    disp_file_name = strcat('01-disp-00', num2str(i), '.csv');
-    velo_file_name = strcat('01-velo-00', num2str(i), '.csv');
-    acce_file_name = strcat('01-acce-00', num2str(i), '.csv');
-    time_file_name = strcat('01-time-00', num2str(i), '.csv');
+    pe_file_name = strcat('clamped-1-potential-00', num2str(i), '.csv');
+    ke_file_name = strcat('clamped-1-kinetic-00', num2str(i), '.csv');
+    disp_file_name = strcat('clamped-1-disp-00', num2str(i), '.csv');
+    velo_file_name = strcat('clamped-1-velo-00', num2str(i), '.csv');
+    acce_file_name = strcat('clamped-1-acce-00', num2str(i), '.csv');
+    time_file_name = strcat('clamped-1-time-00', num2str(i), '.csv');
   elseif (i < 1000)
-    pe_file_name = strcat('01-potential-0', num2str(i), '.csv');
-    ke_file_name = strcat('01-kinetic-0', num2str(i), '.csv');
-    disp_file_name = strcat('01-disp-0', num2str(i), '.csv');
-    velo_file_name = strcat('01-velo-0', num2str(i), '.csv');
-    acce_file_name = strcat('01-acce-0', num2str(i), '.csv');
-    time_file_name = strcat('01-time-0', num2str(i), '.csv');
+    pe_file_name = strcat('clamped-1-potential-0', num2str(i), '.csv');
+    ke_file_name = strcat('clamped-1-kinetic-0', num2str(i), '.csv');
+    disp_file_name = strcat('clamped-1-disp-0', num2str(i), '.csv');
+    velo_file_name = strcat('clamped-1-velo-0', num2str(i), '.csv');
+    acce_file_name = strcat('clamped-1-acce-0', num2str(i), '.csv');
+    time_file_name = strcat('clamped-1-time-0', num2str(i), '.csv');
   else
-    pe_file_name = strcat('01-potential-', num2str(i), '.csv');
-    ke_file_name = strcat('01-kinetic-', num2str(i), '.csv');
-    disp_file_name = strcat('01-disp-', num2str(i), '.csv');
-    velo_file_name = strcat('01-velo-', num2str(i), '.csv');
-    acce_file_name = strcat('01-acce-', num2str(i), '.csv');
-    time_file_name = strcat('01-time-', num2str(i), '.csv');
+    pe_file_name = strcat('clamped-1-potential-', num2str(i), '.csv');
+    ke_file_name = strcat('clamped-1-kinetic-', num2str(i), '.csv');
+    disp_file_name = strcat('clamped-1-disp-', num2str(i), '.csv');
+    velo_file_name = strcat('clamped-1-velo-', num2str(i), '.csv');
+    acce_file_name = strcat('clamped-1-acce-', num2str(i), '.csv');
+    time_file_name = strcat('clamped-1-time-', num2str(i), '.csv');
   end
   p = dlmread(pe_file_name);
   k = dlmread(ke_file_name);

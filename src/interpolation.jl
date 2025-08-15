@@ -257,17 +257,17 @@ function lagrangian(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
 end
 
 function element_type_from_string(s::AbstractString)::ElementType
-    if s == "BAR2"
+    if s == "BAR2" || s == "BAR"
         return BAR2
-    elseif s == "TRI3"
+    elseif s == "TRI3" || s == "TRI"
         return TRI3
-    elseif s == "QUAD4"
+    elseif s == "QUAD4" || s == "QUAD"
         return QUAD4
-    elseif s == "TETRA4"
+    elseif s == "TETRA4" || s == "TETRA"
         return TETRA4
     elseif s == "TETRA10"
         return TETRA10
-    elseif s == "HEX8"
+    elseif s == "HEX8" || s == "HEX"
         return HEX8
     else
         norma_abort("Unknown element type string: $s")
@@ -358,6 +358,7 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::F
     return nodal_force_component
 end
 
+
 function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float64)
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
@@ -373,6 +374,28 @@ function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float6
         nodal_stiffness_component += Nₚ*Nₚ' * j * wₚ
     end
     return nodal_stiffness_component
+end
+
+function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun::Function, time::Float64)
+    _, num_side_nodes = size(nodal_coord)
+    element_type = get_element_type(2, num_side_nodes)
+    num_int_points = default_num_int_pts(element_type)
+    N, dNdξ, w, _ = isoparametric(element_type, num_int_points)
+    nodal_force_component = zeros(3, num_side_nodes)
+    for point in 1:num_int_points
+        Nₚ = N[:, point]
+        dNdξₚ = dNdξ[:, :, point]
+        dXdξ = dNdξₚ * nodal_coord'
+        perp_vector = cross(dXdξ[1, :], dXdξ[2, :])
+        normal = LinearAlgebra.normalize(perp_vector)
+        j = norm(perp_vector)
+        wₚ = w[point]
+        point_coord = nodal_coord * Nₚ
+        txzy = (time, point_coord[1], point_coord[2], point_coord[3])
+        pressure_val = pressure_fun(txzy...)
+        nodal_force_component += normal * (pressure_val * Nₚ * j * wₚ)'
+    end
+    return nodal_force_component
 end
 
 function map_to_parametric(element_type::ElementType, nodes::Matrix{Float64}, point::Vector{Float64})
@@ -460,6 +483,13 @@ end
 # and not match each other exactly. We assume that we know the contact surfaces in advance
 function project_point_to_side_set(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
     face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
+    new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
+    return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
+end
+
+function project_point_to_side_set(
+    point::Vector{Float64}, face_nodes::Matrix{Float64}, face_node_indices::Vector{Int32}
+)
     new_point, ξ, surface_distance, normal = closest_point_projection(face_nodes, point)
     return new_point, ξ, face_nodes, face_node_indices, normal, surface_distance
 end

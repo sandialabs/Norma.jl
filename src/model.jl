@@ -4,117 +4,12 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+include("opinf/opinf_model.jl")
 include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
 using Base.Threads: @threads, threadid, nthreads
-using NPZ
-
-function LinearOpInfRom(params::Parameters)
-    params["mesh smoothing"] = false
-    fom_model = SolidMechanics(params)
-    reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-    opinf_model = NPZ.npzread(opinf_model_file)
-    basis = opinf_model["basis"]
-    _, _, reduced_dim = size(basis)
-    num_dofs = reduced_dim
-    time = 0.0
-    failed = false
-    null_vec = zeros(num_dofs)
-
-    reduced_state = zeros(num_dofs)
-    reduced_velocity = zeros(num_dofs)
-    reduced_boundary_forcing = zeros(num_dofs)
-    free_dofs = trues(num_dofs)
-    boundary_conditions = Vector{BoundaryCondition}()
-    return LinearOpInfRom(
-        opinf_model,
-        basis,
-        reduced_state,
-        reduced_velocity,
-        reduced_boundary_forcing,
-        null_vec,
-        free_dofs,
-        boundary_conditions,
-        time,
-        failed,
-        fom_model,
-        reference,
-        false,
-    )
-end
-
-function QuadraticOpInfRom(params::Parameters)
-    params["mesh smoothing"] = false
-    fom_model = SolidMechanics(params)
-    reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-    opinf_model = NPZ.npzread(opinf_model_file)
-    basis = opinf_model["basis"]
-    _, _, reduced_dim = size(basis)
-    num_dofs = reduced_dim
-    time = 0.0
-    failed = false
-    null_vec = zeros(num_dofs)
-
-    reduced_state = zeros(num_dofs)
-    reduced_velocity = zeros(num_dofs)
-    reduced_boundary_forcing = zeros(num_dofs)
-    free_dofs = trues(num_dofs)
-    boundary_conditions = Vector{BoundaryCondition}()
-    return QuadraticOpInfRom(
-        opinf_model,
-        basis,
-        reduced_state,
-        reduced_velocity,
-        reduced_boundary_forcing,
-        null_vec,
-        free_dofs,
-        boundary_conditions,
-        time,
-        failed,
-        fom_model,
-        reference,
-        false,
-    )
-end
-
-function CubicOpInfRom(params::Parameters)
-    params["mesh smoothing"] = false
-    fom_model = SolidMechanics(params)
-    reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-    opinf_model = NPZ.npzread(opinf_model_file)
-    basis = opinf_model["basis"]
-    _, _, reduced_dim = size(basis)
-    num_dofs = reduced_dim
-    time = 0.0
-    failed = false
-    null_vec = zeros(num_dofs)
-
-    reduced_state = zeros(num_dofs)
-    reduced_velocity = zeros(num_dofs)
-    reduced_boundary_forcing = zeros(num_dofs)
-    free_dofs = trues(num_dofs)
-    boundary_conditions = Vector{BoundaryCondition}()
-    return CubicOpInfRom(
-        opinf_model,
-        basis,
-        reduced_state,
-        reduced_velocity,
-        reduced_boundary_forcing,
-        null_vec,
-        free_dofs,
-        boundary_conditions,
-        time,
-        failed,
-        fom_model,
-        reference,
-        false,
-    )
-end
 
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
@@ -195,12 +90,10 @@ function SolidMechanics(params::Parameters)
     end
     strain_energy = 0.0
     stiffness = spzeros(0, 0)
-    diag_stiffness = Float64[]
     mass = spzeros(0, 0)
     lumped_mass = Float64[]
     body_force = Float64[]
     compute_stiffness = true
-    compute_diag_stiffness = true
     compute_mass = true
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
@@ -223,14 +116,12 @@ function SolidMechanics(params::Parameters)
         stored_energy,
         strain_energy,
         stiffness,
-        diag_stiffness,
         mass,
         lumped_mass,
         body_force,
         free_dofs,
         time,
         compute_stiffness,
-        compute_diag_stiffness,
         compute_mass,
         compute_lumped_mass,
         failed,
@@ -272,8 +163,6 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
             h = equal_volume_tet_h(u, v, w)
         elseif smooth_reference == "average edge length"
             h = avg_edge_length_tet_h(u, v, w)
-        elseif smooth_reference == "max"
-            h = max(equal_volume_tet_h(u, v, w), avg_edge_length_tet_h(u, v, w))
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
@@ -534,14 +423,6 @@ function add_internal_force!(Fi::MVector{M,T}, grad_op::SMatrix{9,M,T}, stress::
     @einsum Fi[i] += grad_op[j, i] * stress[j] * dV
 end
 
-function add_diag_stiff!(K::MVector{M,T}, grad_op::SMatrix{9,M,T}, C::SMatrix{9,9,T}, dV::T) where {M,T}
-    @inbounds for i in 1:M
-        g = grad_op[:, i]
-        K[i] += dV * dot(g, C * g)
-    end
-    return nothing
-end
-
 function add_lumped_mass!(M::MVector{R,T}, Nξ::SVector{N,T}, density::T, dV::T) where {R,N,T}
     @assert R == 3N
     s = sum(Nξ)
@@ -565,11 +446,9 @@ function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver
     is_implicit = is_implicit_dynamic || is_implicit_static
     is_hessian_opt = solver isa HessianMinimizer
     is_matrix_free = solver isa SteepestDescent
-    need_diag_stiffness = is_implicit && is_matrix_free
     need_lumped_mass = is_explicit_dynamic || (is_implicit_dynamic && is_matrix_free)
     need_stiffness = is_implicit && is_hessian_opt
     need_mass = is_dynamic && is_hessian_opt
-    compute_diag_stiffness = need_diag_stiffness && model.compute_diag_stiffness
     compute_lumped_mass = need_lumped_mass && model.compute_lumped_mass
     compute_stiffness = need_stiffness && model.compute_stiffness
     compute_mass = need_mass && model.compute_mass
@@ -580,11 +459,9 @@ function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver
         is_implicit,
         is_hessian_opt,
         is_matrix_free,
-        need_diag_stiffness,
         need_lumped_mass,
         need_stiffness,
         need_mass,
-        compute_diag_stiffness,
         compute_lumped_mass,
         compute_stiffness,
         compute_mass,
@@ -598,32 +475,27 @@ function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags
     energy = zeros(nthreads())
     internal_force = create_threadlocal_coo_vectors(num_dofs)
 
-    diag_stiffness = create_threadlocal_coo_vectors(flags.compute_diag_stiffness ? num_dofs : 0)
-    if flags.compute_diag_stiffness && model.kinematics == Infinitesimal
-        model.compute_diag_stiffness = false
-    end
-
     lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
-    if flags.compute_lumped_mass
+    if flags.compute_lumped_mass == true
         model.compute_lumped_mass = false
     end
 
-    if flags.compute_stiffness || flags.compute_mass
+    if flags.compute_stiffness == true || flags.compute_mass == true
         coo_matrix_nnz = count_coo_matrix_nnz(model)
     else
         coo_matrix_nnz = 0
     end
 
     stiffness = create_threadlocal_coo_matrices(flags.compute_stiffness ? coo_matrix_nnz : 0)
-    if flags.compute_stiffness && model.kinematics == Infinitesimal
+    if flags.compute_stiffness == true && model.kinematics == Infinitesimal
         model.compute_stiffness = false
     end
 
     mass = create_threadlocal_coo_matrices(flags.compute_mass ? coo_matrix_nnz : 0)
-    if flags.compute_mass
+    if flags.compute_mass == true
         model.compute_mass = false
     end
-    return SMThreadLocalArrays(energy, internal_force, diag_stiffness, lumped_mass, stiffness, mass)
+    return SMThreadLocalArrays(energy, internal_force, lumped_mass, stiffness, mass)
 end
 
 function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
@@ -631,11 +503,10 @@ function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::Eval
     energy = zeros(nthreads())
     dofs = create_threadlocal_element_vectors(Int64, valN)
     internal_force = create_threadlocal_element_vectors(Float64, valN)
-    diag_stiffness = create_threadlocal_element_vectors(Float64, flags.compute_diag_stiffness ? valN : Val(0))
     lumped_mass = create_threadlocal_element_vectors(Float64, flags.compute_lumped_mass ? valN : Val(0))
     stiffness = create_threadlocal_element_matrices(Float64, flags.compute_stiffness ? valN : Val(0))
     mass = create_threadlocal_element_matrices(Float64, flags.compute_mass ? valN : Val(0))
-    return SMElementThreadLocalArrays(energy, dofs, internal_force, diag_stiffness, lumped_mass, stiffness, mass)
+    return SMElementThreadLocalArrays(energy, dofs, internal_force, lumped_mass, stiffness, mass)
 end
 
 function reset_element_threadlocal_arrays!(
@@ -651,9 +522,6 @@ function reset_element_threadlocal_arrays!(
     element_arrays_tl.dofs[t] = reshape(3 .* node_indices' .- [2, 1, 0], :)
     element_arrays_tl.energy[t] = 0.0
     fill!(element_arrays_tl.internal_force[t], 0.0)
-    if flags.compute_diag_stiffness == true
-        fill!(element_arrays_tl.diag_stiffness[t], 0.0)
-    end
     if flags.compute_lumped_mass == true
         fill!(element_arrays_tl.lumped_mass[t], 0.0)
     end
@@ -682,10 +550,6 @@ function compute_element_threadlocal_arrays!(
     stress = SVector{9,Float64}(P)
     element_arrays_tl.energy[t] += W * dvol
     add_internal_force!(element_arrays_tl.internal_force[t], grad_op, stress, dvol)
-    if flags.compute_diag_stiffness == true
-        moduli = second_from_fourth(AA)
-        add_diag_stiff!(element_arrays_tl.diag_stiffness[t], grad_op, moduli, dvol)
-    end
     if flags.compute_lumped_mass == true
         add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
     end
@@ -709,9 +573,6 @@ function assemble_element_threadlocal_arrays!(
     t = threadid()
     arrays_tl.energy[t] += element_arrays_tl.energy[t]
     assemble!(arrays_tl.internal_force[t], element_arrays_tl.internal_force[t], element_arrays_tl.dofs[t])
-    if flags.compute_diag_stiffness == true
-        assemble!(arrays_tl.diag_stiffness[t], element_arrays_tl.diag_stiffness[t], element_arrays_tl.dofs[t])
-    end
     if flags.compute_lumped_mass == true
         assemble!(arrays_tl.lumped_mass[t], element_arrays_tl.lumped_mass[t], element_arrays_tl.dofs[t])
     end
@@ -729,9 +590,6 @@ function merge_threadlocal_arrays(
 )
     model.strain_energy = sum(arrays_tl.energy)
     model.internal_force = merge_threadlocal_coo_vectors(arrays_tl.internal_force, num_dofs)
-    if flags.compute_diag_stiffness == true
-        model.diag_stiffness = merge_threadlocal_coo_vectors(arrays_tl.diag_stiffness, num_dofs)
-    end
     if flags.compute_lumped_mass == true
         model.lumped_mass = merge_threadlocal_coo_vectors(arrays_tl.lumped_mass, num_dofs)
     end
@@ -787,8 +645,8 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 J = det(F)
                 if J ≤ 0.0 || isfinite(J) == false
                     model.failed = true
-                    model.compute_stiffness = model.compute_diag_stiffness = true
                     model.compute_mass = model.compute_lumped_mass = true
+                    model.compute_stiffness = true
                     norma_log(0, :error, "Non-positive Jacobian detected! This may indicate element distortion.")
                     norma_logf(4, :warning, "det(F) = %.3e", J)
                     log_matrix(4, :info, "Reference Configuration", element_reference_position)
@@ -810,9 +668,6 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     end
     merge_threadlocal_arrays(model, arrays_tl, num_dofs, flags)
     model.body_force = body_force_vector
-    if flags.mesh_smoothing == true
-        model.internal_force -= integrator.velocity
-    end
     return nothing
 end
 

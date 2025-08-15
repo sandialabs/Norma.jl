@@ -60,7 +60,6 @@ mutable struct SteepestDescent <: MatrixFree
     relative_error::Float64
     value::Float64
     gradient::Vector{Float64}
-    lumped_hessian::Vector{Float64}
     solution::Vector{Float64}
     initial_norm::Float64
     converged::Bool
@@ -80,3 +79,6 @@ end
 struct SteepestDescentStep <: Step
     step_length::Float64
 end
+
+include("opinf/opinf_solver_types.jl")
+

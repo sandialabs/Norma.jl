@@ -75,6 +75,7 @@ function QuasiStatic(params::Parameters, model::Model)
     )
 end
 
+
 function Newmark(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     time_step = integrator_params["time step"]
@@ -120,6 +121,7 @@ function Newmark(params::Parameters, model::Model)
     )
 end
 
+
 function CentralDifference(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     time_step = integrator_params["time step"]
@@ -161,7 +163,7 @@ function CentralDifference(params::Parameters, model::Model)
     )
 end
 
-function create_time_integrator(params::Parameters, model::Model)
+function create_time_integrator(params::Parameters, model::SolidMechanics)
     integrator_params = params["time integrator"]
     integrator_name = integrator_params["type"]
     if integrator_name == "quasi static"
@@ -175,6 +177,7 @@ function create_time_integrator(params::Parameters, model::Model)
     end
 end
 
+
 function is_static(integrator::TimeIntegrator)
     return integrator isa QuasiStatic
 end
@@ -183,66 +186,6 @@ function is_dynamic(integrator::TimeIntegrator)
     return is_static(integrator) == false
 end
 
-function initialize(integrator::Newmark, solver::HessianMinimizer, model::RomModel)
-    # Compute initial accelerations
-    evaluate(model.fom_model, integrator, solver)
-    free = model.fom_model.free_dofs
-    internal_force = model.fom_model.internal_force
-    external_force = model.fom_model.body_force + model.fom_model.boundary_force
-    if model.fom_model.inclined_support == true
-        external_force = model.fom_model.global_transform * external_force
-        internal_force = model.fom_model.global_transform * internal_force
-    end
-    inertial_force = external_force - internal_force
-
-    # project onto basis
-    n_var, n_node, n_mode = size(model.basis)
-    num_nodes = n_node
-    #_, num_nodes = size(model.fom_model.reference)
-    acceleration = zeros(3 * num_nodes)
-
-    acceleration[free] = model.fom_model.mass[free, free] \ inertial_force[free]
-
-    integrator.displacement[:] = model.reduced_state[:]
-    integrator.velocity[:] = model.reduced_velocity[:]
-    solver.solution[:] = model.reduced_state[:]
-
-    for k in 1:n_mode
-        integrator.acceleration[k] = 0.0
-        for j in 1:n_node
-            for n in 1:n_var
-                integrator.acceleration[k] += model.basis[n, j, k] * acceleration[3 * (j - 1) + n]
-            end
-        end
-    end
-    return nothing
-end
-
-function predict(integrator::Newmark, solver::Solver, model::RomModel)
-    dt = integrator.time_step
-    beta = integrator.β
-    gamma = integrator.γ
-    integrator.disp_pre[:] =
-        integrator.displacement[:] =
-            integrator.displacement[:] +
-            dt * integrator.velocity +
-            1.0 / 2.0 * dt * dt * (1.0 - 2.0 * beta) * integrator.acceleration
-    integrator.velo_pre[:] = integrator.velocity[:] += dt * (1.0 - gamma) * integrator.acceleration
-    solver.solution[:] = integrator.displacement[:]
-    model.reduced_state[:] = integrator.displacement[:]
-    return nothing
-end
-
-function correct(integrator::Newmark, solver::Solver, model::RomModel)
-    dt = integrator.time_step
-    beta = integrator.β
-    gamma = integrator.γ
-    integrator.displacement[:] = solver.solution[:]
-    integrator.acceleration[:] = (solver.solution - integrator.disp_pre) / (beta * dt * dt)
-    integrator.velocity[:] = integrator.velo_pre + dt * gamma * integrator.acceleration[:]
-    model.reduced_state[:] = solver.solution[:]
-    return nothing
-end
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
@@ -286,29 +229,6 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     atol = solver.linear_solver_absolute_tolerance
     rtol = solver.linear_solver_relative_tolerance
     integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
-    copy_solution_source_targets(integrator, solver, model)
-    return nothing
-end
-
-function initialize(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
-    norma_log(0, :acceleration, "Computing Initial Acceleration...")
-    copy_solution_source_targets(model, integrator, solver)
-    free = model.free_dofs
-    evaluate(model, integrator, solver)
-    if model.failed == true
-        norma_abort("Finite element model failed to initialize")
-    end
-    internal_force = model.internal_force
-    external_force = model.body_force + model.boundary_force
-    if model.inclined_support == true
-        external_force = model.global_transform * external_force
-        internal_force = model.global_transform * internal_force
-    end
-    inertial_force = external_force - internal_force
-    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
-    integrator.kinetic_energy = kinetic_energy
-    integrator.stored_energy = model.strain_energy
-    integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
     copy_solution_source_targets(integrator, solver, model)
     return nothing
 end
@@ -395,3 +315,6 @@ function correct(integrator::CentralDifference, solver::ExplicitSolver, model::S
     copy_solution_source_targets(integrator, solver, model)
     return nothing
 end
+
+include("opinf/opinf_time_integrator.jl")
+

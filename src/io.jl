@@ -85,15 +85,18 @@ function write_stop(sim::SingleDomainSimulation)
         digits = max(0, Int64(ceil(log10(num_steps))) - 2)
         norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
     end
-    exodus_interval = get(params, "Exodus output interval", 1)
+    exodus_interval = get(params, "Exodus output interval", 1)::Int64
     if exodus_interval > 0 && stop % exodus_interval == 0
         norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
-    csv_interval = get(params, "CSV output interval", 0)
+    csv_interval = get(params, "CSV output interval", 0)::Int64
     if csv_interval > 0 && stop % csv_interval == 0
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)
+        if haskey(params, "CSV write sidesets") == true
+            write_sideset_stop_csv(sim, sim.model)
+        end
     end
     return nothing
 end
@@ -140,48 +143,53 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     return nothing
 end
 
-function write_stop_csv(sim::SingleDomainSimulation, model::RomModel)
+function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     stop = sim.controller.stop
+    integrator = sim.integrator
     index_string = "-" * string(stop; pad=4)
     prefix = sim.name * "-"
-    reduced_states_filename = prefix * "reduced_states" * index_string * ".csv"
-    writedlm(reduced_states_filename, model.reduced_state)
-    write_stop_csv(sim, model.fom_model)
-    return nothing
-end
-
-function write_stop_exodus(sim::SingleDomainSimulation, model::RomModel)
-    integrator = sim.integrator
-    #Re-construct full state
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-
-    for i in 1:size(model.fom_model.current)[2]
-        x_dof_index = 3 * (i - 1) + 1
-        y_dof_index = 3 * (i - 1) + 2
-        z_dof_index = 3 * (i - 1) + 3
-        if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
-            model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
-            model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
-        end
-
-        if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
-            model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
-            model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
-        end
-
-        if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
-            model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
-            model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
+    for bc in model.boundary_conditions
+        if bc isa SolidMechanicsDirichletBoundaryCondition
+            node_set_name = bc.name
+            offset = bc.offset
+            if offset == 1
+                offset_name = "x"
+            end
+            if offset == 2
+                offset_name = "y"
+            end
+            if offset == 3
+                offset_name = "z"
+            end
+            curr_filename = prefix * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
+            disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
+            velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
+            acce_filename = prefix * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
+            writedlm(curr_filename, model.current[bc.offset, bc.node_set_node_indices])
+            writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
+            writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
+            writedlm(
+                disp_filename,
+                model.current[bc.offset, bc.node_set_node_indices] -
+                model.reference[bc.offset, bc.node_set_node_indices],
+            )
+        elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition ||
+            bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+            side_set_name = bc.name
+            curr_filename = prefix * side_set_name * "-curr" * index_string * ".csv"
+            disp_filename = prefix * side_set_name * "-disp" * index_string * ".csv"
+            velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
+            acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
+            unique_indices = unique(bc.side_set_node_indices)
+            writedlm_nodal_array(curr_filename, model.current[:, unique_indices])
+            writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
+            writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
+            writedlm_nodal_array(disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices])
         end
     end
-    write_stop_exodus(sim, model.fom_model)
     return nothing
 end
+
 
 function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     params = sim.params
@@ -274,3 +282,6 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     end
     return nothing
 end
+
+include("opinf/opinf_io.jl")
+

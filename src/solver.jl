@@ -4,9 +4,11 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+include("opinf/opinf_solver.jl")
 using IterativeSolvers
 using LinearAlgebra
 using Printf
+
 
 function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
@@ -82,7 +84,6 @@ function SteepestDescent(params::Parameters, model::Model)
     relative_error = 0.0
     value = 0.0
     gradient = zeros(num_dof)
-    lumped_hessian = zeros(num_dof)
     solution = zeros(num_dof)
     initial_norm = 0.0
     converged = false
@@ -105,7 +106,6 @@ function SteepestDescent(params::Parameters, model::Model)
         relative_error,
         value,
         gradient,
-        lumped_hessian,
         solution,
         initial_norm,
         converged,
@@ -115,7 +115,7 @@ function SteepestDescent(params::Parameters, model::Model)
     )
 end
 
-function create_solver(params::Parameters, model::Model)
+function create_solver(params::Parameters, model::SolidMechanics)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
     if solver_name == "Hessian minimizer"
@@ -128,6 +128,7 @@ function create_solver(params::Parameters, model::Model)
         norma_abort("Unknown type of solver : $solver_name")
     end
 end
+
 
 function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
@@ -201,35 +202,6 @@ function copy_solution_source_targets(solver::Solver, model::SolidMechanics, int
     return nothing
 end
 
-function copy_solution_source_targets(integrator::Newmark, _::HessianMinimizer, model::RomModel)
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-    # Clean this up; maybe make a free dofs 2d array or move to a basis in matrix format
-    for i in 1:size(model.fom_model.current)[2]
-        x_dof_index = 3 * (i - 1) + 1
-        y_dof_index = 3 * (i - 1) + 2
-        z_dof_index = 3 * (i - 1) + 3
-        if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
-            model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
-            model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
-        end
-
-        if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
-            model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
-            model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
-        end
-
-        if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
-            model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
-            model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
-        end
-    end
-    return nothing
-end
 
 function copy_solution_source_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
     num_nodes = size(model.reference, 2)
@@ -386,87 +358,6 @@ function copy_solution_source_targets(model::SolidMechanics, integrator::Central
     return nothing
 end
 
-function evaluate(integrator::Newmark, solver::HessianMinimizer, model::QuadraticOpInfRom)
-    beta = integrator.β
-    gamma = integrator.γ
-    dt = integrator.time_step
-
-    ##Quadratic OpInf
-    num_dof = length(model.free_dofs)
-    I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
-    # Create tangent stiffness for quadratic operator
-    H = model.opinf_rom["H"]
-    x1 = kron(I, solver.solution)
-    x2 = kron(solver.solution, I)
-    Hprime = H * x1 + H * x2
-    xsqr = kron(solver.solution, solver.solution)
-    LHS_linear = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
-    LHS_nonlinear = Hprime
-
-    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
-
-    residual = RHS - LHS_linear * solver.solution - H * xsqr
-    solver.hessian[:, :] = LHS_linear + LHS_nonlinear
-    solver.gradient[:] = -residual
-    return nothing
-end
-
-function evaluate(integrator::Newmark, solver::HessianMinimizer, model::CubicOpInfRom)
-    beta = integrator.β
-    gamma = integrator.γ
-    dt = integrator.time_step
-
-    ##Cubic OpInf
-    num_dof = length(model.free_dofs)
-    I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
-    # Create tangent stiffness for quadratic operator
-    H = model.opinf_rom["H"]
-    x1 = kron(I, solver.solution)
-    x2 = kron(solver.solution, I)
-    Hprime = H * x1 + H * x2
-    xsqr = kron(solver.solution, solver.solution)
-    # Create tangent stiffness for cubic operator
-    G = model.opinf_rom["G"]
-    x3 = kron(I, solver.solution, solver.solution)
-    x4 = kron(solver.solution, I, solver.solution)
-    x5 = kron(solver.solution, solver.solution, I)
-    Gprime = G * x3 + G * x4 + G * x5
-    xcub = kron(solver.solution, solver.solution, solver.solution)
-    # Create LHSs
-    LHS_linear = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
-    LHS_nonlinear = Hprime + Gprime
-
-    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
-
-    residual = RHS - LHS_linear * solver.solution - H * xsqr - G * xcub
-    solver.hessian[:, :] = LHS_linear + LHS_nonlinear
-    solver.gradient[:] = -residual
-    return nothing
-end
-
-function evaluate(integrator::Newmark, solver::HessianMinimizer, model::LinearOpInfRom)
-    beta = integrator.β
-    gamma = integrator.γ
-    dt = integrator.time_step
-
-    #Ax* = b
-    # Put in residual format
-    #e = [x* - x] -> x* = x + e
-    #Ax + Ae = b
-    #Ax - b = -Ae
-    #Ae = r, r = b - Ax
-    ##M uddot + Ku = f
-
-    num_dof = length(model.free_dofs)
-    I = Matrix{Float64}(LinearAlgebra.I, num_dof, num_dof)
-    LHS = I / (dt * dt * beta) + Matrix{Float64}(model.opinf_rom["K"])
-    RHS = model.opinf_rom["f"] + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
-
-    residual = RHS - LHS * solver.solution
-    solver.hessian[:, :] = LHS
-    solver.gradient[:] = -residual
-    return nothing
-end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
     evaluate(model, integrator, solver)
@@ -496,10 +387,8 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     external_force = model.body_force + model.boundary_force
     if model.inclined_support == true
         solver.gradient = model.global_transform * (model.internal_force - external_force)
-        solver.lumped_hessian = model.global_transform * model.diag_stiffness
     else
         solver.gradient = model.internal_force - external_force
-        solver.lumped_hessian = model.diag_stiffness
     end
     return nothing
 end
@@ -525,32 +414,6 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
         stiffness = global_transform * stiffness * global_transform'
     end
     solver.hessian = stiffness + model.mass / β / Δt / Δt
-    solver.gradient = internal_force - external_force + inertial_force
-    solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
-    return nothing
-end
-
-function evaluate(integrator::Newmark, solver::MatrixFree, model::SolidMechanics)
-    evaluate(model, integrator, solver)
-    if model.failed == true
-        return nothing
-    end
-    integrator.stored_energy = model.strain_energy
-    β = integrator.β
-    Δt = integrator.time_step
-    inertial_force = model.lumped_mass .* integrator.acceleration
-    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
-    integrator.kinetic_energy = kinetic_energy
-    internal_force = model.internal_force
-    external_force = model.body_force + model.boundary_force
-    diag_stiffness = model.diag_stiffness
-    if model.inclined_support == true
-        global_transform = model.global_transform
-        internal_force = global_transform * internal_force
-        external_force = global_transform * external_force
-        diag_stiffness = global_transform * diag_stiffness
-    end
-    solver.lumped_hessian = diag_stiffness + model.lumped_mass / β / Δt / Δt
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     return nothing
@@ -607,7 +470,8 @@ function backtrack_line_search(
         copy_solution_source_targets(solver, model, integrator)
         evaluate(integrator, solver, model)
         if model.failed == true
-            return step
+            step_length *= backtrack_factor
+            continue
         end
         resid = solver.gradient[free]
         merit = 0.5 * dot(resid, resid)
@@ -640,20 +504,15 @@ end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::MatrixFree, _::SteepestDescentStep)
     free = model.free_dofs
-    direction = -solver.gradient[free] ./ solver.lumped_hessian[free]
+    direction = LinearAlgebra.normalize(-solver.gradient[free])
     return backtrack_line_search(integrator, solver, model, direction)
-end
-
-function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::HessianMinimizer, _::NewtonStep)
-    atol = solver.linear_solver_absolute_tolerance
-    rtol = solver.linear_solver_relative_tolerance
-    return -solve_linear(solver.hessian, solver.gradient, atol, rtol)
 end
 
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
 end
+
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
     solver.absolute_error = absolute_error
@@ -662,6 +521,7 @@ function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_
     converged_relative = solver.relative_error ≤ solver.relative_tolerance
     return solver.converged = converged_absolute || converged_relative
 end
+
 
 function update_solver_convergence_criterion(solver::SteepestDescent, absolute_error::Float64)
     solver.absolute_error = absolute_error
@@ -694,6 +554,7 @@ function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     return solver.converged
 end
 
+
 function stop_solve(solver::SteepestDescent, iteration_number::Int64)
     if solver.failed == true
         return true
@@ -718,7 +579,7 @@ function stop_solve(_::ExplicitSolver, _::Int64)
 end
 
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
-    is_explicit_dynamic = integrator isa CentralDifference
+    is_explicit_dynamic = integrator isa ExplicitDynamicTimeIntegrator
     predict(integrator, solver, model)
     evaluate(integrator, solver, model)
     if model.failed == true

@@ -7,6 +7,7 @@
 abstract type TimeIntegrator end
 abstract type StaticTimeIntegrator <: TimeIntegrator end
 abstract type DynamicTimeIntegrator <: TimeIntegrator end
+abstract type ExplicitDynamicTimeIntegrator <: DynamicTimeIntegrator end
 
 mutable struct QuasiStatic <: StaticTimeIntegrator
     prev_time::Float64
@@ -50,7 +51,8 @@ mutable struct Newmark <: DynamicTimeIntegrator
     kinetic_energy::Float64
 end
 
-mutable struct CentralDifference <: DynamicTimeIntegrator
+
+mutable struct CentralDifference <: ExplicitDynamicTimeIntegrator
     prev_time::Float64
     time::Float64
     time_step::Float64
@@ -70,3 +72,4 @@ mutable struct CentralDifference <: DynamicTimeIntegrator
     stored_energy::Float64
     kinetic_energy::Float64
 end
+include("opinf/opinf_time_integrator_types.jl")
