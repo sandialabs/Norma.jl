@@ -358,6 +358,23 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::F
     return nodal_force_component
 end
 
+function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float64)
+    _, num_side_nodes = size(nodal_coord)
+    element_type = get_element_type(2, num_side_nodes)
+    num_int_points = default_num_int_pts(element_type)
+    N, dNdξ, w, _ = isoparametric(element_type, num_int_points)
+    nodal_stiffness_component = zeros(num_side_nodes, num_side_nodes)
+    for point in 1:num_int_points
+        Nₚ = N[:, point]
+        dNdξₚ = dNdξ[:, :, point]
+        dXdξ = dNdξₚ * nodal_coord'
+        j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
+        wₚ = w[point]
+        nodal_stiffness_component += Nₚ*Nₚ' * j * wₚ
+    end
+    return nodal_stiffness_component
+end
+
 function map_to_parametric(element_type::ElementType, nodes::Matrix{Float64}, point::Vector{Float64})
     tol = 1.0e-08
     max_iters = 1024

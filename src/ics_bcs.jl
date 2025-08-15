@@ -78,8 +78,6 @@ function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_p
 end
 
 function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
-    #IKT 6/5/2025: TODO fill in.
-    #Below are contents of NeumannBoundaryCondition
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
@@ -352,31 +350,24 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryCondition)
-    #IKT 6/5/2025: TODO fill in.
-    #Below are contents of NeumannBoundaryCondition
     ss_node_index = 1
     for side in bc.num_nodes_per_side
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
         nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
-        nodal_force_component = 1.0 / (bc.alpha) * nodal_force_component
-        #IKT TODO: modify following line to set -beta/rhs_fun * u * v, stiffness matrix 
-        #contribution.
-        #nodal_stiff_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
+        nodal_force_component *= 1.0 / (bc.alpha)
+        nodal_stiffness_component = get_side_set_nodal_stiffness(side_coordinates, model.time)
+        nodal_stiffness_component *= bc.beta / bc.alpha
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes
             bc_val = nodal_force_component[side_node_index]
-            side_node_index += 1
             dof_index = 3 * (node_index - 1) + bc.offset
             model.boundary_force[dof_index] += bc_val
-            #IKT TODO: modify the following line to add to stiffness matrix
-            #model.stiffness[dof_index] += bc_val
+            model.stiffness[dof_index, dof_index] += nodal_stiffness_component[side_node_index, side_node_index]
+            side_node_index += 1
         end
     end
-    norma_abort("In apply_bc:  Attempting to use Robin BC, which is not yet implemented!")
-    #IKT 6/5/2025 TODO: repeat code above but for model.stiffness.
-    #this will require calling get_side_set_nodal_forces with bc.disp_fun  
 end
 
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
