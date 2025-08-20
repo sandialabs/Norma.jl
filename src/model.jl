@@ -147,7 +147,8 @@ function create_model(params::Parameters)
         return QuadraticOpInfRom(params)
     elseif model_name == "cubic opinf rom"
         return CubicOpInfRom(params)
-
+    elseif model_name == "neural network opinf rom"
+        return NeuralNetworkOpInfRom(params)
     else
         norma_abort("Unknown type of model : $model_name")
     end
