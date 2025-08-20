@@ -59,14 +59,17 @@ const indexed_test_files = [
     (43, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"), 
     (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"), 
     (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"), 
-    (46, "utils.jl"), # Must go last due to FPE traps
+    (46, "single-static-solid-cube-sd-dbc.jl"), 
+    (47, "constitutive-model-energy-gradient.jl"),
+    (48, "smoothing.jl"),
+    (49, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
 const all_test_files = [file for (_, file) in indexed_test_files]
 
 # Optional test indices (excluded from quick runs)
-const optional_test_indices = Int[24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]

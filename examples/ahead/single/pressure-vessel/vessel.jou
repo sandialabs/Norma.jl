@@ -1,0 +1,78 @@
+reset
+logging off
+${set_warning_count(0)}
+
+${scale_radius = 0.04445}
+${scale_height = 0.0440944}
+
+${radius_large = 1.0 * scale_radius}
+${height_large = 1.5 * scale_height}
+${radius_small = 0.9 * scale_radius}
+${height_small = 1.3 * scale_height} 
+${h = 0.1 * scale_height}
+${intervals = 10}
+${radius_large_inner = 0.5 * scale_radius} 
+${height_large_inner = 1.3 * scale_height} 
+${radius_small_inner = 0.4 * scale_radius} 
+${height_small_inner = 1.1 * scale_height}
+
+
+# volume 1
+create cylinder radius {radius_large} z {height_large}
+webcut volume 1 cylinder radius {radius_small} axis z
+delete volume 2
+create cylinder radius {radius_large} z {height_large - height_small} 
+move volume 3 z {height_large/2 + 0.1 * scale_height} include_merged
+create cylinder radius {radius_large} z {height_large - height_small} 
+move volume 4 z {-height_large/2 - 0.1 * scale_height} include_merged
+merge volume all
+unite volume 1 3 4 
+webcut volume 5 with plane xplane
+delete volume 6 
+webcut volume 5 with plane yplane
+delete volume 5
+create cylinder radius {radius_large_inner} z {height_large_inner}
+webcut volume 8 cylinder radius {radius_small_inner} axis z
+create cylinder radius {radius_large_inner} z {height_large_inner - height_small_inner} 
+move volume 10 z {height_large_inner/2 + 0.1 * scale_height} include_merged
+delete volume 9
+unite volume 8 10 
+move volume 8 z {-height_large/2 + height_large_inner/2 - 0.2 * scale_height} include_merged
+webcut volume 7 cylinder radius {radius_small_inner} axis z
+delete volume 11
+merge volume all 
+unite volume 8 7 12
+webcut volume 8 with plane xplane
+delete volume 13
+webcut volume 8 with plane yplane
+delete volume 8
+volume all scheme tetmesh
+volume all size {h}
+volume all sizing function constant
+mesh volume all
+block 1 volume all
+#block 1 element type tetra10
+block 1 name "vessel"
+nodeset 1 surface 63
+nodeset 1 name "top"
+nodeset 2 surface 105
+nodeset 2 name "bottom"
+nodeset 3 surface 81
+nodeset 3 name "y-symm"
+nodeset 4 surface 106
+nodeset 4 name "x-symm"
+nodeset 5 node in volume 14 with x_coord = 0.0 and with y_coord = 0.0 and with z_coord > 0.04
+nodeset 5 name "top-one-point"
+sideset 1 surface 47 68 80 104 103
+sideset 1 name "interior_ss"
+set large exodus file off
+export mesh "vessel.g" overwrite
+
+
+
+
+
+
+
+
+

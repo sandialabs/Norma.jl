@@ -4,117 +4,12 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+include("opinf/opinf_model.jl")
 include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
 using Base.Threads: @threads, threadid, nthreads
-using NPZ
-
-function LinearOpInfRom(params::Parameters)
-    params["mesh smoothing"] = false
-    fom_model = SolidMechanics(params)
-    reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-    opinf_model = NPZ.npzread(opinf_model_file)
-    basis = opinf_model["basis"]
-    _, _, reduced_dim = size(basis)
-    num_dofs = reduced_dim
-    time = 0.0
-    failed = false
-    null_vec = zeros(num_dofs)
-
-    reduced_state = zeros(num_dofs)
-    reduced_velocity = zeros(num_dofs)
-    reduced_boundary_forcing = zeros(num_dofs)
-    free_dofs = trues(num_dofs)
-    boundary_conditions = Vector{BoundaryCondition}()
-    return LinearOpInfRom(
-        opinf_model,
-        basis,
-        reduced_state,
-        reduced_velocity,
-        reduced_boundary_forcing,
-        null_vec,
-        free_dofs,
-        boundary_conditions,
-        time,
-        failed,
-        fom_model,
-        reference,
-        false,
-    )
-end
-
-function QuadraticOpInfRom(params::Parameters)
-    params["mesh smoothing"] = false
-    fom_model = SolidMechanics(params)
-    reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-    opinf_model = NPZ.npzread(opinf_model_file)
-    basis = opinf_model["basis"]
-    _, _, reduced_dim = size(basis)
-    num_dofs = reduced_dim
-    time = 0.0
-    failed = false
-    null_vec = zeros(num_dofs)
-
-    reduced_state = zeros(num_dofs)
-    reduced_velocity = zeros(num_dofs)
-    reduced_boundary_forcing = zeros(num_dofs)
-    free_dofs = trues(num_dofs)
-    boundary_conditions = Vector{BoundaryCondition}()
-    return QuadraticOpInfRom(
-        opinf_model,
-        basis,
-        reduced_state,
-        reduced_velocity,
-        reduced_boundary_forcing,
-        null_vec,
-        free_dofs,
-        boundary_conditions,
-        time,
-        failed,
-        fom_model,
-        reference,
-        false,
-    )
-end
-
-function CubicOpInfRom(params::Parameters)
-    params["mesh smoothing"] = false
-    fom_model = SolidMechanics(params)
-    reference = fom_model.reference
-    opinf_model_file = params["model"]["model-file"]
-    opinf_model = NPZ.npzread(opinf_model_file)
-    basis = opinf_model["basis"]
-    _, _, reduced_dim = size(basis)
-    num_dofs = reduced_dim
-    time = 0.0
-    failed = false
-    null_vec = zeros(num_dofs)
-
-    reduced_state = zeros(num_dofs)
-    reduced_velocity = zeros(num_dofs)
-    reduced_boundary_forcing = zeros(num_dofs)
-    free_dofs = trues(num_dofs)
-    boundary_conditions = Vector{BoundaryCondition}()
-    return CubicOpInfRom(
-        opinf_model,
-        basis,
-        reduced_state,
-        reduced_velocity,
-        reduced_boundary_forcing,
-        null_vec,
-        free_dofs,
-        boundary_conditions,
-        time,
-        failed,
-        fom_model,
-        reference,
-        false,
-    )
-end
 
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
@@ -268,8 +163,6 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
             h = equal_volume_tet_h(u, v, w)
         elseif smooth_reference == "average edge length"
             h = avg_edge_length_tet_h(u, v, w)
-        elseif smooth_reference == "max"
-            h = max(equal_volume_tet_h(u, v, w), avg_edge_length_tet_h(u, v, w))
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
@@ -583,23 +476,23 @@ function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags
     internal_force = create_threadlocal_coo_vectors(num_dofs)
 
     lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
-    if flags.compute_lumped_mass
+    if flags.compute_lumped_mass == true
         model.compute_lumped_mass = false
     end
 
-    if flags.compute_stiffness || flags.compute_mass
+    if flags.compute_stiffness == true || flags.compute_mass == true
         coo_matrix_nnz = count_coo_matrix_nnz(model)
     else
         coo_matrix_nnz = 0
     end
 
     stiffness = create_threadlocal_coo_matrices(flags.compute_stiffness ? coo_matrix_nnz : 0)
-    if flags.compute_stiffness && model.kinematics == Infinitesimal
+    if flags.compute_stiffness == true && model.kinematics == Infinitesimal
         model.compute_stiffness = false
     end
 
     mass = create_threadlocal_coo_matrices(flags.compute_mass ? coo_matrix_nnz : 0)
-    if flags.compute_mass
+    if flags.compute_mass == true
         model.compute_mass = false
     end
     return SMThreadLocalArrays(energy, internal_force, lumped_mass, stiffness, mass)
@@ -753,6 +646,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 if J ≤ 0.0 || isfinite(J) == false
                     model.failed = true
                     model.compute_mass = model.compute_lumped_mass = true
+                    model.compute_stiffness = true
                     norma_log(0, :error, "Non-positive Jacobian detected! This may indicate element distortion.")
                     norma_logf(4, :warning, "det(F) = %.3e", J)
                     log_matrix(4, :info, "Reference Configuration", element_reference_position)

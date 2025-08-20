@@ -85,12 +85,12 @@ function write_stop(sim::SingleDomainSimulation)
         digits = max(0, Int64(ceil(log10(num_steps))) - 2)
         norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
     end
-    exodus_interval = get(params, "Exodus output interval", 1)
+    exodus_interval = get(params, "Exodus output interval", 1)::Int64
     if exodus_interval > 0 && stop % exodus_interval == 0
         norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
-    csv_interval = get(params, "CSV output interval", 0)
+    csv_interval = get(params, "CSV output interval", 0)::Int64
     if csv_interval > 0 && stop % csv_interval == 0
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)
@@ -190,48 +190,6 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
     return nothing
 end
 
-function write_stop_csv(sim::SingleDomainSimulation, model::RomModel)
-    stop = sim.controller.stop
-    index_string = "-" * string(stop; pad=4)
-    prefix = sim.name * "-"
-    reduced_states_filename = prefix * "reduced_states" * index_string * ".csv"
-    writedlm(reduced_states_filename, model.reduced_state)
-    write_stop_csv(sim, model.fom_model)
-    return nothing
-end
-
-function write_stop_exodus(sim::SingleDomainSimulation, model::RomModel)
-    integrator = sim.integrator
-    #Re-construct full state
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-
-    for i in 1:size(model.fom_model.current)[2]
-        x_dof_index = 3 * (i - 1) + 1
-        y_dof_index = 3 * (i - 1) + 2
-        z_dof_index = 3 * (i - 1) + 3
-        if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
-            model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
-            model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
-        end
-
-        if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
-            model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
-            model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
-        end
-
-        if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
-            model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
-            model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
-        end
-    end
-    write_stop_exodus(sim, model.fom_model)
-    return nothing
-end
 
 function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     params = sim.params
@@ -324,3 +282,6 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     end
     return nothing
 end
+
+include("opinf/opinf_io.jl")
+
