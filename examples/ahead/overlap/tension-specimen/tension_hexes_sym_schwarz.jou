@@ -1,0 +1,127 @@
+reset
+
+# ---- START INPUTS ----
+
+#{grip_height = 1.5}
+#{grip_radius = 0.25}
+#{gauge_height = 0.25}
+#{gauge_radius = 0.15}
+#{trans_maj_rad = 0.4}
+
+#{gauge_mesh = 0.01}
+#{grip_mesh = 0.02}
+
+#{grip_lower_y = 1.25}
+#{grip_upper_y = 0.75}
+
+# ---- END INPUTS ----
+
+#{total_height = grip_height + gauge_height}
+
+# make gauge section
+create cylinder height {gauge_height} radius {gauge_radius}
+rotate volume 1 angle 90 about x include_merged
+move volume 1 y {gauge_height / 2} include_merged
+
+# make grip and transition section
+create cylinder height {grip_height} radius {grip_radius}
+rotate volume 2 angle 90 about x include_merged
+move volume 2 y {gauge_height + grip_height / 2} include_merged
+
+# create transitions to gauge section
+create torus major radius {trans_maj_rad} minor radius {grip_radius}
+rotate volume 3 angle 90 about x include_merged
+move volume 3 y {gauge_height} include_merged
+subtract volume 3 from volume 2
+
+# remove grips, will be added back
+split curve 6 fraction 0.5
+split curve 7 fraction 0.5
+webcut volume 2 with plane vertex 6 7 8
+delete volume 4
+
+# create lower grip section
+#{trans_end = BBox_YMin("curve", 8)}
+#{grip_lower_height = grip_lower_y - trans_end}
+create cylinder height {grip_lower_height} radius {grip_radius}
+rotate volume 5 angle 90 about x include_merged
+move volume 5 y {trans_end + grip_lower_height / 2} include_merged
+
+# create upper grip section
+#{grip_upper_height = total_height - grip_upper_y}
+create cylinder height {grip_upper_height} radius {grip_radius}
+rotate volume 6 angle 90 about x include_merged
+move volume 6 y {total_height - grip_upper_height / 2} include_merged
+
+# webcutting more for hexes
+webcut volume all with plane zplane offset 0
+webcut volume all with plane xplane offset 0
+
+# remove unnecessary volumes
+delete volume 7 8 9 10 11 12 13 14 15 16 17 18
+
+imprint all
+merge all
+
+# blocks
+block 1 volume 1 2 5
+block 1 name "lower"
+
+block 2 volume 6
+block 2 name "upper"
+
+# nodesets
+nodeset 1 surface 53
+nodeset 1 name "sym_y"
+
+nodeset 2 surface 51 61 132 134
+nodeset 2 name "sym_x_lower"
+
+nodeset 3 surface 139 140
+nodeset 3 name "sym_x_upper"
+
+nodeset 4 surface 54 64 131 136
+nodeset 4 name "sym_z_lower"
+
+nodeset 5 surface 138 142
+nodeset 5 name "sym_z_upper"
+
+nodeset 6 surface 85
+nodeset 6 name "upper_grip"
+
+nodeset 7 surface 75
+nodeset 7 name "schwarz_lower"
+
+nodeset 8 surface 83
+nodeset 8 name "schwarz_upper"
+
+#sidesets 
+sideset 1 surface 75
+sideset 1 name "schwarz_lower_ss" 
+
+sideset 2 surface 83
+sideset 2 name "schwarz_upper_ss" 
+
+# mesh gauge
+volume 1 size {gauge_mesh}
+volume 1 scheme auto
+mesh volume 1
+
+# mesh transitions
+curve 82 scheme bias fine size {gauge_mesh} coarse size {grip_mesh} start vertex 43
+propagate curve bias volume 2
+mesh volume 2
+
+# mesh grips
+volume 5 6 size {grip_mesh}
+volume 5 6 scheme auto
+mesh volume 5 6
+
+volume all scale 0.0254 0.0254 0.0254
+
+set exodus netcdf4 off
+set large exodus file on
+
+export mesh "lower.g" block 1 overwrite
+export mesh "upper.g" block 2 overwrite
+
