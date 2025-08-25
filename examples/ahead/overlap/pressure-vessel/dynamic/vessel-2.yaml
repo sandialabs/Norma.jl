@@ -1,0 +1,45 @@
+type: single
+input mesh file: ../vessel-top.g
+output mesh file: vessel-2.e
+#CSV write sidesets: true
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      vessel-top: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 200.0e+09
+      Poisson's ratio: 0.25
+      density: 7800.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: x-symm
+      component: x
+      function: "0.0"
+    - node set: y-symm
+      component: y
+      function: "0.0"
+    - node set: top-one-point
+      component: z
+      function: "0.0"
+  Schwarz overlap:
+    - side set: schwarz_ss_top
+      source: vessel-1
+      source side set: schwarz_ss_bottom
+      source block: vessel-bottom
+  Neumann pressure:
+    - side set: interior_ss_top
+      #function: "-937.5e3 * t"
+      function: "-937.5e3 * 1500 * (0.5 - 0.5 * cos(pi * t / 1500.0))"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-07
+  absolute tolerance: 1.0e-05
