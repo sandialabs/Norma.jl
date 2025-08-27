@@ -1,0 +1,120 @@
+# create plate and attachment
+#{offset = 0.005}
+
+undo off
+brick x 5 y 0.5 z 5
+move volume 1 y 0.25 include_merged
+brick x 3.5 y 0.25 z 3.5
+move volume 2 y {0.125 + 0.5 + offset} include_merged
+
+brick x 2 y 2.25 z 2
+brick x 1.5 y 2.0 z 1.5
+move volume 4 y -0.125
+subtract volume 4 from volume 3
+
+tweak curve 49 53 55 51 25 29 31 27 fillet radius 0.5
+move volume 3 y {1.125 + 0.5 + offset} include_merged
+
+subtract volume 3 from volume 2 keep
+split body 5
+delete volume 2
+delete volume 6
+
+tweak curve 119 117 121 123 fillet radius 0.5
+tweak curve 1 3 5 7 fillet radius 0.5
+
+# create holes for bolts
+create cylinder height {0.75 + offset} radius {0.164 + 0.002}
+rotate volume 7 angle 90 about x include_merged
+move volume 7 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+volume 7 copy move z -2.5
+volume 7 copy move x -2.5
+volume 7 copy move x -2.5 z -2.5
+subtract volume 7 8 9 10 from volume 5
+
+# create shaft of bolt
+# because mesh is continuous, can't have a small gap with 0.002 sized elements
+# consequently, we remove the gap by increasing the diameter of the screw
+create cylinder height {0.75 + offset} radius {0.164 + 0.002}
+rotate volume 11 angle 90 about x include_merged
+move volume 11 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+
+# create head of bolt and unite
+create cylinder height 0.164 radius 0.25
+rotate volume 12 angle 90 about x include_merged
+move volume 12 location 1.25 {0.164/2.0+0.5+0.25+offset} 1.25 include_merged
+unite volume 11 12
+
+# copy bolts to a bolt pattern
+volume 11 copy move z -2.5
+volume 11 copy move x -2.5
+volume 11 copy move x -2.5 z -2.5
+
+# subtract and keep bolts in plate
+subtract volume 11 13 14 15 from volume 1 keep
+delete volume 1 
+
+# be very specific about imprinting and merging
+imprint volume 11 13 14 15 16
+merge volume 11 13 14 15 16
+
+# make sure we do not merge the shafts in body 5 with the bolts
+imprint volume 11 13 14 15 5
+surface 85 83 84 86 merge off
+merge volume 11 13 14 15 5
+
+# imprinting caused a small surfaces (of gap width) in each shaft
+# composite surfaces to remedy the issue
+composite create surface 133 134
+composite create surface 137 138
+composite create surface 139 140
+composite create surface 135 136
+
+# still need to imprint and merge component
+imprint volume 3 5
+merge volume 3 5
+
+# set scheme for tetmeshing
+volume all scheme tetmesh proximity layers off
+trimesher surface gradation 1.2
+trimesher volume gradation 1.2
+set tetmesher optimize level 6 overconstrained off sliver off
+set tetmesher interior points on
+set tetmesher boundary recovery off
+
+#{coarse_size = 0.125}
+#{medium_size = 0.0625}
+
+# mesh attachement
+volume 3 5 size {coarse_size}
+surface 85 83 84 86 size {medium_size}
+mesh volume 3 5
+
+# mesh plate
+volume 16 size {coarse_size}
+surface 112 111 113 114 size {medium_size}
+mesh volume 16
+
+# mesh bolts
+volume 11 13 14 15 size {medium_size}
+mesh volume 11 13 14 15
+
+# assign blocks
+block 1 volume 3 5
+block 2 volume 16
+block 3 volume 11 13 14 15
+block 1 name "component"
+block 2 name "plate"
+block 3 name "bolts"
+block all element type tetra10
+
+# assign nodesets
+nodeset 1 surface 117 115 122 119 120 121 124 118
+nodeset 1 name "base_plate"
+nodeset 2 surface 17
+nodeset 2 name "loading"
+
+body all scale 0.0254 0.0254 0.0254
+
+#export to genesis
+export mesh "joint.g"  overwrite
