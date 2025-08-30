@@ -68,6 +68,7 @@ mutable struct SolidMechanics <: Model
     internal_force::Vector{Float64}
     boundary_force::Vector{Float64}
     boundary_conditions::Vector{BoundaryCondition}
+    internal_variables::Vector{Vector{Vector{Vector{Float64}}}}
     stress::Vector{Vector{Vector{Vector{Float64}}}}
     stored_energy::Vector{Vector{Float64}}
     strain_energy::Float64
