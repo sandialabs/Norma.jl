@@ -91,7 +91,7 @@ function elastic_constants(params::Parameters)
     return E, ν, κ, λ, μ
 end
 
-mutable struct SaintVenant_Kirchhoff <: Solid
+mutable struct SaintVenant_Kirchhoff <: Elastic
     E::Float64
     ν::Float64
     κ::Float64
@@ -105,7 +105,7 @@ mutable struct SaintVenant_Kirchhoff <: Solid
     end
 end
 
-mutable struct Linear_Elastic <: Solid
+mutable struct Linear_Elastic <: Elastic
     E::Float64
     ν::Float64
     κ::Float64
@@ -119,7 +119,7 @@ mutable struct Linear_Elastic <: Solid
     end
 end
 
-mutable struct Neohookean <: Solid
+mutable struct Neohookean <: Elastic
     E::Float64
     ν::Float64
     κ::Float64
@@ -133,7 +133,7 @@ mutable struct Neohookean <: Solid
     end
 end
 
-mutable struct SethHill <: Solid
+mutable struct SethHill <: Elastic
     E::Float64
     ν::Float64
     κ::Float64
@@ -149,7 +149,7 @@ mutable struct SethHill <: Solid
     end
 end
 
-mutable struct J2 <: Solid
+mutable struct J2 <: Inelastic
     E::Float64
     ν::Float64
     κ::Float64

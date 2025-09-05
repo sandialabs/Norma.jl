@@ -89,5 +89,4 @@ mutable struct SolidMechanics <: Model
     kinematics::Kinematics
 end
 
-
 include("opinf/opinf_model_types.jl")
