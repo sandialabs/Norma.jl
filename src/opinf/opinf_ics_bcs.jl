@@ -200,9 +200,10 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOv
         apply_bc_detail(model.fom_model, bc.fom_bc)
 
         # populate our own BC vector
-        bc_vector = zeros(3, length(bc.fom_bc.side_set_node_indices))
-        for i in 1:length(bc.fom_bc.side_set_node_indices)
-            node_index = bc.fom_bc.side_set_node_indices[i]
+        unique_node_indices = unique(bc.fom_bc.side_set_node_indices)
+        bc_vector = zeros(3, length(unique_node_indices))
+        for i in 1:length(unique_node_indices)
+            node_index = unique_node_indices[i]
             bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
         end
 
