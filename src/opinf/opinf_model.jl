@@ -18,7 +18,7 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     py""" 
     import torch
     def get_model(model_file):
-      return torch.load(model_file)
+      return torch.load(model_file,weights_only=False)
     """ 
     ensemble_size = params["model"]["ensemble-size"]
     model = []

@@ -23,7 +23,7 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
     def get_model(model_file):
       import os
       assert os.path.isfile(model_file) ,  print(model_file + " cannot be found" )
-      return torch.load(model_file)
+      return torch.load(model_file,weights_only=False)
     """
     ensemble_size = bc_params["ensemble-size"]
     
@@ -78,7 +78,7 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     py""" 
     import torch
     def get_model(model_file):
-      return torch.load(model_file)
+      return torch.load(model_file,weights_only=False)
     """
     ensemble_size = bc_params["ensemble-size"]
     model = []
