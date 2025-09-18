@@ -255,7 +255,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 stress_yz[block_element_index, point] = point_stress[4]
                 stress_xz[block_element_index, point] = point_stress[5]
                 stress_xy[block_element_index, point] = point_stress[6]
-                von_mises_stress[block_element_index, point] = 
+                sigma_vm = 
                   0.5 * (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) * 
                         (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) + 
                   0.5 * (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) * 
@@ -265,7 +265,8 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                   3.0 * stress_yz[block_element_index, point] * stress_yz[block_element_index, point] + 
                   3.0 * stress_xz[block_element_index, point] * stress_xz[block_element_index, point] + 
                   3.0 * stress_xy[block_element_index, point] * stress_xy[block_element_index, point]
-               von_mises_stress[block_element_index, point] = sqrt(von_mises_stress[block_element_index, point]) 
+               sigma_vm = sqrt(sigma_vm) 
+               von_mises_stress[block_element_index, point] = sigma_vm
             end
         end
         for point in 1:num_points
