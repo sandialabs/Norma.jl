@@ -2,7 +2,6 @@ type: single
 input mesh file: ../cuboid.g
 output mesh file: cuboid.e
 Exodus output interval: 1
-CSV output interval: 1
 model:
   type: linear opinf rom
   model-file: opinf-operator.npz
