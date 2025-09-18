@@ -16,6 +16,7 @@ end
 
 function write_stop_exodus(sim::SingleDomainSimulation, model::RomModel)
     integrator = sim.integrator
+    solver = sim.solver 
     #Re-construct full state
     displacement = integrator.displacement
     velocity = integrator.velocity
@@ -43,6 +44,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::RomModel)
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
     end
+    evaluate(model.fom_model,integrator.fom_integrator,solver.fom_solver)
     write_stop_exodus(sim, model.fom_model)
     return nothing
 end
