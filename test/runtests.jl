@@ -62,7 +62,8 @@ const indexed_test_files = [
     (46, "single-static-solid-cube-sd-dbc.jl"), 
     (47, "constitutive-model-energy-gradient.jl"),
     (48, "smoothing.jl"),
-    (49, "utils.jl"), # Must go last due to FPE traps
+    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
+    (50, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
