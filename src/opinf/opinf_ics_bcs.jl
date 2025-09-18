@@ -126,43 +126,6 @@ function SMOpInfCouplingSchwarzBC(
         )
 end
 
-
-function SolidMechanicsOpInfCouplingSchwarzBC(
-    subsim::SingleDomainSimulation,
-    coupled_subsim::SingleDomainSimulation,
-    input_mesh::ExodusDatabase,
-    bc_type::String,
-    bc_params::Parameters,
-)
-    side_set_name = bc_params["side set"]
-    coupled_block_name = get(bc_params, "source block", "")
-    tol = get(bc_params, "search tolerance", 1.0e-06)
-    coupled_side_set_name = bc_params["source side set"]
-    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
-    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
-    num_nodes_sides = Int64.(num_nodes_sides)
-    side_set_node_indices = Int64.(side_set_node_indices)
-    variational = get(bc_params, "variational", false)
-        SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational
-        )
-
-    return SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
-        side_set_name,
-        side_set_node_indices,
-        coupled_nodes_indices,
-        interpolation_function_values,
-        coupled_subsim,
-        subsim,
-        variational,
-    )
-end
-
-
-
-
-
-
 function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichletBC)
     model.fom_model.time = model.time
     apply_bc(model.fom_model,bc.fom_bc)
