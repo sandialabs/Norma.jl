@@ -68,7 +68,7 @@ function SolidMechanics(params::Parameters)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
     stress = Vector{Vector{Vector{Vector{Float64}}}}()
-    states = Vector{Vector{Vector{Vector{Float64}}}}()
+    state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
@@ -83,22 +83,22 @@ function SolidMechanics(params::Parameters)
             point_init_state = Vector{Float64}()
         end
         block_stress = Vector{Vector{Vector{Float64}}}()
-        block_states = Vector{Vector{Vector{Float64}}}()
+        block_state = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
         for _ in 1:num_block_elements
             element_stress = Vector{Vector{Float64}}()
-            element_states = Vector{Vector{Float64}}()
+            element_state = Vector{Vector{Float64}}()
             for _ in 1:num_points
                 push!(element_stress, zeros(6))
-                push!(element_states, point_init_state)
+                push!(element_state, point_init_state)
             end
             push!(block_stress, element_stress)
-            push!(block_states, element_states)
+            push!(block_state, element_state)
             element_stored_energy = 0.0
             push!(block_stored_energy, element_stored_energy)
         end
         push!(stress, block_stress)
-        push!(states, block_states)
+        push!(state, block_state)
         push!(stored_energy, block_stored_energy)
     end
     strain_energy = 0.0
@@ -125,7 +125,7 @@ function SolidMechanics(params::Parameters)
         internal_force,
         boundary_force,
         boundary_conditions,
-        states,
+        state,
         stress,
         stored_energy,
         strain_energy,
@@ -667,7 +667,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
-                state = model.states[block_index][block_element_index][point]
+                state = model.state[block_index][block_element_index][point]
                 W, P, AA = constitutive(material, F)
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)
