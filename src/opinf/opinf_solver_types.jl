@@ -37,4 +37,3 @@ mutable struct RomExplicitSolver <: Explicit
     step::Step
     fom_solver::ExplicitSolver
 end
-

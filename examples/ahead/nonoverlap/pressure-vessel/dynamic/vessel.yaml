@@ -1,0 +1,13 @@
+type: multi
+domains: ["vessel-1.yaml", "vessel-2.yaml"]
+Exodus output interval: 10
+#CSV output interval: 1
+#CSV write sidesets: true
+initial time: 0.0
+final time: 1500.0
+time step: 2.0
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-07
+absolute tolerance: 1.0e-05
+relaxation parameter: 0.4 

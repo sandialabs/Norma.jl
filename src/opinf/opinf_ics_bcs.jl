@@ -99,4 +99,3 @@ function find_point_in_mesh(point::Vector{Float64}, model::RomModel, block_id::I
     node_indices, ξ, found = find_point_in_mesh(point, model.fom_model, block_id, tol)
     return node_indices, ξ, found
 end
-

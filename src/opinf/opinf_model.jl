@@ -6,8 +6,6 @@
 
 using NPZ
 
-
-
 function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
@@ -112,4 +110,3 @@ function CubicOpInfRom(params::Parameters)
         false,
     )
 end
-

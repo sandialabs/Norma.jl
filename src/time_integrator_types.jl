@@ -51,7 +51,6 @@ mutable struct Newmark <: DynamicTimeIntegrator
     kinetic_energy::Float64
 end
 
-
 mutable struct CentralDifference <: ExplicitDynamicTimeIntegrator
     prev_time::Float64
     time::Float64

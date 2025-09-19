@@ -28,7 +28,6 @@ mutable struct RomNewmark <: DynamicTimeIntegrator
     fom_integrator::Newmark
 end
 
-
 mutable struct RomCentralDifference <: ExplicitDynamicTimeIntegrator
     prev_time::Float64
     time::Float64
