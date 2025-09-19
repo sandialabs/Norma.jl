@@ -91,6 +91,8 @@ function elastic_constants(params::Parameters)
     return E, ν, κ, λ, μ
 end
 
+@inline number_states(::Elastic) = 0
+
 mutable struct SaintVenant_Kirchhoff <: Elastic
     E::Float64
     ν::Float64
@@ -186,6 +188,9 @@ mutable struct J2 <: Inelastic
         return new(E, ν, κ, λ, μ, ρ, Y₀, n, ε₀, Sᵥᵢₛ₀, m, ∂ε∂t₀, Cₚ, β, T₀, Tₘ, M)
     end
 end
+
+@inline number_states(::J2) = 10
+@inline initial_state(::J2) = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
 function temperature_multiplier(material::J2, T::Float64)
     T₀ = material.T₀
