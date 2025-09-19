@@ -191,7 +191,6 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
     return nothing
 end
 
-
 function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     params = sim.params
     integrator = sim.integrator
@@ -244,7 +243,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         stress_yz = zeros(num_block_elements, num_points)
         stress_xz = zeros(num_block_elements, num_points)
         stress_xy = zeros(num_block_elements, num_points)
-        von_mises_stress = zeros(num_block_elements, num_points) 
+        von_mises_stress = zeros(num_block_elements, num_points)
         for block_element_index in 1:num_block_elements
             element_stress = block_stress[block_element_index]
             for point in 1:num_points
@@ -255,18 +254,21 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 stress_yz[block_element_index, point] = point_stress[4]
                 stress_xz[block_element_index, point] = point_stress[5]
                 stress_xy[block_element_index, point] = point_stress[6]
-                sigma_vm = 
-                  0.5 * (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) * 
-                        (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) + 
-                  0.5 * (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) * 
-                        (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) +
-                  0.5 * (stress_zz[block_element_index, point] - stress_xx[block_element_index, point]) * 
-                        (stress_zz[block_element_index, point] - stress_xx[block_element_index, point]) + 
-                  3.0 * stress_yz[block_element_index, point] * stress_yz[block_element_index, point] + 
-                  3.0 * stress_xz[block_element_index, point] * stress_xz[block_element_index, point] + 
-                  3.0 * stress_xy[block_element_index, point] * stress_xy[block_element_index, point]
-               sigma_vm = sqrt(sigma_vm) 
-               von_mises_stress[block_element_index, point] = sigma_vm
+                sigma_vm =
+                    0.5 *
+                    (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) *
+                    (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) +
+                    0.5 *
+                    (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) *
+                    (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) +
+                    0.5 *
+                    (stress_zz[block_element_index, point] - stress_xx[block_element_index, point]) *
+                    (stress_zz[block_element_index, point] - stress_xx[block_element_index, point]) +
+                    3.0 * stress_yz[block_element_index, point] * stress_yz[block_element_index, point] +
+                    3.0 * stress_xz[block_element_index, point] * stress_xz[block_element_index, point] +
+                    3.0 * stress_xy[block_element_index, point] * stress_xy[block_element_index, point]
+                sigma_vm = sqrt(sigma_vm)
+                von_mises_stress[block_element_index, point] = sigma_vm
             end
         end
         for point in 1:num_points
@@ -290,7 +292,12 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 output_mesh, ElementVariable, time_index, Int64(block_id), "stress_xy" * ip_str, stress_xy[:, point]
             )
             Exodus.write_values(
-                output_mesh, ElementVariable, time_index, Int64(block_id), "von_mises_stress" * ip_str, von_mises_stress[:, point]
+                output_mesh,
+                ElementVariable,
+                time_index,
+                Int64(block_id),
+                "von_mises_stress" * ip_str,
+                von_mises_stress[:, point],
             )
         end
         Exodus.write_values(
@@ -301,4 +308,3 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
 end
 
 include("opinf/opinf_io.jl")
-

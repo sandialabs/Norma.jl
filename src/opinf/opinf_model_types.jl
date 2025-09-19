@@ -7,7 +7,6 @@
 abstract type RomModel <: Model end
 abstract type OpInfModel <: RomModel end
 
-
 mutable struct CubicOpInfRom <: OpInfModel
     opinf_rom::Dict{Any,Any}
     basis::Array{Float64}

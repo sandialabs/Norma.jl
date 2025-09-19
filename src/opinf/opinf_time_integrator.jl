@@ -108,7 +108,6 @@ function create_time_integrator(params::Parameters, model::RomModel)
     end
 end
 
-
 function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::RomModel)
     # Compute initial accelerations
     initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model)

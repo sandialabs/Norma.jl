@@ -9,7 +9,6 @@ using IterativeSolvers
 using LinearAlgebra
 using Printf
 
-
 function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
@@ -129,7 +128,6 @@ function create_solver(params::Parameters, model::SolidMechanics)
     end
 end
 
-
 function NewtonStep(params::Parameters)
     if haskey(params, "step length") == true
         step_length = params["step length"]
@@ -201,7 +199,6 @@ function copy_solution_source_targets(solver::Solver, model::SolidMechanics, int
     end
     return nothing
 end
-
 
 function copy_solution_source_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
     num_nodes = size(model.reference, 2)
@@ -358,7 +355,6 @@ function copy_solution_source_targets(model::SolidMechanics, integrator::Central
     return nothing
 end
 
-
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
     evaluate(model, integrator, solver)
     if model.failed == true
@@ -513,7 +509,6 @@ function compute_step(_::CentralDifference, model::SolidMechanics, solver::Expli
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
 end
 
-
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
     solver.absolute_error = absolute_error
     solver.relative_error = solver.initial_norm > 0.0 ? absolute_error / solver.initial_norm : absolute_error
@@ -521,7 +516,6 @@ function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_
     converged_relative = solver.relative_error ≤ solver.relative_tolerance
     return solver.converged = converged_absolute || converged_relative
 end
-
 
 function update_solver_convergence_criterion(solver::SteepestDescent, absolute_error::Float64)
     solver.absolute_error = absolute_error
@@ -553,7 +547,6 @@ function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     end
     return solver.converged
 end
-
 
 function stop_solve(solver::SteepestDescent, iteration_number::Int64)
     if solver.failed == true

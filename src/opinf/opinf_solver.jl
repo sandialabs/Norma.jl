@@ -72,7 +72,6 @@ function RomExplicitSolver(params::Parameters, model::RomModel)
     )
 end
 
-
 function create_solver(params::Parameters, model::RomModel)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
@@ -86,7 +85,6 @@ function create_solver(params::Parameters, model::RomModel)
         norma_abort("Unknown type of solver : $solver_name")
     end
 end
-
 
 function copy_solution_source_targets(integrator::DynamicTimeIntegrator, solver::Solver, model::RomModel)
     displacement = integrator.displacement
@@ -117,7 +115,6 @@ function copy_solution_source_targets(integrator::DynamicTimeIntegrator, solver:
     end
     return nothing
 end
-
 
 function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::QuadraticOpInfRom)
     beta = integrator.β
@@ -247,4 +244,3 @@ end
 function stop_solve(_::RomExplicitSolver, _::Int64)
     return true
 end
-

@@ -81,4 +81,3 @@ struct SteepestDescentStep <: Step
 end
 
 include("opinf/opinf_solver_types.jl")
-

@@ -273,7 +273,6 @@ function SMCouplingSchwarzBC(
     end
 end
 
-
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
     for node_index in bc.node_set_node_indices
         txzy = (
@@ -410,7 +409,6 @@ function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block
     return node_indices, ξ, found
 end
 
-
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
         contact_variational_dbc(model, bc)
@@ -431,7 +429,6 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchw
         coupling_variational_nbc(model, bc)
     end
 end
-
 
 function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
     get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
@@ -485,7 +482,6 @@ end
 function get_internal_force(model::SolidMechanics)
     return model.internal_force
 end
-
 
 function set_internal_force!(model::SolidMechanics, force)
     return model.internal_force = force
@@ -873,7 +869,6 @@ function apply_bcs(model::SolidMechanics)
     end
 end
 
-
 function assign_velocity!(
     velocity::Matrix{Float64}, offset::Int64, node_index::Int32, velo_val::Float64, context::String
 )
@@ -952,7 +947,6 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
     copy_solution_source_targets(model, integrator, solver)
     return nothing
 end
-
 
 function pair_schwarz_bcs(sim::MultiDomainSimulation)
     for subsim in sim.subsims
