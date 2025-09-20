@@ -68,6 +68,7 @@ function SolidMechanics(params::Parameters)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
     stress = Vector{Vector{Vector{Vector{Float64}}}}()
+    state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
     for (block_index, block) in enumerate(blocks)
@@ -98,6 +99,7 @@ function SolidMechanics(params::Parameters)
             push!(block_stored_energy, element_stored_energy)
         end
         push!(stress, block_stress)
+        push!(state_old, block_state)
         push!(state, block_state)
         push!(stored_energy, block_stored_energy)
     end
@@ -125,6 +127,7 @@ function SolidMechanics(params::Parameters)
         internal_force,
         boundary_force,
         boundary_conditions,
+        state_old,
         state,
         stress,
         stored_energy,
