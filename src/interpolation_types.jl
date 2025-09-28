@@ -7,6 +7,7 @@
 @enum ElementType begin
     BAR2
     TRI3
+    TRI6
     QUAD4
     TETRA4
     TETRA10

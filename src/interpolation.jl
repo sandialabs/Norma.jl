@@ -16,6 +16,31 @@ function barycentric_shape_functions(::Val{2}, ::Val{3}, ξ::SVector{2,T}) where
     return N, dN, ddN
 end
 
+function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where {T}
+    println("IKT barycentric_shape_functions Tri6!\n") 
+    L1 = one(T) - ξ[1] - ξ[2] 
+    L2 = ξ[1]
+    L3 = ξ[2]
+    #IKT 9/28/2025: need to check with Alejandro M. re: ordering 
+    N = @SVector [
+        L1 * (2.0 * L1 - one(T)), #node 0 - corner 
+        L2 * (2.0 * L2 - one(T)), #node 1 - corner
+        L3 * (2.0 * L3 - one(T)), #node 2 - corner
+        4.0 * L1 * L2,           #node 3 - middle
+        4.0 * L2 * L3,           #node 4 - middle
+        4.0 * L3 * L1,           #node 5 - middle 
+    ]
+    #TODO: implement dN and ddN 
+    #dN = @SMatrix [
+    #    -one(T) one(T) zero(T)
+    #    -one(T) zero(T) one(T)
+    #]
+    #ddN = zeros(SArray{Tuple{2,2,3},T,3})
+    #return N, dN, ddN
+    norma_abort("Barycentric_shape_functions not yet fully implemented for Tri6 element!")
+    return N
+end
+
 function barycentric_shape_functions(::Val{3}, ::Val{4}, ξ::SVector{3,T}) where {T}
     N = @SVector [one(T) - ξ[1] - ξ[2] - ξ[3], ξ[1], ξ[2], ξ[3]]
     dN = @SMatrix [
@@ -261,6 +286,8 @@ function element_type_from_string(s::AbstractString)::ElementType
         return BAR2
     elseif s == "TRI3" || s == "TRI"
         return TRI3
+    elseif s == "TRI6" 
+        return TRI6
     elseif s == "QUAD4" || s == "QUAD"
         return QUAD4
     elseif s == "TETRA4" || s == "TETRA"
@@ -276,6 +303,7 @@ end
 
 default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
+default_num_int_pts(::Val{TRI6}) = 6
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
 default_num_int_pts(::Val{TETRA10}) = 5
@@ -284,6 +312,7 @@ default_num_int_pts(et::ElementType) = default_num_int_pts(Val(et))
 
 get_element_dim_nodes(::Val{BAR2}) = (1, 2)
 get_element_dim_nodes(::Val{TRI3}) = (2, 3)
+get_element_dim_nodes(::Val{TRI6}) = (2, 6)
 get_element_dim_nodes(::Val{QUAD4}) = (2, 4)
 get_element_dim_nodes(::Val{TETRA4}) = (3, 4)
 get_element_dim_nodes(::Val{TETRA10}) = (3, 10)
@@ -292,6 +321,7 @@ get_element_dim_nodes(et::ElementType) = get_element_dim_nodes(Val(et))
 
 is_barycentric(::Val{BAR2}) = false
 is_barycentric(::Val{TRI3}) = true
+is_barycentric(::Val{TRI6}) = true #IKT 9/28/2025: is this the right option?
 is_barycentric(::Val{QUAD4}) = false
 is_barycentric(::Val{TETRA4}) = true
 is_barycentric(::Val{TETRA10}) = true
@@ -303,6 +333,8 @@ function get_element_type(dim::Integer, num_nodes::Integer)
         return BAR2
     elseif dim == 2 && num_nodes == 3
         return TRI3
+    elseif dim == 2 && num_nodes == 6
+        return TRI6
     elseif dim == 2 && num_nodes == 4
         return QUAD4
     elseif dim == 3 && num_nodes == 4
@@ -404,7 +436,8 @@ function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Floa
     factor = 1.0 + tol
     if element_type == BAR2
         return -factor ≤ ξ[1] ≤ factor
-    elseif element_type == TRI3 || element_type == TETRA4 || element_type == TETRA10
+    #IKT 9/28/2025: I think TRI6 goes in the following statement
+    elseif element_type == TRI3 || element_type == TRI6 || element_type == TETRA4 || element_type == TETRA10
         return sum(ξ) ≤ factor
     elseif element_type == QUAD4
         return all(-factor .≤ ξ[1:2] .≤ factor)
