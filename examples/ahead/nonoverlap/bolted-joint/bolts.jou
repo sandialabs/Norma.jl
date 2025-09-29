@@ -88,7 +88,8 @@ block 3 volume 8 13 16 19
 block 4 volume 11 14 17 20 12 15 18 21
 block 3 name "bolts"
 block 4 name "component"
-block all element type tetra10
+#block all element type tetra10
+block all element type tetra4
 
 # assign sideset for schwarz
 sideset 1 surface 92 88 64 74 79 75 105 101
@@ -102,7 +103,7 @@ body all scale 0.0254 0.0254 0.0254
 delete volume 17 18 11 12 14 15 21 20
 
 #export to genesis
-export mesh "bolts.g"  overwrite
+export mesh "bolts_tet4.g"  overwrite
 
 
 
