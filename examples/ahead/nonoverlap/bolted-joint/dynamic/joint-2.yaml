@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../../../../../../bolts_tet4.g 
+input mesh file: ../bolts_tet4.g 
 output mesh file: joint-1.e 
 #CSV output interval: 1
 #CSV write sidesets: true
