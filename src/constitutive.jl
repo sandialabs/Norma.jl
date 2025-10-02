@@ -610,6 +610,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
 
     λ = material.λ
     μ = material.μ
+    κ = material.κ
 
     Ep_old_voigt = state_old[1:6]
     Ep_old = zeros(Float64, 3, 3)
@@ -669,7 +670,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     eqps = eqps_old + ROOT23*deltaGamma
     N = trial_stress / norm(trial_stress) 
     Ep = Ep_old + deltaGamma * N
-    σ = material.λ * tr(ϵ) .* I3 + trial_stress - 2 * material.μ * deltaGamma * N
+    σ = κ * tr(ϵ) .* I3 + trial_stress - 2 * material.μ * deltaGamma * N
 
     state_new = copy(state_old)
     # Break Ep into voigt notation
@@ -694,7 +695,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] +  I3[i, l] * I3[j, k] - 2 * θ * I3[i, j] * I3[k, l]/3.) -
+                    CC_m[i, j, k, l] = κ * I3[i, j] * I3[k, l] + 2 * μ * θ* (I3[i, k] * I3[j, l] -  I3[i, j] * I3[k, l]/3.) -
                         2*μ * θ_bar * N[i, j] * N[k, l]
                 end
             end
