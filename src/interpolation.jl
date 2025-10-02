@@ -18,17 +18,17 @@ end
 
 function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where {T}
     println("IKT barycentric_shape_functions Tri6!\n") 
-    L1 = one(T) - ξ[1] - ξ[2] 
-    L2 = ξ[1]
-    L3 = ξ[2]
+    t0 = one(T) - ξ[1] - ξ[2] 
+    t1 = ξ[1]
+    t2 = ξ[2]
     #IKT 9/28/2025: need to check with Alejandro M. re: ordering 
     N = @SVector [
-        L1 * (2.0 * L1 - one(T)), #node 0 - corner 
-        L2 * (2.0 * L2 - one(T)), #node 1 - corner
-        L3 * (2.0 * L3 - one(T)), #node 2 - corner
-        4.0 * L1 * L2,           #node 3 - middle
-        4.0 * L2 * L3,           #node 4 - middle
-        4.0 * L3 * L1,           #node 5 - middle 
+        t0 * (2t0 - one(T)), #node 0 - corner 
+        t1 * (2t1 - one(T)), #node 1 - corner
+        t2 * (2t2 - one(T)), #node 2 - corner
+        4t0 * t1,           #node 3 - middle
+        4t1 * t2,           #node 4 - middle
+        4t2 * t0,           #node 5 - middle 
     ]
     #TODO: implement dN and ddN 
     #dN = @SMatrix [
