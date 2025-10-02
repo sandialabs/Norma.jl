@@ -1,0 +1,45 @@
+type: single
+input mesh file: cube.g
+output mesh file: cube.e
+Exodus output interval: 1
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cube: plastic
+    plastic:
+      model: PlasticLinearHardening
+      elastic modulus: 200e9
+      Poisson's ratio: 0.25
+      density: 1000.0
+      initial yield: 200e6
+      hardening modulus: 0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 0.1
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: ".01 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06
+  linear solver relative tolerance: 1.0e-10
+  linear solver absolute tolerance: 1.0e-06
