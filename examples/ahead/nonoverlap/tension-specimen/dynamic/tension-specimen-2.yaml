@@ -1,8 +1,8 @@
 type: single
-input mesh ../upper.g 
+input mesh file: ../../../../../upper.g 
 output mesh file: tension-specimen-2.e 
-#CSV output interval: 1
-#CSV write sidesets: true
+CSV output interval: 1
+CSV write sidesets: true
 model:
   type: solid mechanics
   material:
@@ -28,7 +28,7 @@ boundary conditions:
     - node set: upper_grip
       component: y
       function: "0.005 * 0.5 * (1.0 - cos(pi*t))"
-  Schwarz overlap:
+  Schwarz nonoverlap:
     - side set: schwarz_upper_ss
       source: tension-specimen-1
       source side set: schwarz_lower_ss 
