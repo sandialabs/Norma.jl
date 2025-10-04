@@ -17,11 +17,9 @@ function barycentric_shape_functions(::Val{2}, ::Val{3}, ξ::SVector{2,T}) where
 end
 
 function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where {T}
-    println("IKT barycentric_shape_functions Tri6!\n") 
     t0 = one(T) - ξ[1] - ξ[2] 
     t1 = ξ[1]
     t2 = ξ[2]
-    #IKT 9/28/2025: need to check with Alejandro M. re: ordering 
     N = @SVector [
         t0 * (2t0 - one(T)), #node 0 - corner 
         t1 * (2t1 - one(T)), #node 1 - corner
@@ -30,15 +28,16 @@ function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where
         4t1 * t2,           #node 4 - middle
         4t2 * t0,           #node 5 - middle 
     ]
-    #TODO: implement dN and ddN 
-    #dN = @SMatrix [
-    #    -one(T) one(T) zero(T)
-    #    -one(T) zero(T) one(T)
-    #]
-    #ddN = zeros(SArray{Tuple{2,2,3},T,3})
-    #return N, dN, ddN
-    norma_abort("Barycentric_shape_functions not yet fully implemented for Tri6 element!")
-    return N
+    dN = @SMatrix [
+        one(T)-4t0 4t1-one(T) zero(T) 4t0-4t1 4t2 -4t2
+        one(T)-4t0 zero(T) 4t2-one(T) -4t1 4t1 4t0-4t2
+    ]
+    ddN = MArray{Tuple{2,2,6},Float64,3}(undef)
+    ddN[1, 1, :] = @SVector [4, 4, 0, -8, 0, 0]
+    ddN[1, 2, :] = @SVector [4, 0, 0, -4, 4, -4]
+    ddN[2, 1, :] = @SVector [4, 0, 0, -4, 4, -4]
+    ddN[2, 2, :] = @SVector [4, 0, 4, 0, 0, -8]
+    return N, dN, SArray(ddN)
 end
 
 function barycentric_shape_functions(::Val{3}, ::Val{4}, ξ::SVector{3,T}) where {T}
@@ -100,6 +99,10 @@ function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{3})
     ]
     w = @SVector [1 / 6, 1 / 6, 1 / 6]
     return ξ, w
+end
+
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{6}) 
+   error("barycentric_quadrature for tri6 not yet implemented");  
 end
 
 function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{1})
