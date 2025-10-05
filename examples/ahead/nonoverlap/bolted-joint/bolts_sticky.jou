@@ -36,8 +36,7 @@ rotate volume 9 angle 90 about x include_merged
 move volume 9 location 1.25 {0.164/2.0+0.5+0.25+offset} 1.25 include_merged
 unite volume 8 9
 
-#webcut volume 1 2 with cylinder radius 0.45 axis y center 1.25 0 1.25
-webcut volume 1 2 with cylinder radius 0.25 axis y center 1.25 0 1.25
+webcut volume 1 2 with cylinder radius 0.45 axis y center 1.25 0 1.25
 delete volume 1 2 3
 
 subtract volume 8 from volume 10 keep
@@ -89,10 +88,11 @@ block 3 volume 8 13 16 19
 block 4 volume 11 14 17 20 12 15 18 21
 block 3 name "bolts"
 block 4 name "component"
+#block all element type tetra10
 block all element type tetra4
 
 # assign sideset for schwarz
-sideset 1 surface 91 94 106 103 82 79 61 65
+sideset 1 surface 92 88 64 74 79 75 105 101
 sideset 1 name "schwarz_ss_bolts"
 # for debugging
 nodeset 1 surface 49 78 91 104
@@ -100,7 +100,10 @@ nodeset 1 name "debugging"
 
 body all scale 0.0254 0.0254 0.0254
 
+delete volume 17 18 11 12 14 15 21 20
+
 #export to genesis
-export mesh "bolts_tet4.g"  overwrite
+export mesh "bolts_sticky_tet4.g"  overwrite
+
 
 
