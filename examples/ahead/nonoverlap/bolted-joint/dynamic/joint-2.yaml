@@ -8,6 +8,7 @@ model:
   material:
     blocks:
       bolts: steel
+      component: steel
     steel:
       model: Saint-Venant Kirchhoff
       elastic modulus: 200.0e9
