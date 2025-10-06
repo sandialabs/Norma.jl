@@ -151,6 +151,29 @@ mutable struct SethHill <: Elastic
     end
 end
 
+mutable struct PlasticLinearHardeningInfinitessimal <: Inelastic
+    # Slow, but simple J2 plasticity with linear hardening and isotropic elasticity
+    # Requires Lame Constants, Initial Yield, Hardening Modulus
+    E::Float64
+    ν::Float64
+    κ::Float64
+    λ::Float64
+    μ::Float64
+    ρ::Float64
+    σy::Float64
+    H::Float64
+    function PlasticLinearHardeningInfinitessimal(params::Parameters)
+        E, ν, κ, λ, μ = elastic_constants(params)
+        ρ = get(params, "density", 0.0)
+        σy = get(params, "initial yield", 0.0)
+        H = get(params, "hardening modulus", 0.0)
+        return new(E, ν, κ, λ, μ, ρ, σy, H)
+    end
+end
+
+@inline number_states(::PlasticLinearHardeningInfinitessimal) = 7
+@inline initial_state(::PlasticLinearHardeningInfinitessimal) = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
 mutable struct PlasticLinearHardening <: Inelastic
     # Slow, but simple J2 plasticity with linear hardening and isotropic elasticity
     # Requires Lame Constants, Initial Yield, Hardening Modulus
@@ -172,7 +195,10 @@ mutable struct PlasticLinearHardening <: Inelastic
 end
 
 @inline number_states(::PlasticLinearHardening) = 7
-@inline initial_state(::PlasticLinearHardening) = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+@inline initial_state(::PlasticLinearHardening) = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,               # 1-7: Voigt Ep and EQPS
+                                                   1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,     # 8-16: F_(n-1)
+                                                   1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,     # 17-25: Elastic left Cauchy-Green
+                                                    ] 
 
 mutable struct J2 <: Inelastic
     E::Float64
@@ -601,8 +627,153 @@ function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
     return W, P, AA
 end
 
-
 function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
+    state_new = copy(state_old)
+    state_new[8:16] = vec(F)
+    # Simo/Hughes Box 9.1-9.2
+    ROOT23 = sqrt(2/3)
+
+    λ = material.λ
+    μ = material.μ
+    κ = material.κ
+    H = material.H
+
+    Ep_old_voigt = state_old[1:6]
+    Ep_old = zeros(Float64, 3, 3)
+    
+    # Map Voigt components to the strain tensor
+    Ep_old[1, 1] = Ep_old_voigt[1]  # ε_xx
+    Ep_old[2, 2] = Ep_old_voigt[2]  # ε_yy
+    Ep_old[3, 3] = Ep_old_voigt[3]  # ε_zz
+    Ep_old[2, 3] = Ep_old_voigt[4] / 2  # ε_yz
+    Ep_old[3, 2] = Ep_old_voigt[4] / 2  # ε_yz
+    Ep_old[1, 3] = Ep_old_voigt[5] / 2  # ε_zx
+    Ep_old[3, 1] = Ep_old_voigt[5] / 2  # ε_zx
+    Ep_old[1, 2] = Ep_old_voigt[6] / 2  # ε_xy
+    Ep_old[2, 1] = Ep_old_voigt[6] / 2  # ε_xy
+
+    eqps_old = state_old[7]
+
+    # Map Deformation Gradient from Last step
+    Fn_old = reshape(state_old[8:16], 3, 3)
+    # Relative def grad
+    f_n = F * inv(Fn_old)
+    
+    # Map elastic left Cauchy-Green from last step
+    bᵉ = reshape(state_old[17:25], 3, 3)
+
+    # Compute elastic predictors
+    f̄ₙ = det(f_n)^(-1/3) * f_n
+    b̄ᵉₙ =  f̄ₙ * bᵉ * transpose(f̄ₙ)
+    b̄ᵉₙ_dev = b̄ᵉₙ - 1/3*tr(b̄ᵉₙ)*I3
+    s_trial = μ * b̄ᵉₙ_dev
+
+    s_norm = norm(s_trial)
+    f_trial = s_norm - ROOT23 * (material.σy + H * eqps_old)
+    N = s_trial / s_norm
+
+    Īᵉ = 1/3*tr(b̄ᵉₙ)
+    μ̄ = Īᵉ * μ
+    Jₙ = det(F)
+    
+    C_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
+    C̄_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    C̄_trial[i, j, k, l] =  2*μ̄*(I3[i,k] * I3[j,l] - I3[i,j]*I3[k,l]/3.0) - 2/3*s_norm * ( N[i,j] * I3[k,l] + I3[i,j]*N[k,l] )
+                    C_trial[i, j, k, l] =  κ*Jₙ * I3[i,j]*I3[k,l] - 2*κ/2*(Jₙ^2 - 1) + C̄_trial[i, j, k, l]
+                end
+            end
+        end
+    end
+
+    if f_trial <= 0
+        C = F' * F
+        E = 0.5 .* (C - I3)
+
+        trE = tr(E)
+        # Strain energy
+        W = 0.5 * λ * (trE^2) + μ * tr(E * E)
+
+        # 2nd Piola-Kirchhoff stress
+        S = λ * trE .* I3 .+ 2.0 .* μ .* E
+
+        # 1st Piola-Kirchhoff stress
+        P = F * S
+
+        state_new[1:6] .= Ep_old_voigt
+        state_new[7] = eqps_old
+
+        state_new[17:25] = vec(b̄ᵉₙ)
+        CC_s = SArray{Tuple{3,3,3,3}}(C_trial)
+
+        return W, P, CC_s, state_new
+    end
+
+    # Linear hardening allows for analytical solution of delta gamma
+    Δγ = (f_trial/2/μ̄)/(1 + κ/3/μ̄)
+    
+
+    s_n = s_trial - 2*μ̄*Δγ*N
+    eqps = eqps_old + ROOT23*Δγ
+    Ep = Ep_old + Δγ * N
+
+    # Addition of the elastic mean stress
+    p = κ/2 * (Jₙ^2 -1)/Jₙ
+    # Kirchhoff stress
+    τ = Jₙ*p*I3 + s_n
+    P = τ * transpose(inv(F))
+    b̄ᵉₙ = s_n/μ + Īᵉ*I3 
+    # Update intermediate configuration 
+    state_new[17:25] = vec(b̄ᵉₙ)
+
+    # Break Ep into voigt notation
+    EpV = zeros(Float64, 6)
+    EpV[1] = Ep[1, 1]
+    EpV[2] = Ep[2, 2]
+    EpV[3] = Ep[3, 3]
+    EpV[4] = Ep[2, 3] * 2
+    EpV[5] = Ep[1, 3] * 2
+    EpV[6] = Ep[1, 2] * 2
+    state_new[1:6] .= EpV
+    state_new[7] = eqps
+
+    W = 0.5*κ*(0.5*(Jₙ^2 -1) - log(Jₙ)) +  0.5 * μ * (tr(b̄ᵉₙ) - 3) 
+
+    # tangent modulus
+    β₀ = 1 + H/3/μ̄
+    β₁ = 2*μ̄*Δγ / s_norm
+    β₂ = (1 - 1/β₀)*2/3*s_norm/μ̄*Δγ
+    β₃ = 1/β₀ - β₁ + β₂
+    β₄ = (1/β₀ - β₁) * s_norm/μ̄
+
+    NN = N * N'
+    dev_NN = NN - 1/3*tr(NN)*I3
+
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    comp_1 = N[i,j] * dev_NN[k,l]
+                    comp_2 = N[j,i] * dev_NN[k,l]
+                    comp_3 = N[i,j] * dev_NN[l,k]
+                    comp_4 = N[k,l] * dev_NN[i,j]
+                    symm_comp = 1/4*(comp_1 + comp_2 + comp_3 + comp_4)
+                    CC_m[i, j, k, l] = C_trial[i,j,k,l] - β₁*C̄_trial[i, j, k, l] - 2*μ̄*β₃*N[i,j]*N[k,l] - 2*μ̄*β₄*symm_comp
+                end
+            end
+        end
+    end
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
+
+    return W, P, CC_s, state_new
+end
+
+
+function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
     # Basic Implementation of Simo Hughes Radial Return 3.3.1
     # Simplified to only support linear isotropic hardening
     # No Kinematic Hardening
@@ -716,6 +887,8 @@ function create_material(params::Parameters)
         return Neohookean(params)
     elseif model_name == "seth-hill"
         return SethHill(params)
+    elseif model_name == "PlasticLinearHardeningInfinitessimal"
+        return PlasticLinearHardeningInfinitessimal(params)
     elseif model_name == "PlasticLinearHardening"
         return PlasticLinearHardening(params)
     else
@@ -733,8 +906,10 @@ function get_kinematics(material::Solid)
         return Finite
     elseif material isa SethHill
         return Finite
-    elseif material isa PlasticLinearHardening
+    elseif material isa PlasticLinearHardeningInfinitessimal
         return Infinitesimal
+    elseif material isa PlasticLinearHardening
+        return Finite
     end
     norma_abort("Unknown material model : $(typeof(material))")
     return nothing

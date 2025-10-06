@@ -677,7 +677,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 state = model.state[block_index][block_element_index][point]
                 if material isa(Elastic)
                     W, P, AA = constitutive(material, F)
-                else
+                elseif material isa(Inelastic)
                     W, P, AA, state_new = constitutive(material, F, state)
                     model.state[block_index][block_element_index][point] = state_new
                 end
