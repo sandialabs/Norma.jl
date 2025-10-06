@@ -675,6 +675,8 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     Īᵉ = 1/3*tr(b̄ᵉₙ)
     μ̄ = Īᵉ * μ
     Jₙ = det(F)
+    # Addition of the elastic mean stress
+    p = κ/2 * (Jₙ^2 -1)/Jₙ
     
     C_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
     C̄_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
@@ -690,6 +692,13 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     end
 
     if f_trial <= 0
+        τ = Jₙ*p*I3 + s_trial
+        state_new[1:6] .= Ep_old_voigt
+        state_new[7] = eqps_old
+
+        state_new[17:25] = vec(b̄ᵉₙ)
+        CC_s = SArray{Tuple{3,3,3,3}}(C_trial)
+
         C = F' * F
         E = 0.5 .* (C - I3)
 
@@ -697,19 +706,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
         # Strain energy
         W = 0.5 * λ * (trE^2) + μ * tr(E * E)
 
-        # 2nd Piola-Kirchhoff stress
-        S = λ * trE .* I3 .+ 2.0 .* μ .* E
-
-        # 1st Piola-Kirchhoff stress
-        P = F * S
-
-        state_new[1:6] .= Ep_old_voigt
-        state_new[7] = eqps_old
-
-        state_new[17:25] = vec(b̄ᵉₙ)
-        CC_s = SArray{Tuple{3,3,3,3}}(C_trial)
-
-        return W, P, CC_s, state_new
+        return W, τ, CC_s, state_new
     end
 
     # Linear hardening allows for analytical solution of delta gamma
@@ -720,8 +717,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     eqps = eqps_old + ROOT23*Δγ
     Ep = Ep_old + Δγ * N
 
-    # Addition of the elastic mean stress
-    p = κ/2 * (Jₙ^2 -1)/Jₙ
+    
     # Kirchhoff stress
     τ = Jₙ*p*I3 + s_n
     P = τ * transpose(inv(F))
@@ -769,7 +765,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     end
     CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
 
-    return W, P, CC_s, state_new
+    return W, τ, CC_s, state_new
 end
 
 
