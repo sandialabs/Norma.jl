@@ -21,7 +21,8 @@ move volume 4 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
 volume 4 copy move z -2.5
 volume 4 copy move x -2.5
 volume 4 copy move x -2.5 z -2.5
-subtract volume 4 6 5 7 from volume 2
+subtract volume 4 6 5 7 from volume 2 1
+
 
 # create shaft of bolt
 # because mesh is continuous, can't have a small gap with 0.002 sized elements
@@ -30,30 +31,35 @@ create cylinder height {0.75 + offset} radius {0.164 + 0.002}
 rotate volume 8 angle 90 about x include_merged
 move volume 8 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
 
+
 # create head of bolt and unite
 create cylinder height 0.164 radius 0.25
 rotate volume 9 angle 90 about x include_merged
 move volume 9 location 1.25 {0.164/2.0+0.5+0.25+offset} 1.25 include_merged
 unite volume 8 9
 
-#webcut volume 1 2 with cylinder radius 0.45 axis y center 1.25 0 1.25
-webcut volume 1 2 with cylinder radius 0.25 axis y center 1.25 0 1.25
-delete volume 1 2 3
 
-subtract volume 8 from volume 10 keep
-delete volume 10
 
-imprint volume 8 12
-merge volume 8 12
+#{cut_cube_side = 0.6}
+brick x {cut_cube_side} y {3} z {cut_cube_side}
+move volume 10 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+webcut volume 1 2 tool volume 10
+delete volume 1 2 3 10 
+
+
+imprint volume 8 11
+merge volume 8 11
 
 # be careful about how you merge the bolt to the upper plate
-imprint volume 8 11
+imprint volume 8 12
 surface 42 merge off
-merge volume 8 11
+merge volume 8 12
+
 
 # imprinting caused a small surface (of gap width)
 # composite surfaces to remedy the issue
-composite create surface 70 71
+composite create surface 90 91
+
 
 # set scheme for tetmeshing
 volume all scheme tetmesh proximity layers off
@@ -66,38 +72,45 @@ set tetmesher boundary recovery off
 #{coarse_size = 0.125}
 #{medium_size = 0.0625}
 
+
 # mesh bolt
 volume 8 size {medium_size}
 mesh volume 8
 
 # mesh plate
-volume 12 size {coarse_size}
-surface 64 size {medium_size}
-mesh volume 12
+volume 11 size {coarse_size}
+surface 48 size {medium_size}
+mesh volume 11
 
 # mesh attachement
-volume 11 size {coarse_size}
-surface 51 size {medium_size}
-mesh volume 11
+volume 12 size {coarse_size}
+surface 57 size {medium_size}
+mesh volume 12
 
 volume 8 11 12 copy move z -2.5
 volume 8 11 12 copy move x -2.5
 volume 8 11 12 copy move x -2.5 z -2.5
 
+
+
 # assign blocks
 block 3 volume 8 13 16 19
-block 4 volume 11 14 17 20 12 15 18 21
+block 4 volume 21 15 12 18 20 14 11 17
 block 3 name "bolts"
 block 4 name "component"
 block all element type tetra4
 
+
 # assign sideset for schwarz
-sideset 1 surface 91 94 106 103 82 79 61 65
+sideset 1 surface 126 127 128 129 120 121 122 123 82 83 84 85 70 71 72 73 107 108 109 110 101 102 103 104 145 146 147 148 139 140 141 142
 sideset 1 name "schwarz_ss_bolts"
+
 
 body all scale 0.0254 0.0254 0.0254
 
 #export to genesis
-export mesh "bolts_tet4.g"  overwrite
+export mesh "bolts_tet4_square.g"  overwrite
+
+
 
 
