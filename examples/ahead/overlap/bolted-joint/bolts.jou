@@ -1,0 +1,104 @@
+# create plate and attachment
+#{offset = 0.005}
+set node constraint off
+
+# create plates (y is the thickness direction)
+undo off
+brick x 5 y 0.5 z 5
+move volume 1 y 0.25 include_merged
+brick x 3.5 y {0.25} z 3.5
+move volume 2 y {0.125 + 0.5 + offset} include_merged
+brick x 2 y 2 z 2
+move volume 3 y {1 + 0.5 + 0.25 + offset} include_merged
+
+tweak curve 13 15 17 19 fillet radius 0.5
+tweak curve 25 27 29 31 fillet radius 0.5
+
+# create holes for bolts
+create cylinder height {0.75 + offset} radius {0.164 + 0.002}
+rotate volume 4 angle 90 about x include_merged
+move volume 4 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+volume 4 copy move z -2.5
+volume 4 copy move x -2.5
+volume 4 copy move x -2.5 z -2.5
+subtract volume 4 6 5 7 from volume 2
+
+# create shaft of bolt
+# because mesh is continuous, can't have a small gap with 0.002 sized elements
+# consequently, we remove the gap by increasing the diameter of the screw
+create cylinder height {0.75 + offset} radius {0.164 + 0.002}
+rotate volume 8 angle 90 about x include_merged
+move volume 8 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+
+# create head of bolt and unite
+create cylinder height 0.164 radius 0.25
+rotate volume 9 angle 90 about x include_merged
+move volume 9 location 1.25 {0.164/2.0+0.5+0.25+offset} 1.25 include_merged
+unite volume 8 9
+
+webcut volume 1 2 with cylinder radius 0.45 axis y center 1.25 0 1.25
+delete volume 1 2 3
+
+subtract volume 8 from volume 10 keep
+delete volume 10
+
+imprint volume 8 12
+merge volume 8 12
+
+# be careful about how you merge the bolt to the upper plate
+imprint volume 8 11
+surface 42 merge off
+merge volume 8 11
+
+# imprinting caused a small surface (of gap width)
+# composite surfaces to remedy the issue
+composite create surface 70 71
+
+# set scheme for tetmeshing
+volume all scheme tetmesh proximity layers off
+trimesher surface gradation 1.2
+trimesher volume gradation 1.2
+set tetmesher optimize level 6 overconstrained off sliver off
+set tetmesher interior points on
+set tetmesher boundary recovery off
+
+#{coarse_size = 0.125}
+#{medium_size = 0.0625}
+
+# mesh bolt
+volume 8 size {medium_size}
+mesh volume 8
+
+# mesh plate
+volume 12 size {coarse_size}
+surface 64 size {medium_size}
+mesh volume 12
+
+# mesh attachement
+volume 11 size {coarse_size}
+surface 51 size {medium_size}
+mesh volume 11
+
+volume 8 11 12 copy move z -2.5
+volume 8 11 12 copy move x -2.5
+volume 8 11 12 copy move x -2.5 z -2.5
+
+# assign blocks
+block 3 volume 8 13 16 19
+block 4 volume 11 14 17 20 12 15 18 21
+block 3 name "bolts"
+block 4 name "component"
+block all element type tetra10
+
+# assign sideset for schwarz
+sideset 1 surface 61 65 81 85 94 98 107 111
+sideset 1 name "schwarz_ss_bolts"
+# for debugging
+nodeset 1 surface 49 78 91 104
+nodeset 1 name "debugging"
+
+body all scale 0.0254 0.0254 0.0254
+
+#export to genesis
+export mesh "bolts.g"  overwrite
+

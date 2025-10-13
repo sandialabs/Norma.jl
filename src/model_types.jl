@@ -68,6 +68,8 @@ mutable struct SolidMechanics <: Model
     internal_force::Vector{Float64}
     boundary_force::Vector{Float64}
     boundary_conditions::Vector{BoundaryCondition}
+    state_old::Vector{Vector{Vector{Vector{Float64}}}}
+    state::Vector{Vector{Vector{Vector{Float64}}}}
     stress::Vector{Vector{Vector{Vector{Float64}}}}
     stored_energy::Vector{Vector{Float64}}
     strain_energy::Float64
@@ -87,6 +89,5 @@ mutable struct SolidMechanics <: Model
     global_transform::SparseMatrixCSC{Float64,Int64}
     kinematics::Kinematics
 end
-
 
 include("opinf/opinf_model_types.jl")

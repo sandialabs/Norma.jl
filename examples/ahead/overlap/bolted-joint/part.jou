@@ -1,0 +1,100 @@
+# create plate and attachment
+#{offset = 0.005}
+
+undo off
+brick x 5 y 0.5 z 5
+move volume 1 y 0.25 include_merged
+brick x 3.5 y 0.25 z 3.5
+move volume 2 y {0.125 + 0.5 + offset} include_merged
+
+brick x 2 y 2.25 z 2
+brick x 1.5 y 2.0 z 1.5
+move volume 4 y -0.125
+subtract volume 4 from volume 3
+
+tweak curve 49 53 55 51 25 29 31 27 fillet radius 0.5
+move volume 3 y {1.125 + 0.5 + offset} include_merged
+
+subtract volume 3 from volume 2 keep
+split body 5
+delete volume 2
+delete volume 6
+
+tweak curve 119 117 121 123 fillet radius 0.5
+tweak curve 1 3 5 7 fillet radius 0.5
+
+#{cut_radius = 0.3}
+
+webcut volume 1 5 with cylinder radius {cut_radius} axis y center 1.25 0.0 1.25
+webcut volume 1 5 with cylinder radius {cut_radius} axis y center -1.25 0.0 -1.25
+webcut volume 1 5 with cylinder radius {cut_radius} axis y center 1.25 0.0 -1.25
+webcut volume 1 5 with cylinder radius {cut_radius} axis y center -1.25 0.0 1.25
+
+delete volume 8 12 10 14 7 11 9 13
+
+imprint volume 5 3 
+merge volume 5 3
+
+#{coarse_mesh = 0.125}
+#{cm_mesh = (coarse_mesh+medium_mesh)/2.0}
+#{medium_mesh = 0.0625}
+
+# mesh main housing with hexes
+volume 3 size {cm_mesh}
+mesh volume 3
+
+# top surface of component plate
+surface 114 size {cm_mesh}
+# curves around holes on top surface
+curve 198 214 190 206 size {medium_mesh}
+curve 198 214 190 206 scheme equal
+surface 114 scheme pave
+# mesh top surface of component plate
+mesh surface 114
+
+# sweep top surface to bottom surface
+volume 5 autosmooth target off
+volume 5 redistribute nodes off
+volume 5 scheme sweep source surface 114 target surface 115 sweep transform translate propagate bias
+mesh volume 5
+
+# bottom surface of plate
+surface 108 size {coarse_mesh}
+# curves on bottom surface
+curve 194 210 186 202 size {medium_mesh}
+curve 194 210 186 202 scheme equal
+surface 108 scheme pave
+# mesh bottom surface
+mesh surface 108
+
+# mesh inside of holes of bottom plate
+surface 83 107 71 95 size {coarse_mesh}
+mesh surface 83 107 71 95
+
+# mesh plate
+volume 1 autosmooth target off
+volume 1 redistribute nodes off
+volume 1 scheme sweep source surface 108 target surface 109 sweep transform translate propagate bias
+mesh volume 1
+
+# assign blocks
+block 1 volume 1 3 5 
+block 1 name "component"
+
+# assign nodesets
+
+# boundary of base plate
+nodeset 1 surface 1 70 6 68 2 67 4 69 
+nodeset 1 name "base_plate"
+# boundary for loading
+nodeset 2 surface 17
+nodeset 2 name "loading"
+# boundaries for schwarz
+sideset 1 surface 101 89 113 77 95 83 107 71
+sideset 1 name "schwarz_ss_parts"
+
+body all scale 0.0254 0.0254 0.0254
+
+#export to genesis
+export mesh "part.g"  overwrite
+

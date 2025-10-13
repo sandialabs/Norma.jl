@@ -7,7 +7,6 @@
 abstract type RomModel <: Model end
 abstract type OpInfModel <: RomModel end
 
-
 mutable struct NeuralNetworkOpInfRom <: OpInfModel
     nn_model::Any
     basis::Array{Float64}

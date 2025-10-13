@@ -68,24 +68,39 @@ function SolidMechanics(params::Parameters)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
     stress = Vector{Vector{Vector{Vector{Float64}}}}()
+    state_old = Vector{Vector{Vector{Vector{Float64}}}}()
+    state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
-    for block in blocks
+    for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
         num_points = default_num_int_pts(element_type)
+        material = materials[block_index]
+        num_states = number_states(material)
+        if (num_states > 0)
+            point_init_state = initial_state(material)
+        else
+            point_init_state = Vector{Float64}()
+        end
         block_stress = Vector{Vector{Vector{Float64}}}()
+        block_state = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
         for _ in 1:num_block_elements
             element_stress = Vector{Vector{Float64}}()
+            element_state = Vector{Vector{Float64}}()
             for _ in 1:num_points
                 push!(element_stress, zeros(6))
+                push!(element_state, point_init_state)
             end
             push!(block_stress, element_stress)
+            push!(block_state, element_state)
             element_stored_energy = 0.0
             push!(block_stored_energy, element_stored_energy)
         end
         push!(stress, block_stress)
+        push!(state_old, block_state)
+        push!(state, block_state)
         push!(stored_energy, block_stored_energy)
     end
     strain_energy = 0.0
@@ -112,6 +127,8 @@ function SolidMechanics(params::Parameters)
         internal_force,
         boundary_force,
         boundary_conditions,
+        state_old,
+        state,
         stress,
         stored_energy,
         strain_energy,
@@ -248,6 +265,10 @@ function voigt_cauchy_from_stress(_::Solid, P::SMatrix{3,3,Float64,9}, F::SMatri
 end
 
 function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
+    return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
+end
+
+function voigt_cauchy_from_stress(_::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
@@ -654,7 +675,13 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
-                W, P, AA = constitutive(material, F)
+                state = model.state[block_index][block_element_index][point]
+                if material isa(Elastic)
+                    W, P, AA = constitutive(material, F)
+                else
+                    W, P, AA, state_new = constitutive(material, F, state)
+                    model.state[block_index][block_element_index][point] = state_new
+                end
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)
                 dvol = det_dXdξ * ip_weight

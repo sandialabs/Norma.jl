@@ -75,7 +75,6 @@ function QuasiStatic(params::Parameters, model::Model)
     )
 end
 
-
 function Newmark(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
     time_step = integrator_params["time step"]
@@ -120,7 +119,6 @@ function Newmark(params::Parameters, model::Model)
         kinetic_energy,
     )
 end
-
 
 function CentralDifference(params::Parameters, model::Model)
     integrator_params = params["time integrator"]
@@ -177,7 +175,6 @@ function create_time_integrator(params::Parameters, model::SolidMechanics)
     end
 end
 
-
 function is_static(integrator::TimeIntegrator)
     return integrator isa QuasiStatic
 end
@@ -185,7 +182,6 @@ end
 function is_dynamic(integrator::TimeIntegrator)
     return is_static(integrator) == false
 end
-
 
 function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     if integrator.initial_equilibrium == true
@@ -317,4 +313,3 @@ function correct(integrator::CentralDifference, solver::ExplicitSolver, model::S
 end
 
 include("opinf/opinf_time_integrator.jl")
-

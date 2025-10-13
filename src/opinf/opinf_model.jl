@@ -160,4 +160,3 @@ function CubicOpInfRom(params::Parameters)
         false,
     )
 end
-

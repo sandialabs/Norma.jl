@@ -1,0 +1,12 @@
+type: multi
+domains: ["joint-1.yaml", "joint-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 1
+CSV write sidesets: true
+initial time: 0.0
+final time: 8.5e-5
+time step: 1.0e-6
+minimum iterations: 1
+maximum iterations: 128
+relative tolerance: 1.0e-06
+absolute tolerance: 1.0e-04
