@@ -630,6 +630,7 @@ end
 function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
     state_new = copy(state_old)
     state_new[8:16] = vec(F)
+    F⁻¹ = inv(F)
     # Simo/Hughes Box 9.1-9.2
     ROOT23 = sqrt(2/3)
 
@@ -678,26 +679,30 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     # Addition of the elastic mean stress
     p = κ/2 * (Jₙ^2 -1)/Jₙ
     
-    C_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
-    C̄_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
+    c_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
+    c̄_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    C̄_trial[i, j, k, l] =  2*μ̄*(I3[i,k] * I3[j,l] - I3[i,j]*I3[k,l]/3.0) - 2/3*s_norm * ( N[i,j] * I3[k,l] + I3[i,j]*N[k,l] )
-                    C_trial[i, j, k, l] =  κ*Jₙ * I3[i,j]*I3[k,l] - 2*κ/2*(Jₙ^2 - 1) + C̄_trial[i, j, k, l]
+                    c̄_trial[i, j, k, l] =  2*μ̄*(I3[i,k] * I3[j,l] - I3[i,j]*I3[k,l]/3.0) - 2/3*s_norm * ( N[i,j] * I3[k,l] + I3[i,j]*N[k,l] )
+                    c_trial[i, j, k, l] =  κ*Jₙ * I3[i,j]*I3[k,l] - 2*κ/2*(Jₙ^2 - 1) + c̄_trial[i, j, k, l]
                 end
             end
         end
     end
 
+
     if f_trial <= 0
         τ = Jₙ*p*I3 + s_trial
+
         state_new[1:6] .= Ep_old_voigt
         state_new[7] = eqps_old
 
         state_new[17:25] = vec(b̄ᵉₙ)
-        CC_s = SArray{Tuple{3,3,3,3}}(C_trial)
+
+ 
+        
 
         C = F' * F
         E = 0.5 .* (C - I3)
@@ -706,7 +711,26 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
         # Strain energy
         W = 0.5 * λ * (trE^2) + μ * tr(E * E)
 
-        return W, τ, CC_s, state_new
+        S = λ * trE .* I3 .+ 2.0 .* μ .* E
+        P = F * S
+        C_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
+
+        for i in 1:3
+            for j in 1:3
+                for k in 1:3
+                    for l in 1:3
+                        C_trial[i, j, k, l] =  c_trial[i, j, k, l] * Jₙ / 2 * sum(
+                            c_trial[a, b, c, d] * F⁻¹[a, i] * F⁻¹[b, j] * F⁻¹[c, k] * F⁻¹[d, l]
+                            for a in 1:3, b in 1:3, c in 1:3, d in 1:3
+                        )
+                    end
+                end
+            end
+        end
+
+        CC = SArray{Tuple{3,3,3,3}}(C_trial)
+        AA = convect_tangent(CC, S, F)
+        return W, P, AA, state_new
     end
 
     # Linear hardening allows for analytical solution of delta gamma
@@ -720,7 +744,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     
     # Kirchhoff stress
     τ = Jₙ*p*I3 + s_n
-    P = τ * transpose(inv(F))
+    P = τ * transpose(F⁻¹)
     b̄ᵉₙ = s_n/μ + Īᵉ*I3 
     # Update intermediate configuration 
     state_new[17:25] = vec(b̄ᵉₙ)
