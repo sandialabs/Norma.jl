@@ -70,6 +70,7 @@ function SolidMechanics(params::Parameters)
     stress = Vector{Vector{Vector{Vector{Float64}}}}()
     state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
+    state_temp = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
@@ -101,6 +102,7 @@ function SolidMechanics(params::Parameters)
         push!(stress, block_stress)
         push!(state_old, block_state)
         push!(state, block_state)
+        push!(state_temp, block_state)
         push!(stored_energy, block_stored_energy)
     end
     strain_energy = 0.0
@@ -129,6 +131,7 @@ function SolidMechanics(params::Parameters)
         boundary_conditions,
         state_old,
         state,
+        state_temp,
         stress,
         stored_energy,
         strain_energy,
@@ -678,8 +681,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 if material isa(Elastic)
                     W, P, AA = constitutive(material, F)
                 elseif material isa(Inelastic)
-                    W, P, AA, state_new = constitutive(material, F, state)
-                    model.state[block_index][block_element_index][point] = state_new
+                    W, P, AA, state = constitutive(material, F, state)
+                    model.state_temp[block_index][block_element_index][point] = state
+                    # model.state_temp[block_index][block_element_index][point] = state_new
                 end
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)

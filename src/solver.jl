@@ -622,7 +622,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
             if is_rom_model == false
-                model.state_old = deepcopy(model.state)
+                model.state_old = deepcopy(model.state_temp)
             end
             break
         end

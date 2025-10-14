@@ -627,10 +627,27 @@ function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
     return W, P, AA
 end
 
+function major_symmetric_part_fourth_order(tensor::MArray{Tuple{3,3,3,3},Float64})
+
+    n1, n2, n3, n4 = size(tensor)
+    symmetric_tensor = zeros(n1, n2, n3, n4)
+
+    # Loop over all indices
+    for i in 1:n1, j in 1:n2, k in 1:n3, l in 1:n4
+        # Average over major symmetry (swap ij and kl)
+        symmetric_tensor[i, j, k, l] = (tensor[i, j, k, l] + tensor[k, l, i, j]) / 2
+    end
+
+    return symmetric_tensor
+end
+
+
 function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
     state_new = copy(state_old)
     state_new[8:16] = vec(F)
     F⁻¹ = inv(F)
+    F⁻ᵀ = transpose(F⁻¹)
+
     # Simo/Hughes Box 9.1-9.2
     ROOT23 = sqrt(2/3)
 
@@ -657,11 +674,15 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
 
     # Map Deformation Gradient from Last step
     Fn_old = reshape(state_old[8:16], 3, 3)
+    #println("Last Def Grad", Fn_old)
+    #println("Attempt F", F)
     # Relative def grad
     f_n = F * inv(Fn_old)
+    #println("Relative Def Grad", f_n)
     
     # Map elastic left Cauchy-Green from last step
     bᵉ = reshape(state_old[17:25], 3, 3)
+    println("Last left CG tensor", bᵉ)
 
     # Compute elastic predictors
     f̄ₙ = det(f_n)^(-1/3) * f_n
@@ -672,22 +693,54 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     s_norm = norm(s_trial)
     f_trial = s_norm - ROOT23 * (material.σy + H * eqps_old)
     N = s_trial / s_norm
+    NN = N * N'
+    dev_NN = NN - 1/3*tr(NN)*I3
 
     Īᵉ = 1/3*tr(b̄ᵉₙ)
     μ̄ = Īᵉ * μ
     Jₙ = det(F)
     # Addition of the elastic mean stress
-    p = κ/2 * (Jₙ^2 -1)/Jₙ
-    
+    p = κ/2 * (Jₙ^2 - 1)/Jₙ
+    println("pressure", p)
+
+
+    #euler_strain = 1/2*(I3 - inv(b̄ᵉₙ))
+    #kirchhoff_stress = zeros((3,3))
     c_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
     c̄_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
+
+    NxdevN2 = MArray{Tuple{3,3,3,3},Float64}(undef)
+
+    delta_0 = 1 
+    f_1 = (1/delta_0)
+    delta_1 = 2 * μ̄  
+    delta_2 = 2 * s_norm 
+
     for i in 1:3
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    c̄_trial[i, j, k, l] =  2*μ̄*(I3[i,k] * I3[j,l] - I3[i,j]*I3[k,l]/3.0) - 2/3*s_norm * ( N[i,j] * I3[k,l] + I3[i,j]*N[k,l] )
-                    c_trial[i, j, k, l] =  κ*Jₙ * I3[i,j]*I3[k,l] - 2*κ/2*(Jₙ^2 - 1) + c̄_trial[i, j, k, l]
+                    NxdevN2[i,j,k,l] = N[i,j] * dev_NN[k,l]
                 end
+            end
+        end
+    end
+    symm_part_C = major_symmetric_part_fourth_order(NxdevN2)
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    #c̄_trial[i, j, k, l] =  2*μ̄*(I3[i,k] * I3[j,l] - I3[i,j]*I3[k,l]/3.0) - 2/3*s_norm * ( N[i,j] * I3[k,l] + I3[i,j]*N[k,l] )
+                    c_trial[i, j, k, l] =  2*μ̄*(I3[i,j]*I3[k,l] - I3[i,j]*I3[k,l]/3.0 ) - 2/3*( s_trial[i,j] * I3[k,l] + I3[i,j]*s_trial[k,l] ) #+ c̄_trial[i, j, k, l]
+                    c_trial[i,j,k,l] -= delta_1 * N[i,j] * N[k,l]
+
+                   
+                    c_trial[i,j,k,l] -= delta_2 * symm_part_C[i,j,k,l]
+                    # c_trial[i, j, k, l] -= (2*μ̄*(I3[i,j]*I3[k,l] - I3[i,j]*I3[k,l]/3.0 ) - 2/3*( s_trial[i,j] * I3[k,l] + I3[i,j]*s_trial[k,l] ))*2*μ̄*0
+                    # From the Book: κ*Jₙ *Jₙ * I3[i,j]*I3[k,l] - 2*κ/2*(Jₙ^2 - 1) + c̄_trial[i, j, k, l]
+                    #kirchhoff_stress[i,j] += c̄_trial[i, j, k, l] * euler_strain[k, l]
+
+                    end
             end
         end
     end
@@ -699,7 +752,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
         state_new[1:6] .= Ep_old_voigt
         state_new[7] = eqps_old
 
-        state_new[17:25] = vec(b̄ᵉₙ)
+        state_new[17:25] = vec(b̄ᵉₙ_dev + Īᵉ*I3)
 
  
         
@@ -711,28 +764,34 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
         # Strain energy
         W = 0.5 * λ * (trE^2) + μ * tr(E * E)
 
-        S = λ * trE .* I3 .+ 2.0 .* μ .* E
-        P = F * S
+        S = F⁻¹ * τ * F⁻ᵀ
+        P = τ * F⁻ᵀ
+        P_from_PK2 = F *S
+        println("Alg Stress", P)
+        println("Real Stress", P_from_PK2 )
+        println("Deviatoric stress", s_trial * F⁻ᵀ)
+        println("Dev from PK2", P_from_PK2 - 1/3*tr(P_from_PK2)*I3)
+        println("Pressure from PK2 ", 1/3*tr(P_from_PK2))
         C_trial = MArray{Tuple{3,3,3,3},Float64}(undef)
 
-        for i in 1:3
-            for j in 1:3
-                for k in 1:3
-                    for l in 1:3
-                        C_trial[i, j, k, l] =  c_trial[i, j, k, l] * Jₙ / 2 * sum(
-                            c_trial[a, b, c, d] * F⁻¹[a, i] * F⁻¹[b, j] * F⁻¹[c, k] * F⁻¹[d, l]
-                            for a in 1:3, b in 1:3, c in 1:3, d in 1:3
-                        )
+        for PP in 1:3
+            for QQ in 1:3
+                for RR in 1:3
+                    for SS in 1:3
+                        C_trial[PP, QQ, RR, SS] =  sum(
+                             c_trial[i,j,k,l] * F⁻¹[PP, i] * F⁻¹[QQ, j] * F⁻¹[RR, k] * F⁻¹[SS, l]
+                             for i in 1:3, j in 1:3, k in 1:3, l in 1:3
+                         )
                     end
                 end
             end
         end
-
+        
         CC = SArray{Tuple{3,3,3,3}}(C_trial)
         AA = convect_tangent(CC, S, F)
         return W, P, AA, state_new
     end
-
+    norma_abort("No plasticity for now.")
     # Linear hardening allows for analytical solution of delta gamma
     Δγ = (f_trial/2/μ̄)/(1 + κ/3/μ̄)
     
@@ -769,8 +828,7 @@ function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9
     β₃ = 1/β₀ - β₁ + β₂
     β₄ = (1/β₀ - β₁) * s_norm/μ̄
 
-    NN = N * N'
-    dev_NN = NN - 1/3*tr(NN)*I3
+    
 
     CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3
@@ -895,6 +953,7 @@ function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix
     CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
 
     return W, σ, CC_s, state_new
+
 end
 
 function create_material(params::Parameters)

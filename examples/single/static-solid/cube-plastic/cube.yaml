@@ -13,13 +13,13 @@ model:
       elastic modulus: 200e9
       Poisson's ratio: 0.25
       density: 1000.0
-      initial yield: 1e9
+      initial yield: 2000e9
       hardening modulus: 20e9
 time integrator:
   type: quasi static
   initial time: 0.0
-  final time: 1.0
-  time step: 0.1
+  final time: 0.01
+  time step: 0.01
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -39,7 +39,7 @@ solver:
   step: full Newton
   minimum iterations: 1
   maximum iterations: 16
-  relative tolerance: 1.0e-10
+  relative tolerance: 1.0e-06
   absolute tolerance: 1.0e-06
-  linear solver relative tolerance: 1.0e-10
+  linear solver relative tolerance: 1.0e-06
   linear solver absolute tolerance: 1.0e-06
