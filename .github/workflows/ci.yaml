@@ -48,6 +48,8 @@ jobs:
 
       - name: Build project
         uses: julia-actions/julia-buildpkg@v1
+        with:
+          test_args: 'with-nnopinf'
         env:
           PYTHON: python
 

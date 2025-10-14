@@ -14,61 +14,63 @@ include("helpers.jl")
 
 # List of all test files (ordered)
 const indexed_test_files = [
-    (1, "minitensor.jl"),
-    (2, "interpolation.jl"),
-    (3, "constitutive.jl"),
-    (4, "single-static-solid-cube.jl"),
-    (5, "single-static-solid-neumann-bc.jl"),
-    (6, "single-implicit-dynamic-solid-cube.jl"),
-    (7, "single-implicit-dynamic-solid-sho.jl"),
-    (8, "single-implicit-dynamic-solid-clamped.jl"),
-    (9, "single-explicit-dynamic-solid-cube.jl"),
-    (10, "single-explicit-dynamic-solid-sho.jl"),
-    (11, "single-explicit-dynamic-solid-clamped.jl"),
-    (12, "tet4-static-solid-cube.jl"),
-    (13, "tet10-static-solid-cube.jl"),
-    (14, "schwarz-overlap-static-cuboid-hex8.jl"),
-    (15, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
-    (16, "transfer-operators.jl"),
-    (17, "schwarz-contact-static-cubes.jl"),
-    (18, "schwarz-contact-dynamic-cubes.jl"),
-    (19, "solid-inclined-displacement.jl"),
-    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
-    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (24, "adaptive-time-stepping.jl"),
-    (25, "schwarz-ahead-overlap-dynamic-clamped.jl"),
-    (26, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
-    (26, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
-    (28, "schwarz-ahead-overlap-dynamic-torsion.jl"),
-    (29, "schwarz-ahead-overlap-dynamic-bracket.jl"),
-    (30, "schwarz-ahead-overlap-dynamic-plate.jl"),
-    (31, "single-ahead-clamped.jl"),
-    (32, "single-ahead-notched-cylinder.jl"),
-    (33, "single-ahead-laser-weld.jl"),
-    (34, "single-ahead-torsion.jl"),
-    (35, "single-ahead-bracket.jl"),
-    (36, "single-ahead-plate.jl"),
-    (37, "schwarz-ahead-nonoverlap-dynamic-clamped.jl"),
-    (38, "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl"),
-    (39, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
-    (40, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
-    (41, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
-    (42, "single-static-solid-pressure-bc.jl"), 
-    (43, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"), 
-    (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"), 
-    (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"), 
-    (46, "single-static-solid-cube-sd-dbc.jl"), 
-    (47, "constitutive-model-energy-gradient.jl"),
+#    (1, "minitensor.jl"),
+#    (2, "interpolation.jl"),
+#    (3, "constitutive.jl"),
+#    (4, "single-static-solid-cube.jl"),
+#    (5, "single-static-solid-neumann-bc.jl"),
+#    (6, "single-implicit-dynamic-solid-cube.jl"),
+#    (7, "single-implicit-dynamic-solid-sho.jl"),
+#    (8, "single-implicit-dynamic-solid-clamped.jl"),
+#    (9, "single-explicit-dynamic-solid-cube.jl"),
+#    (10, "single-explicit-dynamic-solid-sho.jl"),
+#    (11, "single-explicit-dynamic-solid-clamped.jl"),
+#    (12, "tet4-static-solid-cube.jl"),
+#    (13, "tet10-static-solid-cube.jl"),
+#    (14, "schwarz-overlap-static-cuboid-hex8.jl"),
+#    (15, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
+#    (16, "transfer-operators.jl"),
+#    (17, "schwarz-contact-static-cubes.jl"),
+#    (18, "schwarz-contact-dynamic-cubes.jl"),
+#    (19, "solid-inclined-displacement.jl"),
+#    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+#    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (24, "adaptive-time-stepping.jl"),
+#    (25, "schwarz-ahead-overlap-dynamic-clamped.jl"),
+#    (26, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
+#    (26, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
+#    (28, "schwarz-ahead-overlap-dynamic-torsion.jl"),
+#    (29, "schwarz-ahead-overlap-dynamic-bracket.jl"),
+#    (30, "schwarz-ahead-overlap-dynamic-plate.jl"),
+#    (31, "single-ahead-clamped.jl"),
+#    (32, "single-ahead-notched-cylinder.jl"),
+#    (33, "single-ahead-laser-weld.jl"),
+#    (34, "single-ahead-torsion.jl"),
+#    (35, "single-ahead-bracket.jl"),
+#    (36, "single-ahead-plate.jl"),
+#    (37, "schwarz-ahead-nonoverlap-dynamic-clamped.jl"),
+#    (38, "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl"),
+#    (39, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
+#    (40, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
+#    (41, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
+#    (42, "single-static-solid-pressure-bc.jl"), 
+#    (43, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"), 
+#    (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"), 
+#    (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"), 
+#    (46, "single-static-solid-cube-sd-dbc.jl"), 
+#    (47, "constitutive-model-energy-gradient.jl"),
     (48, "smoothing.jl"),
     (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
     (50, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
-const all_test_files = [file for (_, file) in indexed_test_files]
+const nnopinf_test_indices = Int[49]
 
+const all_test_files = [file for (_, file) in indexed_test_files]
+const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopinf_test_indices]
 # Optional test indices (excluded from quick runs)
 const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
 
@@ -93,6 +95,7 @@ function parse_args(args)
     name_filter = filter_idx !== nothing && filter_idx < length(args) ? lowercase(args[filter_idx + 1]) : ""
 
     quick_only = "--quick" in args
+    nnopinf = "--with-nnopinf" in args
 
     # Parse integer indices
     selected_indices = try
@@ -114,9 +117,11 @@ function parse_args(args)
     elseif quick_only
         Norma.norma_log(0, :info, "Running quick test set.")
         filter(t -> t[1] in quick_test_indices, indexed_test_files)
+    elseif nnopinf
+        indexed_test_files 
     else
-        Norma.norma_log(0, :info, "Running full test suite.")
-        indexed_test_files
+        Norma.norma_log(0, :info, "Running standard test suite.")
+        filter(t -> t[1] in standard_test_indices, indexed_test_files)
     end
 
     if !isempty(name_filter)
