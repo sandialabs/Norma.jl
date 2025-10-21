@@ -101,8 +101,13 @@ function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{3})
     return ξ, w
 end
 
-function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{6}) 
-   error("barycentric_quadrature for tri6 not yet implemented");  
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{3}) 
+    ξ = @SMatrix [
+        1/6 4/6 1/6
+        1/6 1/6 4/6
+    ]
+    w = @SVector [1 / 6, 1 / 6, 1 / 6]
+    return ξ, w
 end
 
 function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{1})
@@ -306,7 +311,7 @@ end
 
 default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
-default_num_int_pts(::Val{TRI6}) = 6
+default_num_int_pts(::Val{TRI6}) = 3
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
 default_num_int_pts(::Val{TETRA10}) = 5
