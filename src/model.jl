@@ -267,6 +267,10 @@ function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9},
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
+function voigt_cauchy_from_stress(_::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
+    return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
+end
+
 function dense(indices::Vector{Int64}, values::Vector{Float64}, vector_size::Int64)
     dense_vector = zeros(vector_size)
     @inbounds for i in 1:length(indices)
@@ -671,7 +675,12 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     return nothing
                 end
                 state = model.state[block_index][block_element_index][point]
-                W, P, AA = constitutive(material, F)
+                if material isa(Elastic)
+                    W, P, AA = constitutive(material, F)
+                else
+                    W, P, AA, state_new = constitutive(material, F, state)
+                    model.state[block_index][block_element_index][point] = state_new
+                end
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)
                 dvol = det_dXdξ * ip_weight
