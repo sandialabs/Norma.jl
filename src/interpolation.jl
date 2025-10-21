@@ -110,6 +110,15 @@ function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{3})
     return ξ, w
 end
 
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{4}) 
+    ξ = @SMatrix [
+        1/3 1/5 3/5 1/5
+        1/3 3/5 1/5 1/5
+    ]
+    w = @SVector [-27 / 96, 25 / 96, 25 / 96, 25 / 96]
+    return ξ, w
+end
+
 function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{1})
     ξ = @SMatrix [1 / 4; 1 / 4; 1 / 4]
     w = @SVector [1 / 6]
@@ -311,7 +320,8 @@ end
 
 default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
-default_num_int_pts(::Val{TRI6}) = 3
+#default_num_int_pts(::Val{TRI6}) = 3
+default_num_int_pts(::Val{TRI6}) = 4
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
 default_num_int_pts(::Val{TETRA10}) = 5
