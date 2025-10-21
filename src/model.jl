@@ -267,7 +267,9 @@ function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9},
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
-function voigt_cauchy_from_stress(_::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
+function voigt_cauchy_from_stress(
+    _::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64
+)
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
@@ -675,7 +677,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     return nothing
                 end
                 state = model.state[block_index][block_element_index][point]
-                if material isa(Elastic)
+                if material isa (Elastic)
                     W, P, AA = constitutive(material, F)
                 else
                     W, P, AA, state_new = constitutive(material, F, state)

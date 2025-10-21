@@ -17,16 +17,16 @@ function barycentric_shape_functions(::Val{2}, ::Val{3}, ξ::SVector{2,T}) where
 end
 
 function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where {T}
-    t0 = one(T) - ξ[1] - ξ[2] 
+    t0 = one(T) - ξ[1] - ξ[2]
     t1 = ξ[1]
     t2 = ξ[2]
     N = @SVector [
         t0 * (2t0 - one(T)), #node 0 - corner 
         t1 * (2t1 - one(T)), #node 1 - corner
         t2 * (2t2 - one(T)), #node 2 - corner
-        4t0 * t1,           #node 3 - middle
-        4t1 * t2,           #node 4 - middle
-        4t2 * t0,           #node 5 - middle 
+        4t0 * t1,            #node 3 - middle
+        4t1 * t2,            #node 4 - middle
+        4t2 * t0,            #node 5 - middle
     ]
     dN = @SMatrix [
         one(T)-4t0 4t1-one(T) zero(T) 4t0-4t1 4t2 -4t2
@@ -101,7 +101,7 @@ function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{3})
     return ξ, w
 end
 
-function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{3}) 
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{3})
     ξ = @SMatrix [
         1/6 4/6 1/6
         1/6 1/6 4/6
@@ -110,7 +110,7 @@ function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{3})
     return ξ, w
 end
 
-function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{4}) 
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{4})
     ξ = @SMatrix [
         1/3 1/5 3/5 1/5
         1/3 3/5 1/5 1/5
@@ -303,7 +303,7 @@ function element_type_from_string(s::AbstractString)::ElementType
         return BAR2
     elseif s == "TRI3" || s == "TRI"
         return TRI3
-    elseif s == "TRI6" 
+    elseif s == "TRI6"
         return TRI6
     elseif s == "QUAD4" || s == "QUAD"
         return QUAD4
@@ -320,7 +320,6 @@ end
 
 default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
-#default_num_int_pts(::Val{TRI6}) = 3
 default_num_int_pts(::Val{TRI6}) = 4
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
@@ -339,7 +338,7 @@ get_element_dim_nodes(et::ElementType) = get_element_dim_nodes(Val(et))
 
 is_barycentric(::Val{BAR2}) = false
 is_barycentric(::Val{TRI3}) = true
-is_barycentric(::Val{TRI6}) = true #IKT 9/28/2025: is this the right option?
+is_barycentric(::Val{TRI6}) = true
 is_barycentric(::Val{QUAD4}) = false
 is_barycentric(::Val{TETRA4}) = true
 is_barycentric(::Val{TETRA10}) = true
@@ -454,7 +453,6 @@ function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Floa
     factor = 1.0 + tol
     if element_type == BAR2
         return -factor ≤ ξ[1] ≤ factor
-    #IKT 9/28/2025: I think TRI6 goes in the following statement
     elseif element_type == TRI3 || element_type == TRI6 || element_type == TETRA4 || element_type == TETRA10
         return sum(ξ) ≤ factor
     elseif element_type == QUAD4
