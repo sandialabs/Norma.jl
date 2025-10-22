@@ -4,7 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-include("opinf/opinf_ics_bcs_types.jl")
 abstract type BoundaryCondition end
 abstract type InitialCondition end
 abstract type SolidMechanicsBoundaryCondition <: BoundaryCondition end
@@ -100,3 +99,5 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     swap_bcs::Bool
     variational::Bool
 end
+include("opinf/opinf_ics_bcs_types.jl")
+
