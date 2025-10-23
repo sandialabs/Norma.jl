@@ -55,19 +55,22 @@ const indexed_test_files = [
     (39, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
     (40, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
     (41, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
-    (42, "single-static-solid-pressure-bc.jl"), 
-    (43, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"), 
-    (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"), 
-    (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"), 
-    (46, "single-static-solid-cube-sd-dbc.jl"), 
+    (42, "single-static-solid-pressure-bc.jl"),
+    (43, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"),
+    (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"),
+    (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"),
+    (46, "single-static-solid-cube-sd-dbc.jl"),
     (47, "constitutive-model-energy-gradient.jl"),
     (48, "smoothing.jl"),
-    (49, "utils.jl"), # Must go last due to FPE traps
+    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
+    (50, "utils.jl"), # Must go last due to FPE traps
 ]
 
 # Extract test file names
-const all_test_files = [file for (_, file) in indexed_test_files]
+const nnopinf_test_indices = Int[49]
 
+const all_test_files = [file for (_, file) in indexed_test_files]
+const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopinf_test_indices]
 # Optional test indices (excluded from quick runs)
 const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
 
@@ -92,6 +95,7 @@ function parse_args(args)
     name_filter = filter_idx !== nothing && filter_idx < length(args) ? lowercase(args[filter_idx + 1]) : ""
 
     quick_only = "--quick" in args
+    nnopinf = "--with-nnopinf" in args
 
     # Parse integer indices
     selected_indices = try
@@ -113,9 +117,11 @@ function parse_args(args)
     elseif quick_only
         Norma.norma_log(0, :info, "Running quick test set.")
         filter(t -> t[1] in quick_test_indices, indexed_test_files)
+    elseif nnopinf
+        indexed_test_files 
     else
-        Norma.norma_log(0, :info, "Running full test suite.")
-        indexed_test_files
+        Norma.norma_log(0, :info, "Running standard test suite.")
+        filter(t -> t[1] in standard_test_indices, indexed_test_files)
     end
 
     if !isempty(name_filter)

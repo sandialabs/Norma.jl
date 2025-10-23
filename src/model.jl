@@ -167,7 +167,8 @@ function create_model(params::Parameters)
         return QuadraticOpInfRom(params)
     elseif model_name == "cubic opinf rom"
         return CubicOpInfRom(params)
-
+    elseif model_name == "neural network opinf rom"
+        return NeuralNetworkOpInfRom(params)
     else
         norma_abort("Unknown type of model : $model_name")
     end
@@ -270,7 +271,9 @@ function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9},
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
-function voigt_cauchy_from_stress(_::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
+function voigt_cauchy_from_stress(
+    _::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64
+)
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
@@ -678,7 +681,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     return nothing
                 end
                 state = model.state[block_index][block_element_index][point]
-                if material isa(Elastic)
+                if material isa (Elastic)
                     W, P, AA = constitutive(material, F)
                 elseif material isa(Inelastic)
                     W, P, AA, state = constitutive(material, F, state)

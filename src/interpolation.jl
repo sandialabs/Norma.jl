@@ -16,6 +16,30 @@ function barycentric_shape_functions(::Val{2}, ::Val{3}, ξ::SVector{2,T}) where
     return N, dN, ddN
 end
 
+function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where {T}
+    t0 = one(T) - ξ[1] - ξ[2]
+    t1 = ξ[1]
+    t2 = ξ[2]
+    N = @SVector [
+        t0 * (2t0 - one(T)), #node 0 - corner 
+        t1 * (2t1 - one(T)), #node 1 - corner
+        t2 * (2t2 - one(T)), #node 2 - corner
+        4t0 * t1,            #node 3 - middle
+        4t1 * t2,            #node 4 - middle
+        4t2 * t0,            #node 5 - middle
+    ]
+    dN = @SMatrix [
+        one(T)-4t0 4t1-one(T) zero(T) 4t0-4t1 4t2 -4t2
+        one(T)-4t0 zero(T) 4t2-one(T) -4t1 4t1 4t0-4t2
+    ]
+    ddN = MArray{Tuple{2,2,6},Float64,3}(undef)
+    ddN[1, 1, :] = @SVector [4, 4, 0, -8, 0, 0]
+    ddN[1, 2, :] = @SVector [4, 0, 0, -4, 4, -4]
+    ddN[2, 1, :] = @SVector [4, 0, 0, -4, 4, -4]
+    ddN[2, 2, :] = @SVector [4, 0, 4, 0, 0, -8]
+    return N, dN, SArray(ddN)
+end
+
 function barycentric_shape_functions(::Val{3}, ::Val{4}, ξ::SVector{3,T}) where {T}
     N = @SVector [one(T) - ξ[1] - ξ[2] - ξ[3], ξ[1], ξ[2], ξ[3]]
     dN = @SMatrix [
@@ -74,6 +98,24 @@ function barycentric_quadrature(::Val{2}, ::Val{3}, ::Val{3})
         1/6 1/6 4/6
     ]
     w = @SVector [1 / 6, 1 / 6, 1 / 6]
+    return ξ, w
+end
+
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{3})
+    ξ = @SMatrix [
+        1/6 4/6 1/6
+        1/6 1/6 4/6
+    ]
+    w = @SVector [1 / 6, 1 / 6, 1 / 6]
+    return ξ, w
+end
+
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{4})
+    ξ = @SMatrix [
+        1/3 1/5 3/5 1/5
+        1/3 3/5 1/5 1/5
+    ]
+    w = @SVector [-27 / 96, 25 / 96, 25 / 96, 25 / 96]
     return ξ, w
 end
 
@@ -261,6 +303,8 @@ function element_type_from_string(s::AbstractString)::ElementType
         return BAR2
     elseif s == "TRI3" || s == "TRI"
         return TRI3
+    elseif s == "TRI6"
+        return TRI6
     elseif s == "QUAD4" || s == "QUAD"
         return QUAD4
     elseif s == "TETRA4" || s == "TETRA"
@@ -276,6 +320,7 @@ end
 
 default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
+default_num_int_pts(::Val{TRI6}) = 4
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
 default_num_int_pts(::Val{TETRA10}) = 5
@@ -284,6 +329,7 @@ default_num_int_pts(et::ElementType) = default_num_int_pts(Val(et))
 
 get_element_dim_nodes(::Val{BAR2}) = (1, 2)
 get_element_dim_nodes(::Val{TRI3}) = (2, 3)
+get_element_dim_nodes(::Val{TRI6}) = (2, 6)
 get_element_dim_nodes(::Val{QUAD4}) = (2, 4)
 get_element_dim_nodes(::Val{TETRA4}) = (3, 4)
 get_element_dim_nodes(::Val{TETRA10}) = (3, 10)
@@ -292,6 +338,7 @@ get_element_dim_nodes(et::ElementType) = get_element_dim_nodes(Val(et))
 
 is_barycentric(::Val{BAR2}) = false
 is_barycentric(::Val{TRI3}) = true
+is_barycentric(::Val{TRI6}) = true
 is_barycentric(::Val{QUAD4}) = false
 is_barycentric(::Val{TETRA4}) = true
 is_barycentric(::Val{TETRA10}) = true
@@ -303,6 +350,8 @@ function get_element_type(dim::Integer, num_nodes::Integer)
         return BAR2
     elseif dim == 2 && num_nodes == 3
         return TRI3
+    elseif dim == 2 && num_nodes == 6
+        return TRI6
     elseif dim == 2 && num_nodes == 4
         return QUAD4
     elseif dim == 3 && num_nodes == 4
@@ -404,7 +453,7 @@ function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Floa
     factor = 1.0 + tol
     if element_type == BAR2
         return -factor ≤ ξ[1] ≤ factor
-    elseif element_type == TRI3 || element_type == TETRA4 || element_type == TETRA10
+    elseif element_type == TRI3 || element_type == TRI6 || element_type == TETRA4 || element_type == TETRA10
         return sum(ξ) ≤ factor
     elseif element_type == QUAD4
         return all(-factor .≤ ξ[1:2] .≤ factor)

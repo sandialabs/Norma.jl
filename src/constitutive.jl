@@ -863,7 +863,7 @@ function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix
 
     Ep_old_voigt = state_old[1:6]
     Ep_old = zeros(Float64, 3, 3)
-    
+
     # Map Voigt components to the strain tensor
     Ep_old[1, 1] = Ep_old_voigt[1]  # ε_xx
     Ep_old[2, 2] = Ep_old_voigt[2]  # ε_yy
@@ -876,7 +876,7 @@ function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix
     Ep_old[2, 1] = Ep_old_voigt[6] / 2  # ε_xy
 
     eqps_old = state_old[7]
-    
+
     # Calculate the current step's strain
     ∇u = F - I3
     ϵ = 0.5 .* (∇u + ∇u')
@@ -886,14 +886,13 @@ function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix
     # Deviatoric strain increment
     dev_ϵ = ϵ - iso_ϵ
     dev_ϵᵖ = Ep_old - tr(Ep_old)/3 * I3
-    
+
     # Compute deviatoric trial stress
-    trial_stress =  2 * material.μ * (dev_ϵ - dev_ϵᵖ )
+    trial_stress = 2 * material.μ * (dev_ϵ - dev_ϵᵖ)
 
     f_trial = norm(trial_stress) - ROOT23 * (material.σy + material.H * eqps_old)
 
     if f_trial <= 0
-        
         σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
         W = 0.5 * λ * (trϵ^2) + μ * tr(ϵ * ϵ)
         # 4th-order elasticity tensor
@@ -917,7 +916,7 @@ function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix
     # Linear hardening allows for analytical solution of delta gamma
     deltaGamma = (f_trial/(1 + material.H/3/material.μ))/2/material.μ
     eqps = eqps_old + ROOT23*deltaGamma
-    N = trial_stress / norm(trial_stress) 
+    N = trial_stress / norm(trial_stress)
     Ep = Ep_old + deltaGamma * N
     σ = κ * tr(ϵ) .* I3 + trial_stress - 2 * material.μ * deltaGamma * N
 
@@ -944,8 +943,9 @@ function constitutive(material::PlasticLinearHardeningInfinitessimal, F::SMatrix
         for j in 1:3
             for k in 1:3
                 for l in 1:3
-                    CC_m[i, j, k, l] = κ * I3[i, j] * I3[k, l] + 2 * μ * θ* (I3[i, k] * I3[j, l] -  I3[i, j] * I3[k, l]/3.) -
-                        2*μ * θ_bar * N[i, j] * N[k, l]
+                    CC_m[i, j, k, l] =
+                        κ * I3[i, j] * I3[k, l] + 2 * μ * θ * (I3[i, k] * I3[j, l] - I3[i, j] * I3[k, l]/3.0) -
+                        2 * μ * θ_bar * N[i, j] * N[k, l]
                 end
             end
         end
