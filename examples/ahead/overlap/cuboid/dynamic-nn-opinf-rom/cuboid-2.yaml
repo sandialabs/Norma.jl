@@ -21,7 +21,7 @@ boundary conditions:
   OpInf Dirichlet:
     - node set: nsz+
       component: z
-      function: "1.0 * t"
+      function: "0.5 - 0.5 * cos(pi * t)"
       model-directory: ml-models
       ensemble-size: 1
   OpInf Schwarz overlap:
