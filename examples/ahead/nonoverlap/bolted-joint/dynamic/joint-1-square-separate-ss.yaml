@@ -1,0 +1,65 @@
+type: single
+input mesh file: ../../../../../../part_square_bolts_separate_ss.g 
+output mesh file: joint-2.e 
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      component: steel
+    steel:
+      model: Saint-Venant Kirchhoff
+      elastic modulus: 200.0e9
+      Poisson's ratio: 0.3
+      density: 7800.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+  maximum time step: 1.0e-06
+  minimum time step: 1.0e-07
+  increase factor: 1.1
+  decrease factor: 0.5
+boundary conditions:
+  Dirichlet:
+    - node set: base_plate
+      component: x
+      function: "0.0"
+    - node set: base_plate
+      component: y
+      function: "0.0"
+    - node set: base_plate
+      component: z
+      function: "0.0"
+    - node set: loading
+      component: x
+      function: "4.0 * 0.5 * (1.0 - cos(pi*t / (2.0e-3)))"
+    - node set: loading
+      component: y
+      function: "0.0"
+    - node set: loading
+      component: z
+      function: "4.0 * 0.5 * (1.0 - cos(pi*t / (2.0e-3)))"
+  Schwarz nonoverlap:
+    - side set: schwarz_ss_parts_ss1
+      source: joint-2
+      source block: component
+      source side set: schwarz_ss_bolts_ss1
+    - side set: schwarz_ss_parts_ss2
+      source: joint-2
+      source block: component
+      source side set: schwarz_ss_bolts_ss2
+    - side set: schwarz_ss_parts_ss3
+      source: joint-2
+      source block: component
+      source side set: schwarz_ss_bolts_ss3
+    - side set: schwarz_ss_parts_ss4
+      source: joint-2
+      source block: component
+      source side set: schwarz_ss_bolts_ss4
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-07
+  absolute tolerance: 1.0e-05
