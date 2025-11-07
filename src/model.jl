@@ -9,7 +9,7 @@ include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
-using Base.Threads: @threads, threadid, nthreads
+using Base.Threads: @threads, threadid, nthreads, maxthreadid
 
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
@@ -407,40 +407,35 @@ function merge_threadlocal_coo_matrices(coo_matrices::Vector{COOMatrix}, num_dof
     return sparse(rows, cols, vals, num_dof, num_dof)
 end
 
+using Base.Threads
+
 function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T,N}
-    local_mats = Vector{typeof(create_element_matrix(T, Val(N)))}(undef, nthreads())
-    for i in 1:nthreads()
-        local_mats[i] = create_element_matrix(T, Val(N))
-    end
-    return local_mats
+    return [create_element_matrix(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
 
 function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
-    local_vecs = Vector{typeof(create_element_vector(T, Val(N)))}(undef, nthreads())
-    for i in 1:nthreads()
-        local_vecs[i] = create_element_vector(T, Val(N))
-    end
-    return local_vecs
+    return [create_element_vector(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
 
-function create_threadlocal_coo_vectors(num_dofs::Int64)
-    nthreads = Threads.nthreads()
-    capacity = ceil(Int64, num_dofs / nthreads)
-    coo_vectors = Vector{COOVector}(undef, nthreads)
-    for i in 1:nthreads
-        coo_vectors[i] = create_coo_vector(capacity)
-    end
-    return coo_vectors
+function create_threadlocal_coo_vectors(num_dofs::Integer)
+    nd = Threads.threadpoolsize(:default)
+    ni = Threads.threadpoolsize(:interactive)
+    n_total = nd + ni
+    cap_default = cld(num_dofs, nd)
+    cap_interactive = max(1, cap_default ÷ 8)  # or just use cap_default everywhere
+
+    return [i <= nd ? create_coo_vector(cap_default) :
+                     create_coo_vector(cap_interactive) for i in 1:n_total]
 end
 
-function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
-    nthreads = Threads.nthreads()
-    capacity = ceil(Int64, coo_matrix_nnz / nthreads)
-    coo_matrices = Vector{COOMatrix}(undef, nthreads)
-    for i in 1:nthreads
-        coo_matrices[i] = create_coo_matrix(capacity)
-    end
-    return coo_matrices
+function create_threadlocal_coo_matrices(coo_matrix_nnz::Integer)
+    nd = Threads.threadpoolsize(:default)
+    ni = Threads.threadpoolsize(:interactive)
+    cap_default     = cld(coo_matrix_nnz, nd)
+    cap_interactive = max(1, cap_default ÷ 8)   # or just use cap_default
+
+    return [i <= nd ? create_coo_matrix(cap_default) :
+                      create_coo_matrix(cap_interactive) for i in 1:(nd + ni)]
 end
 
 function add_internal_force!(Fi::MVector{M,T}, grad_op::SMatrix{9,M,T}, stress::SVector{9,T}, dV::T) where {M,T}
@@ -496,7 +491,7 @@ end
 function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags)
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
-    energy = zeros(nthreads())
+    energy = zeros(maxthreadid())
     internal_force = create_threadlocal_coo_vectors(num_dofs)
 
     lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
@@ -524,7 +519,7 @@ end
 
 function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
     valN = Val(num_element_nodes)
-    energy = zeros(nthreads())
+    energy = zeros(maxthreadid())
     dofs = create_threadlocal_element_vectors(Int64, valN)
     internal_force = create_threadlocal_element_vectors(Float64, valN)
     lumped_mass = create_threadlocal_element_vectors(Float64, flags.compute_lumped_mass ? valN : Val(0))
