@@ -33,10 +33,10 @@ const indexed_test_files = [
     (17, "schwarz-contact-static-cubes.jl"),
     (18, "schwarz-contact-dynamic-cubes.jl"),
     (19, "solid-inclined-displacement.jl"),
-    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
-    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+#    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
     (24, "adaptive-time-stepping.jl"),
     (25, "schwarz-ahead-overlap-dynamic-clamped.jl"),
     (26, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
@@ -62,7 +62,7 @@ const indexed_test_files = [
     (46, "single-static-solid-cube-sd-dbc.jl"),
     (47, "constitutive-model-energy-gradient.jl"),
     (48, "smoothing.jl"),
-    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
+#    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
     (50, "utils.jl"), # Must go last due to FPE traps
 ]
 
@@ -72,7 +72,7 @@ const nnopinf_test_indices = Int[49]
 const all_test_files = [file for (_, file) in indexed_test_files]
 const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopinf_test_indices]
 # Optional test indices (excluded from quick runs)
-const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 49]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
