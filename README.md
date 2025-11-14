@@ -277,3 +277,7 @@ Then retry installation.
 ## **License**
 
 Norma.jl is licensed under the BSD 3-Clause License. See [LICENSE.md](LICENSE.md) for details.
+
+## **Documentation**
+
+While we do not have documentation of the Norma.jl code, we have documented a number of application-motivated test cases available in the Norma.jl repository in the ![following slides](https://docs.google.com/presentation/d/1UI1dOn5RU4L_nNXgEQoaSKIHXUv97TPn/edit?usp=sharing&ouid=118047221648309868055&rtpof=true&sd=true).  The input and mesh files for these test cases can be found in the ```Norma.jl/examples/ahead``` directory.
