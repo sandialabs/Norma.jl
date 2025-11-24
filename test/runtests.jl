@@ -33,10 +33,10 @@ const indexed_test_files = [
     (17, "schwarz-contact-static-cubes.jl"),
     (18, "schwarz-contact-dynamic-cubes.jl"),
     (19, "solid-inclined-displacement.jl"),
-#    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
-#    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
-#    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
-#    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
     (24, "adaptive-time-stepping.jl"),
     (25, "schwarz-ahead-overlap-dynamic-clamped.jl"),
     (26, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
@@ -62,7 +62,7 @@ const indexed_test_files = [
     (46, "single-static-solid-cube-sd-dbc.jl"),
     (47, "constitutive-model-energy-gradient.jl"),
     (48, "smoothing.jl"),
-#    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
+    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
     (50, "utils.jl"), # Must go last due to FPE traps
 ]
 
