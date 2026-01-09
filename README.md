@@ -95,6 +95,15 @@ Press `Backspace` or `Delete` to exit the package manager.
 
 ---
 
+### If Interested in Reduced Order Model (ROM) Capabilities in Norma: Clone and Build Norma-OpInf Repository
+```bash
+cd /path/to
+git clone git@gitlab-ex.sandia.gov:ejparis/norma-opinf.git
+cd /path/to/norma-opinf
+pip install -e .
+```
+For this, Python3 is required.  For more details and troubleshooting, please see the [norma-opinf repository](https://github.com/sandialabs/norma-opinf).
+
 ## **Running the Code**
 
 To run the main program, assuming Julia is in your executable path:
