@@ -62,6 +62,7 @@ Norma.run("input.yaml")
 7. [Debugging](#debugging)
 8. [Troubleshooting](#troubleshooting)
 9. [License](#license)
+10. [Documentation](#documentation)
 
 ---
 
