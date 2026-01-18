@@ -62,6 +62,7 @@ Norma.run("input.yaml")
 7. [Debugging](#debugging)
 8. [Troubleshooting](#troubleshooting)
 9. [License](#license)
+10. [Documentation](#documentation)
 
 ---
 
@@ -94,7 +95,18 @@ Press `Backspace` or `Delete` to exit the package manager.
 
 ---
 
+### If Interested in Reduced Order Model (ROM) Capabilities in Norma: Clone and Build Norma-OpInf Repository
+```bash
+cd /path/to
+git clone git@gitlab-ex.sandia.gov:ejparis/norma-opinf.git
+cd /path/to/norma-opinf
+pip install -e .
+```
+For this, Python3 is required.  For more details and troubleshooting, please see the [norma-opinf repository](https://github.com/sandialabs/norma-opinf).
+
 ## **Running the Code**
+
+### Running the Code in Full Order Model (FOM) Mode (Default)
 
 To run the main program, assuming Julia is in your executable path:
 ```bash
@@ -116,6 +128,41 @@ Norma.run("bars.yaml")
 ```
 
 **Note**: If you make changes to the Norma code, you need to reload the Norma module (`using Norma`) for those changes to take effect.
+
+### Running the Code with Operator Inference (OpInf) Reduced Order Models (ROMs) 
+
+Running Norma with OpInf ROMs is a process consisting of three steps.  More details can be found in the README file found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/overlap/cuboid/dynamic-opinf-fom/README.md).
+
+#### Step 1: Run Norma in FOM Mode to Generate Training Data for ROM
+
+Run the main program in FOM mode, assuming Julia is in your executable path:
+```bash
+julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
+```
+after modifying ```input.yaml``` to enable ```CSV output``` and ```CSV write sidesets```, e.g., 
+```
+CSV output interval: 1
+CSV write sidesets: true
+```
+An example input file can be found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/single/cuboid/dynamic-opinf-fom/cuboid.yaml).  
+
+#### Step 2: Run Norma-OpInf to Build ROM from Snapshot Data Generated in Step 1
+
+Please see the [Norma-OpInf repo Wiki Page](https://github.com/sandialabs/norma-opinf) for details.
+
+#### Step 3: Run Norma in ROM Mode to Obtain ROM Solution
+
+Run the main program in ROM mode, assuming Julia is in your executable path:
+```bash
+julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input_rom.yaml
+```
+after modifying ```input_rom.yaml``` to utilize a ROM model type and read in the ```.npz``` file produced in Step 2, e.g., 
+```
+model:
+  type: linear opinf rom
+  model-file: opinf-operator.npz
+```
+An example ROM input file can be found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/single/cuboid/dynamic-opinf-rom/cuboid.yaml).
 
 ### Running with Multiple Threads
 
