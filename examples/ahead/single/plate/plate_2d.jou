@@ -1,8 +1,9 @@
-${sidexy = 0.2}
-${sidez = 0.03}
 ${h_size = 0.01}
+${sidex = 0.2}
+${sidey = h_size}
+${sidez = h_size}
 
-create brick x {sidexy} y {sidexy} z {sidez}
+create brick x {sidex} y {sidey} z {sidez}
 volume all size {h_size}
 mesh volume all
 block 1 volume 1
@@ -34,4 +35,5 @@ sideset 5 name "ssz-"
 sideset 6 surface with z_coord > 0
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "plate.g" overwrite
+export mesh "plate_2d.g" overwrite
+
