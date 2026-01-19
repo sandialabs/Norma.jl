@@ -14,7 +14,7 @@ move volume 1 z {-offset} include_merged
 volume 1 size {h_fine}
 mesh volume 1
 block 1 volume 1
-block 1 name "fine"
+block 1 name "cuboid"
 nodeset 1 surface 4
 nodeset 1 name "nsx-"
 nodeset 2 surface 6
@@ -53,7 +53,7 @@ ${num_sd_minus_1 = num_sd - 1}
     mesh volume 1
     block 1 volume 1
     #block 1 element type tetra4
-    block 1 name "coarse"
+    block 1 name "cuboid"
     nodeset 1 surface 4
     nodeset 1 name "nsx-"
     nodeset 2 surface 6
