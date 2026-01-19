@@ -45,7 +45,7 @@ sideset 5 name "ssz-"
 sideset 6 surface 1
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "plate_2d-1.g" overwrite
+export mesh "beam-1.g" overwrite
 delete mesh
 move volume 1 x {2 * offset} include_merged
 #volume 1 scheme tetmesh
@@ -82,6 +82,6 @@ sideset 6 name "ssz+"
 set large exodus file off
 #htet volume 1
 #block 1 element type tetra4
-export mesh "plate_2d-2.g" overwrite
+export mesh "beam-2.g" overwrite
 
 

@@ -1,13 +1,11 @@
 type: single
-input mesh file: ../plate_2d.g
-output mesh file: plate_2d.e
-Exodus output interval: 1
-CSV output interval: 0
+input mesh file: ../beam-1.g
+output mesh file: beam-1.e
 model:
   type: solid mechanics
   material:
     blocks:
-      plate: hyperelastic
+      fine: hyperelastic
     hyperelastic:
       model: neohookean
       elastic modulus: 200.0e+09
@@ -17,13 +15,6 @@ time integrator:
   type: Newmark
   β: 0.49
   γ: 0.9
-  initial time: 0.0
-  final time: 20.0e-3
-  time step: 1.0e-5
-  #maximum time step: 1.0
-  #minimum time step: 0.0005
-  #increase factor: 1.0
-  #decrease factor: 0.5
 boundary conditions:
   Dirichlet:
     #Left side of plate is fixed 
@@ -43,21 +34,15 @@ boundary conditions:
     - node set: nsy+
       component: y
       function: "0.0"
-initial conditions:
-  velocity:
-    - node set: nsall
-      component: x
-      function: "0.0"
-    - node set: nsall
-      component: y
-      function: "0.0"
-    - node set: nsall
-      component: z
-      function: "ifelse(x > 0.099, 100.0, 0.0)"
+  Schwarz nonoverlap:
+    - side set: ssx+
+      source: beam-2
+      source block: coarse
+      source side set: ssx-
 solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1
   maximum iterations: 16
-  relative tolerance: 1.0e-12
-  absolute tolerance: 1.0e-08
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

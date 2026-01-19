@@ -1,6 +1,6 @@
 type: single
-input mesh file: ../plate_2d-2.g
-output mesh file: plate_2d-2.e
+input mesh file: ../beam-2.g
+output mesh file: beam-2.e
 model:
   type: solid mechanics
   material:
@@ -37,7 +37,7 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: ssx-
-      source: plate_2d-1
+      source: beam-1
       source block: fine
       source side set: ssx+
 solver:

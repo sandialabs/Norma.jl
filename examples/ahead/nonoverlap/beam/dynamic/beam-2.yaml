@@ -1,11 +1,11 @@
 type: single
-input mesh file: ../plate_2d-1.g
-output mesh file: plate_2d-1.e
+input mesh file: ../beam-2.g
+output mesh file: beam-2.e
 model:
   type: solid mechanics
   material:
     blocks:
-      fine: hyperelastic
+      coarse: hyperelastic
     hyperelastic:
       model: neohookean
       elastic modulus: 200.0e+09
@@ -15,18 +15,19 @@ time integrator:
   type: Newmark
   β: 0.49
   γ: 0.9
-boundary conditions:
-  Dirichlet:
-    #Left side of plate is fixed 
-    - node set: nsx-
+initial conditions:
+  velocity:
+    - node set: nsall
       component: x
       function: "0.0"
-    - node set: nsx-
+    - node set: nsall
       component: y
       function: "0.0"
-    - node set: nsx-
+    - node set: nsall
       component: z
-      function: "0.0"
+      function: "ifelse(x > 0.099, 100.0, 0.0)"
+boundary conditions:
+  Dirichlet:
     #Force solution not to do anything in y-direction to emulate 2D problem
     - node set: nsy-
       component: y
@@ -35,10 +36,10 @@ boundary conditions:
       component: y
       function: "0.0"
   Schwarz nonoverlap:
-    - side set: ssx+
-      source: plate_2d-2
-      source block: coarse
-      source side set: ssx-
+    - side set: ssx-
+      source: beam-1
+      source block: fine
+      source side set: ssx+
 solver:
   type: Hessian minimizer
   step: full Newton

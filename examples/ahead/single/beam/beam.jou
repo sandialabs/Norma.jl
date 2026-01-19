@@ -7,7 +7,7 @@ create brick x {sidex} y {sidey} z {sidez}
 volume all size {h_size}
 mesh volume all
 block 1 volume 1
-block 1 name "plate"
+block 1 name "beam"
 nodeset 1 surface with x_coord < 0
 nodeset 1 name "nsx-"
 nodeset 2 surface with x_coord > 0
@@ -35,5 +35,5 @@ sideset 5 name "ssz-"
 sideset 6 surface with z_coord > 0
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "plate_2d.g" overwrite
+export mesh "beam.g" overwrite
 
