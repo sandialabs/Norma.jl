@@ -22,6 +22,7 @@ mutable struct NeuralNetworkOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end 
 
 mutable struct CubicOpInfRom <: OpInfModel
@@ -39,6 +40,7 @@ mutable struct CubicOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end
 
 mutable struct QuadraticOpInfRom <: OpInfModel
@@ -56,6 +58,7 @@ mutable struct QuadraticOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end
 
 mutable struct LinearOpInfRom <: OpInfModel
@@ -73,4 +76,5 @@ mutable struct LinearOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end
