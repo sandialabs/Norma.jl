@@ -256,26 +256,24 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
     def setup_inputs(x):
         xi = np.zeros((1,x.size))
         xi[0] = x
-        inputs = torch.tensor(xi)
+        inputs = {'x':torch.tensor(xi)}
         return inputs
     """ 
     ensemble_size = size(model.nn_model)[1]
     stiffness = zeros( num_dof,num_dof )
-    #Kx,K = model.nn_model[1].forward(model_inputs,return_stiffness=true)
-    #K = K.detach().numpy()[1,:,:]
+    f = zeros( num_dof )
+    model_inputs = py"setup_inputs"(solver.solution)
     for i in 1:ensemble_size
-      model_inputs = py"setup_inputs"(solver.solution)
-      Kxt,Kt = model.nn_model[i].forward(model_inputs,return_stiffness=true)
-      #Kx += Kxt
-      Kt = Kt.detach().numpy()[1,:,:]
-      stiffness += Kt
-    
+      ft,Kt = model.nn_model[i].forward(model_inputs,return_jacobian=true)
+      f += ft.detach().numpy()[1,:]
+      stiffness += Kt.detach().numpy()[1,:,:]
     end
     stiffness = stiffness./ensemble_size
+    f = f./ensemble_size
     LHS = I / (dt*dt*beta) - stiffness
     RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
     
-    residual = RHS - LHS * solver.solution
+    residual = RHS - 1 / (dt*dt*beta) * solver.solution + f
     solver.hessian[:,:] = LHS
     solver.gradient[:] = -residual
 end 

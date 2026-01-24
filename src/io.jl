@@ -6,6 +6,7 @@
 
 using DelimitedFiles
 using Format
+using SparseArrays
 
 function _is_output_time(time::Float64, initial_time::Float64, interval::Float64; tol::Float64=1e-10)
     interval <= 0.0 && return false
@@ -98,7 +99,7 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     return nothing
 end
 
-function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
+function write_stop(sim::SingleDomainSimulation)
     params = sim.params
     stop = sim.controller.stop
     num_steps = sim.controller.num_stops - 1
@@ -142,6 +143,15 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
         write_stop_csv(sim, sim.model)
         if haskey(params, "CSV write sidesets") == true
             write_sideset_stop_csv(sim, sim.model)
+        end
+    end
+    mass_matrix_file = get(params, "mass matrix file", "")
+    if stop == 0 && mass_matrix_file != ""
+        if size(sim.model.mass, 1) == 0
+            norma_log(0, :warning, "Mass matrix output requested but mass matrix is empty.")
+        else
+            norma_log(0, :output, "Mass matrix for $name [CSV]")
+            write_sparse_matrix_csv(mass_matrix_file, sim.model.mass)
         end
     end
     return nothing

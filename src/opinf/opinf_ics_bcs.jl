@@ -4,7 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-        
+using LinearAlgebra
+
 function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
     fom_bc = SolidMechanicsDirichletBoundaryCondition(input_mesh,bc_params)
     node_set_name = bc_params["node set"]
@@ -141,15 +142,25 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
     def setup_inputs(x):
         xi = np.zeros((1,x.size))
         xi[0] = x
-        inputs = torch.tensor(xi)
-        return inputs
+        return torch.tensor(xi)
     """
-    
+    if bc.offset == 1
+        offset_name = "x"
+    end
+    if bc.offset == 2
+        offset_name = "y"
+    end
+    if bc.offset == 3
+        offset_name = "z"
+    end
+   
     reduced_bc_vector = bc.basis[1,:,:]' * bc_vector
     model_inputs = py"setup_inputs"(reduced_bc_vector)
+    name = "u-" * bc.name * "-" * offset_name
+    jdict = PyDict(Dict(name => model_inputs))
     ensemble_size = size(bc.nn_model)[1]
     for i in 1:ensemble_size
-      reduced_forcing = bc.nn_model[i].forward(model_inputs)
+      reduced_forcing = bc.nn_model[i].forward(jdict)
       reduced_forcing = reduced_forcing.detach().numpy()[1,:]
       model.reduced_boundary_forcing[:] += reduced_forcing
     end 
@@ -184,10 +195,15 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOv
             reduced_bc_vector[:] += bc.basis[i,:,:]' * bc_vector[i,:]
         end
         model_inputs = py"setup_inputs"(reduced_bc_vector)
+        name = "u-" * bc.name
+        jdict = PyDict(Dict(name => model_inputs))
+        ensemble_size = size(bc.nn_model)[1]
         ensemble_size = size(bc.nn_model)[1]
         local_reduced_forcing = zeros(size(model.reduced_boundary_forcing)[1])
+
+
         for i in 1:ensemble_size
-          reduced_forcing = bc.nn_model[i].forward(model_inputs)
+          reduced_forcing = bc.nn_model[i].forward(jdict)
           reduced_forcing = reduced_forcing.detach().numpy()[1,:]
           local_reduced_forcing[:] += reduced_forcing
         end
@@ -200,9 +216,11 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOv
 end
 
 
-function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
+function apply_ics2(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
     ## Need to create a fake time integrator and solver for the FOM IC routine
     apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)
+    # need to evaluate to get mass matrix
+    evaluate( model.fom_model, integrator.fom_integrator,solver.fom_solver)
 
     if haskey(params, "initial conditions") == false
         return nothing
@@ -215,17 +233,62 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
         norma_abort("Basis is wrong size")
     end
 
-    # project onto basis
-    for k in 1:n_mode
-        model.reduced_state[k] = 0.0
-        model.reduced_velocity[k] = 0.0
-        for j in 1:n_node
-            for n in 1:n_var
-                model.reduced_state[k] +=
-                    model.basis[n, j, k] * (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
-                model.reduced_velocity[k] += model.basis[n, j, k] * (model.fom_model.velocity[n, j])
-            end
+    # project onto basis (a little ugly due to shaping and flattening standards)
+    dvec =  vec( (model.fom_model.current - model.fom_model.reference) )
+    model.reduced_state[:] = reshape( model.basis,(n_var*n_node,n_mode) )' * model.fom_model.mass* dvec
+    model.reduced_velocity[:] = reshape( model.basis,(n_var*n_node,n_mode) )' * model.fom_model.mass * vec( model.fom_model.velocity )
+    #for k in 1:n_mode
+    #    model.reduced_state[k] = 0.0
+    #    model.reduced_velocity[k] = 0.0
+    #    for j in 1:n_node
+    #        for n in 1:n_var
+    #            #model.reduced_state[k] +=
+    #            #    model.basis[n, j, k] * (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
+    #            model.reduced_velocity[k] += model.basis[n, j, k] * (model.fom_model.velocity[n, j])
+    #        end
+    #    end
+    #end
+end
+
+function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
+    ## Need to create a fake time integrator and solver for the FOM IC routine
+    apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)
+    # need to evaluate to get mass matrix
+    evaluate( model.fom_model, integrator.fom_integrator,solver.fom_solver)
+
+    if haskey(params, "initial conditions") == false
+        return nothing
+    end
+    n_var, n_node, n_mode = model.basis.size
+    n_var_fom, n_node_fom = size(model.fom_model.current)
+
+    # Make sure basis is the right size
+    if n_var != n_var_fom || n_node != n_node_fom
+        norma_abort("Basis is wrong size")
+    end
+
+    # Project onto basis; optionally use the mass inner product if enabled.
+    u = vec(model.fom_model.current - model.fom_model.reference)
+    v = vec(model.fom_model.velocity)
+    ϕ = reshape(model.basis, :, n_mode)
+    use_mass_inner_product = hasproperty(model, :use_mass_inner_product) && model.use_mass_inner_product
+
+    if use_mass_inner_product == true
+        M = model.fom_model.mass
+        if size(M, 1) == 0
+            # Fallback to Euclidean projection if mass matrix is unavailable.
+            model.reduced_state[:] = ϕ' * u
+            model.reduced_velocity[:] = ϕ' * v
+        else
+            Mr = ϕ' * M * ϕ
+            rhs_u = ϕ' * M * u
+            rhs_v = ϕ' * M * v
+            model.reduced_state[:] = Mr \ rhs_u
+            model.reduced_velocity[:] = Mr \ rhs_v
         end
+    else
+        model.reduced_state[:] = ϕ' * u
+        model.reduced_velocity[:] = ϕ' * v
     end
 end
 
