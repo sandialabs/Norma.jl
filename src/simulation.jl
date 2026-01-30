@@ -124,6 +124,10 @@ function SolidMultiDomainTimeController(params::Parameters)
     acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
+    relaxation_type = get(params, "relaxation type", "classical")
+    if relaxation_type != "classical" && relaxation_type != "aitken" 
+      throw("Invalid relaxation_type parameter!  Valid options are 'classical' (default) and 'aitken'.")
+    end 
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
@@ -163,6 +167,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         acce_hist,
         ∂Ω_f_hist,
         relaxation_parameter,
+        relaxation_type,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
