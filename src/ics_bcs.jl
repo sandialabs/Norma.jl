@@ -529,6 +529,8 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_acce = controller.stop_acce[coupled_index]
         interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
     else
+        #IKT 1/30/2026 Question: why is interp_disp, etc. size of num_dofs?  Shouldn't it be the size of 
+        #the # dofs on boundary?  
         interp_disp = zeros(num_dofs)
         interp_velo = zeros(num_dofs)
         interp_acce = zeros(num_dofs)
@@ -552,6 +554,10 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
+        println("IKT length lambda_disp = ", length(controller.lambda_disp[coupled_index]))
+        println("IKT length interp_disp = ", length(interp_disp))
+        println("IKT num_dofs = ", num_dofs)
+
         if (controller.relaxation_type == "classical") 
 
           controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
@@ -568,12 +574,24 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
           #IKT TODO: implement calculation of theta using Aitken formula.  For now, it is hard-coded.
           #For Aitken acceleration, lambda is g^{(k+1)} in Giulia's notation.
-          #IKT TODO: implement projection of u_i^k onto Gamma_j and subtract that from interp_disp, interp_velo, etc. below  
-          controller.lambda_disp[coupled_index] = λ_u_prev + θ * (interp_disp) 
+          #IKT TODO: implement projection of u_i^k onto Gamma_j and subtract that from interp_disp, interp_velo, etc. below 
+          #I think the following should do this.  It returns vectors that are the length of the # dofs on the boundary, 
+          #which is what I would expect, but interp_disp is size of full # dofs.  Need to discuss with Alejandro why the latter
+          #is the size it is.  Is there a projection elsewhere in the code onto the boundary of lambda_disp, lambda_velo, etc.?
+          #Also, would dst_curr, dst_velo, etc. need to be interpolated in time?
+          dst_curr, dst_velo, dst_acce = get_dst_curr_velo_acce(bc)
+          println("IKT length dst_curr = ", length(dst_curr)) 
+          #Hack/placeholder 
+          gammaij_disp = zeros(num_dofs) 
+          gammaij_velo = zeros(num_dofs) 
+          gammaij_acce = zeros(num_dofs) 
+          #IKT TODO 1/30/2026: for calculating adaptive theta, also need gamma_i(u_i) and gamma_i^j(u_i) at previous iteration, not 
+          #just current iteration.  How can we get u_i at previous iteration?  controller.schwarz_disp?              
+          controller.lambda_disp[coupled_index] = λ_u_prev + θ * (interp_disp - gammaij_disp) 
           #IKT 1/30/2026 Question: we shouldn't need the following for quasistatic, right?  But there is no logic
           #for the time of solve.
-          controller.lambda_velo[coupled_index] = λ_v_prev + θ * (interp_velo) 
-          controller.lambda_acce[coupled_index] = λ_a_prev + θ * (interp_acce) 
+          controller.lambda_velo[coupled_index] = λ_v_prev + θ * (interp_velo - gammaij_velo) 
+          controller.lambda_acce[coupled_index] = λ_a_prev + θ * (interp_acce - gammaij_acce) 
 
           integrator.displacement = controller.lambda_disp[coupled_index]
           integrator.velocity = controller.lambda_velo[coupled_index]
