@@ -540,6 +540,10 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
     # Apply relaxed update if needed
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+        #IKT 11/11/2025.  For Aitken, need projection u_i restricted onto boundary Gamma_i and u_j projected onto 
+        #boundary Gamma_i from current and past Schwarz iteration.  Do we have this info here, or can we get it?
+        #I think we are relying on lambda_u_prev, which is something different.  interp_disp seems to be 
+        #u_i restricted to boundary Gamma_i, so we have that.
         θ = controller.relaxation_parameter
         iter = controller.iteration_number
 
