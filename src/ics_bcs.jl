@@ -547,13 +547,12 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         θ = controller.relaxation_parameter
 
         #IKT 1/30/2026: move the relaxation stuff into separate routine?   
+        iter = controller.iteration_number
+        λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
+        λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
+        λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
+
         if (controller.relaxation_type == "classical") 
-
-          iter = controller.iteration_number
-
-          λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
-          λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
-          λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
           controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
           #IKT 1/30/2026 Question: we shouldn't need the following for quasistatic, right?  But there is no logic
@@ -567,6 +566,19 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
         elseif (controller.relaxation_type == "aitken") 
 
+          #IKT TODO: implement calculation of theta using Aitken formula.  For now, it is hard-coded.
+          #For Aitken acceleration, lambda is g^{(k+1)} in Giulia's notation.
+          #IKT TODO: implement projection of u_i^k onto Gamma_j and subtract that from interp_disp, interp_velo, etc. below  
+          controller.lambda_disp[coupled_index] = λ_u_prev + θ * (interp_disp) 
+          #IKT 1/30/2026 Question: we shouldn't need the following for quasistatic, right?  But there is no logic
+          #for the time of solve.
+          controller.lambda_velo[coupled_index] = λ_v_prev + θ * (interp_velo) 
+          controller.lambda_acce[coupled_index] = λ_a_prev + θ * (interp_acce) 
+
+          integrator.displacement = controller.lambda_disp[coupled_index]
+          integrator.velocity = controller.lambda_velo[coupled_index]
+          integrator.acceleration = controller.lambda_acce[coupled_index]
+          
           throw("Aitken acceleration not yet implemented!")         
  
         end
