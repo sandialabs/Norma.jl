@@ -529,8 +529,6 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_acce = controller.stop_acce[coupled_index]
         interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
     else
-        #IKT 1/30/2026 Question: why is interp_disp, etc. size of num_dofs?  Shouldn't it be the size of 
-        #the # dofs on boundary?  
         interp_disp = zeros(num_dofs)
         interp_velo = zeros(num_dofs)
         interp_acce = zeros(num_dofs)
@@ -542,10 +540,6 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
     # Apply relaxed update if needed
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-        #IKT 11/11/2025.  For Aitken, need projection u_i restricted onto boundary Gamma_i and u_j projected onto 
-        #boundary Gamma_i from current and past Schwarz iteration.  Do we have this info here, or can we get it?
-        #I think we are relying on lambda_u_prev, which is something different.  interp_disp seems to be 
-        #u_i restricted to boundary Gamma_i, so we have that.
         θ = controller.relaxation_parameter
 
         #IKT 1/30/2026: move the relaxation stuff into separate routine?   
@@ -554,15 +548,9 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        println("IKT length lambda_disp = ", length(controller.lambda_disp[coupled_index]))
-        println("IKT length interp_disp = ", length(interp_disp))
-        println("IKT num_dofs = ", num_dofs)
-
         if (controller.relaxation_type == "classical") 
 
           controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-          #IKT 1/30/2026 Question: we shouldn't need the following for quasistatic, right?  But there is no logic
-          #for the time of solve.
           controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
           controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
@@ -574,22 +562,34 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
           #IKT TODO: implement calculation of theta using Aitken formula.  For now, it is hard-coded.
           #For Aitken acceleration, lambda is g^{(k+1)} in Giulia's notation.
-          #IKT TODO: implement projection of u_i^k onto Gamma_j and subtract that from interp_disp, interp_velo, etc. below 
-          #I think the following should do this.  It returns vectors that are the length of the # dofs on the boundary, 
-          #which is what I would expect, but interp_disp is size of full # dofs.  Need to discuss with Alejandro why the latter
-          #is the size it is.  Is there a projection elsewhere in the code onto the boundary of lambda_disp, lambda_velo, etc.?
-          #Also, would dst_curr, dst_velo, etc. need to be interpolated in time?
-          dst_curr, dst_velo, dst_acce = get_dst_curr_velo_acce(bc)
-          println("IKT length dst_curr = ", length(dst_curr)) 
-          #Hack/placeholder 
-          gammaij_disp = zeros(num_dofs) 
-          gammaij_velo = zeros(num_dofs) 
-          gammaij_acce = zeros(num_dofs) 
+          
+	  #IKT the "bc" passed into apply_bcs corresponds to the destination domain.  To get the trace 
+	  #of the current solution on the interface as seen from the neighboring domain, we need 
+	  #to get the src_bc 
+          src_sim = bc.coupled_subsim
+          src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
+          src_bc_index = bc.coupled_bc_index
+          src_bc = src_model.boundary_conditions[src_bc_index]
+
+	  #Calculate gamma_j^i(u_j) using get_dst_curr_velo_acce.  This will have the size 
+	  #of the interface as seen from the neighboring subdomain
+          gammaij_disp, gammaij_velo_velo, gammaij_acce = get_dst_curr_velo_acce(src_bc)
+          
+	  println("IKT length gammaij_disp = ", length(gammaij_disp)) 
+          
+	  #Allocate versions of gammaij_disp, etc. that correspond to the full domain size, not just interface 
+	  gammaij_disp_full = zeros(num_dofs) 
+          gammaij_velo_full = zeros(num_dofs) 
+          gammaij_acce_full = zeros(num_dofs) 
+
+          local_from_global_map = bc.local_from_global_map
+          #IKT TODO 2/4/2026: use local_from_global_map to populate gammij_disp_full, etc.  
+
+
           #IKT TODO 1/30/2026: for calculating adaptive theta, also need gamma_i(u_i) and gamma_i^j(u_i) at previous iteration, not 
           #just current iteration.  How can we get u_i at previous iteration?  controller.schwarz_disp?              
+
           controller.lambda_disp[coupled_index] = λ_u_prev + θ * (interp_disp - gammaij_disp) 
-          #IKT 1/30/2026 Question: we shouldn't need the following for quasistatic, right?  But there is no logic
-          #for the time of solve.
           controller.lambda_velo[coupled_index] = λ_v_prev + θ * (interp_velo - gammaij_velo) 
           controller.lambda_acce[coupled_index] = λ_a_prev + θ * (interp_acce - gammaij_acce) 
 
