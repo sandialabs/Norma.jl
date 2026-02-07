@@ -4,7 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "Schwarz Nonoverlap Static Cuboid Hex8 Same Step" begin
-    cp("../examples/nonoverlap/static-same-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
+    cp("../examples/nonoverlap/static-same-step/cuboids/cuboids_classical.yaml", "cuboids.yaml"; force=true)
     cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
