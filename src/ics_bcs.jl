@@ -207,8 +207,6 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     neumann_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
-    println("IKTIKT local_from_global_map = ", local_from_global_map)
-    println("IKTIKT global_from_local_map = ", global_from_local_map)
     coupled_bc_index = 0
     return SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         side_set_name,
@@ -577,42 +575,42 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 	  #of the interface as seen from the neighboring subdomain
           gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_velo_acce(src_bc)
           
-	  println("IKT size gammaji_disp = ", size(gammaji_disp)) 
+	  #println("IKT size gammaji_disp = ", size(gammaji_disp)) 
           
 	  #Allocate versions of gammaji_disp, etc. that correspond to the full domain size, not just interface 
 	  gammaji_disp_full = zeros(num_dofs) 
           gammaji_velo_full = zeros(num_dofs) 
           gammaji_acce_full = zeros(num_dofs)
-          println("IKT gammaji_disp_full = ", gammaji_disp_full) 
-          println("IKT size interp_disp = ", size(interp_disp))
-          println("IKT size gammaji_disp_full = ", size(gammaji_disp_full))
+          #println("IKT gammaji_disp_full = ", gammaji_disp_full) 
+          #println("IKT size interp_disp = ", size(interp_disp))
+          #println("IKT size gammaji_disp_full = ", size(gammaji_disp_full))
           
           #IKT TODO 2/4/2026: use global_from_local_map to populate gammij_disp_full, etc. 
           #Get global_from_local_map 
           global_from_local_map = bc.global_from_local_map
-          println("IKT global_from_local_map = ", global_from_local_map) 
+          #println("IKT global_from_local_map = ", global_from_local_map) 
  
           #Create tmp arrays that are 3 x num_nodes 
           num_nodes = convert(Int, num_dofs / 3)
           gammaji_disp_full_tmp = reshape(gammaji_disp_full, (3, num_nodes)) 
           gammaji_velo_full_tmp = reshape(gammaji_velo_full, (3, num_nodes)) 
           gammaji_acce_full_tmp = reshape(gammaji_acce_full, (3, num_nodes)) 
-          println("IKT size gammaji_disp_full_tmp = ", size(gammaji_disp_full_tmp))
+          #println("IKT size gammaji_disp_full_tmp = ", size(gammaji_disp_full_tmp))
 
           #Populate tmp arrays using global_from_local_map
           for (i_local, i_global) in enumerate(global_from_local_map)
-            println("IKT i_local, i_global = ", i_local, ", ", i_global)
+            #println("IKT i_local, i_global = ", i_local, ", ", i_global)
             @inbounds gammaji_disp_full_tmp[:, i_global] = gammaji_disp[:, i_local]
             @inbounds gammaji_velo_full_tmp[:, i_global] = gammaji_velo[:, i_local]
             @inbounds gammaji_acce_full_tmp[:, i_global] = gammaji_acce[:, i_local]
           end
-          println("IKT gammaji_disp = ", gammaji_disp) 
-          println("IKT gammaji_disp_full_tmp = ", gammaji_disp_full_tmp) 
+          #println("IKT gammaji_disp = ", gammaji_disp) 
+          #println("IKT gammaji_disp_full_tmp = ", gammaji_disp_full_tmp) 
 	  gammaji_disp_full = reshape(gammaji_disp_full_tmp, (num_dofs)) 
           gammaji_velo_full = zeros(num_dofs) 
           gammaji_acce_full = zeros(num_dofs)
-          println("IKT size gammaji_disp_full = ", size(gammaji_disp_full))
-          println("IKT gammaji_disp_full = ", gammaji_disp_full) 
+          #println("IKT size gammaji_disp_full = ", size(gammaji_disp_full))
+          #println("IKT gammaji_disp_full = ", gammaji_disp_full) 
 
           #IKT TODO 1/30/2026: for calculating adaptive theta, also need gamma_i(u_i) and gamma_i^j(u_i) at previous iteration, not 
           #just current iteration.  How can we get u_i at previous iteration?  controller.schwarz_disp?              
@@ -625,7 +623,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
           integrator.velocity = controller.lambda_velo[coupled_index]
           integrator.acceleration = controller.lambda_acce[coupled_index]
           
-          throw("Aitken acceleration not yet implemented!")         
+          #throw("Aitken acceleration not yet implemented!")         
  
         end
     else
