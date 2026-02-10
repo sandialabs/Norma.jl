@@ -587,7 +587,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
           
           #IKT TODO 2/4/2026: use global_from_local_map to populate gammij_disp_full, etc. 
           #Get global_from_local_map 
-          global_from_local_map = bc.global_from_local_map
+          global_from_local_map = src_bc.global_from_local_map
           #println("IKT global_from_local_map = ", global_from_local_map) 
  
           #Create tmp arrays that are 3 x num_nodes 
