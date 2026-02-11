@@ -9,5 +9,5 @@ minimum iterations: 1
 maximum iterations: 128
 relative tolerance: 1.0e-13
 absolute tolerance: 1.0e-09
-relaxation parameter: 0.7
+relaxation parameter: 0.473
 relaxation type: aitken
