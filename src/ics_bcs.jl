@@ -802,7 +802,6 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
         dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
         dst_acce[i, :] = dirichlet_projector * src_acce[i, :]
     end
-    println("IKT dst_disp = ", dst_disp) 
     return dst_curr, dst_disp, dst_velo, dst_acce
 end
 
