@@ -281,6 +281,7 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
             model.reduced_velocity[:] = ϕ' * v
         else
             Mr = ϕ' * M * ϕ
+            @assert isapprox(Mr, I, atol=1e-8, rtol=1e-6) "Expected Phi^T M Phi to be identity when using the mass inner product."
             rhs_u = ϕ' * M * u
             rhs_v = ϕ' * M * v
             model.reduced_state[:] = Mr \ rhs_u
@@ -305,6 +306,10 @@ end
 
 function set_internal_force!(model::RomModel, force)
     return model.fom_model.internal_force = force
+end
+
+function apply_bc(model::GalerkinRom, bc::SolidMechanicsDirichletBoundaryCondition)
+    return apply_bc(model.fom_model, bc)
 end
 
 function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryCondition)

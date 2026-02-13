@@ -21,7 +21,7 @@ if __name__ == '__main__':
     settings['boundary-truncation-value'] = 1. - 1.e-5
     settings['trial-space-splitting-type'] = 'split'
     settings['acceleration-computation-type'] = 'finite-difference'
-    settings['neural-network-training-settings'] = {'model-name': 'opinf-operator', 'output-path': 'ml-models', 'num-epochs': 15000, 'batch-size': 500, 'learning-rate': 0.001, 'weight-decay': 1e-08, 'lr-decay': 0.9999, 'print-training-output': True, 'epoch': 5000, 'resume': False}
+    settings['neural-network-training-settings'] = {'model-name': 'opinf-operator', 'output-path': 'ml-models', 'num-epochs': 1000, 'batch-size': 500, 'learning-rate': 0.05, 'weight-decay': 1e-08, 'lr-decay': 0.9999, 'print-training-output': True, 'epoch': 5000, 'resume': False, 'optimizer':'ADAM','LBFGS-acceleration':True,'LBFGS-acceleration-epoch-frequency' : 1e5,'LBFGS-acceleration-iterations':20}
     settings['ensemble-size'] = 5
     snapshots_dict = normaopinf.opinf.get_processed_snapshots(settings)
     normaopinf.opinf.make_opinf_model_from_snapshots_dict(snapshots_dict, settings)
