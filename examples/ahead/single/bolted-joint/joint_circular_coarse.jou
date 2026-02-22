@@ -1,0 +1,135 @@
+## create base
+#{offset = 0.005}
+brick x 5 y 0.5 z 5
+move volume 1 y 0.25 include_merged
+
+## create plhange base
+create cylinder height 0.25 radius 2.2
+rotate volume 2 angle 90 about x include_merged
+move volume 2 y {0.125 + 0.5 + offset} include_merged
+
+## create plhange
+brick x 2 y 2.25 z 2
+brick x 1.5 y 2.0 z 1.5
+move volume 4 y -0.125
+subtract volume 4 from volume 3
+tweak curve 15, 17, 19, 21, 39, 41, 43, 45 fillet radius 0.5
+move volume 3 y {1.125 + 0.5 + offset} include_merged
+subtract volume 3 from volume 2 keep
+split body 5
+delete volume 2
+delete volume 5
+
+## Round base edges
+tweak curve 1 3 5 7 fillet radius 0.5
+
+## Create hole for first bolt
+create cylinder height {0.75 + offset} radius {0.164 + 0.002}
+rotate volume 7 angle 90 about x include_merged
+move volume 7 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+
+## Create other bolt holes
+volume 7 copy move z -2.5 # volume 8
+volume 7 copy move x -2.5 # volume 9
+volume 7 copy move x -2.5 z -2.5 # volume 10
+volume 7 copy move x -3. z -1.25 # volume 11
+volume 7 copy move x 0.5 z -1.25 # volume 12
+subtract volume 7 8 9 10 11 12 from volume 6
+
+## Create shaft of first bolt
+# if change number of bolts, e.g. to 4 volume 13 must become 11
+create cylinder height {0.75 + offset} radius {0.164 + 0.002}
+rotate volume 13 angle 90 about x include_merged
+move volume 13 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
+
+## Create head of bolt and unite
+# if change number of bolts, e.g. to 4 volume 14 must become 12
+create cylinder height 0.164 radius 0.25
+rotate volume 14 angle 90 about x include_merged
+move volume 14 location 1.25 {0.164/2.0+0.5+0.25+offset} 1.25 include_merged
+unite volume 13 14  # volume 13
+
+## Copy bolts to a bolt pattern
+# if change number of bolts, e.g. to 4 volume 13 must become 11
+volume 13 copy move z -2.5  # volume 15
+volume 13 copy move x -2.5  # volume 16
+volume 13 copy move x -2.5 z -2.5  # volume 17
+volume 13 copy move x -3. z -1.25  # volume 18
+volume 13 copy move x 0.5 z -1.25  # volume 19
+
+## Subtract and keep bolts in plate
+subtract volume 13 15 16 17 18 19 from volume 1 keep
+delete volume 1 # renames base plate to volume 20 (with 6 bolts)
+
+# Be very specific about imprinting and merging
+imprint volume 13 15 16 17 18 19 20
+merge volume 13 15 16 17 18 19 20
+
+# Make sure we do not merge the shafts in body 6 with the bolts
+imprint volume 13 15 16 17 18 19 6
+surface 79 80 81 82 83 84 merge off # bolt surfaces of volume 6
+merge volume 13 15 16 17 18 19 6
+
+# imprinting caused a small surfaces (of gap width) in each shaft
+# composite surfaces to remedy the issue
+composite create surface 147 148
+composite create surface 149 150
+composite create surface 151 152
+composite create surface 153 154
+composite create surface 155 156
+composite create surface 157 158
+
+# still need to imprint and merge component
+imprint volume 3 6
+merge volume 3 6
+
+# set scheme for tetmeshing
+volume all scheme tetmesh proximity layers off
+trimesher surface gradation 1.2
+trimesher volume gradation 1.2
+set tetmesher optimize level 6 overconstrained off sliver off
+set tetmesher interior points on
+set tetmesher boundary recovery off
+
+#{coarse_size = 0.25}
+#{medium_size = 0.125}
+
+# mesh attachement
+volume 3 6 size {coarse_size}
+surface  79 80 81 82 83 84 size {medium_size}
+mesh volume 3 6
+
+# mesh plate
+volume 16 size {coarse_size}
+surface 119 120 121 122 123 124 size {medium_size}
+mesh volume 20
+
+# mesh bolts
+volume 13 15 16 17 18 19 size {medium_size}
+mesh volume 13 15 16 17 18 19
+
+# assign blocks
+block 1 volume 3 6
+block 2 volume 20
+block 3 volume  13 15 16 17 18 19
+block 1 name "component"
+block 2 name "plate"
+block 3 name "bolts"
+block all element type tetra4
+
+# assign nodesets
+nodeset 1 surface 125 127 128 129 130 131 132 134
+nodeset 1 name "base_plate"
+nodeset 2 surface 14 # top of shaft
+nodeset 2 name "loading"
+
+# assign sidesets
+sideset 1 surface 125 127 128 129 130 131 132 134
+sideset 1 name "base_plate_ss"
+sideset 2 surface 14 # top of shaft
+sideset 2 name "loading_ss"
+
+body all scale 0.0254 0.0254 0.0254
+
+#export to genesis
+export mesh "joint_circular_coarse.g"  overwrite
