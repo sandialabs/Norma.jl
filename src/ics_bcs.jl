@@ -561,7 +561,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     end
 
     # Apply boundary condition detail
-    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
 
     # Restore previous state
@@ -570,7 +570,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator.acceleration = saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
 
-    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     return nothing
 end
 
@@ -625,7 +625,7 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
             end
         end
     end
-    copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
+    copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
     return nothing
 end
 
@@ -957,7 +957,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
             end
         end
     end
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     return nothing
 end
 

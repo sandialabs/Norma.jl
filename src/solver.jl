@@ -168,7 +168,7 @@ function create_step(solver_params::Parameters)
     end
 end
 
-function copy_solution_source_targets(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
+function copy_solution_source_to_targets(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     displacement_local = integrator.displacement
     solver.solution = displacement_local
     if model.inclined_support == true
@@ -184,7 +184,7 @@ function copy_solution_source_targets(integrator::QuasiStatic, solver::Solver, m
     return nothing
 end
 
-function copy_solution_source_targets(solver::Solver, model::SolidMechanics, integrator::QuasiStatic)
+function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::QuasiStatic)
     displacement_local = solver.solution
     integrator.displacement = displacement_local
     if model.inclined_support == true
@@ -200,7 +200,7 @@ function copy_solution_source_targets(solver::Solver, model::SolidMechanics, int
     return nothing
 end
 
-function copy_solution_source_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
+function copy_solution_source_to_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
         nodal_displacement = model.current[:, node] - model.reference[:, node]
@@ -213,7 +213,7 @@ function copy_solution_source_targets(model::SolidMechanics, integrator::QuasiSt
     return nothing
 end
 
-function copy_solution_source_targets(integrator::Newmark, solver::Solver, model::SolidMechanics)
+function copy_solution_source_to_targets(integrator::Newmark, solver::Solver, model::SolidMechanics)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
@@ -237,7 +237,7 @@ function copy_solution_source_targets(integrator::Newmark, solver::Solver, model
     return nothing
 end
 
-function copy_solution_source_targets(solver::Solver, model::SolidMechanics, integrator::Newmark)
+function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::Newmark)
     displacement = solver.solution
     integrator.displacement = displacement
     velocity = integrator.velocity
@@ -261,7 +261,7 @@ function copy_solution_source_targets(solver::Solver, model::SolidMechanics, int
     return nothing
 end
 
-function copy_solution_source_targets(model::SolidMechanics, integrator::Newmark, solver::Solver)
+function copy_solution_source_to_targets(model::SolidMechanics, integrator::Newmark, solver::Solver)
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
         nodal_displacement = model.current[:, node] - model.reference[:, node]
@@ -283,7 +283,7 @@ function copy_solution_source_targets(model::SolidMechanics, integrator::Newmark
     return nothing
 end
 
-function copy_solution_source_targets(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
+function copy_solution_source_to_targets(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
@@ -308,7 +308,7 @@ function copy_solution_source_targets(integrator::CentralDifference, solver::Exp
     return nothing
 end
 
-function copy_solution_source_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
+function copy_solution_source_to_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = solver.solution
@@ -333,7 +333,7 @@ function copy_solution_source_targets(solver::ExplicitSolver, model::SolidMechan
     return nothing
 end
 
-function copy_solution_source_targets(model::SolidMechanics, integrator::CentralDifference, solver::ExplicitSolver)
+function copy_solution_source_to_targets(model::SolidMechanics, integrator::CentralDifference, solver::ExplicitSolver)
     num_nodes = size(model.reference, 2)
     for node in 1:num_nodes
         nodal_displacement = model.current[:, node] - model.reference[:, node]
@@ -463,7 +463,7 @@ function backtrack_line_search(
         norma_logf(8, :linesearch, "Line Search [%d] |ΔX| = %.3e", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
-        copy_solution_source_targets(solver, model, integrator)
+        copy_solution_source_to_targets(solver, model, integrator)
         evaluate(integrator, solver, model)
         if model.failed == true
             step_length *= backtrack_factor
@@ -477,7 +477,7 @@ function backtrack_line_search(
         step_length *= backtrack_factor
     end
     solver.solution = initial_solution
-    copy_solution_source_targets(solver, model, integrator)
+    copy_solution_source_to_targets(solver, model, integrator)
     model.compute_stiffness = compute_stiffness
     model.compute_mass = compute_mass
     model.compute_lumped_mass = compute_lumped_mass

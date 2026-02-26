@@ -86,7 +86,7 @@ function create_solver(params::Parameters, model::RomModel)
     end
 end
 
-function copy_solution_source_targets(integrator::DynamicTimeIntegrator, solver::Solver, model::RomModel)
+function copy_solution_source_to_targets(integrator::DynamicTimeIntegrator, solver::Solver, model::RomModel)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
