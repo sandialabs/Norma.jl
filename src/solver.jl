@@ -360,15 +360,19 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     if model.failed == true
         return nothing
     end
+    apply_robin_bcs_internal_force!(model)
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
+    K_robin = build_robin_stiffness(model)
+    K_total = nnz(K_robin) > 0 ? model.stiffness + K_robin : model.stiffness
     if model.inclined_support == true
-        solver.gradient = model.global_transform * (model.internal_force - external_force)
-        solver.hessian = model.global_transform * model.stiffness * model.global_transform'
+        T = model.global_transform
+        solver.gradient = T * (model.internal_force - external_force)
+        solver.hessian = T * K_total * T'
     else
         solver.gradient = model.internal_force - external_force
-        solver.hessian = model.stiffness
+        solver.hessian = K_total
     end
     return nothing
 end
@@ -378,6 +382,7 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     if model.failed == true
         return nothing
     end
+    apply_robin_bcs_internal_force!(model)
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
@@ -394,6 +399,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     if model.failed == true
         return nothing
     end
+    apply_robin_bcs_internal_force!(model)
     integrator.stored_energy = model.strain_energy
     β = integrator.β
     Δt = integrator.time_step
@@ -402,7 +408,8 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     integrator.kinetic_energy = kinetic_energy
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
-    stiffness = model.stiffness
+    K_robin = build_robin_stiffness(model)
+    stiffness = nnz(K_robin) > 0 ? model.stiffness + K_robin : model.stiffness
     if model.inclined_support == true
         global_transform = model.global_transform
         internal_force = global_transform * internal_force
@@ -420,6 +427,7 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     if model.failed == true
         return nothing
     end
+    apply_robin_bcs_internal_force!(model)
     integrator.stored_energy = model.strain_energy
     # Intertial force (local)
     inertial_force = model.lumped_mass .* integrator.acceleration
