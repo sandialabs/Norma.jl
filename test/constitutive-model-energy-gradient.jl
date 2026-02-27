@@ -24,7 +24,7 @@ end
 
     for model in models
         for _ in 1:F_n
-            F = SMatrix{3,3,Float64}(randn(3,3) * 0.1 + I)
+            F = SMatrix{3,3,Float64}(randn(3, 3) * 0.1 + I)
             dWdF = Norma.constitutive(model, F)[2]
             for _ in 1:dF_n
                 dF = SMatrix{3,3,Float64}(randn(9) * 0.1)

@@ -620,7 +620,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     end
 
     # Apply boundary condition detail
-    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
 
     # Restore previous state
@@ -629,7 +629,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator.acceleration = saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
 
-    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     return nothing
 end
 
@@ -684,7 +684,7 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
             end
         end
     end
-    copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
+    copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
     return nothing
 end
 
@@ -877,6 +877,9 @@ function create_bcs(params::Parameters)
             if bc_type == "Dirichlet"
                 boundary_condition = SolidMechanicsDirichletBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "OpInf Dirichlet"
+                boundary_condition = SolidMechanicsOpInfDirichletBC(input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Neumann"
                 boundary_condition = SolidMechanicsNeumannBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
@@ -909,6 +912,16 @@ function create_bcs(params::Parameters)
                 coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
                 coupled_subsim = sim.subsims[coupled_subdomain_index]
                 boundary_condition = SMCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "OpInf Schwarz overlap"
+                sim = params["parent_simulation"]
+                subsim_name = params["name"]
+                subdomain_index = sim.subsim_name_index_map[subsim_name]
+                subsim = sim.subsims[subdomain_index]
+                coupled_subsim_name = bc_setting_params["source"]
+                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
+                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                boundary_condition = SMOpInfCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             else
                 norma_abort("Unknown boundary condition type : $bc_type")
@@ -1006,7 +1019,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
             end
         end
     end
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     return nothing
 end
 
@@ -1023,7 +1036,7 @@ end
 function pair_bc(_::SolidMechanicsRegularBoundaryCondition, _::Int64) end
 
 function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
-    if bc isa SolidMechanicsOverlapSchwarzBoundaryCondition
+    if bc isa SolidMechanicsOverlapSchwarzBoundaryCondition || bc isa SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
         return nothing
     end
     coupled_bc_name = bc.coupled_bc_name

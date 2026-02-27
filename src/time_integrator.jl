@@ -195,18 +195,18 @@ function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechani
 end
 
 function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     return nothing
 end
 
 function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    copy_solution_source_targets(solver, model, integrator)
+    copy_solution_source_to_targets(solver, model, integrator)
     return nothing
 end
 
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     free = model.free_dofs
     evaluate(model, integrator, solver)
     if model.failed == true
@@ -225,12 +225,12 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     atol = solver.linear_solver_absolute_tolerance
     rtol = solver.linear_solver_relative_tolerance
     integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
-    copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
 
 function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     free = model.free_dofs
     fixed = .!free
     Δt = integrator.time_step
@@ -245,7 +245,7 @@ function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     v_pre[free] = v[free] += (1.0 - γ) * Δt * a[free]
     u_pre[fixed] = u[fixed]
     v_pre[fixed] = v[fixed]
-    copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
 
@@ -259,13 +259,13 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
     v_pre = integrator.velo_pre
     integrator.acceleration[free] = (u[free] - u_pre[free]) / β / Δt / Δt
     integrator.velocity[free] = v_pre[free] + γ * Δt * integrator.acceleration[free]
-    copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
 
 function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
     evaluate(model, integrator, solver)
@@ -283,12 +283,12 @@ function initialize(integrator::CentralDifference, solver::ExplicitSolver, model
     integrator.stored_energy = model.strain_energy
     inertial_force = external_force - internal_force
     integrator.acceleration[free] = inertial_force[free] ./ model.lumped_mass[free]
-    copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
 
 function predict(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     free = model.free_dofs
     set_time_step(integrator, model)
     Δt = integrator.time_step
@@ -298,7 +298,7 @@ function predict(integrator::CentralDifference, solver::ExplicitSolver, model::S
     a = integrator.acceleration
     u[free] += Δt * v[free] + 0.5 * Δt * Δt * a[free]
     v[free] += (1.0 - γ) * Δt * a[free]
-    copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
 
@@ -308,7 +308,7 @@ function correct(integrator::CentralDifference, solver::ExplicitSolver, model::S
     a = integrator.acceleration = solver.solution
     free = model.free_dofs
     integrator.velocity[free] += γ * Δt * a[free]
-    copy_solution_source_targets(integrator, solver, model)
+    copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
 

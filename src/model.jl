@@ -9,7 +9,7 @@ include("constitutive.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
-using Base.Threads: @threads, threadid, nthreads
+using Base.Threads: @threads, threadid, nthreads, maxthreadid
 
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
@@ -68,7 +68,8 @@ function SolidMechanics(params::Parameters)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
     stress = Vector{Vector{Vector{Vector{Float64}}}}()
-    states = Vector{Vector{Vector{Vector{Float64}}}}()
+    state_old = Vector{Vector{Vector{Vector{Float64}}}}()
+    state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
@@ -83,22 +84,23 @@ function SolidMechanics(params::Parameters)
             point_init_state = Vector{Float64}()
         end
         block_stress = Vector{Vector{Vector{Float64}}}()
-        block_states = Vector{Vector{Vector{Float64}}}()
+        block_state = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
         for _ in 1:num_block_elements
             element_stress = Vector{Vector{Float64}}()
-            element_states = Vector{Vector{Float64}}()
+            element_state = Vector{Vector{Float64}}()
             for _ in 1:num_points
                 push!(element_stress, zeros(6))
-                push!(element_states, point_init_state)
+                push!(element_state, point_init_state)
             end
             push!(block_stress, element_stress)
-            push!(block_states, element_states)
+            push!(block_state, element_state)
             element_stored_energy = 0.0
             push!(block_stored_energy, element_stored_energy)
         end
         push!(stress, block_stress)
-        push!(states, block_states)
+        push!(state_old, block_state)
+        push!(state, block_state)
         push!(stored_energy, block_stored_energy)
     end
     strain_energy = 0.0
@@ -125,7 +127,8 @@ function SolidMechanics(params::Parameters)
         internal_force,
         boundary_force,
         boundary_conditions,
-        states,
+        state_old,
+        state,
         stress,
         stored_energy,
         strain_energy,
@@ -161,7 +164,8 @@ function create_model(params::Parameters)
         return QuadraticOpInfRom(params)
     elseif model_name == "cubic opinf rom"
         return CubicOpInfRom(params)
-
+    elseif model_name == "neural network opinf rom"
+        return NeuralNetworkOpInfRom(params)
     else
         norma_abort("Unknown type of model : $model_name")
     end
@@ -261,6 +265,12 @@ function voigt_cauchy_from_stress(_::Solid, P::SMatrix{3,3,Float64,9}, F::SMatri
 end
 
 function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
+    return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
+end
+
+function voigt_cauchy_from_stress(
+    _::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64
+)
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
@@ -397,40 +407,35 @@ function merge_threadlocal_coo_matrices(coo_matrices::Vector{COOMatrix}, num_dof
     return sparse(rows, cols, vals, num_dof, num_dof)
 end
 
+using Base.Threads
+
 function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T,N}
-    local_mats = Vector{typeof(create_element_matrix(T, Val(N)))}(undef, nthreads())
-    for i in 1:nthreads()
-        local_mats[i] = create_element_matrix(T, Val(N))
-    end
-    return local_mats
+    return [create_element_matrix(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
 
 function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
-    local_vecs = Vector{typeof(create_element_vector(T, Val(N)))}(undef, nthreads())
-    for i in 1:nthreads()
-        local_vecs[i] = create_element_vector(T, Val(N))
-    end
-    return local_vecs
+    return [create_element_vector(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
 
-function create_threadlocal_coo_vectors(num_dofs::Int64)
-    nthreads = Threads.nthreads()
-    capacity = ceil(Int64, num_dofs / nthreads)
-    coo_vectors = Vector{COOVector}(undef, nthreads)
-    for i in 1:nthreads
-        coo_vectors[i] = create_coo_vector(capacity)
-    end
-    return coo_vectors
+function create_threadlocal_coo_vectors(num_dofs::Integer)
+    nd = Threads.threadpoolsize(:default)
+    ni = Threads.threadpoolsize(:interactive)
+    n_total = nd + ni
+    cap_default = cld(num_dofs, nd)
+    cap_interactive = max(1, cap_default ÷ 8)  # or just use cap_default everywhere
+
+    return [i <= nd ? create_coo_vector(cap_default) :
+                     create_coo_vector(cap_interactive) for i in 1:n_total]
 end
 
-function create_threadlocal_coo_matrices(coo_matrix_nnz::Int64)
-    nthreads = Threads.nthreads()
-    capacity = ceil(Int64, coo_matrix_nnz / nthreads)
-    coo_matrices = Vector{COOMatrix}(undef, nthreads)
-    for i in 1:nthreads
-        coo_matrices[i] = create_coo_matrix(capacity)
-    end
-    return coo_matrices
+function create_threadlocal_coo_matrices(coo_matrix_nnz::Integer)
+    nd = Threads.threadpoolsize(:default)
+    ni = Threads.threadpoolsize(:interactive)
+    cap_default     = cld(coo_matrix_nnz, nd)
+    cap_interactive = max(1, cap_default ÷ 8)   # or just use cap_default
+
+    return [i <= nd ? create_coo_matrix(cap_default) :
+                      create_coo_matrix(cap_interactive) for i in 1:(nd + ni)]
 end
 
 function add_internal_force!(Fi::MVector{M,T}, grad_op::SMatrix{9,M,T}, stress::SVector{9,T}, dV::T) where {M,T}
@@ -486,7 +491,7 @@ end
 function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags)
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
-    energy = zeros(nthreads())
+    energy = zeros(maxthreadid())
     internal_force = create_threadlocal_coo_vectors(num_dofs)
 
     lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
@@ -514,7 +519,7 @@ end
 
 function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
     valN = Val(num_element_nodes)
-    energy = zeros(nthreads())
+    energy = zeros(maxthreadid())
     dofs = create_threadlocal_element_vectors(Int64, valN)
     internal_force = create_threadlocal_element_vectors(Float64, valN)
     lumped_mass = create_threadlocal_element_vectors(Float64, flags.compute_lumped_mass ? valN : Val(0))
@@ -667,8 +672,13 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
-                state = model.states[block_index][block_element_index][point]
-                W, P, AA = constitutive(material, F)
+                state = model.state[block_index][block_element_index][point]
+                if material isa (Elastic)
+                    W, P, AA = constitutive(material, F)
+                else
+                    W, P, AA, state_new = constitutive(material, F, state)
+                    model.state[block_index][block_element_index][point] = state_new
+                end
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)
                 dvol = det_dXdξ * ip_weight
