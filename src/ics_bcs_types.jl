@@ -96,8 +96,6 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     variational::Bool
 end
 
-#IKT 6/5/2025: keep the following routine for both DN and RR BCs for non-overlap Schwarz.  
-#We may need to add some variables for Robin-Robin.
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
@@ -112,6 +110,23 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     neumann_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
+    variational::Bool
+end
+
+mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+    name::String
+    side_set_id::Int64
+    side_set_node_indices::Vector{Int64}
+    num_nodes_sides::Vector{Int64}
+    local_from_global_map::Dict{Int64,Int64}
+    global_from_local_map::Vector{Int64}
+    coupled_subsim::Simulation
+    coupled_bc_name::String
+    coupled_bc_index::Int64
+    dirichlet_projector::Matrix{Float64}
+    neumann_projector::Matrix{Float64}
+    interface_mass::Matrix{Float64}
+    robin_parameter::Float64
     variational::Bool
 end
 include("opinf/opinf_ics_bcs_types.jl")

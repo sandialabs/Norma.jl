@@ -802,14 +802,13 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if !(
-                bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
-                bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-            )
-                continue
+            if bc isa SolidMechanicsRobinSchwarzBoundaryCondition
+                compute_robin_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
+                   bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+                compute_dirichlet_projector(subsim.model, bc)
+                compute_neumann_projector(subsim.model, bc)
             end
-            compute_dirichlet_projector(subsim.model, bc)
-            compute_neumann_projector(subsim.model, bc)
         end
     end
 end
