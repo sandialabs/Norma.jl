@@ -1,0 +1,140 @@
+## /Applications/Cubit-15.4/Cubit.app/Contents/MacOS/Cubitx
+## Cubit Version 15.4b
+## Cubit Build 411243
+## Revised 2017-11-14 09:08:51 -0700 (Tue, 14 Nov 2017)
+## Running 12/16/2017 04:52:15 PM
+## Command Options:
+#{gauge_mesh = 0.02}
+#{transition_mesh = 0.02}
+#{grip_mesh = 0.10}
+#{radius = 62501./2000.}
+#{deltaY = 125./62501.}
+#{deltaZ = 1./125002.}
+#{off = 0.001}
+
+create cylinder height 3.5 radius 0.25
+rotate volume 1 angle 90 about x include_merged
+move volume 1 y 1.75 include_merged
+
+# webcut volumes for waisting
+webcut volume all with plane yplane offset {1.5}
+webcut volume all with plane yplane offset {2.0}
+
+# waist the gauge section
+create torus major radius {0.15 - off + radius} minor radius {radius}
+rotate volume 4 angle 90 about x include_merged
+move volume 4 y {(1.0 + 2.5)/2.0} include_merged
+subtract volume 4 from volume 2
+
+# create transitions to gauge section
+create torus major radius {0.40 - deltaZ} minor radius 0.25
+rotate volume 5 angle 90 about x include_merged
+move volume 5 y {2.0 - deltaY} include_merged
+
+subtract volume 5 from volume 3
+
+create torus major radius {0.40 - deltaZ} minor radius 0.25
+rotate volume 6 angle 90 about x
+move volume 6 y {1.5+deltaY} include_merged
+subtract volume 6 from volume 1
+
+# create volume in the grips to enable better tet transitions
+webcut volume all with plane yplane offset 1.0
+webcut volume all with plane yplane offset 2.5
+
+# webcutting more for hexes
+webcut volume all with plane zplane offset 0
+webcut volume all with plane xplane offset 0
+webcut volume 17 22 12 7 with plane vertex 47 vertex 127 vertex 50
+webcut volume 21 16 3 11 with plane vertex 118 vertex 36 vertex 74
+
+# webcut the mid-plane for visualization - midplane of localization
+webcut volume all with plane yplane offset 1.75
+
+imprint all
+merge all
+
+# declare blocks and nodesets
+## upper specimen
+#block 1 volume 34 32 33 35 16 3 11 21 30 31 28 29 8 13 23 18  
+## lower specimen
+#block 2 volume 1 2 9 24 10 22 25 12 17 15 27 19 20 26 14 7 
+
+# Need to duplicate block descriptions for overlap in Schwarz
+set duplicate block elements on 
+
+block 1 volume 30 29 28 31 26 25 24 27 11 21 16 3 7 12 22 17 14 1 9 19 8 13 18 23
+block 2 volume 11 21 16 3 7 12 22 17 2 10 20 15 34 35 33 32 
+block 3 volume 30 29 28 31 26 25 24 27 11 21 16 3 7 12 22 17 14 1 9 19 8 13 18 23
+block 3 volume 11 21 16 3 7 12 22 17 2 10 20 15 34 35 33 32
+block 1 name "ends"
+block 2 name "gauge"
+block 3 name "tension"
+
+nodeset 1 surface 137 85 77 133 
+nodeset 1 name "lower_grip"
+
+nodeset 2 surface 121 129 177 181 
+nodeset 2 name "upper_grip"
+
+nodeset 3 surface 139 84 132 78 
+nodeset 3 name "lower_end"
+
+nodeset 4 surface 178 124 126 180
+nodeset 4 name "upper_end"
+
+nodeset 5 surface 146 94 88 144
+nodeset 5 name "schwarz_lower_gauge"
+
+nodeset 6 surface 142 90 148 92
+nodeset 6 name "schwarz_upper_gauge"
+
+nodeset 7 surface 196 202 184 190
+nodeset 7 name "schwarz_lower_transition"
+
+nodeset 8 surface 226 208 214 220 
+nodeset 8 name "schwarz_upper_transition"
+
+# mesh gauge
+volume 2 10 20 15 34 35 33 32 size {gauge_mesh}
+volume 2 10 20 15 34 35 33 32 scheme auto
+mesh volume 2 10 20 15 34 35 33 32
+
+# mesh transitions
+volume 11 21 16 3 size {gauge_mesh}
+volume 11 21 16 3 scheme auto
+mesh volume 11 21 16 3
+volume 7 12 22 17 size {gauge_mesh}
+volume 7 12 22 17 scheme auto
+mesh volume 7 12 22 17
+
+# mesh before grips
+volume 30 29 28 31 size {gauge_mesh*1.5}
+volume 30 29 28 31 scheme auto
+mesh volume 30 29 28 31
+volume 26 25 24 27 size {gauge_mesh*1.5}
+volume 26 25 24 27 scheme auto
+mesh volume 26 25 24 27
+
+# mesh grips
+curve 91 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 60
+curve 18 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 17
+curve 177 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 102
+curve 20 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 13
+curve 80 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 34
+curve 249 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 121
+curve 78 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 15
+curve 163 scheme bias fine size {gauge_mesh*2.0} coarse size {gauge_mesh*10.0} start vertex 73
+volume 14 1 9 19 scheme auto
+mesh volume 14 1 9 19
+volume 8 13 18 23 scheme auto
+mesh volume 8 13 18 23
+
+volume all scale 0.0254 0.0254 0.0254
+
+set exodus netcdf4 off
+set large exodus file on
+
+export mesh "tension_hexes.g" block 3 overwrite
+export mesh "gauge_hexes.g" block 2 overwrite
+export mesh "ends_hexes.g" block 1 overwrite

@@ -96,6 +96,41 @@ function SolidMechanicsNeumannPressureBoundaryCondition(input_mesh::ExodusDataba
     )
 end
 
+function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
+    side_set_name = bc_params["side set"]
+    expression = bc_params["function"]
+    offset = component_offset_from_string(bc_params["component"])
+    alpha = bc_params["alpha"]
+    beta = bc_params["beta"]
+    tol = 1.0e-10
+    if (abs(alpha) < tol) 
+        norma_abort(
+                "The alpha parameter is numerically 0!  Robin BC is equivalent " *
+                "to Dirichlet BC.  Please use Dirichlet BC in input file.")
+    end 
+    if (abs(beta) < tol) 
+        norma_abort(
+                "The beta parameter is numerically 0!  Robin BC is equivalent " *
+                "to Neumann BC.  Please use Neumann BC in input file.")
+    end 
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    side_set_node_indices = Int64.(side_set_node_indices)
+
+    # Build symbolic expressions
+    rhs_num = eval(Meta.parse(expression))
+
+    # Compile them into functions
+    rhs_fun = eval(build_function(rhs_num, [t, x, y, z]; expression=Val(false)))
+ 
+    #We want to set alpha*traction + beta*disp = rhs_fun
+    return SolidMechanicsRobinBoundaryCondition(
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, 
+        rhs_fun, alpha, beta
+    )
+end
+
+
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
@@ -323,6 +358,68 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
         end
     end
 end
+
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryCondition)
+    ss_node_index = 1
+    for side in bc.num_nodes_per_side
+        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+        side_coordinates = model.reference[:, side_nodes]
+        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
+        nodal_force_component *= 1.0 / bc.alpha
+        ss_node_index += side
+        side_node_index = 1
+        for node_index in side_nodes
+            dof_index = 3 * (node_index - 1) + bc.offset
+            model.boundary_force[dof_index] += nodal_force_component[side_node_index]
+            side_node_index += 1
+        end
+    end
+end
+
+function apply_robin_bcs_internal_force!(model::SolidMechanics)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsRobinBoundaryCondition || continue
+        ss_node_index = 1
+        for side in bc.num_nodes_per_side
+            side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+            side_coordinates = model.reference[:, side_nodes]
+            K_side = (bc.beta / bc.alpha) * get_side_set_nodal_stiffness(side_coordinates, model.time)
+            ss_node_index += side
+            for (i, node_i) in enumerate(side_nodes)
+                dof_i = 3 * (node_i - 1) + bc.offset
+                for (j, node_j) in enumerate(side_nodes)
+                    u_j = model.current[bc.offset, node_j] - model.reference[bc.offset, node_j]
+                    model.internal_force[dof_i] += K_side[i, j] * u_j
+                end
+            end
+        end
+    end
+end
+
+function build_robin_stiffness(model::SolidMechanics)
+    num_nodes = size(model.reference, 2)
+    num_dofs = 3 * num_nodes
+    K_robin = spzeros(num_dofs, num_dofs)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsRobinBoundaryCondition || continue
+        ss_node_index = 1
+        for side in bc.num_nodes_per_side
+            side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+            side_coordinates = model.reference[:, side_nodes]
+            K_side = (bc.beta / bc.alpha) * get_side_set_nodal_stiffness(side_coordinates, model.time)
+            ss_node_index += side
+            for (i, node_i) in enumerate(side_nodes)
+                dof_i = 3 * (node_i - 1) + bc.offset
+                for (j, node_j) in enumerate(side_nodes)
+                    dof_j = 3 * (node_j - 1) + bc.offset
+                    K_robin[dof_i, dof_j] += K_side[i, j]
+                end
+            end
+        end
+    end
+    return K_robin
+end
+
 
 function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     e1 = @SVector [1.0, 0.0, 0.0]
@@ -561,7 +658,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     end
 
     # Apply boundary condition detail
-    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
 
     # Restore previous state
@@ -570,7 +667,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator.acceleration = saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
 
-    copy_solution_source_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     return nothing
 end
 
@@ -625,7 +722,7 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
             end
         end
     end
-    copy_solution_source_targets(subsim.model, subsim.integrator, subsim.solver)
+    copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
     return nothing
 end
 
@@ -827,6 +924,9 @@ function create_bcs(params::Parameters)
             elseif bc_type == "Neumann pressure"
                 boundary_condition = SolidMechanicsNeumannPressureBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "Robin"
+                boundary_condition = SolidMechanicsRobinBoundaryCondition(input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
                 sim = params["parent_simulation"]
                 sim.controller.schwarz_contact = true
@@ -957,7 +1057,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
             end
         end
     end
-    copy_solution_source_targets(model, integrator, solver)
+    copy_solution_source_to_targets(model, integrator, solver)
     return nothing
 end
 

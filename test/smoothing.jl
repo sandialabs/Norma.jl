@@ -59,7 +59,7 @@ tet_first_node = [1]
     @test a1 ≈ a6 atol = 1.0e-12
 
     rand_tests = 10
-    for _ = 1:rand_tests
+    for _ in 1:rand_tests
         random_tet = reg_tet_coords + Random.randn(3, 4) * 0.1 * a
         random_tet_vol = det(random_tet[:, 2:4] .- random_tet[:, 1]) / 6.0
         random_tet_edl =
@@ -74,8 +74,7 @@ tet_first_node = [1]
         a_eqvol = norm(ref_tet_eqvol[:, 1] - ref_tet_eqvol[:, 2])
         @test random_tet_vol ≈ a_eqvol^3 / 6.0 / sqrt(2.0) atol = 1.0e-12
 
-        ref_tet_eqedl =
-            Norma.create_smooth_reference("average edge length", Norma.TETRA4, random_tet);
+        ref_tet_eqedl = Norma.create_smooth_reference("average edge length", Norma.TETRA4, random_tet);
         a_eqedl = norm(ref_tet_eqedl[:, 1] - ref_tet_eqedl[:, 2])
         @test random_tet_edl ≈ 6 * a_eqedl atol = 1.0e-12
 
@@ -87,24 +86,15 @@ base_params = Dict{String,Any}(
     "type" => "single",
     "model" => Dict{String,Any}(
         "material" => Dict{String,Any}(
-            "elastic" => Dict{String,Any}(
-                "model" => "seth-hill",
-                "m" => 2,
-                "n" => 2,
-                "density" => 1.0,
-            ),
+            "elastic" => Dict{String,Any}("model" => "seth-hill", "m" => 2, "n" => 2, "density" => 1.0),
             "blocks" => Dict{String,Any}("block" => "elastic"),
         ),
         "type" => "mesh smoothing",
     ),
     "Exodus output interval" => 0,
     "CSV output interval" => 0,
-    "time integrator" => Dict{String,Any}(
-        "type" => "quasi static",
-        "initial time" => 0.0,
-        "final time" => 1.0,
-        "time step" => 1.0e-1,
-    ),
+    "time integrator" =>
+        Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0e-1),
     "solver" => Dict{String,Any}(
         "step" => "steepest descent",
         "type" => "steepest descent",
@@ -120,7 +110,6 @@ base_params = Dict{String,Any}(
     ),
 )
 
-
 input_mesh_file = "tet_smoothing.g"
 output_mesh_file = "tet_smoothing.e"
 
@@ -135,12 +124,11 @@ output_mesh_file = "tet_smoothing.e"
     t = sqrt(3) / 2 * a
     h = sqrt(2.0 / 3.0) * a
     top_xy_disp = Random.rand(2) * a * 0.1
-    tet_coords =
-        reg_tet_coords + [
-            0.0 0.0 0.0 top_xy_disp[1]
-            0.0 0.0 0.0 top_xy_disp[2]
-            0.0 0.0 0.0 0.0
-        ]
+    tet_coords = reg_tet_coords + [
+        0.0 0.0 0.0 top_xy_disp[1]
+        0.0 0.0 0.0 top_xy_disp[2]
+        0.0 0.0 0.0 0.0
+    ]
 
     node_sets = Dict{String,Vector}("base" => tet_base)
 
@@ -187,21 +175,9 @@ output_mesh_file = "tet_smoothing.e"
                 "output mesh file" => output_mesh_file,
                 "boundary conditions" => Dict{String,Any}(
                     "Dirichlet" => [
-                        Dict{String,Any}(
-                            "node set" => "base",
-                            "component" => "x",
-                            "function" => "0.0",
-                        ),
-                        Dict{String,Any}(
-                            "node set" => "base",
-                            "component" => "y",
-                            "function" => "0.0",
-                        ),
-                        Dict{String,Any}(
-                            "node set" => "base",
-                            "component" => "z",
-                            "function" => "0.0",
-                        ),
+                        Dict{String,Any}("node set" => "base", "component" => "x", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "base", "component" => "y", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "base", "component" => "z", "function" => "0.0"),
                     ],
                 ),
             ),
@@ -229,12 +205,11 @@ output_mesh_file = "tet_smoothing.e"
     top_z_disp = Random.rand() * a * 0.1
     front_x_disp = t * h / (h + top_z_disp) - t
     top_x_disp = front_x_disp / 3
-    tet_coords =
-        reg_tet_coords + [
-            0.0 0.0 front_x_disp top_x_disp
-            0.0 0.0 0.0 0
-            0.0 0.0 0.0 top_z_disp
-        ]
+    tet_coords = reg_tet_coords + [
+        0.0 0.0 front_x_disp top_x_disp
+        0.0 0.0 0.0 0
+        0.0 0.0 0.0 top_z_disp
+    ]
 
     node_sets = Dict{String,Vector}("base" => tet_base, "back edge" => tet_back_edge)
 
@@ -281,21 +256,9 @@ output_mesh_file = "tet_smoothing.e"
                 "output mesh file" => output_mesh_file,
                 "boundary conditions" => Dict{String,Any}(
                     "Dirichlet" => [
-                        Dict{String,Any}(
-                            "node set" => "back edge",
-                            "component" => "x",
-                            "function" => "0.0",
-                        ),
-                        Dict{String,Any}(
-                            "node set" => "back edge",
-                            "component" => "y",
-                            "function" => "0.0",
-                        ),
-                        Dict{String,Any}(
-                            "node set" => "base",
-                            "component" => "z",
-                            "function" => "0.0",
-                        ),
+                        Dict{String,Any}("node set" => "back edge", "component" => "x", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "back edge", "component" => "y", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "base", "component" => "z", "function" => "0.0"),
                     ],
                 ),
             ),
@@ -306,8 +269,7 @@ output_mesh_file = "tet_smoothing.e"
 
         sim = Norma.run(tet_test_params)
 
-        @test sim.integrator.displacement ≈
-              [0; 0; 0; 0; 0; 0; -front_x_disp; 0; 0; -top_x_disp; 0; -top_z_disp] atol =
+        @test sim.integrator.displacement ≈ [0; 0; 0; 0; 0; 0; -front_x_disp; 0; 0; -top_x_disp; 0; -top_z_disp] atol =
             a*1.0e-6
     finally
         if isfile(input_mesh_file)
@@ -317,7 +279,7 @@ output_mesh_file = "tet_smoothing.e"
             rm(output_mesh_file)
         end
     end
-    
+
     # This test creates a tetrahedron from a regular tetrahedron with a base
     # triangle in the xy-plane by applying equal uniaxial xy deformation gradients
     # to all vertices and then adjusting the z coordinate of the top vertex to
@@ -327,14 +289,15 @@ output_mesh_file = "tet_smoothing.e"
 
     xy_strain_init = Random.rand() * 0.1
     tet_coords =
-        diagm([1+xy_strain_init, 1+xy_strain_init, 1]) * (reg_tet_coords .- reg_tet_coords[:, 1]) .+ 
+        diagm([1+xy_strain_init, 1+xy_strain_init, 1]) * (reg_tet_coords .- reg_tet_coords[:, 1]) .+
         reg_tet_coords[:, 1]
-    total_edge_l = norm(tet_coords[:, 1] - tet_coords[:, 2]) +
-                   norm(tet_coords[:, 1] - tet_coords[:, 3]) +
-                   norm(tet_coords[:, 1] - tet_coords[:, 4]) +
-                   norm(tet_coords[:, 2] - tet_coords[:, 3]) +
-                   norm(tet_coords[:, 2] - tet_coords[:, 4]) +
-                   norm(tet_coords[:, 3] - tet_coords[:, 4])
+    total_edge_l =
+        norm(tet_coords[:, 1] - tet_coords[:, 2]) +
+        norm(tet_coords[:, 1] - tet_coords[:, 3]) +
+        norm(tet_coords[:, 1] - tet_coords[:, 4]) +
+        norm(tet_coords[:, 2] - tet_coords[:, 3]) +
+        norm(tet_coords[:, 2] - tet_coords[:, 4]) +
+        norm(tet_coords[:, 3] - tet_coords[:, 4])
     xyz_scale = 6*a / total_edge_l
     tet_coords = xyz_scale * (tet_coords .- tet_coords[:, 1]) .+ tet_coords[:, 1]
 
@@ -383,21 +346,9 @@ output_mesh_file = "tet_smoothing.e"
                 "output mesh file" => output_mesh_file,
                 "boundary conditions" => Dict{String,Any}(
                     "Dirichlet" => [
-                        Dict{String,Any}(
-                            "node set" => "back edge",
-                            "component" => "x",
-                            "function" => "0.0",
-                        ),
-                        Dict{String,Any}(
-                            "node set" => "first node",
-                            "component" => "y",
-                            "function" => "0.0",
-                        ),
-                        Dict{String,Any}(
-                            "node set" => "base",
-                            "component" => "z",
-                            "function" => "0.0",
-                        ),
+                        Dict{String,Any}("node set" => "back edge", "component" => "x", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "first node", "component" => "y", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "base", "component" => "z", "function" => "0.0"),
                     ],
                 ),
             ),
