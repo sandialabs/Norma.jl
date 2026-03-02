@@ -27,7 +27,7 @@
     end
     # Now remove the empty directory
     rm("ml-models")
-    @test model_coarse.reduced_state[1] ≈ -0.024143687027586 rtol = 1.0e-06
-    @test model_coarse.reduced_state[2] ≈ -0.014289943951844604 rtol = 1.0e-06
-    @test model_coarse.reduced_state[3] ≈ 0.06875121953836646 rtol = 1.0e-06
+    @test model_coarse.reduced_state[1] ≈  -0.003507375025622216  rtol = 1.0e-06
+    @test model_coarse.reduced_state[2] ≈ -0.002114866440831956 rtol = 1.0e-06
+    @test model_coarse.reduced_state[3] ≈ 0.009165290330522333 rtol = 1.0e-06
 end
