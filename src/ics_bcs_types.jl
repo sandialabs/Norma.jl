@@ -43,8 +43,6 @@ mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBo
 end
 
 mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
-    #IKT 6/5/2025: this is for now a copy of the NeumannBoundaryCondition struct
-    #IKT TODO: add disp_fun::Function
     name::String
     offset::Int64
     side_set_id::Int64
@@ -54,9 +52,6 @@ mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoun
     robin_parameter::Float64
 end
 
-#IKT 6/9/2025 TODO: check with Alejandro if want to have separate NeumannPressure struct
-#or integrate it into the Neumann struct.  The latter is possible and avoids some
-#code duplication.
 mutable struct SolidMechanicsNeumannPressureBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     side_set_id::Int64
@@ -128,5 +123,5 @@ mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCoup
     robin_parameter::Float64
     variational::Bool
 end
-include("opinf/opinf_ics_bcs_types.jl")
 
+include("opinf/opinf_ics_bcs_types.jl")
