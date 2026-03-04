@@ -116,12 +116,12 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
     rhs_num = eval(Meta.parse(expression))
 
     # Compile them into functions
-    rhs_fun = eval(build_function(rhs_num, [t, x, y, z]; expression=Val(false)))
+    traction_fun = eval(build_function(rhs_num, [t, x, y, z]; expression=Val(false)))
  
-    #We want to set traction + robin_parameter * disp = rhs_fun
+    #We want to set traction + robin_parameter * disp = traction_fun
     return SolidMechanicsRobinBoundaryCondition(
         side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, 
-        rhs_fun, robin_parameter
+        traction_fun, robin_parameter
     )
 end
 
@@ -371,7 +371,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCond
     end
 end
 
-function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondition)
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannRobinBoundaryCondition)
     ss_node_index = 1
     for side in bc.num_nodes_per_side
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
@@ -380,10 +380,9 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannBoundaryCondit
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes
-            bc_val = nodal_force_component[side_node_index]
-            side_node_index += 1
             dof_index = 3 * (node_index - 1) + bc.offset
-            model.boundary_force[dof_index] += bc_val
+            model.boundary_force[dof_index] += nodal_force_component[side_node_index]
+            side_node_index += 1
         end
     end
 end
@@ -399,22 +398,6 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
         for node_index in side_nodes
             dof_indices = [3 * node_index - 2, 3 * node_index - 1, 3 * node_index]
             model.boundary_force[dof_indices] += nodal_force_component[:, side_node_index]
-            side_node_index += 1
-        end
-    end
-end
-
-function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryCondition)
-    ss_node_index = 1
-    for side in bc.num_nodes_per_side
-        side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
-        side_coordinates = model.reference[:, side_nodes]
-        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
-        ss_node_index += side
-        side_node_index = 1
-        for node_index in side_nodes
-            dof_index = 3 * (node_index - 1) + bc.offset
-            model.boundary_force[dof_index] += nodal_force_component[side_node_index]
             side_node_index += 1
         end
     end

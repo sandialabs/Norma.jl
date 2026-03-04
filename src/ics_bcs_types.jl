@@ -8,6 +8,7 @@ abstract type BoundaryCondition end
 abstract type InitialCondition end
 abstract type SolidMechanicsBoundaryCondition <: BoundaryCondition end
 abstract type SolidMechanicsRegularBoundaryCondition <: SolidMechanicsBoundaryCondition end
+abstract type SolidMechanicsNeumannRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition end
 abstract type SolidMechanicsSchwarzBoundaryCondition <: SolidMechanicsBoundaryCondition end
 abstract type SolidMechanicsCouplingSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition end
 
@@ -33,7 +34,7 @@ mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanic
     reference_funs::Vector{Function}
 end
 
-mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
     name::String
     offset::Int64
     side_set_id::Int64
@@ -42,13 +43,13 @@ mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBo
     traction_fun::Function
 end
 
-mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
     name::String
     offset::Int64
     side_set_id::Int64
     num_nodes_per_side::Vector{Int64}
     side_set_node_indices::Vector{Int64}
-    rhs_fun::Function
+    traction_fun::Function
     robin_parameter::Float64
 end
 
