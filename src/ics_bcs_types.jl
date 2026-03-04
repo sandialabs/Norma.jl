@@ -125,7 +125,7 @@ mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCoup
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
-    interface_mass::Matrix{Float64}
+    square_projector::Matrix{Float64}
     robin_parameter::Float64
     variational::Bool
 end

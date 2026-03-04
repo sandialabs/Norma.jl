@@ -239,7 +239,7 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
-    interface_mass = Matrix{Float64}(undef, 0, 0)
+    square_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
@@ -255,7 +255,7 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
         coupled_bc_index,
         dirichlet_projector,
         neumann_projector,
-        interface_mass,
+        square_projector,
         robin_parameter,
         variational,
     )
@@ -579,7 +579,7 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBoundaryCondition)
     α = bc.robin_parameter
-    W = bc.interface_mass
+    W = bc.square_projector
     # Neumann part of Robin RHS: -t_src projected (= get_dst_force which negates internal_force)
     neumann_force = get_dst_force(bc)
     # Displacement part of Robin RHS: α * W * u_src_projected
@@ -1194,7 +1194,7 @@ function compute_robin_schwarz_projectors!(
 )
     compute_dirichlet_projector(dst_model, dst_bc)
     compute_neumann_projector(dst_model, dst_bc)
-    dst_bc.interface_mass = get_square_projection_matrix(dst_model, dst_bc)
+    dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     return nothing
 end
 
@@ -1205,7 +1205,7 @@ function build_robin_schwarz_stiffness(model::SolidMechanics)
     for bc in model.boundary_conditions
         bc isa SolidMechanicsRobinSchwarzBoundaryCondition || continue
         α = bc.robin_parameter
-        W = bc.interface_mass
+        W = bc.square_projector
         global_from_local_map = bc.global_from_local_map
         for (i_local, i_global) in enumerate(global_from_local_map)
             for (j_local, j_global) in enumerate(global_from_local_map)
