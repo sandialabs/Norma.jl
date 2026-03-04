@@ -51,8 +51,7 @@ mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsRegularBoun
     num_nodes_per_side::Vector{Int64}
     side_set_node_indices::Vector{Int64}
     rhs_fun::Function
-    alpha::Float64
-    beta::Float64
+    robin_parameter::Float64
 end
 
 #IKT 6/9/2025 TODO: check with Alejandro if want to have separate NeumannPressure struct

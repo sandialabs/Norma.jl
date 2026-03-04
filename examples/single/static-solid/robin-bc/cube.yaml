@@ -32,11 +32,10 @@ boundary conditions:
   Robin:
     - side set: ssz+
       component: z
-      # BC: alpha * traction_z + beta * disp_z = function(t, x, y, z)
-      # With alpha=1, beta=E=1e9, g=1e6*t:
-      #   eps_z = g / (alpha*E + beta) = 1e6 / (1e9 + 1e9) = 5e-4
-      alpha: 1.0
-      beta: 1.0e+09
+      # BC: traction_z + robin_parameter * disp_z = function(t, x, y, z)
+      # With robin_parameter = E = 1e9, g = 1e6*t:
+      #   eps_z = g / (E + robin_parameter) = 1e6 / (1e9 + 1e9) = 5e-4
+      robin parameter: 1.0e+09
       function: "1.0e+06 * t"
 solver:
   type: Hessian minimizer

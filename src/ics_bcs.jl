@@ -100,18 +100,12 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
     offset = component_offset_from_string(bc_params["component"])
-    alpha = bc_params["alpha"]
-    beta = bc_params["beta"]
-    tol = 1.0e-10
-    if (abs(alpha) < tol) 
+    robin_parameter = bc_params["robin parameter"]
+    tol = 1.0e-16
+    if (abs(robin_parameter) < tol) 
         norma_abort(
-                "The alpha parameter is numerically 0!  Robin BC is equivalent " *
-                "to Dirichlet BC.  Please use Dirichlet BC in input file.")
-    end 
-    if (abs(beta) < tol) 
-        norma_abort(
-                "The beta parameter is numerically 0!  Robin BC is equivalent " *
-                "to Neumann BC.  Please use Neumann BC in input file.")
+                "The robin parameter is close to zero.  Robin BC is equivalent " *
+                "to Neumann BC. Use Neumann BC in input file.")
     end 
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
@@ -123,10 +117,10 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
     # Compile them into functions
     rhs_fun = eval(build_function(rhs_num, [t, x, y, z]; expression=Val(false)))
  
-    #We want to set alpha*traction + beta*disp = rhs_fun
+    #We want to set traction + robin_parameter * disp = rhs_fun
     return SolidMechanicsRobinBoundaryCondition(
         side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, 
-        rhs_fun, alpha, beta
+        rhs_fun, robin_parameter
     )
 end
 
@@ -415,7 +409,6 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsRobinBoundaryConditio
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
         nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.rhs_fun, model.time)
-        nodal_force_component *= 1.0 / bc.alpha
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes
@@ -433,7 +426,7 @@ function apply_robin_bcs_internal_force!(model::SolidMechanics)
         for side in bc.num_nodes_per_side
             side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
             side_coordinates = model.reference[:, side_nodes]
-            K_side = (bc.beta / bc.alpha) * get_side_set_nodal_stiffness(side_coordinates, model.time)
+            K_side = bc.robin_parameter * get_side_set_nodal_stiffness(side_coordinates, model.time)
             ss_node_index += side
             for (i, node_i) in enumerate(side_nodes)
                 dof_i = 3 * (node_i - 1) + bc.offset
@@ -456,7 +449,7 @@ function build_robin_stiffness(model::SolidMechanics)
         for side in bc.num_nodes_per_side
             side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
             side_coordinates = model.reference[:, side_nodes]
-            K_side = (bc.beta / bc.alpha) * get_side_set_nodal_stiffness(side_coordinates, model.time)
+            K_side = bc.robin_parameter * get_side_set_nodal_stiffness(side_coordinates, model.time)
             ss_node_index += side
             for (i, node_i) in enumerate(side_nodes)
                 dof_i = 3 * (node_i - 1) + bc.offset
