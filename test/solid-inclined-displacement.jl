@@ -6,8 +6,8 @@
 using YAML
 
 @testset "Static Sphere Inclined Disp" begin
-    cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
-    cp("../examples/single/static-solid/sphere-inclined-displacement/sphere.g", "sphere.g"; force=true)
+    cp("../examples/single/static-solid/sphere/inclined-displacement/sphere.yaml", "sphere.yaml"; force=true)
+    cp("../examples/single/static-solid/sphere/inclined-displacement/sphere.g", "sphere.g"; force=true)
     input_file = "sphere.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     time = 0.1
@@ -126,8 +126,8 @@ end
 @testset "Quasi Static Inclined Support" begin
     angles = [0.0, 22.5, 45, 67.5, 90]
     for (i, angle_deg) in enumerate(angles)
-        cp("../examples/single/static-solid/cube-inclined-support/cube-test$i.yaml", "cube-test$i.yaml"; force=true)
-        cp("../examples/single/static-solid/cube-inclined-support/cube-test$i.g", "cube-test$i.g"; force=true)
+        cp("../examples/single/static-solid/cube/inclined-support/cube-test$i.yaml", "cube-test$i.yaml"; force=true)
+        cp("../examples/single/static-solid/cube/inclined-support/cube-test$i.g", "cube-test$i.g"; force=true)
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model
