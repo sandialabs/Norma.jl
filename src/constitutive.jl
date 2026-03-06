@@ -390,6 +390,71 @@ const I3 = @SMatrix [
     0.0 0.0 1.0
 ]
 
+function odot(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                for d in 1:3
+                    C[a, b, c, d] = 0.5 * (A[a, c] * B[b, d] + A[a, d] * B[b, c])
+                end
+            end
+        end
+    end
+    return SArray{Tuple{3,3,3,3}}(C)
+end
+
+function ox(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
+    C = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for a in 1:3
+        for b in 1:3
+            for c in 1:3
+                for d in 1:3
+                    C[a, b, c, d] = A[a, b] * B[c, d]
+                end
+            end
+        end
+    end
+    return SArray{Tuple{3,3,3,3}}(C)
+end
+
+function oxI(A::SMatrix{3,3,Float64,9})
+    C = zeros(MArray{Tuple{3,3,3,3},Float64})
+    for a in 1:3
+        C[:, :, a, a] .= A
+    end
+    return SArray{Tuple{3,3,3,3}}(C)
+end
+
+function Iox(B::SMatrix{3,3,Float64,9})
+    C = zeros(MArray{Tuple{3,3,3,3},Float64})
+    for a in 1:3
+        C[a, a, :, :] .= B
+    end
+    return SArray{Tuple{3,3,3,3}}(C)
+end
+
+function convect_tangent(CC::SArray{Tuple{3,3,3,3},Float64}, S::SMatrix{3,3,Float64,9}, F::SMatrix{3,3,Float64,9})
+    AA = MArray{Tuple{3,3,3,3},Float64}(undef)
+    I_n = @SMatrix [
+        1.0 0.0 0.0
+        0.0 1.0 0.0
+        0.0 0.0 1.0
+    ]
+    for j in 1:3
+        for l in 1:3
+            M = @SMatrix [
+                CC[1, j, l, 1] CC[1, j, l, 2] CC[1, j, l, 3]
+                CC[2, j, l, 1] CC[2, j, l, 2] CC[2, j, l, 3]
+                CC[3, j, l, 1] CC[3, j, l, 2] CC[3, j, l, 3]
+            ]
+            G = F * M * F'
+            AA[:, j, :, l] .= S[l, j] .* I_n .+ G
+        end
+    end
+    return SArray{Tuple{3,3,3,3}}(AA)
+end
+
 # ---------------------------------------------------------------------------
 # Strain energy density functions — generic in element type so that
 # ForwardDiff can propagate dual numbers through them.
@@ -445,10 +510,83 @@ function strain_energy(material::SethHill, F::SMatrix{3,3,T,9}) where {T<:Number
     return Wbulk + Wshear
 end
 
+function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9})
+    C = F' * F
+    E = 0.5 .* (C - I3)
+    λ = material.λ
+    μ = material.μ
+    trE = tr(E)
+    W = 0.5 * λ * (trE^2) + μ * tr(E * E)
+    S = λ * trE .* I3 .+ 2.0 .* μ .* E
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
+                end
+            end
+        end
+    end
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
+    P = F * S
+    AA = convect_tangent(CC_s, S, F)
+    return W, P, AA
+end
+
+function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
+    ∇u = F - I3
+    ϵ = 0.5 .* (∇u + ∇u')
+    λ = material.λ
+    μ = material.μ
+    trϵ = tr(ϵ)
+    W = 0.5 * λ * (trϵ^2) + μ * tr(ϵ * ϵ)
+    σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
+    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                for l in 1:3
+                    CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
+                end
+            end
+        end
+    end
+    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
+    return W, σ, CC_s
+end
+
+function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9})
+    C = F' * F
+    J2 = det(C)
+    Jm23 = inv(cbrt(J2))
+    trC = tr(C)
+    κ = material.κ
+    μ = material.μ
+    Wvol = 0.25 * κ * (J2 - log(J2) - 1.0)
+    Wdev = 0.5 * μ * (Jm23 * trC - 3.0)
+    W = Wvol + Wdev
+    IC = inv(C)
+    Svol = 0.5 * κ * (J2 - 1.0) .* IC
+    Sdev = μ .* Jm23 .* (I3 .- (IC .* (trC / 3.0)))
+    S = Svol .+ Sdev
+    ICxIC = ox(IC, IC)
+    ICoIC = odot(IC, IC)
+    μJ2n = 2.0 * μ * Jm23 / 3.0
+    CCvol = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC)
+    CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
+    CC = CCvol .+ CCdev
+    P = F * S
+    AA = convect_tangent(CC, S, F)
+    return W, P, AA
+end
+
 # ---------------------------------------------------------------------------
-# Generic constitutive driver for all Elastic models.
-# Stress (P = ∂W/∂F) and tangent (AA = ∂²W/∂F²) are obtained via AD.
-# The 9-component column-major vectorisation of F is used as the AD variable.
+# AD-based constitutive fallback for Elastic models without a manual
+# implementation.  Specific methods above take dispatch priority; this
+# catches anything else (e.g. SethHill, or new models added by developers).
+# Stress (P = ∂W/∂F) and tangent (AA = ∂²W/∂F²) are computed via
+# ForwardDiff acting on the strain_energy function.
 # ---------------------------------------------------------------------------
 
 function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9})
