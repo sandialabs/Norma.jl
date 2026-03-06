@@ -582,11 +582,65 @@ function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9})
 end
 
 # ---------------------------------------------------------------------------
-# AD-based constitutive fallback for Elastic models without a manual
-# implementation.  Specific methods above take dispatch priority; this
-# catches anything else (e.g. SethHill, or new models added by developers).
-# Stress (P = ∂W/∂F) and tangent (AA = ∂²W/∂F²) are computed via
-# ForwardDiff acting on the strain_energy function.
+# AD primitives — composable building blocks for mixed manual/AD constitutive
+# implementations.  Any Elastic model with a strain_energy method can use
+# these independently, e.g. manual stress + AD tangent, or vice-versa.
+# ---------------------------------------------------------------------------
+
+function stress_ad(material::Elastic, F::SMatrix{3,3,Float64,9})
+    Fv = Vector{Float64}(undef, 9)
+    Fv .= vec(F)
+    W_func = x -> strain_energy(material, SMatrix{3,3,eltype(x),9}(x))
+    W = W_func(Fv)
+    Pv = ForwardDiff.gradient(W_func, Fv)
+    P = SMatrix{3,3,Float64,9}(reshape(Pv, 3, 3))
+    return W, P
+end
+
+function tangent_ad(material::Elastic, F::SMatrix{3,3,Float64,9})
+    Fv = Vector{Float64}(undef, 9)
+    Fv .= vec(F)
+    W_func = x -> strain_energy(material, SMatrix{3,3,eltype(x),9}(x))
+    Hmat = ForwardDiff.hessian(W_func, Fv)
+    return SArray{Tuple{3,3,3,3},Float64,4,81}(reshape(Hmat, 3, 3, 3, 3))
+end
+
+# SethHill: manual (W, P) — shares intermediates — plus AD tangent.
+function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
+    C = F' * F
+    F⁻¹ = inv(F)
+    F⁻ᵀ = F⁻¹'
+    J = det(F)
+    Jᵐ = J^material.m
+    J⁻ᵐ = 1.0 / Jᵐ
+    J²ᵐ = Jᵐ * Jᵐ
+    J⁻²ᵐ = 1.0 / J²ᵐ
+    Cbar = J^(-2 / 3) * C
+    Cbar⁻¹ = J^(2 / 3) * F⁻¹ * F⁻ᵀ
+    Cbarⁿ = Cbar^material.n
+    Cbar⁻ⁿ = Cbar⁻¹^material.n
+    Cbar²ⁿ = Cbarⁿ * Cbarⁿ
+    Cbar⁻²ⁿ = Cbar⁻ⁿ * Cbar⁻ⁿ
+    trCbarⁿ = tr(Cbarⁿ)
+    trCbar⁻ⁿ = tr(Cbar⁻ⁿ)
+    trCbar²ⁿ = tr(Cbar²ⁿ)
+    trCbar⁻²ⁿ = tr(Cbar⁻²ⁿ)
+    Wbulk = material.κ / 4 / material.m^2 * ((Jᵐ - 1)^2 + (J⁻ᵐ - 1)^2)
+    Wshear = material.μ / 4 / material.n^2 * (trCbar²ⁿ + trCbar⁻²ⁿ - 2 * trCbarⁿ - 2 * trCbar⁻ⁿ + 6)
+    W = Wbulk + Wshear
+    Pbulk = material.κ / 2 / material.m * (J²ᵐ - Jᵐ - J⁻²ᵐ + J⁻ᵐ) * F⁻ᵀ
+    Pshear =
+        material.μ / material.n *
+        (1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
+    P = Pbulk + Pshear
+    AA = tangent_ad(material, F)
+    return W, P, AA
+end
+
+# ---------------------------------------------------------------------------
+# Full AD fallback for Elastic models without any manual implementation.
+# Specific methods above take dispatch priority; this catches anything else
+# (e.g. new models added by a developer who only defines strain_energy).
 # ---------------------------------------------------------------------------
 
 function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9})
