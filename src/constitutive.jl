@@ -152,232 +152,36 @@ mutable struct SethHill <: Elastic
     end
 end
 
-mutable struct PlasticLinearHardening <: Inelastic
-    # Slow, but simple J2 plasticity with linear hardening and isotropic elasticity
-    # Requires Lame Constants, Initial Yield, Hardening Modulus
+# ---------------------------------------------------------------------------
+# J2 plasticity — finite deformation, multiplicative split F = Fᵉ * Fᵖ,
+# Hencky (logarithmic) elasticity, radial-return in Mandel-stress space,
+# linear isotropic hardening.
+#
+# State vector (10 entries):
+#   state[1:9]  = vec(Fᵖ)  column-major 3×3 plastic deformation gradient
+#   state[10]   = εᵖ        accumulated equivalent plastic strain
+# ---------------------------------------------------------------------------
+
+mutable struct J2Plasticity <: Solid
     E::Float64
     ν::Float64
     κ::Float64
     λ::Float64
     μ::Float64
     ρ::Float64
-    σy::Float64
-    H::Float64
-    function PlasticLinearHardening(params::Parameters)
+    σy::Float64   # initial yield stress
+    H::Float64    # linear isotropic hardening modulus
+    function J2Plasticity(params::Parameters)
         E, ν, κ, λ, μ = elastic_constants(params)
         ρ = get(params, "density", 0.0)
-        σy = get(params, "initial yield", 0.0)
+        σy = get(params, "yield stress", 0.0)
         H = get(params, "hardening modulus", 0.0)
         return new(E, ν, κ, λ, μ, ρ, σy, H)
     end
 end
 
-@inline number_states(::PlasticLinearHardening) = 7
-@inline initial_state(::PlasticLinearHardening) = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-mutable struct J2 <: Inelastic
-    E::Float64
-    ν::Float64
-    κ::Float64
-    λ::Float64
-    μ::Float64
-    ρ::Float64
-    Y₀::Float64
-    n::Float64
-    ε₀::Float64
-    Sᵥᵢₛ₀::Float64
-    m::Float64
-    ∂ε∂t₀::Float64
-    Cₚ::Float64
-    β::Float64
-    T₀::Float64
-    Tₘ::Float64
-    M::Float64
-    function J2(params::Parameters)
-        E, ν, κ, λ, μ = elastic_constants(params)
-        ρ = get(params, "density", 0.0)
-        Y₀ = get(params, "yield stress", 0.0)
-        n = get(params, "hardening exponent", 0.0)
-        ε₀ = get(params, "reference plastic strain", 0.0)
-        Sᵥᵢₛ₀ = get(params, "reference viscoplastic stress", 0.0)
-        m = get(params, "rate dependence exponent", 0.0)
-        ∂ε∂t₀ = get(params, "reference plastic strain rate", 0.0)
-        Cₚ = get(params, "specific heat capacity", 0.0)
-        β = get(params, "Taylor-Quinney coefficient", 0.0)
-        T₀ = get(params, "reference temperature", 0.0)
-        Tₘ = get(params, "melting temperature", 0.0)
-        M = get(params, "thermal softening exponent", 0.0)
-        κ = E / (1.0 - 2.0 * ν) / 3.0
-        μ = E / (1.0 + ν) / 2.0
-        return new(E, ν, κ, λ, μ, ρ, Y₀, n, ε₀, Sᵥᵢₛ₀, m, ∂ε∂t₀, Cₚ, β, T₀, Tₘ, M)
-    end
-end
-
-@inline number_states(::J2) = 10
-@inline initial_state(::J2) = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
-
-function temperature_multiplier(material::J2, T::Float64)
-    T₀ = material.T₀
-    Tₘ = material.Tₘ
-    M = material.M
-    return M > 0.0 ? 1.0 - ((T - T₀) / (Tₘ - T₀))^M : 1.0
-end
-
-function hardening_potential(material::J2, ε::Float64)
-    Y₀ = material.Y₀
-    n = material.n
-    ε₀ = material.ε₀
-    exponent = (1.0 + n) / n
-    return n > 0.0 ? Y₀ * ε₀ / exponent * ((1.0 + ε / ε₀)^exponent - 1.0) : Y₀ * ε
-end
-
-function hardening_rate(material::J2, ε::Float64)
-    Y₀ = material.Y₀
-    n = material.n
-    ε₀ = material.ε₀
-    exponent = (1.0 - n) / n
-    return n > 0.0 ? Y₀ / ε₀ / n * (1.0 + ε / ε₀)^exponent : 0.0
-end
-
-function flow_strength(material::J2, ε::Float64)
-    Y₀ = material.Y₀
-    n = material.n
-    ε₀ = material.ε₀
-    return n > 0.0 ? Y₀ * (1.0 + ε / ε₀)^(1.0 / n) : Y₀
-end
-
-function viscoplastic_dual_kinetic_potential(material::J2, Δε::Float64, Δt::Float64)
-    Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
-    m = material.m
-    ∂ε∂t₀ = material.∂ε∂t₀
-    exponent = (1.0 + m) / m
-    return if Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0
-        Δt * Sᵥᵢₛ₀ * ∂ε∂t₀ / exponent * (Δε / Δt / ∂ε∂t₀)^exponent
-    else
-        0.0
-    end
-end
-
-function viscoplastic_stress(material::J2, Δε::Float64, Δt::Float64)
-    Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
-    m = material.m
-    ∂ε∂t₀ = material.∂ε∂t₀
-    return if Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0
-        Sᵥᵢₛ₀ / ∂ε∂t₀ / Δt / m * (Δε / Δt / ∂ε∂t₀)^((1.0 - m) / m)
-    else
-        0.0
-    end
-end
-
-function viscoplastic_hardening_rate(material::J2, Δε::Float64, Δt::Float64)
-    Sᵥᵢₛ₀ = material.Sᵥᵢₛ₀
-    m = material.m
-    ∂ε∂t₀ = material.∂ε∂t₀
-    return Sᵥᵢₛ₀ > 0.0 && Δt > 0.0 && Δε > 0.0 ? Sᵥᵢₛ₀ * (Δε / Δt / ∂ε∂t₀)^(1.0 / m) : 0.0
-end
-
-function vol(A::Matrix{Float64})
-    return tr(A) * I(3) / 3.0
-end
-
-function dev(A::Matrix{Float64})
-    return A - vol(A)
-end
-
-function stress_update(material::J2, F::Matrix{Float64}, Fᵖ::Matrix{Float64}, εᵖ::Float64, Δt::Float64)
-    max_rma_iter = 64
-    max_ls_iter = 64
-
-    κ = material.κ
-    μ = material.μ
-    λ = material.λ
-    J = det(F)
-
-    Fᵉ = F * inv(Fᵖ)
-    Cᵉ = Fᵉ' * Fᵉ
-    Eᵉ = 0.5 * log(Cᵉ)
-    M = λ * tr(Eᵉ) * I(3) + 2.0 * μ * Eᵉ
-    Mᵈᵉᵛ = dev(M)
-    σᵛᵐ = sqrt(1.5) * norm(Mᵈᵉᵛ)
-    σᵛᵒˡ = κ * vol(Eᵉ)
-
-    Y = flow_strength(material, εᵖ)
-    r = σᵛᵐ - Y
-    r0 = r
-
-    Δεᵖ = 0.0
-    r_tol = 1e-10
-    Δεᵖ_tol = 1e-10
-
-    rma_iter = 0
-    rma_converged = r ≤ r_tol
-    while rma_converged == false
-        if rma_iter == max_rma_iter
-            break
-        end
-        Δεᵖ₀ = Δεᵖ
-        merit_old = r * r
-        H = hardening_rate(material, εᵖ + Δεᵖ) + viscoplastic_hardening_rate(material, Δεᵖ, Δt)
-        ∂r = -3.0 * μ - H
-        δεᵖ = -r / ∂r
-
-        # line search
-        ls_iter = 0
-        α = 1.0
-        backtrack_factor = 0.1
-        decrease_factor = 1.0e-05
-        ls_converged = false
-        while ls_converged == false
-            if ls_iter == max_ls_iter
-                # line search has failed to satisfactorily improve newton step
-                # just take the full newton step and hope for the best
-                α = 1
-                break
-            end
-            ls_iter += 1
-            Δεᵖ = max(Δεᵖ₀ + α * δεᵖ, 0.0)
-            Y = flow_strength(material, εᵖ + Δεᵖ) + viscoplastic_stress(material, Δεᵖ, Δt)
-            r = σᵛᵐ - 3.0 * μ * Δεᵖ - Y
-
-            merit_new = r * r
-            decrease_tol = 1.0 - 2.0 * α * decrease_factor
-            if merit_new <= decrease_tol * merit_old
-                merit_old = merit_new
-                ls_converged = true
-            else
-                α₀ = α
-                α = α₀ * α₀ * merit_old / (merit_new - merit_old + 2.0 * α₀ * merit_old)
-                if backtrack_factor * α₀ > α
-                    α = backtrack_factor * α₀
-                end
-            end
-        end
-        rma_converged = abs(r / r0) < r_tol || Δεᵖ < Δεᵖ_tol
-        rma_iter += 1
-    end
-    if rma_converged == false
-        norma_log(2, :warning, "J2 stress update did not converge to specified tolerance")
-    end
-
-    Nᵖ = σᵛᵐ > 0.0 ? 1.5 * Mᵈᵉᵛ / σᵛᵐ : zeros(3, 3)
-    ΔFᵖ = exp(Δεᵖ * Nᵖ)
-    Fᵖ = ΔFᵖ * Fᵖ
-    εᵖ += Δεᵖ
-
-    ΔEᵉ = Δεᵖ * Nᵖ
-    Mᵈᵉᵛ -= 2.0 * μ * ΔEᵉ
-    σᵛᵐ = sqrt(1.5) * norm(Mᵈᵉᵛ)
-    σᵈᵉᵛ = inv(Fᵉ)' * Mᵈᵉᵛ * Fᵉ' / J
-    σ = σᵈᵉᵛ + σᵛᵒˡ
-
-    eʸ = (σᵛᵐ - Y) / Y
-    Fᵉ = F * inv(Fᵖ)
-    Cᵉ = Fᵉ' * Fᵉ
-    Eᵉ = 0.5 * log(Cᵉ)
-    M = λ * tr(Eᵉ) * I(3) + 2.0 * μ * Eᵉ
-    eᴹ = norm(Mᵈᵉᵛ - dev(M)) / norm(Mᵈᵉᵛ)
-    return Fᵉ, Fᵖ, εᵖ, σ
-end
+@inline number_states(::J2Plasticity) = 10
+@inline initial_state(::J2Plasticity) = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
 function second_from_fourth(AA::SArray{Tuple{3,3,3,3},Float64,4})
     # Reshape the 3x3x3x3 tensor to 9x9 directly
@@ -655,109 +459,134 @@ function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9})
     return W, P, AA
 end
 
-function constitutive(material::PlasticLinearHardening, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
-    # Basic Implementation of Simo Hughes Radial Return 3.3.1
-    # Simplified to only support linear isotropic hardening
-    # No Kinematic Hardening
-    ROOT23 = sqrt(2/3)
+# ---------------------------------------------------------------------------
+# J2 plasticity — finite deformation constitutive update
+# ---------------------------------------------------------------------------
+# Formulation:
+#   Multiplicative split:  F = Fᵉ * Fᵖ  (det(Fᵖ) = 1 isochoric plastic flow)
+#   Hencky elasticity:     W = λ/2 (tr Eᵉ)² + μ tr(Eᵉ²),  Eᵉ = ½ log Cᵉ
+#   Mandel stress:         M = λ tr(Eᵉ) I + 2μ Eᵉ
+#   Yield function:        f = √(3/2) ‖Mdev‖ − (σy + H εᵖ)  [von Mises]
+#   Flow rule:             ΔFᵖ = exp(Δεᵖ N) Fᵖ_old,  N = (3/2) Mdev/‖Mdev‖_vm
+#   Analytical return mapping (linear hardening):
+#       Δεᵖ = f_trial / (3μ + H)
+#
+# PK1 stress from Mandel stress:
+#   P = Fᵉ⁻ᵀ M Fᵖ⁻ᵀ
+#
+# Consistent algorithmic tangent:
+#   Computed via forward finite differences of P with respect to F.
+#   This is exact (up to FD truncation error) and works for both the
+#   elastic and plastic steps without deriving the complex analytical
+#   tensor expression.
+# ---------------------------------------------------------------------------
 
+# deviatoric part of a matrix
+function _dev(A::AbstractMatrix{T}) where {T}
+    return A .- (tr(A) / 3) .* I(3)
+end
+
+# Perform the radial-return update and return (W, P, state_new).
+# Uses Float64 throughout (matrix log/exp via LinearAlgebra).
+function _j2_stress(
+    material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64}
+)
     λ = material.λ
     μ = material.μ
-    κ = material.κ
+    σy = material.σy
+    H = material.H
 
-    Ep_old_voigt = state_old[1:6]
-    Ep_old = zeros(Float64, 3, 3)
+    # Extract state
+    Fp_old = Matrix{Float64}(reshape(state_old[1:9], 3, 3))
+    eqps_old = state_old[10]
 
-    # Map Voigt components to the strain tensor
-    Ep_old[1, 1] = Ep_old_voigt[1]  # ε_xx
-    Ep_old[2, 2] = Ep_old_voigt[2]  # ε_yy
-    Ep_old[3, 3] = Ep_old_voigt[3]  # ε_zz
-    Ep_old[2, 3] = Ep_old_voigt[4] / 2  # ε_yz
-    Ep_old[3, 2] = Ep_old_voigt[4] / 2  # ε_yz
-    Ep_old[1, 3] = Ep_old_voigt[5] / 2  # ε_zx
-    Ep_old[3, 1] = Ep_old_voigt[5] / 2  # ε_zx
-    Ep_old[1, 2] = Ep_old_voigt[6] / 2  # ε_xy
-    Ep_old[2, 1] = Ep_old_voigt[6] / 2  # ε_xy
+    # Trial elastic deformation gradient
+    Fe_tr = Matrix{Float64}(F) * inv(Fp_old)
+    Ce_tr = Fe_tr' * Fe_tr
+    Ee_tr = 0.5 * log(Ce_tr)           # symmetric by construction
 
-    eqps_old = state_old[7]
+    # Trial Mandel stress (Hencky elasticity)
+    trEe_tr = tr(Ee_tr)
+    M_tr = λ * trEe_tr * I(3) + 2μ * Ee_tr
+    Mdev_tr = _dev(M_tr)
+    σvm_tr = sqrt(1.5) * norm(Mdev_tr)
 
-    # Calculate the current step's strain
-    ∇u = F - I3
-    ϵ = 0.5 .* (∇u + ∇u')
-    trϵ = tr(ϵ)
+    # Yield check
+    f_tr = σvm_tr - (σy + H * eqps_old)
 
-    iso_ϵ = tr(ϵ) / 3 * I3
-    # Deviatoric strain increment
-    dev_ϵ = ϵ - iso_ϵ
-    dev_ϵᵖ = Ep_old - tr(Ep_old)/3 * I3
+    if f_tr ≤ 0.0
+        # Elastic step — state unchanged
+        W = 0.5 * λ * trEe_tr^2 + μ * tr(Ee_tr * Ee_tr)
+        Fe_new = Fe_tr
+        Fp_new = Fp_old
+        eqps_new = eqps_old
+        M_new = M_tr
+    else
+        # Plastic step — radial return (analytical for linear hardening)
+        Δεᵖ = f_tr / (3μ + H)
 
-    # Compute deviatoric trial stress
-    trial_stress = 2 * material.μ * (dev_ϵ - dev_ϵᵖ)
+        # Flow direction (unit in von Mises sense, deviatoric)
+        N = 1.5 * Mdev_tr / σvm_tr      # tr(N) = 0, ‖N‖_F = √(3/2)
 
-    f_trial = norm(trial_stress) - ROOT23 * (material.σy + material.H * eqps_old)
+        # Update plastic deformation gradient: ΔFᵖ = expm(Δεᵖ N)
+        Fp_new = exp(Δεᵖ * N) * Fp_old
 
-    if f_trial <= 0
-        σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
-        W = 0.5 * λ * (trϵ^2) + μ * tr(ϵ * ϵ)
-        # 4th-order elasticity tensor
-        CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
-        for i in 1:3
-            for j in 1:3
-                for k in 1:3
-                    for l in 1:3
-                        CC_m[i, j, k, l] = λ * I3[i, j] * I3[k, l] + μ * (I3[i, k] * I3[j, l] + I3[i, l] * I3[j, k])
-                    end
-                end
-            end
-        end
-        CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
-        # println("Elastic step", σ)
-        state_old[1:6] .= Ep_old_voigt
-        state_old[7] = eqps_old
-        return W, σ, CC_s, state_old
+        # Updated equivalent plastic strain
+        eqps_new = eqps_old + Δεᵖ
+
+        # Updated Hencky elastic strain and Mandel stress
+        Ee_new = Ee_tr - Δεᵖ * N       # tr(N)=0 ⟹ tr(Ee_new) = tr(Ee_tr)
+        W = 0.5 * λ * trEe_tr^2 + μ * tr(Ee_new * Ee_new)
+        M_new = λ * trEe_tr * I(3) + 2μ * Ee_new
+
+        Fe_new = Matrix{Float64}(F) * inv(Fp_new)
     end
 
-    # Linear hardening allows for analytical solution of delta gamma
-    deltaGamma = (f_trial/(1 + material.H/3/material.μ))/2/material.μ
-    eqps = eqps_old + ROOT23*deltaGamma
-    N = trial_stress / norm(trial_stress)
-    Ep = Ep_old + deltaGamma * N
-    σ = κ * tr(ϵ) .* I3 + trial_stress - 2 * material.μ * deltaGamma * N
+    # PK1 stress:  P = Fᵉ⁻ᵀ M Fᵖ⁻ᵀ
+    Fe_inv_T = inv(Fe_new)'
+    Fp_inv_T = inv(Fp_new)'
+    P_dense = Fe_inv_T * M_new * Fp_inv_T
+    P = SMatrix{3,3,Float64,9}(P_dense)
 
-    state_new = copy(state_old)
-    # Break Ep into voigt notation
-    EpV = zeros(Float64, 6)
-    EpV[1] = Ep[1, 1]
-    EpV[2] = Ep[2, 2]
-    EpV[3] = Ep[3, 3]
-    EpV[4] = Ep[2, 3] * 2
-    EpV[5] = Ep[1, 3] * 2
-    EpV[6] = Ep[1, 2] * 2
-    state_new[1:6] .= EpV
-    state_new[7] = eqps
+    state_new = Vector{Float64}(undef, 10)
+    state_new[1:9] = vec(Fp_new)
+    state_new[10] = eqps_new
 
-    ϵe = ϵ - Ep
-    W = 0.5 * material.λ * (tr(ϵe)^2) + material.μ * tr(ϵe * ϵe)
-
-    # tangent modulus
-    θ = 1 - 2 * deltaGamma * μ / norm(trial_stress)
-    θ_bar = 1/(1 + material.H/3/μ) - (1 - θ)
-    CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
-    for i in 1:3
-        for j in 1:3
-            for k in 1:3
-                for l in 1:3
-                    CC_m[i, j, k, l] =
-                        κ * I3[i, j] * I3[k, l] + 2 * μ * θ * (I3[i, k] * I3[j, l] - I3[i, j] * I3[k, l]/3.0) -
-                        2 * μ * θ_bar * N[i, j] * N[k, l]
-                end
-            end
-        end
-    end
-    CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
-
-    return W, σ, CC_s, state_new
+    return W, P, state_new
 end
+
+# Consistent algorithmic tangent AA_{iJkL} = ∂P_{iJ}/∂F_{kL} via forward FD.
+function _j2_tangent(
+    material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64},
+    P0::SMatrix{3,3,Float64,9}
+)
+    h = 1.0e-8
+    AA = MArray{Tuple{3,3,3,3},Float64}(undef)
+    Fm = MMatrix{3,3,Float64,9}(F)
+    for k in 1:3
+        for l in 1:3
+            Fm[k, l] += h
+            _, Ph, _ = _j2_stress(material, SMatrix{3,3,Float64,9}(Fm), state_old)
+            for i in 1:3
+                for j in 1:3
+                    AA[i, j, k, l] = (Ph[i, j] - P0[i, j]) / h
+                end
+            end
+            Fm[k, l] -= h
+        end
+    end
+    return SArray{Tuple{3,3,3,3},Float64,4,81}(AA)
+end
+
+function constitutive(material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
+    W, P, state_new = _j2_stress(material, F, state_old)
+    AA = _j2_tangent(material, F, state_old, P)
+    return W, P, AA, state_new
+end
+
+# ---------------------------------------------------------------------------
+# Material factory and kinematics
+# ---------------------------------------------------------------------------
 
 function create_material(params::Parameters)
     model_name = params["model"]
@@ -769,8 +598,8 @@ function create_material(params::Parameters)
         return Neohookean(params)
     elseif model_name == "seth-hill"
         return SethHill(params)
-    elseif model_name == "PlasticLinearHardening"
-        return PlasticLinearHardening(params)
+    elseif model_name == "j2 plasticity"
+        return J2Plasticity(params)
     else
         norma_abort("Unknown material model : $model_name")
     end
@@ -786,8 +615,8 @@ function get_kinematics(material::Solid)
         return Finite
     elseif material isa SethHill
         return Finite
-    elseif material isa PlasticLinearHardening
-        return Infinitesimal
+    elseif material isa J2Plasticity
+        return Finite
     end
     norma_abort("Unknown material model : $(typeof(material))")
     return nothing

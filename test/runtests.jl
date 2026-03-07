@@ -66,6 +66,7 @@ const indexed_test_files = [
     (50, "smoothing.jl"),
     (51, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
     (52, "utils.jl"), # Must go last due to FPE traps
+    (53, "single-static-solid-j2-plasticity.jl"),
 ]
 
 # Extract test file names

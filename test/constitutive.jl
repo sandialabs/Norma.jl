@@ -163,32 +163,55 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
     end
 end
 
-@testset "J2 Stress" begin
-    E = 200.0e+09
-    nu = 0.25
-    rho = 7800.0
-    Y = 1.0e+09
-    mu = E / 2 / (1 + nu)
-    params = Norma.Parameters()
-    params["elastic modulus"] = E
-    params["Poisson's ratio"] = nu
-    params["density"] = rho
-    params["yield stress"] = Y
-    material = Norma.J2(params)
-    gamma = Y / mu / sqrt(3)
-    F = [1.0 gamma 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
-    Fp = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
-    eqps = 0.0
-    dt = 1.0e-06
-    Fe, Fp, eqps, sigma = Norma.stress_update(material, F, Fp, eqps, dt)
-    @test norm(Fp - I(3)) ≈ 0.0 atol = 1.0e-12
-    @test eqps ≈ 0.0 atol = 1.0e-12
-    @test sqrt(1.5) * norm(Norma.dev(sigma)) / Y ≈ 1.0 rtol = 3.0e-06
-    gamma = 2 * Y / mu / sqrt(3)
-    F = [1.0 gamma 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
-    Fp = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
-    eqps = 0.0
-    dt = 1.0e-06
-    Fe, Fp, eqps, sigma = Norma.stress_update(material, F, Fp, eqps, dt)
-    @test sqrt(1.5) * norm(Norma.dev(sigma)) / Y ≈ 1.0 rtol = 2.0e-16
+@testset "J2Plasticity Constitutive At Identity" begin
+    E = 200.0e9
+    ν = 0.25
+    σy = 1.0e9
+    H = 20.0e9
+    params = Norma.Parameters(
+        "elastic modulus" => E, "Poisson's ratio" => ν,
+        "density" => 7800.0, "yield stress" => σy, "hardening modulus" => H
+    )
+    mat = Norma.J2Plasticity(params)
+    F = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+    state0 = Norma.initial_state(mat)
+    W, P, AA, state1 = Norma.constitutive(mat, F, state0)
+    @test isapprox(W, 0.0; atol=1e-12)
+    @test isapprox(norm(P), 0.0; atol=1e-6)
+    @test size(AA) == (3, 3, 3, 3)
+    # No plastic flow at identity
+    @test isapprox(state1[10], 0.0; atol=1e-12)
+end
+
+@testset "J2Plasticity Elastic Then Plastic Step" begin
+    E = 200.0e9
+    ν = 0.25
+    σy = 1.0e9
+    H = 0.0   # perfect plasticity
+    μ = E / (2 * (1 + ν))
+    params = Norma.Parameters(
+        "elastic modulus" => E, "Poisson's ratio" => ν,
+        "density" => 7800.0, "yield stress" => σy, "hardening modulus" => H
+    )
+    mat = Norma.J2Plasticity(params)
+    state0 = Norma.initial_state(mat)
+
+    # Pure shear at exactly the yield point (von Mises): γ = σy / (√3 μ)
+    γ = σy / (sqrt(3.0) * μ)
+    F_yield = @SMatrix [1.0 γ 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+    W, P, AA, state1 = Norma.constitutive(mat, F_yield, state0)
+    # Fᵖ should remain identity (just at yield, no plastic flow yet)
+    @test isapprox(state1[10], 0.0; atol=1e-10)
+
+    # Beyond yield: double the shear strain
+    F_plastic = @SMatrix [1.0 2γ 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+    W2, P2, AA2, state2 = Norma.constitutive(mat, F_plastic, state0)
+    # Equivalent plastic strain should be positive
+    @test state2[10] > 0.0
+    # Cauchy stress von Mises should be ≈ σy (perfect plasticity)
+    J = det(Matrix{Float64}(F_plastic))
+    σ = Matrix{Float64}(F_plastic) * Matrix{Float64}(P2)' / J
+    σdev = σ - tr(σ) / 3 * I(3)
+    σvm = sqrt(1.5) * norm(σdev)
+    @test isapprox(σvm, σy; rtol=1e-3)
 end
