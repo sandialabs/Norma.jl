@@ -7,6 +7,18 @@
 using DelimitedFiles
 using Format
 
+function collect_internal_variable_names(materials::Vector{Solid})
+    all_names = String[]
+    for material in materials
+        for name in internal_variable_names(material)
+            if !(name in all_names)
+                push!(all_names, name)
+            end
+        end
+    end
+    return all_names
+end
+
 function initialize_writing(sim::SingleDomainSimulation)
     params = sim.params
     integrator = sim.integrator
@@ -38,7 +50,8 @@ function initialize_writing(sim::SingleDomainSimulation)
         max_num_int_points = max(max_num_int_points, num_points)
     end
 
-    num_element_vars = 7 * max_num_int_points + 1
+    all_iv_names = sim.model isa RomModel ? String[] : collect_internal_variable_names(sim.model.materials)
+    num_element_vars = (7 + length(all_iv_names)) * max_num_int_points + 1
     Exodus.write_number_of_variables(output_mesh, ElementVariable, num_element_vars)
 
     el_var_names = String[]
@@ -51,6 +64,9 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(el_var_names, "stress_xz" * ip_str)
         push!(el_var_names, "stress_xy" * ip_str)
         push!(el_var_names, "von_mises_stress" * ip_str)
+        for iv_name in all_iv_names
+            push!(el_var_names, iv_name * ip_str)
+        end
     end
     push!(el_var_names, "stored_energy")
     Exodus.write_names(output_mesh, ElementVariable, el_var_names)
@@ -231,8 +247,11 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     end
     stress = model.stress
     stored_energy = model.stored_energy
+    state = model.state
+    all_iv_names = collect_internal_variable_names(model.materials)
     blocks = Exodus.read_sets(output_mesh, Block)
-    for (block, block_stress, block_stored_energy) in zip(blocks, stress, stored_energy)
+    for (block_index, (block, block_stress, block_stored_energy, block_state)) in
+        enumerate(zip(blocks, stress, stored_energy, state))
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(output_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
@@ -299,6 +318,24 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 "von_mises_stress" * ip_str,
                 von_mises_stress[:, point],
             )
+        end
+        if !isempty(all_iv_names)
+            material = model.materials[block_index]
+            mat_iv_names = internal_variable_names(material)
+            for point in 1:num_points
+                ip_str = "_" * string(point)
+                for iv_name in all_iv_names
+                    iv_idx = findfirst(==(iv_name), mat_iv_names)
+                    if iv_idx !== nothing
+                        values = [block_state[elem][point][iv_idx] for elem in 1:num_block_elements]
+                    else
+                        values = zeros(num_block_elements)
+                    end
+                    Exodus.write_values(
+                        output_mesh, ElementVariable, time_index, Int64(block_id), iv_name * ip_str, values
+                    )
+                end
+            end
         end
         Exodus.write_values(
             output_mesh, ElementVariable, time_index, Int64(block_id), "stored_energy", block_stored_energy

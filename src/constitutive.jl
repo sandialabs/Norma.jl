@@ -93,6 +93,7 @@ function elastic_constants(params::Parameters)
 end
 
 @inline number_states(::Elastic) = 0
+@inline internal_variable_names(::Solid) = String[]
 
 mutable struct SaintVenant_Kirchhoff <: Elastic
     E::Float64
@@ -182,6 +183,16 @@ end
 
 @inline number_states(::J2Plasticity) = 10
 @inline initial_state(::J2Plasticity) = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+
+# Names for each entry of the state vector, in storage order.
+# state[1:9] = vec(Fᵖ) column-major: Fp_11, Fp_21, Fp_31, Fp_12, ...
+# state[10]  = εᵖ (equivalent plastic strain)
+@inline internal_variable_names(::J2Plasticity) = [
+    "Fp_11", "Fp_21", "Fp_31",
+    "Fp_12", "Fp_22", "Fp_32",
+    "Fp_13", "Fp_23", "Fp_33",
+    "eqps",
+]
 
 function second_from_fourth(AA::SArray{Tuple{3,3,3,3},Float64,4})
     # Reshape the 3x3x3x3 tensor to 9x9 directly
