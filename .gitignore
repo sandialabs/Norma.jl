@@ -14,6 +14,7 @@ Manifest.toml
 *.e
 *.exo
 .JuliaFormatter.toml
+CLAUDE.md
 
 # CSV Output Interval Outputs
 **/*-potential-*.csv
