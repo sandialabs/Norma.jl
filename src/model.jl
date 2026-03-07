@@ -158,6 +158,8 @@ function create_model(params::Parameters)
     elseif model_name == "mesh smoothing"
         params["mesh smoothing"] = true
         return SolidMechanics(params)
+    elseif model_name == "Galerkin ROM"
+        return GalerkinRom(params)
     elseif model_name == "linear opinf rom"
         return LinearOpInfRom(params)
     elseif model_name == "quadratic opinf rom"

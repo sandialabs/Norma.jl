@@ -4,6 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using LinearAlgebra
+
 function RomNewmark(params::Parameters, model::RomModel)
     integrator_params = params["time integrator"]
     time_step = integrator_params["time step"]
@@ -111,6 +113,7 @@ end
 function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::RomModel)
     # Compute initial accelerations
     initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+    evaluate( model.fom_model, integrator.fom_integrator,solver.fom_solver)
 
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
@@ -118,12 +121,26 @@ function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::
     integrator.velocity[:] = model.reduced_velocity[:]
     solver.solution[:] = model.reduced_state[:]
 
-    for k in 1:n_mode
-        integrator.acceleration[k] = 0.0
-        for j in 1:n_node
-            for n in 1:n_var
-                integrator.acceleration[k] +=
-                    model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
+    use_mass_inner_product = hasproperty(model, :use_mass_inner_product) && model.use_mass_inner_product
+    if use_mass_inner_product == true
+        ϕ = reshape(model.basis, :, n_mode)
+        M = model.fom_model.mass
+        a_fom = integrator.fom_integrator.acceleration
+        if size(M, 1) == 0
+            integrator.acceleration[:] = ϕ' * a_fom
+        else
+            Mr = ϕ' * M * ϕ
+            rhs = ϕ' * M * a_fom
+            integrator.acceleration[:] = Mr \ rhs
+        end
+    else
+        for k in 1:n_mode
+            integrator.acceleration[k] = 0.0
+            for j in 1:n_node
+                for n in 1:n_var
+                    integrator.acceleration[k] +=
+                        model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
+                end
             end
         end
     end
@@ -165,12 +182,26 @@ function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver,
     integrator.velocity[:] = model.reduced_velocity[:]
     solver.solution[:] = model.reduced_state[:]
 
-    for k in 1:n_mode
-        integrator.acceleration[k] = 0.0
-        for j in 1:n_node
-            for n in 1:n_var
-                integrator.acceleration[k] +=
-                    model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
+    use_mass_inner_product = hasproperty(model, :use_mass_inner_product) && model.use_mass_inner_product
+    if use_mass_inner_product == true
+        ϕ = reshape(model.basis, :, n_mode)
+        M = model.fom_model.mass
+        a_fom = integrator.fom_integrator.acceleration
+        if size(M, 1) == 0
+            integrator.acceleration[:] = ϕ' * a_fom
+        else
+            Mr = ϕ' * M * ϕ
+            rhs = ϕ' * M * a_fom
+            integrator.acceleration[:] = Mr \ rhs
+        end
+    else
+        for k in 1:n_mode
+            integrator.acceleration[k] = 0.0
+            for j in 1:n_node
+                for n in 1:n_var
+                    integrator.acceleration[k] +=
+                        model.basis[n, j, k] * integrator.fom_integrator.acceleration[3 * (j - 1) + n]
+                end
             end
         end
     end

@@ -116,6 +116,47 @@ function copy_solution_source_to_targets(integrator::DynamicTimeIntegrator, solv
     return nothing
 end
 
+function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::GalerkinRom)
+    n_var, n_node, n_mode = size(model.basis)
+    basis_r = reshape(model.basis, (n_var * n_node, n_mode))
+
+    displacement = integrator.displacement
+    velocity = integrator.velocity
+    acceleration = integrator.acceleration
+    for i in 1:size(model.fom_model.current)[2]
+        x_dof_index = 3 * (i - 1) + 1
+        y_dof_index = 3 * (i - 1) + 2
+        z_dof_index = 3 * (i - 1) + 3
+        if model.fom_model.free_dofs[x_dof_index]
+            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
+            model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
+        end
+
+        if model.fom_model.free_dofs[y_dof_index]
+            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
+            model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
+        end
+
+        if model.fom_model.free_dofs[z_dof_index]
+            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
+            model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
+        end
+    end
+
+    integrator.fom_integrator.acceleration[:] = basis_r * integrator.acceleration
+    integrator.fom_integrator.velocity[:] = basis_r * integrator.velocity
+    integrator.fom_integrator.displacement[:] = basis_r * integrator.displacement
+    solver.fom_solver.solution[:] = basis_r * solver.solution
+
+    evaluate(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+    solver.gradient[:] = basis_r' * solver.fom_solver.gradient
+    solver.hessian[:, :] = basis_r' * solver.fom_solver.hessian * basis_r
+    return nothing
+end
+
 function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::QuadraticOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
@@ -256,27 +297,24 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
     def setup_inputs(x):
         xi = np.zeros((1,x.size))
         xi[0] = x
-        inputs = torch.tensor(xi)
+        inputs = {'x':torch.tensor(xi)}
         return inputs
     """ 
     ensemble_size = size(model.nn_model)[1]
     stiffness = zeros( num_dof,num_dof )
-    #Kx,K = model.nn_model[1].forward(model_inputs,return_stiffness=true)
-    #K = K.detach().numpy()[1,:,:]
+    f = zeros( num_dof )
+    model_inputs = py"setup_inputs"(solver.solution)
     for i in 1:ensemble_size
-      model_inputs = py"setup_inputs"(solver.solution)
-      Kxt,Kt = model.nn_model[i].forward(model_inputs,return_stiffness=true)
-      #Kx += Kxt
-      Kt = Kt.detach().numpy()[1,:,:]
-      stiffness += Kt
-    
+      ft,Kt = model.nn_model[i].forward(model_inputs,return_jacobian=true)
+      f += ft.detach().numpy()[1,:]
+      stiffness += Kt.detach().numpy()[1,:,:]
     end
     stiffness = stiffness./ensemble_size
+    f = f./ensemble_size
     LHS = I / (dt*dt*beta) - stiffness
     RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
     
-    residual = RHS - LHS * solver.solution
+    residual = RHS - 1 / (dt*dt*beta) * solver.solution + f
     solver.hessian[:,:] = LHS
     solver.gradient[:] = -residual
 end 
-

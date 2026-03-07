@@ -6,6 +6,7 @@
 
 using DelimitedFiles
 using Format
+using SparseArrays
 
 function initialize_writing(sim::SingleDomainSimulation)
     params = sim.params
@@ -75,6 +76,16 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     return nothing
 end
 
+function write_sparse_matrix_csv(filename::String, matrix::SparseMatrixCSC{Float64,Int64})
+    rows, cols, vals = findnz(matrix)
+    open(filename, "w") do io
+        for k in eachindex(vals)
+            println(io, rows[k], ",", cols[k], ",", vals[k])
+        end
+    end
+    return nothing
+end
+
 function write_stop(sim::SingleDomainSimulation)
     params = sim.params
     stop = sim.controller.stop
@@ -97,6 +108,15 @@ function write_stop(sim::SingleDomainSimulation)
         write_stop_csv(sim, sim.model)
         if haskey(params, "CSV write sidesets") == true
             write_sideset_stop_csv(sim, sim.model)
+        end
+    end
+    mass_matrix_file = get(params, "mass matrix file", "")
+    if stop == 0 && mass_matrix_file != ""
+        if size(sim.model.mass, 1) == 0
+            norma_log(0, :warning, "Mass matrix output requested but mass matrix is empty.")
+        else
+            norma_log(0, :output, "Mass matrix for $name [CSV]")
+            write_sparse_matrix_csv(mass_matrix_file, sim.model.mass)
         end
     end
     return nothing
