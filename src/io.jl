@@ -290,6 +290,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 von_mises_stress[block_element_index, point] = sigma_vm
             end
         end
+        mat_iv_names = isempty(all_iv_names) ? String[] : internal_variable_names(model.materials[block_index])
         for point in 1:num_points
             ip_str = "_" * string(point)
             Exodus.write_values(
@@ -318,23 +319,16 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 "von_mises_stress" * ip_str,
                 von_mises_stress[:, point],
             )
-        end
-        if !isempty(all_iv_names)
-            material = model.materials[block_index]
-            mat_iv_names = internal_variable_names(material)
-            for point in 1:num_points
-                ip_str = "_" * string(point)
-                for iv_name in all_iv_names
-                    iv_idx = findfirst(==(iv_name), mat_iv_names)
-                    if iv_idx !== nothing
-                        values = [block_state[elem][point][iv_idx] for elem in 1:num_block_elements]
-                    else
-                        values = zeros(num_block_elements)
-                    end
-                    Exodus.write_values(
-                        output_mesh, ElementVariable, time_index, Int64(block_id), iv_name * ip_str, values
-                    )
+            for iv_name in all_iv_names
+                iv_idx = findfirst(==(iv_name), mat_iv_names)
+                if iv_idx !== nothing
+                    values = [block_state[elem][point][iv_idx] for elem in 1:num_block_elements]
+                else
+                    values = zeros(num_block_elements)
                 end
+                Exodus.write_values(
+                    output_mesh, ElementVariable, time_index, Int64(block_id), iv_name * ip_str, values
+                )
             end
         end
         Exodus.write_values(
