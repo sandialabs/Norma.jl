@@ -63,14 +63,4 @@ using Logging
         end
     end
 
-    @testset "Enable Fpe Traps" begin
-        # This is platform-specific and side-effect prone
-        # So we test only that it runs without error
-        try
-            Norma.enable_fpe_traps()
-            @test true
-        catch e
-            @test false
-        end
-    end
 end

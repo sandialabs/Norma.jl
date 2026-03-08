@@ -215,3 +215,34 @@ end
     σvm = sqrt(1.5) * norm(σdev)
     @test isapprox(σvm, σy; rtol=1e-3)
 end
+
+@testset "J2Plasticity FD Tangent" begin
+    # Verify _j2_tangent_fd agrees with the analytical tangent for both
+    # elastic and plastic steps. This keeps coverage on the FD helper,
+    # which is retained as a reference implementation for future models.
+    params = Norma.Parameters(
+        "elastic modulus" => 200.0e9, "Poisson's ratio" => 0.3,
+        "density" => 7800.0, "yield stress" => 250.0e6, "hardening modulus" => 20.0e9,
+    )
+    mat = Norma.J2Plasticity(params)
+    state0 = Norma.initial_state(mat)
+
+    # Elastic step
+    F_el = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.001]
+    W, P, state_new = Norma._j2_stress(mat, F_el, state0)
+    AA_fd = Norma._j2_tangent_fd(mat, F_el, state0, P)
+    AA_an = Norma._j2_tangent_analytical(mat, F_el, state0, P, state_new)
+    @test size(AA_fd) == (3, 3, 3, 3)
+    @test norm(AA_fd - AA_an) / max(norm(AA_fd), norm(AA_an), 1.0) < 1e-4
+
+    # Plastic step
+    F_pre = @SMatrix [0.98 0.02 0.0; 0.0 0.97 0.01; 0.0 0.0 1.05]
+    _, _, s_pre = Norma._j2_stress(mat, F_pre, state0)
+    F_pl = @SMatrix [0.97 0.03 0.0; 0.0 0.96 0.02; 0.0 0.0 1.08]
+    W2, P2, state_new2 = Norma._j2_stress(mat, F_pl, s_pre)
+    AA_fd2 = Norma._j2_tangent_fd(mat, F_pl, s_pre, P2)
+    AA_an2 = Norma._j2_tangent_analytical(mat, F_pl, s_pre, P2, state_new2)
+    @test size(AA_fd2) == (3, 3, 3, 3)
+    # Frozen-Fᵖ approximation introduces O(Δεᵖ) error on plastic steps
+    @test norm(AA_fd2 - AA_an2) / max(norm(AA_fd2), norm(AA_an2), 1.0) < 1e-2
+end
