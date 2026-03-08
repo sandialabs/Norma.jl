@@ -245,6 +245,8 @@ function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     v_pre[free] = v[free] += (1.0 - γ) * Δt * a[free]
     u_pre[fixed] = u[fixed]
     v_pre[fixed] = v[fixed]
+    # Set acceleration consistent with predicted displacement (u = u_pre → a = 0)
+    a[free] .= 0.0
     copy_solution_source_to_targets(integrator, solver, model)
     return nothing
 end
