@@ -270,6 +270,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
+    square_projector = Matrix{Float64}(undef, 0, 0)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
@@ -285,6 +286,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         coupled_bc_index,
         dirichlet_projector,
         neumann_projector,
+        square_projector,
         is_dirichlet,
         swap_bcs,
         variational,
@@ -675,11 +677,23 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
 
     # Interpolate or use fallback
+    use_predictor = (
+        bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
+        bc isa SolidMechanicsRobinSchwarzBoundaryCondition
+    ) &&
+    controller.use_interface_predictor &&
+    controller.iteration_number == 1 &&
+    !isempty(controller.predictor_disp[coupled_index])
     if !isempty(time_hist)
         interp_disp = interpolate(time_hist, disp_hist, time)
         interp_velo = interpolate(time_hist, velo_hist, time)
         interp_acce = interpolate(time_hist, acce_hist, time)
         interp_∂Ω_f = interpolate(time_hist, ∂Ω_f_hist, time)
+    elseif use_predictor
+        interp_disp = controller.predictor_disp[coupled_index]
+        interp_velo = controller.predictor_velo[coupled_index]
+        interp_acce = controller.predictor_acce[coupled_index]
+        interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
     elseif isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
         interp_disp = controller.stop_disp[coupled_index]
         interp_velo = controller.stop_velo[coupled_index]
