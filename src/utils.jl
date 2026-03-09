@@ -149,31 +149,6 @@ function configure_logger()
     return nothing
 end
 
-# Constants for Linux/glibc FPE trap masks
-const FE_INVALID = 1    # 0x01
-const FE_DIVBYZERO = 4  # 0x04
-const FE_OVERFLOW = 8   # 0x08
-
-"""
-    enable_fpe_traps()
-
-Attempts to enable floating-point exceptions (FPE traps) on supported platforms.
-Catches invalid operations, divide-by-zero, and overflow. Only supported on Linux x86_64.
-Warns that parser behavior may break due to this setting.
-"""
-function enable_fpe_traps()
-    if Sys.islinux() && Sys.ARCH == :x86_64
-        norma_log(0, :warning, "Enabling FPE traps can break Julia's parser if done too early")
-        norma_log(0, :warning, "(e.g., before Meta.parse()).")
-        mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
-        ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
-        norma_log(0, :info, "Floating-point exceptions enabled (invalid, div-by-zero, overflow)")
-    else
-        norma_log(0, :warning, "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)")
-    end
-    return nothing
-end
-
 function format_time(seconds::Float64)::String
     days = floor(Int, seconds / 86400)  # 86400 seconds in a day
     seconds %= 86400

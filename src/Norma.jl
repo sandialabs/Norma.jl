@@ -21,9 +21,6 @@ end
 
 function run(sim::Simulation)
     start_time = time()
-    if get(sim.params, "enable FPE", false) == true
-        enable_fpe_traps()
-    end
     evolve(sim)
     elapsed_time = time() - start_time
     norma_log(0, :done, "Simulation Complete")

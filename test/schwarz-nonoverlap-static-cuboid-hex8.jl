@@ -4,16 +4,16 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "Schwarz Nonoverlap Static Cuboid Hex8 Same Step" begin
-    cp("../examples/nonoverlap/static-same-step/cuboids/cuboids_classical.yaml", "cuboids.yaml"; force=true)
-    cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
-    cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
-    cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
-    cp("../examples/nonoverlap/static-same-step/cuboids/cuboid-2.g", "cuboid-2.g"; force=true)
+    cp("../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann/cuboids_classical.yaml", "cuboids_classical.yaml"; force=true)
+    cp("../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp("../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp("../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann/cuboid-1.g", "cuboid-1.g"; force=true)
+    cp("../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann/cuboid-2.g", "cuboid-2.g"; force=true)
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
+    rm("cuboids_classical.yaml")
     rm("cuboid-1.yaml")
     rm("cuboid-2.yaml")
     rm("cuboid-1.g")

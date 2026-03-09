@@ -549,7 +549,7 @@ function restore_prev_state(sim::SingleDomainSimulation)
         integrator.acceleration = copy(integrator.prev_acce)
     end
     sim.model.internal_force = copy(integrator.prev_∂Ω_f)
-    copy_solution_source_targets(sim.integrator, sim.solver, sim.model)
+    copy_solution_source_to_targets(sim.integrator, sim.solver, sim.model)
     return nothing
 end
 
@@ -593,7 +593,7 @@ function restore_stop_state(sim::MultiDomainSimulation)
             subsim.integrator.acceleration = copy(controller.stop_acce[i])
         end
         subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
-        copy_solution_source_targets(subsim.integrator, subsim.solver, subsim.model)
+        copy_solution_source_to_targets(subsim.integrator, subsim.solver, subsim.model)
     end
 end
 
@@ -807,14 +807,13 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if !(
-                bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
-                bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-            )
-                continue
+            if bc isa SolidMechanicsRobinSchwarzBoundaryCondition
+                compute_robin_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
+                   bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+                compute_dirichlet_projector(subsim.model, bc)
+                compute_neumann_projector(subsim.model, bc)
             end
-            compute_dirichlet_projector(subsim.model, bc)
-            compute_neumann_projector(subsim.model, bc)
         end
     end
 end

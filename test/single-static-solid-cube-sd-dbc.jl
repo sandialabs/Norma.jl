@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "Single Static Solid Cube with Spatially-Distributed DBC" begin
-    cp("../examples/single/static-solid/cube/cube-sd-dbc.yaml", "cube-sd-dbc.yaml"; force=true)
-    cp("../examples/single/static-solid/cube/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube-sd-dbc.yaml", "cube-sd-dbc.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube-sd-dbc.yaml")
     integrator = simulation.integrator
     model = simulation.model

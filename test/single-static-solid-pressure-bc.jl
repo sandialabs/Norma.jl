@@ -4,8 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "Single Static Solid Pressure Neumann BC" begin
-    cp("../examples/single/static-solid/pressure-bc/cube.yaml", "cube.yaml"; force=true)
-    cp("../examples/single/static-solid/pressure-bc/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube/pressure-bc/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/pressure-bc/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model

@@ -8,6 +8,7 @@ abstract type BoundaryCondition end
 abstract type InitialCondition end
 abstract type SolidMechanicsBoundaryCondition <: BoundaryCondition end
 abstract type SolidMechanicsRegularBoundaryCondition <: SolidMechanicsBoundaryCondition end
+abstract type SolidMechanicsNeumannRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition end
 abstract type SolidMechanicsSchwarzBoundaryCondition <: SolidMechanicsBoundaryCondition end
 abstract type SolidMechanicsCouplingSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition end
 
@@ -33,7 +34,7 @@ mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanic
     reference_funs::Vector{Function}
 end
 
-mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
     name::String
     offset::Int64
     side_set_id::Int64
@@ -42,9 +43,16 @@ mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsRegularBo
     traction_fun::Function
 end
 
-#IKT 6/9/2025 TODO: check with Alejandro if want to have separate NeumannPressure struct
-#or integrate it into the Neumann struct.  The latter is possible and avoids some
-#code duplication.
+mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
+    name::String
+    offset::Int64
+    side_set_id::Int64
+    num_nodes_per_side::Vector{Int64}
+    side_set_node_indices::Vector{Int64}
+    traction_fun::Function
+    robin_parameter::Float64
+end
+
 mutable struct SolidMechanicsNeumannPressureBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     side_set_id::Int64
@@ -99,5 +107,22 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     swap_bcs::Bool
     variational::Bool
 end
-include("opinf/opinf_ics_bcs_types.jl")
 
+mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+    name::String
+    side_set_id::Int64
+    side_set_node_indices::Vector{Int64}
+    num_nodes_sides::Vector{Int64}
+    local_from_global_map::Dict{Int64,Int64}
+    global_from_local_map::Vector{Int64}
+    coupled_subsim::Simulation
+    coupled_bc_name::String
+    coupled_bc_index::Int64
+    dirichlet_projector::Matrix{Float64}
+    neumann_projector::Matrix{Float64}
+    square_projector::Matrix{Float64}
+    robin_parameter::Float64
+    variational::Bool
+end
+
+include("opinf/opinf_ics_bcs_types.jl")
