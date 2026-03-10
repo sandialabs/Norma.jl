@@ -103,6 +103,7 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
+    square_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
     variational::Bool

@@ -56,6 +56,13 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     active_contact::Bool
     contact_hist::Vector{Bool}
     schwarz_iters::Vector{Int64}
+    use_interface_predictor::Bool
+    predictor_disp::Vector{Vector{Float64}}
+    predictor_velo::Vector{Vector{Float64}}
+    predictor_acce::Vector{Vector{Float64}}
+    prev_stop_disp::Vector{Vector{Float64}}
+    anderson_window::Int64
+    anderson_x_hist::Vector{Vector{Vector{Float64}}}
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController

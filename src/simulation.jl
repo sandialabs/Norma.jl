@@ -137,6 +137,13 @@ function SolidMultiDomainTimeController(params::Parameters)
     active_contact = false
     contact_hist = Vector{Bool}[]
     schwarz_iters = zeros(Int64, num_stops - 1)
+    use_interface_predictor = get(params, "interface predictor", false)
+    predictor_disp = [Vector{Float64}() for _ in 1:num_domains]
+    predictor_velo = [Vector{Float64}() for _ in 1:num_domains]
+    predictor_acce = [Vector{Float64}() for _ in 1:num_domains]
+    prev_stop_disp = [Vector{Float64}() for _ in 1:num_domains]
+    anderson_window = get(params, "anderson window", 0)
+    anderson_x_hist = [Vector{Vector{Float64}}() for _ in 1:num_domains]
 
     return SolidMultiDomainTimeController(
         minimum_iterations,
@@ -177,6 +184,13 @@ function SolidMultiDomainTimeController(params::Parameters)
         active_contact,
         contact_hist,
         schwarz_iters,
+        use_interface_predictor,
+        predictor_disp,
+        predictor_velo,
+        predictor_acce,
+        prev_stop_disp,
+        anderson_window,
+        anderson_x_hist,
     )
 end
 
@@ -487,7 +501,11 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
+    reset_anderson_history!(sim)
     swap_swappable_bcs(sim)
+    if sim.controller.use_interface_predictor
+        compute_interface_predictor!(sim)
+    end
 
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
@@ -516,8 +534,107 @@ function schwarz(sim::MultiDomainSimulation)
         end
         iteration_number += 1
         save_schwarz_state(sim)
+        if sim.controller.anderson_window > 0
+            anderson_accelerate!(sim)
+        end
         restore_stop_state(sim)
     end
+end
+
+function reset_anderson_history!(sim::MultiDomainSimulation)
+    controller = sim.controller
+    if controller.anderson_window == 0
+        return nothing
+    end
+    for i in 1:sim.num_domains
+        empty!(controller.anderson_x_hist[i])
+    end
+    return nothing
+end
+
+function anderson_accelerate!(sim::MultiDomainSimulation)
+    controller = sim.controller
+    m = controller.anderson_window
+    num_domains = sim.num_domains
+    for i in 1:num_domains
+        subsim = sim.subsims[i]
+        ndofs = length(subsim.integrator.displacement)
+        # Build current iterate; rotate if inclined support
+        if subsim.model.inclined_support == true
+            T = subsim.model.global_transform'
+            u = T * subsim.integrator.displacement
+            v = T * subsim.integrator.velocity
+            a = T * subsim.integrator.acceleration
+        else
+            u = copy(subsim.integrator.displacement)
+            v = copy(subsim.integrator.velocity)
+            a = copy(subsim.integrator.acceleration)
+        end
+        x_k = vcat(u, v, a)
+        # Anderson prediction is injected into disp_hist[i] so that domains solved
+        # before domain i in the sequential subcycle read the predicted coupling BC.
+        # Domain 1 (i==1) is processed first, so its history is cleared by
+        # reset_history before other domains can benefit — skip injection.
+        if i == 1
+            continue
+        end
+        # Burn-in: the first few Schwarz iterations exhibit a non-geometric transient
+        # (both domains "see" each other for the first time), making Anderson
+        # extrapolation unreliable. Skip until iteration 4 (after the transient).
+        if controller.iteration_number <= 3
+            continue
+        end
+        # Append to rolling buffer, keep at most m+1 entries
+        x_hist = controller.anderson_x_hist[i]
+        push!(x_hist, x_k)
+        if length(x_hist) > m + 1
+            popfirst!(x_hist)
+        end
+        mk = length(x_hist) - 1   # number of residuals available
+        # Need at least 2 residuals (3 iterates) to form the ΔF system
+        if mk < 2
+            continue
+        end
+        # Build ΔF and ΔX: differences of consecutive residuals / iterates
+        ΔF = Matrix{Float64}(undef, 3 * ndofs, mk - 1)
+        ΔX = Matrix{Float64}(undef, 3 * ndofs, mk - 1)
+        for j in 1:(mk - 1)
+            f_j   = x_hist[j + 1] - x_hist[j]
+            f_jp1 = x_hist[j + 2] - x_hist[j + 1]
+            ΔF[:, j] = f_jp1 - f_j
+            ΔX[:, j] = x_hist[j + 2] - x_hist[j + 1]
+        end
+        f_cur = x_hist[end] - x_hist[end - 1]
+        # Solve min_c ||ΔF*c + f_cur||^2 (Walker-Ni type-I Anderson)
+        c = -(ΔF \ f_cur)
+        x_new = x_k + ΔX * c
+        u_new = x_new[1:ndofs]
+        v_new = x_new[(ndofs + 1):(2 * ndofs)]
+        a_new = x_new[(2 * ndofs + 1):(3 * ndofs)]
+        # Rotate back to global frame if inclined support
+        if subsim.model.inclined_support == true
+            u_new = subsim.model.global_transform * u_new
+            v_new = subsim.model.global_transform * v_new
+            a_new = subsim.model.global_transform * a_new
+        end
+        # Overwrite domain i's coupling history with the Anderson prediction.
+        # Domain i's time_hist[i] is non-empty (set by the previous save_history_snapshot),
+        # so apply_bc for other domains will use interp(time_hist[i], disp_hist[i], t)
+        # = u_new instead of the raw Schwarz output.
+        disp_h = controller.disp_hist[i]
+        velo_h = controller.velo_hist[i]
+        acce_h = controller.acce_hist[i]
+        if !isempty(disp_h)
+            disp_h[end] = u_new
+            velo_h[end] = v_new
+            acce_h[end] = a_new
+        end
+        # Clear history after injection so the big-jump iterate (the Anderson prediction)
+        # does not contaminate subsequent Anderson fits. The next m iterations will rebuild
+        # a clean history from near-converged iterates before the next injection.
+        empty!(x_hist)
+    end
+    return nothing
 end
 
 function save_curr_state(sim::SingleDomainSimulation)
@@ -557,6 +674,13 @@ function save_stop_state(sim::MultiDomainSimulation)
     controller = sim.controller
     num_domains = sim.num_domains
     subsims = sim.subsims
+    if controller.use_interface_predictor
+        for i in 1:num_domains
+            if !isempty(controller.stop_disp[i])
+                controller.prev_stop_disp[i] = controller.stop_disp[i]
+            end
+        end
+    end
     for i in 1:num_domains
         subsim = subsims[i]
         # If this model has inclined support on, we need to rotate the integrator values
@@ -813,6 +937,9 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                    bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 compute_dirichlet_projector(subsim.model, bc)
                 compute_neumann_projector(subsim.model, bc)
+                if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+                    bc.square_projector = get_square_projection_matrix(subsim.model, bc)
+                end
             end
         end
     end
@@ -858,6 +985,138 @@ function detect_contact(sim::MultiDomainSimulation)
     resize!(sim.controller.contact_hist, sim.controller.stop + 1)
     sim.controller.contact_hist[sim.controller.stop + 1] = sim.controller.active_contact
     write_schwarz_params_csv(sim)
+    return nothing
+end
+
+function extract_interface_state(global_state::Vector{Float64}, bc::SolidMechanicsSchwarzBoundaryCondition)
+    n_local = length(bc.global_from_local_map)
+    local_mat = Matrix{Float64}(undef, 3, n_local)
+    for (li, gi) in enumerate(bc.global_from_local_map)
+        @inbounds local_mat[:, li] = global_state[(3gi - 2):(3gi)]
+    end
+    return local_mat
+end
+
+function write_interface_state!(global_state::Vector{Float64}, local_mat::Matrix{Float64}, bc::SolidMechanicsSchwarzBoundaryCondition)
+    for (li, gi) in enumerate(bc.global_from_local_map)
+        @inbounds global_state[(3gi - 2):(3gi)] = local_mat[:, li]
+    end
+    return nothing
+end
+
+function compute_interface_predictor!(sim::MultiDomainSimulation)
+    controller = sim.controller
+    processed = Set{Tuple{Int,Int}}()
+
+    for (dom_k, subsim_k) in enumerate(sim.subsims)
+        for bc_k in subsim_k.model.boundary_conditions
+            bc_k isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
+            bc_k isa SolidMechanicsRobinSchwarzBoundaryCondition || continue
+
+            dom_j = sim.subsim_name_index_map[bc_k.coupled_subsim.name]
+            pair = minmax(dom_k, dom_j)
+            pair ∈ processed && continue
+            push!(processed, pair)
+
+            subsim_j = sim.subsims[dom_j]
+            bc_j = bc_k.coupled_subsim.model.boundary_conditions[bc_k.coupled_bc_index]
+
+            # Projectors: P_kj maps from domain j's interface space to domain k's
+            #             P_jk maps from domain k's interface space to domain j's
+            P_kj = bc_k.dirichlet_projector
+            P_jk = bc_j.dirichlet_projector
+
+            # Start predictors from the current stop state (t_n)
+            pred_disp_k = copy(controller.stop_disp[dom_k])
+            pred_velo_k = copy(controller.stop_velo[dom_k])
+            pred_acce_k = copy(controller.stop_acce[dom_k])
+            pred_disp_j = copy(controller.stop_disp[dom_j])
+            pred_velo_j = copy(controller.stop_velo[dom_j])
+            pred_acce_j = copy(controller.stop_acce[dom_j])
+
+            both_static = is_static(subsim_k.integrator) && is_static(subsim_j.integrator)
+
+            if both_static
+                # Quasi-static: velocities and accelerations are always zero.
+                # Displacement predictor: linear extrapolation in time when prior step exists.
+                isempty(controller.prev_stop_disp[dom_k]) && continue
+                isempty(controller.prev_stop_disp[dom_j]) && continue
+
+                u_k = extract_interface_state(controller.stop_disp[dom_k], bc_k)
+                u_k_prev = extract_interface_state(controller.prev_stop_disp[dom_k], bc_k)
+                u_j = extract_interface_state(controller.stop_disp[dom_j], bc_j)
+                u_j_prev = extract_interface_state(controller.prev_stop_disp[dom_j], bc_j)
+
+                # Each domain extrapolates its own interface displacement independently.
+                # This correctly handles non-conforming meshes: domain k predicts its own
+                # interface motion, and domain j predicts its own interface motion.
+                u_k_pred = @. 2 * u_k - u_k_prev
+                u_j_pred = @. 2 * u_j - u_j_prev
+
+                write_interface_state!(pred_disp_k, u_k_pred, bc_k)
+                write_interface_state!(pred_disp_j, u_j_pred, bc_j)
+            else
+                # Dynamic: velocity predictor via perfectly inelastic collision using
+                # the interface mass matrices W (row-sum lumping).
+                # W = ∫ N Nᵀ dΓ is purely geometric; it works for both explicit
+                # (lumped_mass) and implicit (consistent mass) time integrators.
+                W_k = bc_k.square_projector    # (n_k × n_k)
+                W_j = bc_j.square_projector    # (n_j × n_j)
+
+                # Lumped interface masses: row sums of W
+                m_k = vec(sum(W_k; dims=2))    # (n_k,)
+                m_j = vec(sum(W_j; dims=2))    # (n_j,)
+
+                # Interface velocities at t_n from stop state
+                v_k = extract_interface_state(controller.stop_velo[dom_k], bc_k)  # (3, n_k)
+                v_j = extract_interface_state(controller.stop_velo[dom_j], bc_j)  # (3, n_j)
+
+                # Project domain j's mass and velocity into domain k's interface space
+                m_j_in_k = P_kj * m_j    # (n_k,)
+                v_j_in_k = Matrix{Float64}(undef, 3, size(P_kj, 1))
+                for d in 1:3
+                    v_j_in_k[d, :] = P_kj * v_j[d, :]
+                end
+
+                # Perfectly inelastic collision: conserves linear momentum
+                m_total = m_k .+ m_j_in_k
+                v_pred_k = Matrix{Float64}(undef, 3, length(m_k))
+                for d in 1:3
+                    @. v_pred_k[d, :] = (m_k * v_k[d, :] + m_j_in_k * v_j_in_k[d, :]) / m_total
+                end
+
+                # Project predicted velocity from domain k's space back to domain j's space
+                v_pred_j = Matrix{Float64}(undef, 3, size(P_jk, 1))
+                for d in 1:3
+                    v_pred_j[d, :] = P_jk * v_pred_k[d, :]
+                end
+
+                # Displacement predictor: velocity-consistent linear extrapolation
+                # u_pred = u_n + Δt * v_pred  (each domain uses its own u_n as baseline)
+                Δt = controller.time_step
+                u_k = extract_interface_state(controller.stop_disp[dom_k], bc_k)
+                u_j = extract_interface_state(controller.stop_disp[dom_j], bc_j)
+                u_pred_k = @. u_k + Δt * v_pred_k
+                u_pred_j = @. u_j + Δt * v_pred_j
+
+                # Acceleration predictor: zero at the interface (standard Newmark prediction)
+                # pred_acce_k and pred_acce_j already contain zero-valued stop_acce (from t_n
+                # corrected acceleration); no modification needed here.
+
+                write_interface_state!(pred_disp_k, u_pred_k, bc_k)
+                write_interface_state!(pred_velo_k, v_pred_k, bc_k)
+                write_interface_state!(pred_disp_j, u_pred_j, bc_j)
+                write_interface_state!(pred_velo_j, v_pred_j, bc_j)
+            end
+
+            controller.predictor_disp[dom_k] = pred_disp_k
+            controller.predictor_velo[dom_k] = pred_velo_k
+            controller.predictor_acce[dom_k] = pred_acce_k
+            controller.predictor_disp[dom_j] = pred_disp_j
+            controller.predictor_velo[dom_j] = pred_velo_j
+            controller.predictor_acce[dom_j] = pred_acce_j
+        end
+    end
     return nothing
 end
 
