@@ -10,3 +10,4 @@ maximum iterations: 100
 relative tolerance: 1.0e-12
 absolute tolerance: 1.0e-08
 relaxation parameter: 1.0
+interface predictor: true

@@ -31,6 +31,7 @@ boundary conditions:
       source: cuboid-2
       source block: coarse
       source side set: ssz-
+      robin parameter: 4.0e+09
 solver:
   type: Hessian minimizer
   step: full Newton
