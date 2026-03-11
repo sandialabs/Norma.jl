@@ -59,7 +59,9 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     predictor_disp::Vector{Vector{Float64}}
     predictor_velo::Vector{Vector{Float64}}
     predictor_acce::Vector{Vector{Float64}}
+    predictor_∂Ω_f::Vector{Vector{Float64}}
     prev_stop_disp::Vector{Vector{Float64}}
+    prev_stop_∂Ω_f::Vector{Vector{Float64}}
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController

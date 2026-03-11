@@ -137,7 +137,9 @@ function SolidMultiDomainTimeController(params::Parameters)
     predictor_disp = [Vector{Float64}() for _ in 1:num_domains]
     predictor_velo = [Vector{Float64}() for _ in 1:num_domains]
     predictor_acce = [Vector{Float64}() for _ in 1:num_domains]
+    predictor_∂Ω_f = [Vector{Float64}() for _ in 1:num_domains]
     prev_stop_disp = [Vector{Float64}() for _ in 1:num_domains]
+    prev_stop_∂Ω_f = [Vector{Float64}() for _ in 1:num_domains]
 
     return SolidMultiDomainTimeController(
         minimum_iterations,
@@ -181,7 +183,9 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_disp,
         predictor_velo,
         predictor_acce,
+        predictor_∂Ω_f,
         prev_stop_disp,
+        prev_stop_∂Ω_f,
     )
 end
 
@@ -570,6 +574,9 @@ function save_stop_state(sim::MultiDomainSimulation)
         for i in 1:num_domains
             if !isempty(controller.stop_disp[i])
                 controller.prev_stop_disp[i] = controller.stop_disp[i]
+            end
+            if !isempty(controller.stop_∂Ω_f[i])
+                controller.prev_stop_∂Ω_f[i] = controller.stop_∂Ω_f[i]
             end
         end
     end
@@ -1001,12 +1008,31 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 write_interface_state!(pred_velo_j, v_pred_j, bc_j)
             end
 
+            # Force predictor: linear temporal extrapolation f_pred = 2*f_n - f_{n-1}.
+            # Which domain's force is read by the coupling:
+            #   - Non-overlap Neumann (is_dirichlet == false) reads force FROM the coupled domain.
+            #   - Robin reads force from BOTH coupled domains.
+            # So set predictor_∂Ω_f[x] when domain x's force is read by the other domain.
+            is_robin = bc_k isa SolidMechanicsRobinSchwarzBoundaryCondition
+
+            pred_∂Ω_f_k = copy(controller.stop_∂Ω_f[dom_k])
+            pred_∂Ω_f_j = copy(controller.stop_∂Ω_f[dom_j])
+
+            if (is_robin || !bc_j.is_dirichlet) && !isempty(controller.prev_stop_∂Ω_f[dom_k])
+                @. pred_∂Ω_f_k = 2 * controller.stop_∂Ω_f[dom_k] - controller.prev_stop_∂Ω_f[dom_k]
+            end
+            if (is_robin || !bc_k.is_dirichlet) && !isempty(controller.prev_stop_∂Ω_f[dom_j])
+                @. pred_∂Ω_f_j = 2 * controller.stop_∂Ω_f[dom_j] - controller.prev_stop_∂Ω_f[dom_j]
+            end
+
             controller.predictor_disp[dom_k] = pred_disp_k
             controller.predictor_velo[dom_k] = pred_velo_k
             controller.predictor_acce[dom_k] = pred_acce_k
+            controller.predictor_∂Ω_f[dom_k] = pred_∂Ω_f_k
             controller.predictor_disp[dom_j] = pred_disp_j
             controller.predictor_velo[dom_j] = pred_velo_j
             controller.predictor_acce[dom_j] = pred_acce_j
+            controller.predictor_∂Ω_f[dom_j] = pred_∂Ω_f_j
         end
     end
     return nothing

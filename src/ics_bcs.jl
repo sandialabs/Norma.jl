@@ -693,7 +693,8 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_disp = controller.predictor_disp[coupled_index]
         interp_velo = controller.predictor_velo[coupled_index]
         interp_acce = controller.predictor_acce[coupled_index]
-        interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
+        interp_∂Ω_f = !isempty(controller.predictor_∂Ω_f[coupled_index]) ?
+            controller.predictor_∂Ω_f[coupled_index] : controller.stop_∂Ω_f[coupled_index]
     elseif isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
         interp_disp = controller.stop_disp[coupled_index]
         interp_velo = controller.stop_velo[coupled_index]
