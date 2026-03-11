@@ -617,9 +617,11 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
 end
 
 function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    println("IKT in coupling_variational_dbc before get_dst_curr_disp_velo_acce call") 
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     #println("IKT coupling_variational_dbc model = ", model)
     println("   IKT size(nodal_curr) = ", size(nodal_curr))
+    println("IKT in coupling_variational_dbc after get_dst_curr_disp_velo_acce call") 
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
         @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
@@ -729,6 +731,19 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
           controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
           controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
           controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+	  
+          dst_bc_index = bc.coupled_bc_index
+          println("IKT dst_bc_index, src_bc_name, coupled_index = ", dst_bc_index, ", ", bc.coupled_bc_name, ",",  coupled_index)
+          println("IKT coupled_bc_name = ", bc.coupled_bc_name)
+          #If Omega1 is the Dirichlet domain, dst_bc will be Gamma as seen from Omega2
+          dst_bc = coupled_subsim.model.boundary_conditions[dst_bc_index]
+
+          println("IKT before get_dst_curr_disp_velo_acce")
+          println("IKT norm(coupled_subsim.model.current - coupled_subsim.model.reference) = ", norm(coupled_subsim.model.current - coupled_subsim.model.reference)) 
+          gammaji_curr, gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_disp_velo_acce(dst_bc)
+	  println("IKT after get_dst_curr_disp_velo_acce") 
+          println("IKT norm(gammaji_disp) = ", norm(gammaji_disp)) 
+          println("IKT norm(gammaji_curr) = ", norm(gammaji_curr)) 
 
           integrator.displacement = controller.lambda_disp[coupled_index]
           integrator.velocity = controller.lambda_velo[coupled_index]
@@ -988,7 +1003,7 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     println("   IKT num_src_nodes, num_dst_nodes = ", num_src_nodes, ", ", num_dst_nodes)
     for i in 1:3
         dst_curr[i, :] = dirichlet_projector * src_curr[i, :]
-        dst_disp[i, :] = dirichlet_projector * (src_refe[i, :] - src_curr[i, :]) 
+        dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :]) 
         dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
         dst_acce[i, :] = dirichlet_projector * src_acce[i, :]
     end
