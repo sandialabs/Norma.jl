@@ -138,8 +138,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     predictor_velo = [Vector{Float64}() for _ in 1:num_domains]
     predictor_acce = [Vector{Float64}() for _ in 1:num_domains]
     prev_stop_disp = [Vector{Float64}() for _ in 1:num_domains]
-    anderson_window = get(params, "anderson window", 0)
-    anderson_x_hist = [Vector{Vector{Float64}}() for _ in 1:num_domains]
 
     return SolidMultiDomainTimeController(
         minimum_iterations,
@@ -184,8 +182,6 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_velo,
         predictor_acce,
         prev_stop_disp,
-        anderson_window,
-        anderson_x_hist,
     )
 end
 
@@ -496,7 +492,6 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
-    reset_anderson_history!(sim)
     swap_swappable_bcs(sim)
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)
@@ -529,108 +524,10 @@ function schwarz(sim::MultiDomainSimulation)
         end
         iteration_number += 1
         save_schwarz_state(sim)
-        if sim.controller.anderson_window > 0
-            anderson_accelerate!(sim)
-        end
         restore_stop_state(sim)
     end
 end
 
-function reset_anderson_history!(sim::MultiDomainSimulation)
-    controller = sim.controller
-    if controller.anderson_window == 0
-        return nothing
-    end
-    for i in 1:sim.num_domains
-        empty!(controller.anderson_x_hist[i])
-    end
-    return nothing
-end
-
-function anderson_accelerate!(sim::MultiDomainSimulation)
-    controller = sim.controller
-    m = controller.anderson_window
-    num_domains = sim.num_domains
-    for i in 1:num_domains
-        subsim = sim.subsims[i]
-        ndofs = length(subsim.integrator.displacement)
-        # Build current iterate; rotate if inclined support
-        if subsim.model.inclined_support == true
-            T = subsim.model.global_transform'
-            u = T * subsim.integrator.displacement
-            v = T * subsim.integrator.velocity
-            a = T * subsim.integrator.acceleration
-        else
-            u = copy(subsim.integrator.displacement)
-            v = copy(subsim.integrator.velocity)
-            a = copy(subsim.integrator.acceleration)
-        end
-        x_k = vcat(u, v, a)
-        # Anderson prediction is injected into disp_hist[i] so that domains solved
-        # before domain i in the sequential subcycle read the predicted coupling BC.
-        # Domain 1 (i==1) is processed first, so its history is cleared by
-        # reset_history before other domains can benefit — skip injection.
-        if i == 1
-            continue
-        end
-        # Burn-in: the first few Schwarz iterations exhibit a non-geometric transient
-        # (both domains "see" each other for the first time), making Anderson
-        # extrapolation unreliable. Skip until iteration 4 (after the transient).
-        if controller.iteration_number <= 3
-            continue
-        end
-        # Append to rolling buffer, keep at most m+1 entries
-        x_hist = controller.anderson_x_hist[i]
-        push!(x_hist, x_k)
-        if length(x_hist) > m + 1
-            popfirst!(x_hist)
-        end
-        mk = length(x_hist) - 1   # number of residuals available
-        # Need at least 2 residuals (3 iterates) to form the ΔF system
-        if mk < 2
-            continue
-        end
-        # Build ΔF and ΔX: differences of consecutive residuals / iterates
-        ΔF = Matrix{Float64}(undef, 3 * ndofs, mk - 1)
-        ΔX = Matrix{Float64}(undef, 3 * ndofs, mk - 1)
-        for j in 1:(mk - 1)
-            f_j   = x_hist[j + 1] - x_hist[j]
-            f_jp1 = x_hist[j + 2] - x_hist[j + 1]
-            ΔF[:, j] = f_jp1 - f_j
-            ΔX[:, j] = x_hist[j + 2] - x_hist[j + 1]
-        end
-        f_cur = x_hist[end] - x_hist[end - 1]
-        # Solve min_c ||ΔF*c + f_cur||^2 (Walker-Ni type-I Anderson)
-        c = -(ΔF \ f_cur)
-        x_new = x_k + ΔX * c
-        u_new = x_new[1:ndofs]
-        v_new = x_new[(ndofs + 1):(2 * ndofs)]
-        a_new = x_new[(2 * ndofs + 1):(3 * ndofs)]
-        # Rotate back to global frame if inclined support
-        if subsim.model.inclined_support == true
-            u_new = subsim.model.global_transform * u_new
-            v_new = subsim.model.global_transform * v_new
-            a_new = subsim.model.global_transform * a_new
-        end
-        # Overwrite domain i's coupling history with the Anderson prediction.
-        # Domain i's time_hist[i] is non-empty (set by the previous save_history_snapshot),
-        # so apply_bc for other domains will use interp(time_hist[i], disp_hist[i], t)
-        # = u_new instead of the raw Schwarz output.
-        disp_h = controller.disp_hist[i]
-        velo_h = controller.velo_hist[i]
-        acce_h = controller.acce_hist[i]
-        if !isempty(disp_h)
-            disp_h[end] = u_new
-            velo_h[end] = v_new
-            acce_h[end] = a_new
-        end
-        # Clear history after injection so the big-jump iterate (the Anderson prediction)
-        # does not contaminate subsequent Anderson fits. The next m iterations will rebuild
-        # a clean history from near-converged iterates before the next injection.
-        empty!(x_hist)
-    end
-    return nothing
-end
 
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator

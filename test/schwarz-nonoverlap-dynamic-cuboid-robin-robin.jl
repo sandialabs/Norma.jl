@@ -61,22 +61,3 @@ end
     @test iters_pred < iters_base
 end
 
-@testset "Schwarz Nonoverlap Dynamic Cuboid Hex8 Robin-Robin Anderson Acceleration" begin
-    sim_base = run_rr_dynamic("cuboids.yaml")
-    sim_aa   = run_rr_dynamic("cuboids.yaml", Dict("anderson window" => 3))
-    m1 = sim_aa.subsims[1].model
-    m2 = sim_aa.subsims[2].model
-    u1z = m1.current[3, :] .- m1.reference[3, :]
-    u2z = m2.current[3, :] .- m2.reference[3, :]
-
-    # Anderson must not degrade physical accuracy
-    @test maximum(u1z) ≈ minimum(u2z) rtol = 1.0e-03
-
-    # Applied BC accuracy preserved
-    @test maximum(u2z) ≈ 6.156e-03 rtol = 1.0e-02
-
-    # Total iterations within 15% of baseline (Anderson should not significantly worsen)
-    iters_base = sum(sim_base.controller.schwarz_iters[1:5])
-    iters_aa   = sum(sim_aa.controller.schwarz_iters[1:5])
-    @test iters_aa ≤ round(Int, 1.15 * iters_base)
-end
