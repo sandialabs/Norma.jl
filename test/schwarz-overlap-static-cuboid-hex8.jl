@@ -92,3 +92,97 @@ end
     @test avg_stress_coarse[5] ≈ 0.0 atol = 1.0e-01
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-01
 end
+
+@testset "Schwarz Overlap L2 Error Static Cuboid Hex8" begin
+    cp("../examples/overlap/static-same-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
+    cp("../examples/overlap/static-same-step/cuboids/cuboid-2.g", "cuboid-2.g"; force=true)
+
+    sim_default = Norma.create_simulation("cuboids.yaml")
+    bc_default_1 = only([
+        bc for bc in sim_default.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+    ])
+    bc_default_2 = only([
+        bc for bc in sim_default.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+    ])
+    @test bc_default_1.compute_overlap_l2_error == false
+    @test bc_default_2.compute_overlap_l2_error == false
+    Exodus.close(sim_default.subsims[1].params["input_mesh"])
+    Exodus.close(sim_default.subsims[1].params["output_mesh"])
+    Exodus.close(sim_default.subsims[2].params["input_mesh"])
+    Exodus.close(sim_default.subsims[2].params["output_mesh"])
+
+    sim_default = Norma.run("cuboids.yaml")
+    @test !isfile("overlap-l2-errors-0001.csv")
+    rm("cuboid-1.e")
+    rm("cuboid-2.e")
+
+    cuboids_text = read("cuboids.yaml", String)
+    write("cuboids.yaml", replace(cuboids_text, "CSV output interval: 0" => "CSV output interval: 1"))
+    cuboid_1_text = read("cuboid-1.yaml", String)
+    write(
+        "cuboid-1.yaml",
+        replace(
+            cuboid_1_text,
+            "source side set: ssz-" => "source side set: ssz-\n      compute overlap L2 error: true",
+        ),
+    )
+    cuboid_2_text = read("cuboid-2.yaml", String)
+    write(
+        "cuboid-2.yaml",
+        replace(
+            cuboid_2_text,
+            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 error: true",
+        ),
+    )
+
+    sim_enabled = Norma.create_simulation("cuboids.yaml")
+    bc_enabled_1 = only([
+        bc for bc in sim_enabled.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+    ])
+    bc_enabled_2 = only([
+        bc for bc in sim_enabled.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+    ])
+    @test bc_enabled_1.compute_overlap_l2_error == true
+    @test bc_enabled_2.compute_overlap_l2_error == true
+    @test length(bc_enabled_1.overlap_node_indices) > length(unique(bc_enabled_1.side_set_node_indices))
+    @test length(bc_enabled_2.overlap_node_indices) > length(unique(bc_enabled_2.side_set_node_indices))
+    @test isnan(bc_enabled_1.overlap_l2_error)
+    @test isnan(bc_enabled_2.overlap_l2_error)
+    Exodus.close(sim_enabled.subsims[1].params["input_mesh"])
+    Exodus.close(sim_enabled.subsims[1].params["output_mesh"])
+    Exodus.close(sim_enabled.subsims[2].params["input_mesh"])
+    Exodus.close(sim_enabled.subsims[2].params["output_mesh"])
+
+    sim_enabled = Norma.run("cuboids.yaml")
+    bc_enabled_1 = only([
+        bc for bc in sim_enabled.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+    ])
+    bc_enabled_2 = only([
+        bc for bc in sim_enabled.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+    ])
+    @test isfinite(bc_enabled_1.overlap_l2_error)
+    @test isfinite(bc_enabled_2.overlap_l2_error)
+    @test bc_enabled_1.overlap_l2_error >= 0.0
+    @test bc_enabled_2.overlap_l2_error >= 0.0
+    @test isfile("overlap-l2-errors-0001.csv")
+    overlap_csv = read("overlap-l2-errors-0001.csv", String)
+    @test occursin("domain,side_set,overlap_l2_error", overlap_csv)
+    @test occursin("cuboid-1,ssz+", overlap_csv)
+    @test occursin("cuboid-2,ssz-", overlap_csv)
+
+    rm("cuboids.yaml")
+    rm("cuboid-1.yaml")
+    rm("cuboid-2.yaml")
+    rm("cuboid-1.g")
+    rm("cuboid-2.g")
+    rm("cuboid-1.e")
+    rm("cuboid-2.e")
+    for file in readdir()
+        if startswith(file, "iterations-") || startswith(file, "overlap-l2-errors-")
+            rm(file)
+        end
+    end
+end

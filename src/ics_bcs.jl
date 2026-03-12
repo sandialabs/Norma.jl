@@ -134,12 +134,9 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     subsim::Simulation,
     variational::Bool,
+    compute_overlap_l2_error::Bool=false,
 )
-    if coupled_subsim.model isa RomModel
-        coupled_mesh = coupled_subsim.model.fom_model.mesh
-    else
-        coupled_mesh = coupled_subsim.model.mesh
-    end
+    coupled_mesh = get_solid_mechanics_model(coupled_subsim.model).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
     element_type = element_type_from_string(element_type_string)
@@ -163,11 +160,30 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
         push!(coupled_nodes_indices, node_indices)
         push!(interpolation_function_values, N)
     end
+    overlap_node_indices = Vector{Int64}(undef, 0)
+    overlap_coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
+    overlap_interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
+    if compute_overlap_l2_error
+        overlap_node_indices,
+        overlap_coupled_nodes_indices,
+        overlap_interpolation_function_values = build_overlap_l2_error_map(
+            coupled_block_id,
+            element_type,
+            tol,
+            coupled_subsim,
+            subsim,
+        )
+    end
     return SolidMechanicsOverlapSchwarzBoundaryCondition(
         side_set_name,
         side_set_node_indices,
         coupled_nodes_indices,
         interpolation_function_values,
+        compute_overlap_l2_error,
+        overlap_node_indices,
+        overlap_coupled_nodes_indices,
+        overlap_interpolation_function_values,
+        NaN,
         coupled_subsim,
         subsim,
         variational,
@@ -309,9 +325,17 @@ function SMCouplingSchwarzBC(
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
     variational = get(bc_params, "variational", false)
+    compute_overlap_l2_error = get(bc_params, "compute overlap L2 error", false)
     if bc_type == "Schwarz overlap"
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational
+            coupled_block_name,
+            tol,
+            side_set_name,
+            side_set_node_indices,
+            coupled_subsim,
+            subsim,
+            variational,
+            compute_overlap_l2_error,
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -351,6 +375,74 @@ function SMCouplingSchwarzBC(
     else
         norma_abort("Unknown boundary condition type : $bc_type")
     end
+end
+
+function get_solid_mechanics_model(model::SolidMechanics)
+    return model
+end
+
+function get_solid_mechanics_model(model::RomModel)
+    return model.fom_model
+end
+
+function collect_overlap_candidate_nodes(
+    coupled_block_id::Int64,
+    tol::Float64,
+    coupled_subsim::Simulation,
+    subsim::Simulation,
+)
+    dst_model = get_solid_mechanics_model(subsim.model)
+    dst_mesh = dst_model.mesh
+    overlap_node_set = Set{Int64}()
+    for block in Exodus.read_sets(dst_mesh, Block)
+        block_id = block.id
+        element_block_connectivity = get_block_connectivity(dst_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        for block_element_index in 1:num_block_elements
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = vec(element_block_connectivity[connectivity_indices])
+            element_ref_pos = dst_model.reference[:, node_indices]
+            centroid = vec(sum(element_ref_pos; dims=2) / size(element_ref_pos, 2))
+            _, _, centroid_found = find_point_in_mesh(centroid, coupled_subsim.model, coupled_block_id, tol)
+            node_found = false
+            if !centroid_found
+                for node_index in node_indices
+                    _, _, node_found = find_point_in_mesh(dst_model.reference[:, node_index], coupled_subsim.model, coupled_block_id, tol)
+                    node_found && break
+                end
+            end
+            if centroid_found || node_found
+                union!(overlap_node_set, node_indices)
+            end
+        end
+    end
+    return sort!(collect(overlap_node_set))
+end
+
+function build_overlap_l2_error_map(
+    coupled_block_id::Int64,
+    element_type::ElementType,
+    tol::Float64,
+    coupled_subsim::Simulation,
+    subsim::Simulation,
+)
+    dst_model = get_solid_mechanics_model(subsim.model)
+    overlap_node_indices = collect_overlap_candidate_nodes(coupled_block_id, tol, coupled_subsim, subsim)
+    overlap_coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
+    overlap_interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
+    mapped_overlap_node_indices = Vector{Int64}(undef, 0)
+    for node_index in overlap_node_indices
+        point = dst_model.reference[:, node_index]
+        node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
+        if !found
+            continue
+        end
+        push!(mapped_overlap_node_indices, node_index)
+        push!(overlap_coupled_nodes_indices, node_indices)
+        push!(overlap_interpolation_function_values, interpolate(element_type, ξ)[1])
+    end
+    return mapped_overlap_node_indices, overlap_coupled_nodes_indices, overlap_interpolation_function_values
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
@@ -612,6 +704,47 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
         dof_index = (3 * node_index - 2):(3 * node_index)
         model.free_dofs[dof_index] .= false
     end
+end
+
+function compute_overlap_l2_error!(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    if !bc.compute_overlap_l2_error
+        bc.overlap_l2_error = NaN
+        return bc.overlap_l2_error
+    end
+
+    src_model = get_solid_mechanics_model(bc.coupled_subsim.model)
+    dst_model = get_solid_mechanics_model(bc.subsim.model)
+    overlap_l2_error_sq = 0.0
+    for i in eachindex(bc.overlap_node_indices)
+        node_index = bc.overlap_node_indices[i]
+        coupled_node_indices = bc.overlap_coupled_nodes_indices[i]
+        N = bc.overlap_interpolation_function_values[i]
+        dst_disp = dst_model.current[:, node_index] - dst_model.reference[:, node_index]
+        src_disp = (src_model.current[:, coupled_node_indices] - src_model.reference[:, coupled_node_indices]) * N
+        overlap_l2_error_sq += sum(abs2, dst_disp - src_disp)
+    end
+    bc.overlap_l2_error = sqrt(overlap_l2_error_sq)
+    return bc.overlap_l2_error
+end
+
+function compute_overlap_l2_error!(_)
+    return NaN
+end
+
+function stores_overlap_l2_error(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    return bc.compute_overlap_l2_error
+end
+
+function stores_overlap_l2_error(_)
+    return false
+end
+
+function get_overlap_l2_error(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    return bc.overlap_l2_error
+end
+
+function get_overlap_l2_error(_)
+    return NaN
 end
 
 function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)

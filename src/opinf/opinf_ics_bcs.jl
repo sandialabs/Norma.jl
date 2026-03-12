@@ -73,7 +73,17 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     variational::Bool,
     bc_params::Parameters,
 )
-    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(coupled_block_name,tol,side_set_name,side_set_node_indices,coupled_subsim,subsim,variational)
+    compute_overlap_l2_error = get(bc_params, "compute overlap L2 error", false)
+    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(
+        coupled_block_name,
+        tol,
+        side_set_name,
+        side_set_node_indices,
+        coupled_subsim,
+        subsim,
+        variational,
+        compute_overlap_l2_error,
+    )
     opinf_model_directory = bc_params["model-directory"]
     py""" 
     import torch
@@ -103,6 +113,18 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
         model,
         basis
     )
+end
+
+function compute_overlap_l2_error!(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+    return compute_overlap_l2_error!(bc.fom_bc)
+end
+
+function stores_overlap_l2_error(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+    return bc.fom_bc.compute_overlap_l2_error
+end
+
+function get_overlap_l2_error(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+    return bc.fom_bc.overlap_l2_error
 end
 
 function SMOpInfCouplingSchwarzBC(
