@@ -543,18 +543,24 @@ function report_overlap_l2_errors(sim::MultiDomainSimulation)
                 continue
             end
             overlap_l2_error = compute_overlap_l2_error!(bc)
-            norma_logf(
-                0,
-                :schwarz,
-                "Overlap L2 error [%s:%s] = %.6e",
-                subsim.name,
-                bc.name,
-                overlap_l2_error,
-            )
+            write_overlap_l2_error_screen(subsim.name, bc.name, overlap_l2_error)
             push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error])
         end
     end
     write_overlap_l2_error_csv(sim, overlap_rows)
+    return nothing
+end
+
+function write_overlap_l2_error_screen(domain_name::String, side_set_name::String, overlap_l2_error::Float64)
+    norma_logf(
+        0,
+        :summary,
+        "Overlap L2 error [%s:%s] = %.6e",
+        domain_name,
+        side_set_name,
+        overlap_l2_error,
+    )
+    flush(stdout)
     return nothing
 end
 

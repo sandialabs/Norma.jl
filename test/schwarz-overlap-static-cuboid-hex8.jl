@@ -156,7 +156,16 @@ end
     Exodus.close(sim_enabled.subsims[2].params["input_mesh"])
     Exodus.close(sim_enabled.subsims[2].params["output_mesh"])
 
-    sim_enabled = Norma.run("cuboids.yaml")
+    sim_enabled_ref = Ref{Any}(nothing)
+    run_output = mktemp() do path, io
+        redirect_stdout(io) do
+            sim_enabled_ref[] = Norma.run("cuboids.yaml")
+        end
+        flush(io)
+        seekstart(io)
+        read(io, String)
+    end
+    sim_enabled = sim_enabled_ref[]
     bc_enabled_1 = only([
         bc for bc in sim_enabled.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
@@ -172,6 +181,8 @@ end
     @test occursin("domain,side_set,overlap_l2_error", overlap_csv)
     @test occursin("cuboid-1,ssz+", overlap_csv)
     @test occursin("cuboid-2,ssz-", overlap_csv)
+    @test occursin("Overlap L2 error [cuboid-1:ssz+]", run_output)
+    @test occursin("Overlap L2 error [cuboid-2:ssz-]", run_output)
 
     rm("cuboids.yaml")
     rm("cuboid-1.yaml")
