@@ -24,7 +24,7 @@ boundary conditions:
     - node set: -Z_bottom
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: +Z_bottomSS
       source: cylinder-2
       source block: coarse

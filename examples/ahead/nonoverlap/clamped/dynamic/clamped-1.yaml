@@ -37,7 +37,7 @@ boundary conditions:
     - node set: nsz-
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: ssz+
       source: clamped-2
       source block: fine

@@ -41,7 +41,7 @@ boundary conditions:
     - node set: loading
       component: z
       function: "4.0 * 0.5 * (1.0 - cos(pi*t / (2.0e-3)))"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: schwarz_ss_parts
       source: joint-2
       source block: component

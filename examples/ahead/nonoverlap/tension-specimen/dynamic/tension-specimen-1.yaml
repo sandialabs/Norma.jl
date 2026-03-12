@@ -28,7 +28,7 @@ boundary conditions:
     - node set: sym_z_lower
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: schwarz_lower_ss
       source: tension-specimen-2
       source block: upper

@@ -21,7 +21,7 @@ time integrator:
   increase factor: 1.1
   decrease factor: 0.5
 boundary conditions:
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: schwarz_ss_bolts_ss1
       source: joint-1
       source side set: schwarz_ss_parts_ss1
