@@ -619,15 +619,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
           alpha_W_u = α * (W * dst_disp[comp, :])
           for (i_local, i_global) in enumerate(global_from_local_map)
               dof_i = 3 * (i_global - 1) + comp
-              controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
-          end
-      end
-      #println("IKT controller.lambda_disp norm = ", norm(controller.lambda_disp[coupled_index]))
-      #IKT probably can combine above loop and below loop to avoid code duplication 
-      for comp in 1:3
-          alpha_W_u = α * (W * dst_disp[comp, :])
-          for (i_local, i_global) in enumerate(global_from_local_map)
-              dof_i = 3 * (i_global - 1) + comp
+              controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * (neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local])
               model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][dof_i]
           end
       end
