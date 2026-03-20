@@ -236,11 +236,13 @@ function evolve(sim::Simulation)
     initialize(sim)
     initialize_writing(sim)
     write_stop(sim)
+    t_batch = time()
     while true
         advance_control_time(sim)
         sync_control_time(sim)
         advance_control(sim)
-        write_stop(sim)
+        write_stop(sim; wall_time=time() - t_batch)
+        t_batch = time()
         if stop_evolve(sim) == true
             break
         end
@@ -297,11 +299,16 @@ function increase_time_step(sim::SingleDomainSimulation)
 end
 
 function advance_one_step(sim::SingleDomainSimulation)
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
     while true
         prev_time = sim.integrator.prev_time
         time = sim.integrator.time
         time_step = sim.integrator.time_step
-        norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+        # For implicit, print each step's time interval (Newton iters follow).
+        # For explicit, suppress — only output stops are printed.
+        if !is_explicit
+            norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+        end
         apply_bcs(sim)
         solve(sim)
         if sim.failed == false
