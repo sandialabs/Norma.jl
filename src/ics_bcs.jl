@@ -313,43 +313,41 @@ function SMCouplingSchwarzBC(
         SolidMechanicsOverlapSchwarzBoundaryCondition(
             coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational
         )
-    elseif bc_type == "Schwarz nonoverlap"
-        if haskey(bc_params, "robin parameter")
-            robin_parameter = Float64(bc_params["robin parameter"])
-            SolidMechanicsRobinSchwarzBoundaryCondition(
-                input_mesh,
-                side_set_name,
-                coupled_side_set_name,
-                side_set_id,
-                side_set_node_indices,
-                num_nodes_sides,
-                coupled_subsim,
-                robin_parameter,
-                variational,
-            )
+    elseif bc_type == "Schwarz DN nonoverlap"
+        default_bc_type = get(bc_params, "default BC type", "Dirichlet")
+        if default_bc_type == "Dirichlet"
+            is_dirichlet = true
+        elseif default_bc_type == "Neumann"
+            is_dirichlet = false
         else
-            default_bc_type = get(bc_params, "default BC type", "Dirichlet")
-            if default_bc_type == "Dirichlet"
-                is_dirichlet = true
-            elseif default_bc_type == "Neumann"
-                is_dirichlet = false
-            else
-                norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
-            end
-            swap_bcs = get(bc_params, "swap BC types", false)
-            SolidMechanicsNonOverlapSchwarzBoundaryCondition(
-                input_mesh,
-                side_set_name,
-                coupled_side_set_name,
-                side_set_id,
-                side_set_node_indices,
-                num_nodes_sides,
-                coupled_subsim,
-                is_dirichlet,
-                swap_bcs,
-                variational,
-            )
+            norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
         end
+        swap_bcs = get(bc_params, "swap BC types", false)
+        SolidMechanicsNonOverlapSchwarzBoundaryCondition(
+            input_mesh,
+            side_set_name,
+            coupled_side_set_name,
+            side_set_id,
+            side_set_node_indices,
+            num_nodes_sides,
+            coupled_subsim,
+            is_dirichlet,
+            swap_bcs,
+            variational,
+        )
+    elseif bc_type == "Schwarz RR nonoverlap"
+        robin_parameter = Float64(bc_params["robin parameter"])
+        SolidMechanicsRobinSchwarzBoundaryCondition(
+            input_mesh,
+            side_set_name,
+            coupled_side_set_name,
+            side_set_id,
+            side_set_node_indices,
+            num_nodes_sides,
+            coupled_subsim,
+            robin_parameter,
+            variational,
+        )
     else
         norma_abort("Unknown boundary condition type : $bc_type")
     end
@@ -698,7 +696,8 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_disp = controller.predictor_disp[coupled_index]
         interp_velo = controller.predictor_velo[coupled_index]
         interp_acce = controller.predictor_acce[coupled_index]
-        interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
+        interp_∂Ω_f = !isempty(controller.predictor_∂Ω_f[coupled_index]) ?
+            controller.predictor_∂Ω_f[coupled_index] : controller.stop_∂Ω_f[coupled_index]
     elseif isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
         interp_disp = controller.stop_disp[coupled_index]
         interp_velo = controller.stop_velo[coupled_index]
@@ -1125,7 +1124,7 @@ function create_bcs(params::Parameters)
                 boundary_condition = SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh, bc_setting_params)
                 append!(inclined_support_nodes, boundary_condition.node_set_node_indices)
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz nonoverlap"
+            elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap"
                 sim = params["parent_simulation"]
                 subsim_name = params["name"]
                 subdomain_index = sim.subsim_name_index_map[subsim_name]

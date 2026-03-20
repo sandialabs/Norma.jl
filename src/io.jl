@@ -91,23 +91,42 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     return nothing
 end
 
-function write_stop(sim::SingleDomainSimulation)
+function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
     params = sim.params
     stop = sim.controller.stop
     num_steps = sim.controller.num_stops - 1
     time = sim.controller.time
     name = sim.name
-    if haskey(params, "parent_simulation") == false
-        percent = 100 * stop / num_steps
-        digits = max(0, Int64(ceil(log10(num_steps))) - 2)
-        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
-    end
+    model = sim.model
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
     exodus_interval = get(params, "Exodus output interval", 1)::Int64
+    csv_interval    = get(params, "CSV output interval", 0)::Int64
+    is_output_step  = (exodus_interval > 0 && stop % exodus_interval == 0) ||
+                      (csv_interval > 0 && stop % csv_interval == 0)
+
+    # For explicit dynamics, only print at output steps (suppresses per-step noise).
+    # For implicit/quasi-static, print every step (Newton iterations provide context).
+    if haskey(params, "parent_simulation") == false
+        if !is_explicit || is_output_step
+            percent = 100 * stop / num_steps
+            digits = max(0, Int64(ceil(log10(num_steps))) - 2)
+            u_max = maximum(abs, model.current .- model.reference)
+            if is_output_step && wall_time > 0.0
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e : |U|_max = %.3e : wall = %.2fs",
+                           stop, num_steps, percent, time, u_max, wall_time)
+            elseif wall_time > 0.0
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e : wall = %.2fs",
+                           stop, num_steps, percent, time, wall_time)
+            else
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e",
+                           stop, num_steps, percent, time)
+            end
+        end
+    end
     if exodus_interval > 0 && stop % exodus_interval == 0
         norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
-    csv_interval = get(params, "CSV output interval", 0)::Int64
     if csv_interval > 0 && stop % csv_interval == 0
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)
@@ -118,13 +137,19 @@ function write_stop(sim::SingleDomainSimulation)
     return nothing
 end
 
-function write_stop(sim::MultiDomainSimulation)
+function write_stop(sim::MultiDomainSimulation; wall_time::Float64=0.0)
     stop = sim.controller.stop
     num_steps = sim.controller.num_stops - 1
     time = sim.controller.time
     percent = 100 * stop / num_steps
     digits = max(0, Int64(ceil(log10(num_steps))) - 2)
-    norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
+    if wall_time > 0.0
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e : wall = %.2fs",
+                   stop, num_steps, percent, time, wall_time)
+    else
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e",
+                   stop, num_steps, percent, time)
+    end
     for subsim in sim.subsims
         write_stop(subsim)
     end

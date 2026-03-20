@@ -141,9 +141,9 @@ function SolidMultiDomainTimeController(params::Parameters)
     predictor_disp = [Vector{Float64}() for _ in 1:num_domains]
     predictor_velo = [Vector{Float64}() for _ in 1:num_domains]
     predictor_acce = [Vector{Float64}() for _ in 1:num_domains]
+    predictor_∂Ω_f = [Vector{Float64}() for _ in 1:num_domains]
     prev_stop_disp = [Vector{Float64}() for _ in 1:num_domains]
-    anderson_window = get(params, "anderson window", 0)
-    anderson_x_hist = [Vector{Vector{Float64}}() for _ in 1:num_domains]
+    prev_stop_∂Ω_f = [Vector{Float64}() for _ in 1:num_domains]
 
     return SolidMultiDomainTimeController(
         minimum_iterations,
@@ -188,9 +188,9 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_disp,
         predictor_velo,
         predictor_acce,
+        predictor_∂Ω_f,
         prev_stop_disp,
-        anderson_window,
-        anderson_x_hist,
+        prev_stop_∂Ω_f,
     )
 end
 
@@ -241,11 +241,13 @@ function evolve(sim::Simulation)
     initialize(sim)
     initialize_writing(sim)
     write_stop(sim)
+    t_batch = time()
     while true
         advance_control_time(sim)
         sync_control_time(sim)
         advance_control(sim)
-        write_stop(sim)
+        write_stop(sim; wall_time=time() - t_batch)
+        t_batch = time()
         if stop_evolve(sim) == true
             break
         end
@@ -302,11 +304,16 @@ function increase_time_step(sim::SingleDomainSimulation)
 end
 
 function advance_one_step(sim::SingleDomainSimulation)
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
     while true
         prev_time = sim.integrator.prev_time
         time = sim.integrator.time
         time_step = sim.integrator.time_step
-        norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+        # For implicit, print each step's time interval (Newton iters follow).
+        # For explicit, suppress — only output stops are printed.
+        if !is_explicit
+            norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+        end
         apply_bcs(sim)
         solve(sim)
         if sim.failed == false
@@ -501,7 +508,6 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
-    reset_anderson_history!(sim)
     swap_swappable_bcs(sim)
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)
@@ -534,108 +540,10 @@ function schwarz(sim::MultiDomainSimulation)
         end
         iteration_number += 1
         save_schwarz_state(sim)
-        if sim.controller.anderson_window > 0
-            anderson_accelerate!(sim)
-        end
         restore_stop_state(sim)
     end
 end
 
-function reset_anderson_history!(sim::MultiDomainSimulation)
-    controller = sim.controller
-    if controller.anderson_window == 0
-        return nothing
-    end
-    for i in 1:sim.num_domains
-        empty!(controller.anderson_x_hist[i])
-    end
-    return nothing
-end
-
-function anderson_accelerate!(sim::MultiDomainSimulation)
-    controller = sim.controller
-    m = controller.anderson_window
-    num_domains = sim.num_domains
-    for i in 1:num_domains
-        subsim = sim.subsims[i]
-        ndofs = length(subsim.integrator.displacement)
-        # Build current iterate; rotate if inclined support
-        if subsim.model.inclined_support == true
-            T = subsim.model.global_transform'
-            u = T * subsim.integrator.displacement
-            v = T * subsim.integrator.velocity
-            a = T * subsim.integrator.acceleration
-        else
-            u = copy(subsim.integrator.displacement)
-            v = copy(subsim.integrator.velocity)
-            a = copy(subsim.integrator.acceleration)
-        end
-        x_k = vcat(u, v, a)
-        # Anderson prediction is injected into disp_hist[i] so that domains solved
-        # before domain i in the sequential subcycle read the predicted coupling BC.
-        # Domain 1 (i==1) is processed first, so its history is cleared by
-        # reset_history before other domains can benefit — skip injection.
-        if i == 1
-            continue
-        end
-        # Burn-in: the first few Schwarz iterations exhibit a non-geometric transient
-        # (both domains "see" each other for the first time), making Anderson
-        # extrapolation unreliable. Skip until iteration 4 (after the transient).
-        if controller.iteration_number <= 3
-            continue
-        end
-        # Append to rolling buffer, keep at most m+1 entries
-        x_hist = controller.anderson_x_hist[i]
-        push!(x_hist, x_k)
-        if length(x_hist) > m + 1
-            popfirst!(x_hist)
-        end
-        mk = length(x_hist) - 1   # number of residuals available
-        # Need at least 2 residuals (3 iterates) to form the ΔF system
-        if mk < 2
-            continue
-        end
-        # Build ΔF and ΔX: differences of consecutive residuals / iterates
-        ΔF = Matrix{Float64}(undef, 3 * ndofs, mk - 1)
-        ΔX = Matrix{Float64}(undef, 3 * ndofs, mk - 1)
-        for j in 1:(mk - 1)
-            f_j   = x_hist[j + 1] - x_hist[j]
-            f_jp1 = x_hist[j + 2] - x_hist[j + 1]
-            ΔF[:, j] = f_jp1 - f_j
-            ΔX[:, j] = x_hist[j + 2] - x_hist[j + 1]
-        end
-        f_cur = x_hist[end] - x_hist[end - 1]
-        # Solve min_c ||ΔF*c + f_cur||^2 (Walker-Ni type-I Anderson)
-        c = -(ΔF \ f_cur)
-        x_new = x_k + ΔX * c
-        u_new = x_new[1:ndofs]
-        v_new = x_new[(ndofs + 1):(2 * ndofs)]
-        a_new = x_new[(2 * ndofs + 1):(3 * ndofs)]
-        # Rotate back to global frame if inclined support
-        if subsim.model.inclined_support == true
-            u_new = subsim.model.global_transform * u_new
-            v_new = subsim.model.global_transform * v_new
-            a_new = subsim.model.global_transform * a_new
-        end
-        # Overwrite domain i's coupling history with the Anderson prediction.
-        # Domain i's time_hist[i] is non-empty (set by the previous save_history_snapshot),
-        # so apply_bc for other domains will use interp(time_hist[i], disp_hist[i], t)
-        # = u_new instead of the raw Schwarz output.
-        disp_h = controller.disp_hist[i]
-        velo_h = controller.velo_hist[i]
-        acce_h = controller.acce_hist[i]
-        if !isempty(disp_h)
-            disp_h[end] = u_new
-            velo_h[end] = v_new
-            acce_h[end] = a_new
-        end
-        # Clear history after injection so the big-jump iterate (the Anderson prediction)
-        # does not contaminate subsequent Anderson fits. The next m iterations will rebuild
-        # a clean history from near-converged iterates before the next injection.
-        empty!(x_hist)
-    end
-    return nothing
-end
 
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
@@ -678,6 +586,9 @@ function save_stop_state(sim::MultiDomainSimulation)
         for i in 1:num_domains
             if !isempty(controller.stop_disp[i])
                 controller.prev_stop_disp[i] = controller.stop_disp[i]
+            end
+            if !isempty(controller.stop_∂Ω_f[i])
+                controller.prev_stop_∂Ω_f[i] = controller.stop_∂Ω_f[i]
             end
         end
     end
@@ -1109,12 +1020,31 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 write_interface_state!(pred_velo_j, v_pred_j, bc_j)
             end
 
+            # Force predictor: linear temporal extrapolation f_pred = 2*f_n - f_{n-1}.
+            # Which domain's force is read by the coupling:
+            #   - Non-overlap Neumann (is_dirichlet == false) reads force FROM the coupled domain.
+            #   - Robin reads force from BOTH coupled domains.
+            # So set predictor_∂Ω_f[x] when domain x's force is read by the other domain.
+            is_robin = bc_k isa SolidMechanicsRobinSchwarzBoundaryCondition
+
+            pred_∂Ω_f_k = copy(controller.stop_∂Ω_f[dom_k])
+            pred_∂Ω_f_j = copy(controller.stop_∂Ω_f[dom_j])
+
+            if (is_robin || !bc_j.is_dirichlet) && !isempty(controller.prev_stop_∂Ω_f[dom_k])
+                @. pred_∂Ω_f_k = 2 * controller.stop_∂Ω_f[dom_k] - controller.prev_stop_∂Ω_f[dom_k]
+            end
+            if (is_robin || !bc_k.is_dirichlet) && !isempty(controller.prev_stop_∂Ω_f[dom_j])
+                @. pred_∂Ω_f_j = 2 * controller.stop_∂Ω_f[dom_j] - controller.prev_stop_∂Ω_f[dom_j]
+            end
+
             controller.predictor_disp[dom_k] = pred_disp_k
             controller.predictor_velo[dom_k] = pred_velo_k
             controller.predictor_acce[dom_k] = pred_acce_k
+            controller.predictor_∂Ω_f[dom_k] = pred_∂Ω_f_k
             controller.predictor_disp[dom_j] = pred_disp_j
             controller.predictor_velo[dom_j] = pred_velo_j
             controller.predictor_acce[dom_j] = pred_acce_j
+            controller.predictor_∂Ω_f[dom_j] = pred_∂Ω_f_j
         end
     end
     return nothing

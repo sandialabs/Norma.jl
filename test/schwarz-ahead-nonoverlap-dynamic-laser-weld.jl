@@ -50,23 +50,23 @@ using YAML
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
 
-    @test min_disp_x_holder0 ≈ -4.8524923688300636e-5 atol = 1e-12
+    @test min_disp_x_holder0 ≈ -4.8291007049908186e-5 atol = 1e-12
     @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-12
     @test max_disp_z_holder0 ≈ 0.0 atol = 1e-12
-    @test min_disp_x_gauge ≈ -7.768426106180559e-5 atol = 1e-12
-    @test min_disp_y_gauge ≈ -0.00027640414578330996 atol = 1e-12
-    @test max_disp_z_gauge ≈ 4.4372026740832626e-5 atol = 1e-12
-    @test min_disp_x_holder1 ≈ -4.8953646255081584e-5 atol = 1e-12
-    @test min_disp_y_holder1 ≈ 0.00023478463555726137 atol = 1e-12
+    @test min_disp_x_gauge ≈ -7.768875531261044e-5 atol = 1e-12
+    @test min_disp_y_gauge ≈ -0.00027639374248203397 atol = 1e-12
+    @test max_disp_z_gauge ≈ 4.43695678256778e-5 atol = 1e-12
+    @test min_disp_x_holder1 ≈ -4.89520944503552e-5 atol = 1e-12
+    @test min_disp_y_holder1 ≈ 0.0002347720124472319 atol = 1e-12
     @test max_disp_z_holder1 ≈ 0.0 atol = 1e-12
     @test avg_stress_holder0 ≈
-        [-243.0717661305563 1.7798335903690055e6 -49963.13502708086 -46273.081927730775 1209.6636290360905 1525.1001490585427] atol =
+        [-347.2952621025714 1.779756641336082e6 -50228.8267131982 -45948.63812512076 1256.8140734551034 1552.3817735536772] atol =
         1.0e1
     @test avg_stress_gauge ≈
-        [16219.565177010196 1.845519057684895e6 122146.1419563506 4904.312109770015 29899.525543416865 94.33582939764187] atol =
+        [16307.91045774699 1.8456134951562744e6 122515.71404194713 4597.490270138605 29921.25462126608 69.25014793291975] atol =
         1.0e1
     @test avg_stress_holder1 ≈
-        [-1056.0441890865773 1.7715466435733493e6 -54239.702779201296 50590.033301702606 1620.6847557192993 -1375.575102437882] atol =
+        [-1055.1081565396116 1.7715920026799848e6 -54253.75330945497 50596.86677411042 1621.9244363209552 -1379.4346869455705] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [26, 38, 44, 48, 51] atol = 0
 end

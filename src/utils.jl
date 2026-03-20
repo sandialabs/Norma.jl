@@ -73,10 +73,10 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     else
         print(prefix)
     end
-    if visible_length(prefix * msg) <= 80
+    if visible_length(prefix * msg) <= 120
         println(msg)
     else
-        wrapped = wrap_lines(msg, prefix; width=80 - length(prefix))
+        wrapped = wrap_lines(msg, prefix; width=120 - length(prefix))
         println(wrapped)
     end
 end
