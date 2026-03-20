@@ -557,6 +557,13 @@ end
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBoundaryCondition)
     α = bc.robin_parameter
     W = bc.square_projector
+    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    controller = parent_sim.controller
+    iter = controller.iteration_number 
+    println("IKT iter = ", iter)  
+    coupled_subsim = bc.coupled_subsim
+    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
+    println("IKT coupled_index = ", coupled_index) 
     # Neumann part of Robin RHS: -t_src projected (= get_dst_force which negates internal_force)
     neumann_force = get_dst_force(bc)
     # Displacement part of Robin RHS: α * W * u_src_projected
@@ -578,12 +585,45 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
         dst_disp[i, :] = dirichlet_projector * src_disp[i, :]
     end
     global_from_local_map = bc.global_from_local_map
-    for comp in 1:3
-        alpha_W_u = α * (W * dst_disp[comp, :])
-        for (i_local, i_global) in enumerate(global_from_local_map)
-            dof_i = 3 * (i_global - 1) + comp
-            model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
-        end
+    # IKT HACK! the following is a hack just to test things out with relaxation.  It assumes just 2 subdomains
+    # and we are applying the relaxation to subdomain 1 
+    if (coupled_index == 1) #subdomain 2
+      for comp in 1:3
+          alpha_W_u = α * (W * dst_disp[comp, :])
+          for (i_local, i_global) in enumerate(global_from_local_map)
+              dof_i = 3 * (i_global - 1) + comp
+              model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
+          end
+      end
+    else #subdomain 1
+      #Set g and lambda to 0 for iter = 0
+      if (iter == 0)
+        n = length(model.boundary_force)
+        g = zeros(n)
+      else  
+        #this plays role of g_1.  hijack lambda_disp to store it.
+        #In particular, we set g to past lambda_disp
+        g = controller.lambda_disp[coupled_index]  
+      end
+      #println("IKT g norm = ", norm(g)) 
+      #initialize lambda_disp  = model.boundary_force 
+      controller.lambda_disp[coupled_index] = copy(model.boundary_force)
+      theta = 1.0 #hard-code theta for now 
+      for comp in 1:3
+          alpha_W_u = α * (W * dst_disp[comp, :])
+          for (i_local, i_global) in enumerate(global_from_local_map)
+              dof_i = 3 * (i_global - 1) + comp
+              controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
+          end
+      end
+      #println("IKT controller.lambda_disp norm = ", norm(controller.lambda_disp[coupled_index])) 
+      for comp in 1:3
+          alpha_W_u = α * (W * dst_disp[comp, :])
+          for (i_local, i_global) in enumerate(global_from_local_map)
+              dof_i = 3 * (i_global - 1) + comp
+              model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][dof_i]
+          end
+      end
     end
 end
 
