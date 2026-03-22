@@ -668,7 +668,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
-                state = model.state[block_index][block_element_index][point]
+                state = model.state_old[block_index][block_element_index][point]
                 if material isa (Elastic)
                     W, P, AA = constitutive(material, F)
                 else
