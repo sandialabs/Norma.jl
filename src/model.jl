@@ -6,6 +6,7 @@
 
 include("opinf/opinf_model.jl")
 include("constitutive.jl")
+include("j2_simo_hughes.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
