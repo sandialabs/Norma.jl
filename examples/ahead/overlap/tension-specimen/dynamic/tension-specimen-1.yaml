@@ -1,7 +1,6 @@
 type: single
 input mesh file: ../lower.g 
 output mesh file: tension-specimen-1.e 
-CSV output interval: 1
 CSV write sidesets: true
 model:
   type: solid mechanics

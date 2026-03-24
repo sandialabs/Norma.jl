@@ -7,6 +7,13 @@
 using DelimitedFiles
 using Format
 
+function _is_output_time(time::Float64, initial_time::Float64, interval::Float64; tol::Float64=1e-10)
+    interval <= 0.0 && return false
+    elapsed = time - initial_time
+    n = round(elapsed / interval)
+    return abs(elapsed - n * interval) < tol * interval
+end
+
 function collect_internal_variable_names(materials::Vector{Solid})
     all_names = String[]
     for material in materials
@@ -99,10 +106,13 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
     name = sim.name
     model = sim.model
     is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
-    exodus_interval = get(params, "Exodus output interval", 1)::Int64
-    csv_interval    = get(params, "CSV output interval", 0)::Int64
-    is_output_step  = (exodus_interval > 0 && stop % exodus_interval == 0) ||
-                      (csv_interval > 0 && stop % csv_interval == 0)
+    dt_default = params["time integrator"]["time step"]
+    exodus_interval = Float64(get(params, "Exodus output interval", dt_default))
+    csv_interval    = Float64(get(params, "CSV output interval", 0.0))
+    initial_time = sim.controller.initial_time
+    is_exodus_step = _is_output_time(time, initial_time, exodus_interval)
+    is_csv_step    = _is_output_time(time, initial_time, csv_interval)
+    is_output_step = is_exodus_step || is_csv_step
 
     # For explicit dynamics, only print at output steps (suppresses per-step noise).
     # For implicit/quasi-static, print every step (Newton iterations provide context).
@@ -123,11 +133,11 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
             end
         end
     end
-    if exodus_interval > 0 && stop % exodus_interval == 0
+    if is_exodus_step
         norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
-    if csv_interval > 0 && stop % csv_interval == 0
+    if is_csv_step
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)
         if haskey(params, "CSV write sidesets") == true
