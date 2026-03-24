@@ -1,7 +1,6 @@
 type: single
 input mesh file: ../vessel.g
 output mesh file: vessel.e
-Exodus output interval: 1
 CSV output interval: 0
 model:
   type: solid mechanics

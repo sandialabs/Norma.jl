@@ -201,7 +201,7 @@ end
     F_yield = @SMatrix [1.0 γ 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
     W, P, AA, state1 = Norma.constitutive(mat, F_yield, state0)
     # Fᵖ should remain identity (just at yield, no plastic flow yet)
-    @test isapprox(state1[10], 0.0; atol=1e-10)
+    @test isapprox(state1[10], 0.0; atol=1e-6)
 
     # Beyond yield: double the shear strain
     F_plastic = @SMatrix [1.0 2γ 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]

@@ -6,6 +6,7 @@
 
 include("opinf/opinf_model.jl")
 include("constitutive.jl")
+include("j2_simo_hughes.jl")
 include("interpolation.jl")
 include("ics_bcs.jl")
 
@@ -667,7 +668,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
-                state = model.state[block_index][block_element_index][point]
+                state = model.state_old[block_index][block_element_index][point]
                 if material isa (Elastic)
                     W, P, AA = constitutive(material, F)
                 else

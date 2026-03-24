@@ -1,6 +1,6 @@
 type: multi
 domains: ["vessel-1.yaml", "vessel-2.yaml"]
-Exodus output interval: 10
+Exodus output interval: 20.0
 #CSV output interval: 1
 #CSV write sidesets: true
 initial time: 0.0

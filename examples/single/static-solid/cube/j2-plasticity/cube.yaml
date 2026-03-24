@@ -1,17 +1,19 @@
 type: single
-input mesh file: cube.g
+input mesh file: ../standard/cube.g
 output mesh file: cube.e
 CSV output interval: 0
 model:
   type: solid mechanics
   material:
     blocks:
-      cube: elastic
-    elastic:
-      model: linear elastic
-      elastic modulus: 1.0e+09
+      cube: hyperelastic
+    hyperelastic:
+      model: j2 plasticity
+      elastic modulus: 70.0e+09
       Poisson's ratio: 0.25
       density: 1000.0
+      yield stress: 250.0e+06
+      hardening modulus: 0.7e+09
 time integrator:
   type: quasi static
   initial time: 0.0
@@ -30,16 +32,11 @@ boundary conditions:
       function: "0.0"
     - node set: nsz+
       component: z
-      function: "1.0 * t"
+      function: "0.01 * t"
 solver:
-  type: steepest descent
-  step: steepest descent
-  step length: 1.0e-01
-  use line search: true
-  line search backtrack factor: 0.5
-  line search decrease factor: 1.0e-04
-  line search maximum iterations: 64
-  minimum iterations: 1
-  maximum iterations: 64
-  relative tolerance: 1.0e-15
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 0
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
   absolute tolerance: 1.0e-08

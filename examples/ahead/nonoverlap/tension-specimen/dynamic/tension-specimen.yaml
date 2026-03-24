@@ -1,7 +1,5 @@
 type: multi
 domains: ["tension-specimen-1.yaml", "tension-specimen-2.yaml"]
-Exodus output interval: 1
-CSV output interval: 1
 CSV write sidesets: true
 initial time: 0.0
 final time: 1.0
