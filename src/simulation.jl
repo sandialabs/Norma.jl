@@ -127,9 +127,12 @@ function SolidMultiDomainTimeController(params::Parameters)
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
     relaxation_type = get(params, "relaxation type", "classical")
-    if relaxation_type != "classical" && relaxation_type != "aitken" 
+    if relaxation_type != "classical" && relaxation_type != "aitken"
       throw("Invalid relaxation_type parameter!  Valid options are 'classical' (default) and 'aitken'.")
-    end 
+    end
+    aitken_rho = fill(relaxation_parameter, num_domains)
+    aitken_r_prev = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_gamma_prev = [Vector{Float64}() for _ in 1:num_domains]
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
@@ -177,6 +180,9 @@ function SolidMultiDomainTimeController(params::Parameters)
         ∂Ω_f_hist,
         relaxation_parameter,
         relaxation_type,
+        aitken_rho,
+        aitken_r_prev,
+        aitken_gamma_prev,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
@@ -506,6 +512,15 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
+    # Reset Aitken acceleration state for new time step
+    if sim.controller.relaxation_type == "aitken"
+        num_domains = sim.num_domains
+        sim.controller.aitken_rho .= sim.controller.relaxation_parameter
+        for i in 1:num_domains
+            empty!(sim.controller.aitken_r_prev[i])
+            empty!(sim.controller.aitken_gamma_prev[i])
+        end
+    end
     swap_swappable_bcs(sim)
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)

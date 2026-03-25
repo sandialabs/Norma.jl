@@ -615,11 +615,7 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
 end
 
 function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
-    println("IKT in coupling_variational_dbc before get_dst_curr_disp_velo_acce call") 
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
-    #println("IKT coupling_variational_dbc model = ", model)
-    println("   IKT size(nodal_curr) = ", size(nodal_curr))
-    println("IKT in coupling_variational_dbc after get_dst_curr_disp_velo_acce call") 
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
         @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
@@ -648,6 +644,17 @@ function set_internal_force!(model::SolidMechanics, force)
     return model.internal_force = force
 end
 
+# Expand interface-sized field (3 × n_interface_nodes) to full-DOF vector (num_dofs)
+function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_map, num_dofs::Int)
+    full = zeros(num_dofs)
+    num_nodes = num_dofs ÷ 3
+    full_3xN = reshape(full, (3, num_nodes))
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        @inbounds full_3xN[:, i_global] = field_iface[:, i_local]
+    end
+    return reshape(full_3xN, num_dofs)
+end
+
 function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     parent_sim = bc.coupled_subsim.params["parent_simulation"]
     controller = parent_sim.controller
@@ -660,7 +667,6 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     coupled_subsim = bc.coupled_subsim
     integrator = coupled_subsim.integrator
     coupled_model = coupled_subsim.model
-    #println("IKT coupled_model = ", coupled_model) 
 
     # Save current state
     saved_disp = integrator.displacement
@@ -710,7 +716,6 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_∂Ω_f = zeros(num_dofs)
     end
 
-    println("IKT num_dofs = ", num_dofs) 
 
     # Assign interpolated force
     set_internal_force!(coupled_model, interp_∂Ω_f)
@@ -719,110 +724,62 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
         θ = controller.relaxation_parameter
 
-        #IKT 1/30/2026: move the relaxation stuff into separate routine?   
         iter = controller.iteration_number
         λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        if (controller.relaxation_type == "classical") 
+        if controller.relaxation_type == "classical"
 
           controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
           controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
           controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
-	  
-          dst_bc_index = bc.coupled_bc_index
-          println("IKT dst_bc_index, src_bc_name, coupled_index = ", dst_bc_index, ", ", bc.coupled_bc_name, ",",  coupled_index)
-          println("IKT coupled_bc_name = ", bc.coupled_bc_name)
-          #If Omega1 is the Dirichlet domain, dst_bc will be Gamma as seen from Omega2
-          dst_bc = coupled_subsim.model.boundary_conditions[dst_bc_index]
-
-          println("IKT before get_dst_curr_disp_velo_acce")
-          println("IKT norm(coupled_subsim.model.current - coupled_subsim.model.reference) = ", norm(coupled_subsim.model.current - coupled_subsim.model.reference)) 
-          gammaji_curr, gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_disp_velo_acce(dst_bc)
-	  println("IKT after get_dst_curr_disp_velo_acce") 
-          println("IKT norm(gammaji_disp) = ", norm(gammaji_disp)) 
-          println("IKT norm(gammaji_curr) = ", norm(gammaji_curr)) 
 
           integrator.displacement = controller.lambda_disp[coupled_index]
           integrator.velocity = controller.lambda_velo[coupled_index]
           integrator.acceleration = controller.lambda_acce[coupled_index]
 
-        elseif (controller.relaxation_type == "aitken") 
+        elseif controller.relaxation_type == "aitken"
 
-          #IKT TODO: implement calculation of theta using Aitken formula.  For now, it is hard-coded.
-          #For Aitken acceleration, lambda is g^{(k+1)} in Giulia's notation.
-          dst_bc_index = bc.coupled_bc_index
-          println("IKT dst_bc_index, src_bc_name, coupled_index = ", dst_bc_index, ", ", bc.coupled_bc_name, ",",  coupled_index)
-          println("IKT coupled_bc_name = ", bc.coupled_bc_name)
-          #If Omega1 is the Dirichlet domain, dst_bc will be Gamma as seen from Omega2
-          dst_bc = coupled_subsim.model.boundary_conditions[dst_bc_index]
+          # Compute γ₁²(φ₁⁽ⁿ⁾): trace of own domain's solution on interface
+          dst_bc = coupled_subsim.model.boundary_conditions[bc.coupled_bc_index]
+          _, gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_disp_velo_acce(dst_bc)
 
-	  #Calculate gamma_j^i(u_j) using get_dst_curr_disp_velo_acce.  This will have the size 
-	  #of the interface as seen from the neighboring subdomain
-	  #We pass in the BC for Omega2, the destination domain
-	  #IKT the "bc" passed into get_dst_curr_disp_velo_acce corresponds to the destination domain.  
-	  println("IKT before get_dst_curr_disp_velo_acce") 
-          gammaji_curr, gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_disp_velo_acce(dst_bc)
-	  println("IKT after get_dst_curr_disp_velo_acce") 
-          println("IKT norm(gammaji_disp) = ", norm(gammaji_disp)) 
-          println("IKT norm(gammaji_curr) = ", norm(gammaji_curr)) 
-          
-	  #println("IKT size gammaji_disp = ", size(gammaji_disp)) 
-          
-	  #Allocate versions of gammaji_disp, etc. that correspond to the full domain size, not just interface 
-	  gammaji_disp_full = zeros(num_dofs) 
-          gammaji_velo_full = zeros(num_dofs) 
-          gammaji_acce_full = zeros(num_dofs)
-          #println("IKT gammaji_disp_full = ", gammaji_disp_full) 
-          #println("IKT size interp_disp = ", size(interp_disp))
-          #println("IKT size gammaji_disp_full = ", size(gammaji_disp_full))
-          
-          #IKT TODO 2/4/2026: use global_from_local_map to populate gammij_disp_full, etc. 
-          #Get global_from_local_map 
-          global_from_local_map = dst_bc.global_from_local_map
-          println("IKT global_from_local_map = ", global_from_local_map) 
- 
-          #Create tmp arrays that are 3 x num_nodes 
-          num_nodes = convert(Int, num_dofs / 3)
-          gammaji_disp_full_tmp = reshape(gammaji_disp_full, (3, num_nodes)) 
-          gammaji_velo_full_tmp = reshape(gammaji_velo_full, (3, num_nodes)) 
-          gammaji_acce_full_tmp = reshape(gammaji_acce_full, (3, num_nodes)) 
-          #println("IKT size gammaji_disp_full_tmp = ", size(gammaji_disp_full_tmp))
+          # Expand interface-sized gammaji to full-DOF size
+          gammaji_disp_full = _expand_to_full_dofs(gammaji_disp, dst_bc.global_from_local_map, num_dofs)
+          gammaji_velo_full = _expand_to_full_dofs(gammaji_velo, dst_bc.global_from_local_map, num_dofs)
+          gammaji_acce_full = _expand_to_full_dofs(gammaji_acce, dst_bc.global_from_local_map, num_dofs)
 
-          #Populate tmp arrays using global_from_local_map
-          for (i_local, i_global) in enumerate(global_from_local_map)
-            #println("IKT i_local, i_global = ", i_local, ", ", i_global)
-            @inbounds gammaji_disp_full_tmp[:, i_global] = gammaji_disp[:, i_local]
-            @inbounds gammaji_velo_full_tmp[:, i_global] = gammaji_velo[:, i_local]
-            @inbounds gammaji_acce_full_tmp[:, i_global] = gammaji_acce[:, i_local]
+          # Residual: r⁽ⁿ⁾ = γ₂(φ₂⁽ⁿ⁾) - γ₁²(φ₁⁽ⁿ⁾)
+          r_disp = interp_disp - gammaji_disp_full
+
+          # Compute adaptive ρ (Aitken Δ² acceleration)
+          iter = controller.iteration_number
+          if iter >= 2 && !isempty(controller.aitken_r_prev[coupled_index])
+              r_prev = controller.aitken_r_prev[coupled_index]
+              gamma_prev = controller.aitken_gamma_prev[coupled_index]
+              Δr = r_disp - r_prev
+              Δgamma = gammaji_disp_full - gamma_prev
+              Δr_norm_sq = dot(Δr, Δr)
+              if Δr_norm_sq > 0.0
+                  controller.aitken_rho[coupled_index] = -dot(Δr, Δgamma) / Δr_norm_sq
+              end
           end
-          #println("IKT gammaji_disp = ", gammaji_disp) 
-          #println("IKT gammaji_disp_full_tmp = ", gammaji_disp_full_tmp) 
-	  gammaji_disp_full = reshape(gammaji_disp_full_tmp, (num_dofs)) 
-	  gammaji_velo_full = reshape(gammaji_velo_full_tmp, (num_dofs)) 
-	  gammaji_acce_full = reshape(gammaji_acce_full_tmp, (num_dofs)) 
-          #println("IKT size gammaji_disp_full = ", size(gammaji_disp_full))
-          #println("IKT gammaji_disp_full = ", gammaji_disp_full) 
+          ρ = controller.aitken_rho[coupled_index]
 
-          #IKT TODO 1/30/2026: for calculating adaptive theta, also need gamma_i(u_i) and gamma_i^j(u_i) at previous iteration, not 
-          #just current iteration.  How can we get u_i at previous iteration?  controller.schwarz_disp?              
+          # Store for next iteration
+          controller.aitken_r_prev[coupled_index] = copy(r_disp)
+          controller.aitken_gamma_prev[coupled_index] = copy(gammaji_disp_full)
 
-          controller.lambda_disp[coupled_index] = λ_u_prev + θ * (interp_disp - gammaji_disp_full) 
-          controller.lambda_velo[coupled_index] = λ_v_prev + θ * (interp_velo - gammaji_velo_full) 
-          controller.lambda_acce[coupled_index] = λ_a_prev + θ * (interp_acce - gammaji_acce_full)
- 
-          #println("IKT interp_disp = ", interp_disp)
-          #println("IKT gammaji_disp_full = ", gammaji_disp_full)
-          #println("IKT lambda_u_prev = ", λ_u_prev)
-          println("IKT norm(interp_disp) = ", norm(interp_disp))  
-          println("IKT norm(gammaji_disp_full) = ", norm(gammaji_disp_full))  
+          # Aitken update: λ_{n+1} = λₙ + ρ⁽ⁿ⁾ r⁽ⁿ⁾
+          controller.lambda_disp[coupled_index] = λ_u_prev + ρ * r_disp
+          controller.lambda_velo[coupled_index] = λ_v_prev + ρ * (interp_velo - gammaji_velo_full)
+          controller.lambda_acce[coupled_index] = λ_a_prev + ρ * (interp_acce - gammaji_acce_full)
 
           integrator.displacement = controller.lambda_disp[coupled_index]
           integrator.velocity = controller.lambda_velo[coupled_index]
           integrator.acceleration = controller.lambda_acce[coupled_index]
-          
- 
+
         end
     else
         integrator.displacement = interp_disp
@@ -830,11 +787,9 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         integrator.acceleration = interp_acce
     end
 
-    println("IKT before apply_bc_detail") 
     # Apply boundary condition detail
     copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
-    println("IKT after apply_bc_detail") 
 
     # Restore previous state
     integrator.displacement = saved_disp
@@ -978,8 +933,6 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
-    #println("   IKT src_model = ", src_model) 
-    println("   IKT src_bc_index, src_bc_name = ", src_bc_index, ", ", src_bc.name)
     src_global_from_local_map = src_bc.global_from_local_map
     num_src_nodes = length(src_global_from_local_map)
     src_curr = zeros(3, num_src_nodes)
@@ -992,14 +945,12 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
         src_velo[:, i_local] = src_model.velocity[:, i_global]
         src_acce[:, i_local] = src_model.acceleration[:, i_global]
     end
-    println("   IKT norm(src_curr), norm(src_refe) = ", norm(src_curr), ", ", norm(src_refe))
     dirichlet_projector = dst_bc.dirichlet_projector
     num_dst_nodes = size(dirichlet_projector, 1)
     dst_curr = zeros(3, num_dst_nodes)
     dst_disp = zeros(3, num_dst_nodes)
     dst_velo = zeros(3, num_dst_nodes)
     dst_acce = zeros(3, num_dst_nodes)
-    println("   IKT num_src_nodes, num_dst_nodes = ", num_src_nodes, ", ", num_dst_nodes)
     for i in 1:3
         dst_curr[i, :] = dirichlet_projector * src_curr[i, :]
         dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :]) 
