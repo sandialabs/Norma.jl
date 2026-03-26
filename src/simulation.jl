@@ -63,9 +63,9 @@ function MultiDomainSimulation(params::Parameters)
     controller = create_controller(params)
     initial_time = controller.initial_time
     final_time = controller.final_time
-    time_step = controller.time_step
-    exodus_interval = get(params, "Exodus output interval", 1)
-    csv_interval = get(params, "CSV output interval", 0)
+    integrator_dt = params["time step"]
+    exodus_interval = Float64(get(params, "Exodus output interval", integrator_dt))
+    csv_interval = Float64(get(params, "CSV output interval", 0.0))
     subsim_name_index_map = Dict{String,Int64}()
     subsim_index = 1
     for domain_path in domain_paths
@@ -74,8 +74,8 @@ function MultiDomainSimulation(params::Parameters)
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
         subparams["name"] = domain_name
         integrator_params = subparams["time integrator"]
-        subsim_time_step = get(integrator_params, "time step", time_step)
-        subsim_time_step = min(subsim_time_step, time_step)
+        subsim_time_step = get(integrator_params, "time step", integrator_dt)
+        subsim_time_step = min(subsim_time_step, integrator_dt)
         integrator_params["initial time"] = initial_time
         integrator_params["final time"] = final_time
         integrator_params["time step"] = subsim_time_step
@@ -105,6 +105,8 @@ function SolidMultiDomainTimeController(params::Parameters)
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
+    # Multi-domain: control step = integrator dt (Schwarz coupling each step).
+    # Output timing is handled by _is_output_time in write_stop.
     num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
@@ -124,6 +126,13 @@ function SolidMultiDomainTimeController(params::Parameters)
     acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
+    relaxation_type = get(params, "relaxation type", "classical")
+    if relaxation_type != "classical" && relaxation_type != "aitken"
+      throw("Invalid relaxation_type parameter!  Valid options are 'classical' (default) and 'aitken'.")
+    end
+    aitken_rho = fill(relaxation_parameter, num_domains)
+    aitken_r_prev = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_gamma_prev = [Vector{Float64}() for _ in 1:num_domains]
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
@@ -170,6 +179,10 @@ function SolidMultiDomainTimeController(params::Parameters)
         acce_hist,
         ∂Ω_f_hist,
         relaxation_parameter,
+        relaxation_type,
+        aitken_rho,
+        aitken_r_prev,
+        aitken_gamma_prev,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
@@ -194,6 +207,8 @@ function SolidSingleDomainTimeController(params::Parameters)
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = integrator_params["time step"]
+    # Control step = integrator dt always. Output timing is handled
+    # by _is_output_time in write_stop, not by controller stops.
     num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     time = prev_time = initial_time
     stop = 0
@@ -450,17 +465,11 @@ function set_initial_subcycle_time(sim::MultiDomainSimulation)
     return nothing
 end
 
-function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64, eps::Float64=0.01)::Float64
-    t_next = t + dt
+function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64)::Float64
     gap = t_stop - t
-    tol = eps * dt
-    return if isapprox(t_next, t_stop; rtol=1e-6, atol=1e-12) || t_next > t_stop
-        gap
-    elseif t_next ≥ t_stop - tol
-        gap / 2
-    else
-        dt
-    end
+    gap <= 0.0 && return 0.0
+    t_next = t + dt
+    return t_stop - t_next <= 0.5 * dt ? gap : dt
 end
 
 function advance_time(sim::SingleDomainSimulation)
@@ -503,6 +512,15 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
+    # Reset Aitken acceleration state for new time step
+    if sim.controller.relaxation_type == "aitken"
+        num_domains = sim.num_domains
+        sim.controller.aitken_rho .= sim.controller.relaxation_parameter
+        for i in 1:num_domains
+            empty!(sim.controller.aitken_r_prev[i])
+            empty!(sim.controller.aitken_gamma_prev[i])
+        end
+    end
     swap_swappable_bcs(sim)
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)

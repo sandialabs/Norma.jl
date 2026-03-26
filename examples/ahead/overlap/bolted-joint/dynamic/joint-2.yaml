@@ -1,7 +1,6 @@
 type: single
 input mesh file: ../bolts.g 
 output mesh file: joint-2.e 
-CSV output interval: 1
 CSV write sidesets: true
 model:
   type: solid mechanics

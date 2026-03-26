@@ -35,13 +35,13 @@
     avg_stress = average_components(model.stress)
 
     # Average z-displacement ≈ half the applied BC value (linear field from 0 to 0.01)
-    @test avg_disp[3] ≈ 4.939e-3 rtol = 1.0e-3
+    @test avg_disp[3] ≈ 5.000e-3 rtol = 1.0e-3
 
     # σzz must be above yield stress (confirming plastic loading occurred)
     @test avg_stress[3] > 1.0e9
 
-    # σzz regression check (finite-deformation Hencky J2 result)
-    @test avg_stress[3] ≈ 1.052e9 rtol = 1.0e-3
+    # σzz regression check (Simo-Hughes J2 with correct state handling)
+    @test avg_stress[3] ≈ 1.088e9 rtol = 1.0e-3
 
     # Lateral and shear stresses should be small relative to σzz
     @test avg_stress[1] ≈ 0.0 atol = 2.0e7

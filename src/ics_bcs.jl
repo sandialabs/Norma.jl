@@ -654,7 +654,7 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
 end
 
 function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
-    nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
+    nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
         @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
@@ -681,6 +681,17 @@ end
 
 function set_internal_force!(model::SolidMechanics, force)
     return model.internal_force = force
+end
+
+# Expand interface-sized field (3 × n_interface_nodes) to full-DOF vector (num_dofs)
+function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_map, num_dofs::Int)
+    full = zeros(num_dofs)
+    num_nodes = num_dofs ÷ 3
+    full_3xN = reshape(full, (3, num_nodes))
+    for (i_local, i_global) in enumerate(global_from_local_map)
+        @inbounds full_3xN[:, i_global] = field_iface[:, i_local]
+    end
+    return reshape(full_3xN, num_dofs)
 end
 
 function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
@@ -744,25 +755,71 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_∂Ω_f = zeros(num_dofs)
     end
 
+
     # Assign interpolated force
     set_internal_force!(coupled_model, interp_∂Ω_f)
 
     # Apply relaxed update if needed
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
         θ = controller.relaxation_parameter
-        iter = controller.iteration_number
 
+        iter = controller.iteration_number
         λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-        controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
-        controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+        if controller.relaxation_type == "classical"
 
-        integrator.displacement = controller.lambda_disp[coupled_index]
-        integrator.velocity = controller.lambda_velo[coupled_index]
-        integrator.acceleration = controller.lambda_acce[coupled_index]
+          controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
+          controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
+          controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+
+          integrator.displacement = controller.lambda_disp[coupled_index]
+          integrator.velocity = controller.lambda_velo[coupled_index]
+          integrator.acceleration = controller.lambda_acce[coupled_index]
+
+        elseif controller.relaxation_type == "aitken"
+
+          # Compute γ₁²(φ₁⁽ⁿ⁾): trace of own domain's solution on interface
+          dst_bc = coupled_subsim.model.boundary_conditions[bc.coupled_bc_index]
+          _, gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_disp_velo_acce(dst_bc)
+
+          # Expand interface-sized gammaji to full-DOF size
+          gammaji_disp_full = _expand_to_full_dofs(gammaji_disp, dst_bc.global_from_local_map, num_dofs)
+          gammaji_velo_full = _expand_to_full_dofs(gammaji_velo, dst_bc.global_from_local_map, num_dofs)
+          gammaji_acce_full = _expand_to_full_dofs(gammaji_acce, dst_bc.global_from_local_map, num_dofs)
+
+          # Residual: r⁽ⁿ⁾ = γ₂(φ₂⁽ⁿ⁾) - γ₁²(φ₁⁽ⁿ⁾)
+          r_disp = interp_disp - gammaji_disp_full
+
+          # Compute adaptive ρ (Aitken Δ² acceleration)
+          iter = controller.iteration_number
+          if iter >= 2 && !isempty(controller.aitken_r_prev[coupled_index])
+              r_prev = controller.aitken_r_prev[coupled_index]
+              gamma_prev = controller.aitken_gamma_prev[coupled_index]
+              Δr = r_disp - r_prev
+              Δgamma = gammaji_disp_full - gamma_prev
+              Δr_norm_sq = dot(Δr, Δr)
+              if Δr_norm_sq > 0.0
+                  controller.aitken_rho[coupled_index] = -dot(Δr, Δgamma) / Δr_norm_sq
+              end
+          end
+          ρ = controller.aitken_rho[coupled_index]
+
+          # Store for next iteration
+          controller.aitken_r_prev[coupled_index] = copy(r_disp)
+          controller.aitken_gamma_prev[coupled_index] = copy(gammaji_disp_full)
+
+          # Aitken update: λ_{n+1} = λₙ + ρ⁽ⁿ⁾ r⁽ⁿ⁾
+          controller.lambda_disp[coupled_index] = λ_u_prev + ρ * r_disp
+          controller.lambda_velo[coupled_index] = λ_v_prev + ρ * (interp_velo - gammaji_velo_full)
+          controller.lambda_acce[coupled_index] = λ_a_prev + ρ * (interp_acce - gammaji_acce_full)
+
+          integrator.displacement = controller.lambda_disp[coupled_index]
+          integrator.velocity = controller.lambda_velo[coupled_index]
+          integrator.acceleration = controller.lambda_acce[coupled_index]
+
+        end
     else
         integrator.displacement = interp_disp
         integrator.velocity = interp_velo
@@ -790,7 +847,7 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
 end
 
 function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
-    nodal_curr, nodal_velo, nodal_acce = get_dst_curr_velo_acce(bc)
+    nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     for (i_local, i_global) in enumerate(global_from_local_map)
@@ -910,7 +967,7 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     return dst_force
 end
 
-function get_dst_curr_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
+function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_sim = dst_bc.coupled_subsim
     src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
@@ -918,24 +975,28 @@ function get_dst_curr_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_global_from_local_map = src_bc.global_from_local_map
     num_src_nodes = length(src_global_from_local_map)
     src_curr = zeros(3, num_src_nodes)
+    src_refe = zeros(3, num_src_nodes)
     src_velo = zeros(3, num_src_nodes)
     src_acce = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
         src_curr[:, i_local] = src_model.current[:, i_global]
+        src_refe[:, i_local] = src_model.reference[:, i_global]
         src_velo[:, i_local] = src_model.velocity[:, i_global]
         src_acce[:, i_local] = src_model.acceleration[:, i_global]
     end
     dirichlet_projector = dst_bc.dirichlet_projector
     num_dst_nodes = size(dirichlet_projector, 1)
     dst_curr = zeros(3, num_dst_nodes)
+    dst_disp = zeros(3, num_dst_nodes)
     dst_velo = zeros(3, num_dst_nodes)
     dst_acce = zeros(3, num_dst_nodes)
     for i in 1:3
         dst_curr[i, :] = dirichlet_projector * src_curr[i, :]
+        dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :]) 
         dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
         dst_acce[i, :] = dirichlet_projector * src_acce[i, :]
     end
-    return dst_curr, dst_velo, dst_acce
+    return dst_curr, dst_disp, dst_velo, dst_acce
 end
 
 function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)

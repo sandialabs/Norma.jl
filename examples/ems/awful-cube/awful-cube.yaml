@@ -1,7 +1,6 @@
 type: single
 input mesh file: awful-cube.g
 output mesh file: awful-cube.e
-Exodus output interval: 1
 model:
   type: mesh smoothing
   smooth reference: max

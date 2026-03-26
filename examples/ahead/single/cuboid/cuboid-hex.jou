@@ -25,7 +25,7 @@ sideset 2 surface with x_coord > 0
 sideset 2 name "ssx+"
 sideset 3 surface with y_coord < 0
 sideset 3 name "ssy-"
-sideset 4 surface with y_coord < 0
+sideset 4 surface with y_coord > 0
 sideset 4 name "ssy+"
 sideset 5 surface with z_coord < 0
 sideset 5 name "ssz-"
