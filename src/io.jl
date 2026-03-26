@@ -7,7 +7,6 @@
 using DelimitedFiles
 using Format
 using SparseArrays
-
 function _is_output_time(time::Float64, initial_time::Float64, interval::Float64; tol::Float64=1e-10)
     interval <= 0.0 && return false
     elapsed = time - initial_time
@@ -94,6 +93,16 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
         for col in 1:size(nodal_array, 2)
             # Write each column as a comma-separated line
             println(io, join(nodal_array[:, col], ","))
+        end
+    end
+    return nothing
+end
+
+function write_sparse_matrix_csv(filename::String, matrix::SparseMatrixCSC{Float64,Int64})
+    rows, cols, vals = findnz(matrix)
+    open(filename, "w") do io
+        for k in eachindex(vals)
+            println(io, rows[k], ",", cols[k], ",", vals[k])
         end
     end
     return nothing
