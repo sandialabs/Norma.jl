@@ -1,5 +1,6 @@
 type: multi
 domains: ["holder-0.yaml", "gauge.yaml", "holder-1.yaml"]
+CSV output interval: 0.001
 CSV write sidesets: true
 initial time: 0.0
 final time: 0.1
