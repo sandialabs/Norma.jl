@@ -39,22 +39,47 @@ function create_simulation(params::Parameters)
 end
 
 function SingleDomainSimulation(params::Parameters)
+    t_setup = time()
     basename = params["name"]
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
+    norma_log(0, :setup, "Input:  $input_mesh_file")
+    norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
     input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
     Exodus.copy(input_mesh, output_mesh_file)
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
+    n_nodes = Exodus.num_nodes(input_mesh.init)
+    n_elems = Exodus.num_elements(input_mesh.init)
+    norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
     controller = create_controller(params)
+    norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
+               controller.initial_time, controller.final_time,
+               controller.time_step, controller.num_stops - 1)
     model = create_model(params)
+    n_dofs = 3 * n_nodes
+    n_free = count(model.free_dofs)
+    norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained",
+               n_dofs, n_free, n_dofs - n_free)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
+    norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+    norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
     failed = false
     return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed)
 end
+
+_integrator_name(::QuasiStatic) = "Quasi-static"
+_integrator_name(::Newmark) = "Newmark"
+_integrator_name(::CentralDifference) = "Central difference"
+_integrator_name(ig) = replace(string(typeof(ig)), r"^.*\." => "")
+
+_solver_name(::HessianMinimizer) = "Newton (Hessian minimizer)"
+_solver_name(::SteepestDescent) = "Steepest descent"
+_solver_name(::ExplicitSolver) = "Explicit"
+_solver_name(s) = replace(string(typeof(s)), r"^.*\." => "")
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
