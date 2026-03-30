@@ -170,7 +170,7 @@ function format_time(seconds::Float64)::String
     if minutes > 0 || hours > 0 || days > 0  # Show minutes if higher units are non-zero
         push!(time_str, @sprintf("%dm", minutes))
     end
-    push!(time_str, @sprintf("%.1fs", seconds))
+    push!(time_str, @sprintf("%.2fs", seconds))
 
     return join(time_str, " ")
 end

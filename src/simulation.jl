@@ -286,7 +286,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
         norma_abortf(
-            "Cannot adapt time step %.4e because decrease factor is %.4e. Enable adaptive time stepping.",
+            "Cannot adapt time step %.2e because decrease factor is %.2e. Enable adaptive time stepping.",
             time_step,
             decrease_factor,
         )
@@ -294,7 +294,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     new_time_step = decrease_factor * time_step
     minimum_time_step = sim.integrator.minimum_time_step
     if new_time_step < minimum_time_step
-        norma_abortf("Cannot adapt time step to %.4e because minimum is %.4e.", new_time_step, minimum_time_step)
+        norma_abortf("Cannot adapt time step to %.2e because minimum is %.2e.", new_time_step, minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
     return nothing
@@ -322,7 +322,7 @@ function advance_one_step(sim::SingleDomainSimulation)
         # For implicit, print each step's time interval (Newton iters follow).
         # For explicit, suppress — only output stops are printed.
         if !is_explicit
-            norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+            norma_logf(4, :advance, "Time = [%.2e, %.2e] : Δt = %.2e", prev_time, time, time_step)
         end
         apply_bcs(sim)
         solve(sim)
@@ -600,7 +600,7 @@ end
         norma_logf(
             0,
             :schwarz,
-            "Criterion [%d] %s = %.3e : %s = %.3e : %s",
+            "Criterion [%d] %s = %.2e : %s = %.2e : %s",
             iteration_number,
             "|ΔU|",
             ΔU,
