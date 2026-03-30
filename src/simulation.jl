@@ -126,13 +126,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
-    relaxation_type = get(params, "relaxation type", "classical")
-    if relaxation_type != "classical" && relaxation_type != "aitken"
-      throw("Invalid relaxation_type parameter!  Valid options are 'classical' (default) and 'aitken'.")
-    end
-    aitken_rho = fill(relaxation_parameter, num_domains)
-    aitken_r_prev = [Vector{Float64}() for _ in 1:num_domains]
-    aitken_gamma_prev = [Vector{Float64}() for _ in 1:num_domains]
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
@@ -179,10 +172,6 @@ function SolidMultiDomainTimeController(params::Parameters)
         acce_hist,
         ∂Ω_f_hist,
         relaxation_parameter,
-        relaxation_type,
-        aitken_rho,
-        aitken_r_prev,
-        aitken_gamma_prev,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
@@ -512,75 +501,8 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
-    # Reset Aitken acceleration state for new time step
-    if sim.controller.relaxation_type == "aitken"
-        num_domains = sim.num_domains
-        sim.controller.aitken_rho .= sim.controller.relaxation_parameter
-        for i in 1:num_domains
-            empty!(sim.controller.aitken_r_prev[i])
-            empty!(sim.controller.aitken_gamma_prev[i])
-        end
-    end
     swap_swappable_bcs(sim)
 
-# After subcycle, update λ using Aitken Δ² acceleration.
-# Both domains have been solved: u₁⁽ᵏ⁾ and u₂⁽ᵏ⁾ are in model.current.
-# Computes r⁽ᵏ⁾ = γ₂(u₂⁽ᵏ⁾) - γ₁²(u₁⁽ᵏ⁾), adapts ρ, updates g⁽ᵏ⁺¹⁾.
-function update_aitken_lambda!(sim::MultiDomainSimulation)
-    controller = sim.controller
-    iter = controller.iteration_number
-
-    for subsim in sim.subsims
-        model = subsim.model
-        for bc in model.boundary_conditions
-            if !(bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
-                 bc isa SolidMechanicsContactSchwarzBoundaryCondition)
-                continue
-            end
-
-            coupled_subsim = bc.coupled_subsim
-            coupled_index = sim.subsim_name_index_map[coupled_subsim.name]
-            num_dofs = length(coupled_subsim.model.free_dofs)
-
-            # γ₂(u₂⁽ᵏ⁾): trace of coupled domain's solution on interface
-            # get_dst_curr_disp_velo_acce extracts and projects via dirichlet_projector
-            _, gamma2_disp, _, _ = get_dst_curr_disp_velo_acce(bc)
-
-            # γ₁²(u₁⁽ᵏ⁾): trace of THIS domain's solution projected onto interface
-            dst_bc = coupled_subsim.model.boundary_conditions[bc.coupled_bc_index]
-            _, gamma12_disp, _, _ = get_dst_curr_disp_velo_acce(dst_bc)
-
-            # Both are interface-sized (3 × n_interface_nodes). Flatten for dot products.
-            r_disp = vec(gamma2_disp) - vec(gamma12_disp)
-
-            # Adapt ρ from consecutive residuals (Aitken Δ²)
-            gamma12_flat = vec(gamma12_disp)
-            if iter >= 2 && !isempty(controller.aitken_r_prev[coupled_index])
-                r_prev = controller.aitken_r_prev[coupled_index]
-                gamma_prev = controller.aitken_gamma_prev[coupled_index]
-                Δr = r_disp - r_prev
-                Δgamma = gamma12_flat - gamma_prev
-                Δr_norm_sq = dot(Δr, Δr)
-                if Δr_norm_sq > 0.0
-                    controller.aitken_rho[coupled_index] = -dot(Δr, Δgamma) / Δr_norm_sq
-                end
-            end
-            ρ = controller.aitken_rho[coupled_index]
-
-            # Store for next iteration (interface-sized)
-            controller.aitken_r_prev[coupled_index] = copy(r_disp)
-            controller.aitken_gamma_prev[coupled_index] = copy(gamma12_flat)
-
-            # Override λ with Aitken update: g⁽ᵏ⁺¹⁾ = g⁽ᵏ⁾ + ρ⁽ᵏ⁾ r⁽ᵏ⁾
-            # Expand r from interface to coupled domain's full DOF space
-            n_iface = size(gamma2_disp, 2)
-            r_iface = reshape(r_disp, 3, n_iface)
-            r_full = _expand_to_full_dofs(r_iface, dst_bc.global_from_local_map, num_dofs)
-            λ_prev = controller.lambda_disp[coupled_index]
-            controller.lambda_disp[coupled_index] = λ_prev + ρ * r_full
-        end
-    end
-end
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)
     end
@@ -590,10 +512,6 @@ end
         sim.controller.iteration_number = iteration_number
         set_initial_subcycle_time(sim)
         subcycle(sim)
-        # After subcycle, both domains are solved. Update Aitken λ if applicable.
-        if sim.controller.relaxation_type == "aitken"
-            update_aitken_lambda!(sim)
-        end
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
         raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
         status = colored_status(raw_status)

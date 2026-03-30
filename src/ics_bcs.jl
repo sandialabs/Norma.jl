@@ -729,22 +729,14 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        if controller.relaxation_type == "aitken" && iter >= 2
-          # λ was already updated by update_aitken_lambda!() after the
-          # previous subcycle. Just apply the stored values.
-          integrator.displacement = controller.lambda_disp[coupled_index]
-          integrator.velocity = controller.lambda_velo[coupled_index]
-          integrator.acceleration = controller.lambda_acce[coupled_index]
-        else
-          # Classical relaxation (also used for Aitken iteration 1)
-          controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-          controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
-          controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+        # Classical relaxation
+        controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
+        controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
+        controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
-          integrator.displacement = controller.lambda_disp[coupled_index]
-          integrator.velocity = controller.lambda_velo[coupled_index]
-          integrator.acceleration = controller.lambda_acce[coupled_index]
-        end
+        integrator.displacement = controller.lambda_disp[coupled_index]
+        integrator.velocity = controller.lambda_velo[coupled_index]
+        integrator.acceleration = controller.lambda_acce[coupled_index]
     else
         integrator.displacement = interp_disp
         integrator.velocity = interp_velo
