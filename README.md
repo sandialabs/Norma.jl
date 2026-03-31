@@ -29,12 +29,19 @@ time. (~300,000 elements)*
 ## Quick Start
 
 ```bash
-julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
+# Self-activating CLI wrapper (recommended)
+bin/norma input.yaml
+
+# Or directly with julia
+julia --project=. src/Norma.jl input.yaml
+
+# Multi-threaded
+JULIA_NUM_THREADS=4 bin/norma input.yaml
 ```
 
-Or run it interactively:
+Interactive:
 ```julia
-using Pkg; Pkg.activate("/path/to/Norma.jl")
+using Pkg; Pkg.activate(".")
 using Norma
 Norma.run("input.yaml")
 ```

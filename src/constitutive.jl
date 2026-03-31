@@ -732,11 +732,7 @@ function _j2_tangent_analytical(
     return SArray{Tuple{3,3,3,3},Float64,4,81}(AA)
 end
 
-function constitutive(material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
-    W, P, state_new = _j2_stress(material, F, state_old)
-    AA = _j2_tangent_analytical(material, F, state_old, P, state_new)
-    return W, P, AA, state_new
-end
+# J2Plasticity constitutive is defined in j2_simo_hughes.jl (Simo-Hughes formulation)
 
 # ---------------------------------------------------------------------------
 # Material factory and kinematics

@@ -8,8 +8,8 @@ using LinearAlgebra
 using Printf
 using Statistics
 using Test
+using Norma
 
-include("../src/Norma.jl")
 include("helpers.jl")
 
 # List of all test files (ordered)

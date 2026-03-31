@@ -1,0 +1,19 @@
+#!/usr/bin/env julia
+# CLI entry point for Norma.jl
+#
+# Usage (from anywhere):
+#   /path/to/Norma.jl/bin/norma input.yaml
+#
+# The script auto-activates the Norma.jl project environment.
+
+import Pkg
+Pkg.activate(joinpath(@__DIR__, ".."); io=devnull)
+
+using Norma
+
+if length(ARGS) != 1
+    println(stderr, "Usage: norma <input.yaml>")
+    exit(1)
+end
+
+Norma.run(ARGS[1])
