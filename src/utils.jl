@@ -24,9 +24,11 @@ function wrap_lines(msg::AbstractString, prefix::AbstractString; width::Int=80)
     return join([i == 1 ? line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
 end
 
-const NORMA_COLOR_OUTPUT =
-    (isdefined(Base, :have_color) && Base.have_color !== nothing ? Base.have_color : stdout isa Base.TTY) &&
-    get(ENV, "NORMA_NO_COLOR", "false") != "true"
+@inline _use_color() =
+    get(ENV, "NORMA_NO_COLOR", "false") != "true" &&
+    (get(ENV, "FORCE_COLOR", "") != "" ||
+     (isdefined(Base, :have_color) && Base.have_color === true) ||
+     stdout isa Base.TTY)
 
 const NORMA_COLORS = Dict(
     :abort => :light_red,
@@ -67,7 +69,7 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     padded = rpad(bracketed, 9)
     prefix = indent * padded * " "
 
-    if NORMA_COLOR_OUTPUT
+    if _use_color()
         color = get(NORMA_COLORS, keyword, :default)
         printstyled(prefix; color=color, bold=true)
     else
@@ -184,13 +186,13 @@ end
 
 function colored_status(status::String)
     if status == "[WAIT]"
-        return NORMA_COLOR_OUTPUT ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
+        return _use_color() ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
     elseif status == "[DONE]"
-        return NORMA_COLOR_OUTPUT ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
+        return _use_color() ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
     elseif status == "[CONVERGING]"
-        return NORMA_COLOR_OUTPUT ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
+        return _use_color() ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
     elseif status == "[CONVERGED]"
-        return NORMA_COLOR_OUTPUT ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
+        return _use_color() ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
     else
         return status  # fallback (no color)
     end
