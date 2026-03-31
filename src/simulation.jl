@@ -412,6 +412,10 @@ end
 function initialize(sim::MultiDomainSimulation)
     initialize_bc_projectors(sim)
     apply_ics(sim)
+    for (subsim_index, subsim) in enumerate(sim.subsims)
+        copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
+        save_history_snapshot(sim.controller, subsim, subsim_index)
+    end
     apply_bcs(sim)
     for subsim in sim.subsims
         initialize(subsim.integrator, subsim.solver, subsim.model)
