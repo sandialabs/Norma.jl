@@ -1,19 +1,37 @@
-#!/usr/bin/env julia
+#!/bin/bash
 # CLI entry point for Norma.jl
 #
-# Usage (from anywhere):
-#   /path/to/Norma.jl/bin/norma input.yaml
-#
-# The script auto-activates the Norma.jl project environment.
+# Usage:
+#   bin/norma input.yaml
+#   bin/norma input.yaml --threads 8
 
-import Pkg
-Pkg.activate(joinpath(@__DIR__, ".."); io=devnull)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-using Norma
+# Parse --threads flag (must be extracted before passing to Julia)
+THREADS=""
+JULIA_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --threads|-t)
+            THREADS="$2"
+            shift 2
+            ;;
+        *)
+            JULIA_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
 
-if length(ARGS) != 1
-    println(stderr, "Usage: norma <input.yaml>")
-    exit(1)
-end
+if [[ -z "${JULIA_ARGS[*]}" ]]; then
+    echo "Usage: norma <input.yaml> [--threads N]" >&2
+    exit 1
+fi
 
-Norma.run(ARGS[1])
+THREAD_FLAG=""
+if [[ -n "$THREADS" ]]; then
+    THREAD_FLAG="-t $THREADS"
+fi
+
+exec julia $THREAD_FLAG --project="$PROJECT_DIR" "$PROJECT_DIR/src/Norma.jl" "${JULIA_ARGS[@]}"
