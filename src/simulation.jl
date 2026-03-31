@@ -59,10 +59,6 @@ function SingleDomainSimulation(params::Parameters)
                controller.initial_time, controller.final_time,
                controller.time_step, controller.num_stops - 1)
     model = create_model(params)
-    n_dofs = 3 * n_nodes
-    n_free = count(model.free_dofs)
-    norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained",
-               n_dofs, n_free, n_dofs - n_free)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
     norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
@@ -80,6 +76,13 @@ _solver_name(::HessianMinimizer) = "Newton (Hessian minimizer)"
 _solver_name(::SteepestDescent) = "Steepest descent"
 _solver_name(::ExplicitSolver) = "Explicit"
 _solver_name(s) = replace(string(typeof(s)), r"^.*\." => "")
+
+function log_dof_counts(model::SolidMechanics)
+    n_dofs = length(model.free_dofs)
+    n_free = count(model.free_dofs)
+    norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained",
+               n_dofs, n_free, n_dofs - n_free)
+end
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
@@ -404,6 +407,7 @@ end
 function initialize(sim::SingleDomainSimulation)
     apply_ics(sim)
     apply_bcs(sim)
+    log_dof_counts(sim.model)
     initialize(sim.integrator, sim.solver, sim.model)
     save_curr_state(sim)
     return nothing
@@ -418,6 +422,7 @@ function initialize(sim::MultiDomainSimulation)
     end
     apply_bcs(sim)
     for subsim in sim.subsims
+        log_dof_counts(subsim.model)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
     end
