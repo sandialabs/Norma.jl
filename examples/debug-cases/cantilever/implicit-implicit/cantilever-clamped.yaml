@@ -21,6 +21,16 @@ initial conditions:
       component: y
       function: "0.01 * x * x"
 boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsx-
+      component: y
+      function: "0.0"
+    - node set: nsx-
+      component: z
+      function: "0.0"
   Schwarz overlap:
     - side set: ssx+
       source: cantilever-end
