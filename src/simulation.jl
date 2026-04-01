@@ -84,6 +84,8 @@ function log_dof_counts(model::SolidMechanics)
                n_dofs, n_free, n_dofs - n_free)
 end
 
+log_dof_counts(::Model) = nothing
+
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
     domain_paths = params["domains"]
@@ -417,8 +419,10 @@ function initialize(sim::MultiDomainSimulation)
     initialize_bc_projectors(sim)
     apply_ics(sim)
     for (subsim_index, subsim) in enumerate(sim.subsims)
-        copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
-        save_history_snapshot(sim.controller, subsim, subsim_index)
+        if subsim.model isa SolidMechanics
+            copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
+            save_history_snapshot(sim.controller, subsim, subsim_index)
+        end
     end
     apply_bcs(sim)
     for subsim in sim.subsims
