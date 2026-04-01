@@ -191,6 +191,8 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
         writedlm_nodal_array(acce_filename, model.acceleration)
         kinetic_filename = prefix * "kinetic" * index_string * ".csv"
         writedlm(kinetic_filename, integrator.kinetic_energy, '\n')
+        total_filename = prefix * "total_energy" * index_string * ".csv"
+        writedlm(total_filename, integrator.stored_energy + integrator.kinetic_energy, '\n')
     end
     return nothing
 end
