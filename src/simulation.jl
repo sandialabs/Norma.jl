@@ -719,9 +719,16 @@ function subcycle(sim::MultiDomainSimulation)
 end
 
 function subcycle(sim::SingleDomainSimulation)
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
+    t_last_log = time()
     while true
         advance_time(sim)
         advance_one_step(sim)
+        if is_explicit && time() - t_last_log >= 1.0
+            norma_logf(4, :progress, "Time = %.2e : Δt = %.2e",
+                       sim.integrator.time, sim.integrator.time_step)
+            t_last_log = time()
+        end
         if stop_subcyle(sim) == true
             break
         end
