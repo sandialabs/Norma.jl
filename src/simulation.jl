@@ -878,6 +878,8 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 compute_robin_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
                 compute_impedance_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+                compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
                    bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 compute_dirichlet_projector(subsim.model, bc)

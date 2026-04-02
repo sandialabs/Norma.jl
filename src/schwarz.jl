@@ -141,6 +141,107 @@ function compute_impedance_schwarz_projectors!(
 end
 
 # ---------------------------------------------------------------------------
+# Impedance overlap Schwarz: absorbing condition on overlap boundaries
+# ---------------------------------------------------------------------------
+#
+# Instead of overwriting DOFs (DBC-DBC), applies impedance-matching force:
+#   boundary_force += -t_partner + Z * u̇_partner  (pointwise interpolation)
+# DOFs remain free — waves pass through instead of reflecting.
+
+function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
+    Z = bc.impedance
+    α = bc.robin_parameter
+    W = bc.square_projector
+
+    get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
+        (field -> getfield(bc.coupled_subsim.model, field))
+    else
+        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+    end
+
+    coupled_current   = get_coupled_field(:current)
+    coupled_reference = get_coupled_field(:reference)
+    coupled_velocity  = get_coupled_field(:velocity)
+    coupled_internal  = get_coupled_field(:internal_force)
+
+    global_from_local_map = bc.global_from_local_map
+    unique_node_indices = unique(bc.side_set_node_indices)
+
+    # Interpolate partner displacement and velocity at each overlap boundary node
+    num_dst_nodes = length(unique_node_indices)
+    dst_velo = zeros(3, num_dst_nodes)
+    dst_disp = zeros(3, num_dst_nodes)
+
+    for (i, node_index) in enumerate(unique_node_indices)
+        coupled_node_indices = bc.coupled_nodes_indices[i]
+        N = bc.interpolation_function_values[i]
+        for comp in 1:3
+            dst_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
+            dst_disp[comp, i] = sum(
+                (coupled_current[comp, coupled_node_indices] .- coupled_reference[comp, coupled_node_indices]) .* N
+            )
+        end
+    end
+
+    # Apply variational impedance condition: f = W * (Z * u̇_partner + α * u_partner)
+    # The traction term (-t_partner) is omitted for overlap since we don't have
+    # the partner's traction at interior points — only its displacement and velocity.
+    # The impedance term Z * u̇ is the primary wave-absorbing mechanism.
+    for comp in 1:3
+        Z_vdot = Z * dst_velo[comp, :]
+        alpha_u = α * dst_disp[comp, :]
+        rhs = W * (Z_vdot + alpha_u)
+        for (i_local, i_global) in enumerate(global_from_local_map)
+            dof_i = 3 * (i_global - 1) + comp
+            model.boundary_force[dof_i] += rhs[i_local]
+        end
+    end
+    # DOFs remain free — no model.free_dofs modification
+end
+
+function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integrator::TimeIntegrator)
+    num_nodes = size(model.reference, 2)
+    num_dofs = 3 * num_nodes
+    K_io = spzeros(num_dofs, num_dofs)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
+        Z = bc.impedance
+        α = bc.robin_parameter
+        W = bc.square_projector
+        c_v = if integrator isa Newmark
+            integrator.γ / (integrator.β * integrator.time_step)
+        else
+            0.0
+        end
+        coeff = Z * c_v + α
+        global_from_local_map = bc.global_from_local_map
+        for (i_local, i_global) in enumerate(global_from_local_map)
+            for (j_local, j_global) in enumerate(global_from_local_map)
+                w_ij = coeff * W[i_local, j_local]
+                for comp in 1:3
+                    dof_i = 3 * (i_global - 1) + comp
+                    dof_j = 3 * (j_global - 1) + comp
+                    K_io[dof_i, dof_j] += w_ij
+                end
+            end
+        end
+    end
+    return K_io
+end
+
+function pair_bc(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition, bc_index::Int64)
+    # Overlap BCs don't pair — they use pointwise interpolation from the partner's interior
+    return nothing
+end
+
+function compute_impedance_overlap_schwarz_projectors!(
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+)
+    dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
 
 function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block_id::Int, tol::Float64)
     mesh = model.mesh

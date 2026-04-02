@@ -173,6 +173,67 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     )
 end
 
+function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
+    coupled_block_name::String,
+    tol::Float64,
+    mesh::ExodusDatabase,
+    side_set_name::String,
+    side_set_id::Int64,
+    side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
+    coupled_subsim::Simulation,
+    subsim::Simulation,
+    impedance::Float64,
+    robin_parameter::Float64,
+    variational::Bool,
+)
+    # Pointwise interpolation infrastructure (same as regular overlap)
+    if coupled_subsim.model isa RomModel
+        coupled_mesh = coupled_subsim.model.fom_model.mesh
+    else
+        coupled_mesh = coupled_subsim.model.mesh
+    end
+    coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
+    element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
+    element_type = element_type_from_string(element_type_string)
+    coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
+    interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
+    unique_node_indices = unique(side_set_node_indices)
+    for node_index in unique_node_indices
+        point = subsim.model.reference[:, node_index]
+        node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
+        if found == false
+            norma_abortf(
+                "Could not find subdomain %s point (%.4e, %.4e, %.4e) in subdomain %s",
+                subsim.name, point[1], point[2], point[3], coupled_subsim.name,
+            )
+        end
+        N = interpolate(element_type, ξ)[1]
+        push!(coupled_nodes_indices, node_indices)
+        push!(interpolation_function_values, N)
+    end
+    # Surface projector infrastructure (for variational force application)
+    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    square_projector = Matrix{Float64}(undef, 0, 0)
+    return SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
+        side_set_name,
+        side_set_id,
+        side_set_node_indices,
+        num_nodes_sides,
+        coupled_nodes_indices,
+        interpolation_function_values,
+        local_from_global_map,
+        global_from_local_map,
+        coupled_subsim,
+        subsim,
+        square_projector,
+        impedance,
+        robin_parameter,
+        variational,
+    )
+end
+
 function SolidMechanicsContactSchwarzBoundaryCondition(
     coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters
 )
@@ -399,23 +460,42 @@ function SMCouplingSchwarzBC(
         E = Float64(mat_props["elastic modulus"])
         ν = Float64(mat_props["Poisson's ratio"])
         ρ = Float64(mat_props["density"])
-        λ = E * ν / ((1 + ν) * (1 - 2ν))
+        λ_lame = E * ν / ((1 + ν) * (1 - 2ν))
         μ = E / (2 * (1 + ν))
-        impedance = sqrt(ρ * (λ + 2μ))
+        impedance = sqrt(ρ * (λ_lame + 2μ))
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
-        SolidMechanicsImpedanceSchwarzBoundaryCondition(
-            input_mesh,
-            side_set_name,
-            coupled_side_set_name,
-            side_set_id,
-            side_set_node_indices,
-            num_nodes_sides,
-            coupled_subsim,
-            subsim,
-            impedance,
-            robin_parameter,
-            variational,
-        )
+        if bc_type == "Schwarz impedance nonoverlap"
+            SolidMechanicsImpedanceSchwarzBoundaryCondition(
+                input_mesh,
+                side_set_name,
+                coupled_side_set_name,
+                side_set_id,
+                side_set_node_indices,
+                num_nodes_sides,
+                coupled_subsim,
+                subsim,
+                impedance,
+                robin_parameter,
+                variational,
+            )
+        else
+            coupled_block_name = bc_params["coupled block"]
+            tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
+            SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
+                coupled_block_name,
+                tol,
+                input_mesh,
+                side_set_name,
+                side_set_id,
+                side_set_node_indices,
+                num_nodes_sides,
+                coupled_subsim,
+                subsim,
+                impedance,
+                robin_parameter,
+                variational,
+            )
+        end
     else
         norma_abort("Unknown boundary condition type : $bc_type")
     end

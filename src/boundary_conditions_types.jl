@@ -91,6 +91,26 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     variational::Bool
 end
 
+# Impedance-matching overlap Schwarz: replaces DBC-DBC with absorbing
+# conditions on the overlap boundaries. Same pointwise interpolation as
+# regular overlap, but applies t + Z u̇ = g as a force (not a constraint).
+mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+    name::String
+    side_set_id::Int64
+    side_set_node_indices::Vector{Int64}
+    num_nodes_sides::Vector{Int64}
+    coupled_nodes_indices::Vector{Vector{Int64}}
+    interpolation_function_values::Vector{Vector{Float64}}
+    local_from_global_map::Dict{Int64,Int64}
+    global_from_local_map::Vector{Int64}
+    coupled_subsim::Simulation
+    subsim::Simulation
+    square_projector::Matrix{Float64}
+    impedance::Float64
+    robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
+    variational::Bool
+end
+
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
