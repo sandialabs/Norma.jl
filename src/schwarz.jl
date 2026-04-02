@@ -4,6 +4,144 @@
 # and contact Schwarz BCs. Projectors, time history interpolation,
 # and interface force/displacement transfer.
 
+# ---------------------------------------------------------------------------
+# Impedance-matching Robin Schwarz: t + Z u̇ + α W u = g
+# ---------------------------------------------------------------------------
+#
+# g = -t_src_projected + Z * u̇_src_projected + α * W * u_src_projected
+#
+# The impedance term Z * u̇ absorbs outgoing waves at the interface,
+# preventing reflections that cause energy growth with mixed integrators.
+
+function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
+    Z = bc.impedance
+    α = bc.robin_parameter
+    W = bc.square_projector
+    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    controller = parent_sim.controller
+    iter = controller.iteration_number
+    coupled_subsim = bc.coupled_subsim
+    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
+    this_subsim = bc.subsim
+    this_index = parent_sim.subsim_name_index_map[this_subsim.name]
+
+    # Neumann part: -t_src projected
+    neumann_force = get_dst_force(bc)
+
+    # Source displacement and velocity, projected to destination
+    src_sim = bc.coupled_subsim
+    src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
+    src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
+    src_global_from_local_map = src_bc.global_from_local_map
+    num_src_nodes = length(src_global_from_local_map)
+    src_disp = zeros(3, num_src_nodes)
+    src_velo = zeros(3, num_src_nodes)
+    for (i_local, i_global) in enumerate(src_global_from_local_map)
+        src_disp[:, i_local] = src_model.current[:, i_global] - src_model.reference[:, i_global]
+        src_velo[:, i_local] = src_model.velocity[:, i_global]
+    end
+    dirichlet_projector = bc.dirichlet_projector
+    num_dst_nodes = size(dirichlet_projector, 1)
+    dst_disp = zeros(3, num_dst_nodes)
+    dst_velo = zeros(3, num_dst_nodes)
+    for i in 1:3
+        dst_disp[i, :] = dirichlet_projector * src_disp[i, :]
+        dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
+    end
+    global_from_local_map = bc.global_from_local_map
+    theta = controller.relaxation_parameter
+
+    # RHS: g = -t_src + Z * W * u̇_src + α * W * u_src
+    if (this_index < coupled_index)  # right subdomain
+        for comp in 1:3
+            Z_W_vdot = Z * (W * dst_velo[comp, :])
+            alpha_W_u = α * (W * dst_disp[comp, :])
+            for (i_local, i_global) in enumerate(global_from_local_map)
+                dof_i = 3 * (i_global - 1) + comp
+                model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] +
+                                                Z_W_vdot[i_local] + alpha_W_u[i_local]
+            end
+        end
+    else  # left subdomain (with relaxation)
+        if (iter == 0)
+            n = length(model.boundary_force)
+            g = zeros(n)
+        else
+            g = controller.lambda_disp[coupled_index]
+        end
+        controller.lambda_disp[coupled_index] = copy(model.boundary_force)
+        for comp in 1:3
+            Z_W_vdot = Z * (W * dst_velo[comp, :])
+            alpha_W_u = α * (W * dst_disp[comp, :])
+            for (i_local, i_global) in enumerate(global_from_local_map)
+                dof_i = 3 * (i_global - 1) + comp
+                rhs_i = neumann_force[3 * (i_local - 1) + comp] + Z_W_vdot[i_local] + alpha_W_u[i_local]
+                controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * rhs_i
+                model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][dof_i]
+            end
+        end
+    end
+end
+
+# Tangent contribution: K_impedance = (Z * c_v + α) * W
+# where c_v = γ/(β·Δt) is the Newmark velocity coefficient.
+# For quasi-static (no velocity), only the α * W term contributes.
+# For explicit integrators, this is not called (no tangent assembly).
+function build_impedance_schwarz_stiffness(model::SolidMechanics, integrator::TimeIntegrator)
+    num_nodes = size(model.reference, 2)
+    num_dofs = 3 * num_nodes
+    K_is = spzeros(num_dofs, num_dofs)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition || continue
+        Z = bc.impedance
+        α = bc.robin_parameter
+        W = bc.square_projector
+        # Velocity coefficient from Newmark: c_v = γ/(β·Δt)
+        c_v = if integrator isa Newmark
+            integrator.γ / (integrator.β * integrator.time_step)
+        else
+            0.0  # quasi-static: no velocity contribution
+        end
+        coeff = Z * c_v + α
+        global_from_local_map = bc.global_from_local_map
+        for (i_local, i_global) in enumerate(global_from_local_map)
+            for (j_local, j_global) in enumerate(global_from_local_map)
+                w_ij = coeff * W[i_local, j_local]
+                for comp in 1:3
+                    dof_i = 3 * (i_global - 1) + comp
+                    dof_j = 3 * (j_global - 1) + comp
+                    K_is[dof_i, dof_j] += w_ij
+                end
+            end
+        end
+    end
+    return K_is
+end
+
+function pair_bc(bc::SolidMechanicsImpedanceSchwarzBoundaryCondition, bc_index::Int64)
+    coupled_bc_name = bc.coupled_bc_name
+    coupled_model = bc.coupled_subsim.model
+    coupled_bcs = coupled_model.boundary_conditions
+    for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
+        if coupled_bc_name == coupled_bc.name
+            bc.coupled_bc_index = coupled_bc_index
+            coupled_bc.coupled_bc_index = bc_index
+        end
+    end
+    return nothing
+end
+
+function compute_impedance_schwarz_projectors!(
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceSchwarzBoundaryCondition
+)
+    compute_dirichlet_projector(dst_model, dst_bc)
+    compute_neumann_projector(dst_model, dst_bc)
+    dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+
 function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block_id::Int, tol::Float64)
     mesh = model.mesh
     element_type_string = Exodus.read_block_parameters(mesh, Int32(block_id))[1]

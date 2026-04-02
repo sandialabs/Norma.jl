@@ -366,16 +366,19 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
     K_rs = build_robin_schwarz_stiffness(model)
+    K_is = build_impedance_schwarz_stiffness(model, integrator)
     K_total = model.stiffness
     K_total = nnz(K_robin) > 0 ? K_total + K_robin : K_total
     K_total = nnz(K_rs) > 0 ? K_total + K_rs : K_total
+    K_total = nnz(K_is) > 0 ? K_total + K_is : K_total
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
+    is_internal_force = nnz(K_is) > 0 ? K_is * integrator.displacement : zeros(length(model.internal_force))
     if model.inclined_support == true
         T = model.global_transform
-        solver.gradient = T * (model.internal_force + rs_internal_force - external_force)
+        solver.gradient = T * (model.internal_force + rs_internal_force + is_internal_force - external_force)
         solver.hessian = T * K_total * T'
     else
-        solver.gradient = model.internal_force + rs_internal_force - external_force
+        solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
         solver.hessian = K_total
     end
     return nothing
@@ -391,11 +394,13 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
     K_rs = build_robin_schwarz_stiffness(model)
+    K_is = build_impedance_schwarz_stiffness(model, integrator)
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
+    is_internal_force = nnz(K_is) > 0 ? K_is * integrator.displacement : zeros(length(model.internal_force))
     if model.inclined_support == true
-        solver.gradient = model.global_transform * (model.internal_force + rs_internal_force - external_force)
+        solver.gradient = model.global_transform * (model.internal_force + rs_internal_force + is_internal_force - external_force)
     else
-        solver.gradient = model.internal_force + rs_internal_force - external_force
+        solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
     end
     return nothing
 end
@@ -416,6 +421,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
     K_rs = build_robin_schwarz_stiffness(model)
+    K_is = build_impedance_schwarz_stiffness(model, integrator)
     stiffness = model.stiffness
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
     stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
@@ -449,6 +455,7 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
     K_rs = build_robin_schwarz_stiffness(model)
+    K_is = build_impedance_schwarz_stiffness(model, integrator)
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
     internal_force = internal_force + rs_internal_force
     if model.inclined_support == true

@@ -257,6 +257,45 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
     )
 end
 
+function SolidMechanicsImpedanceSchwarzBoundaryCondition(
+    mesh::ExodusDatabase,
+    side_set_name::String,
+    coupled_side_set_name::String,
+    side_set_id::Int64,
+    side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
+    coupled_subsim::Simulation,
+    subsim::Simulation,
+    impedance::Float64,
+    robin_parameter::Float64,
+    variational::Bool,
+)
+    dirichlet_projector = Matrix{Float64}(undef, 0, 0)
+    neumann_projector = Matrix{Float64}(undef, 0, 0)
+    square_projector = Matrix{Float64}(undef, 0, 0)
+    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    coupled_bc_index = 0
+    return SolidMechanicsImpedanceSchwarzBoundaryCondition(
+        side_set_name,
+        side_set_id,
+        side_set_node_indices,
+        num_nodes_sides,
+        local_from_global_map,
+        global_from_local_map,
+        coupled_subsim,
+        subsim,
+        coupled_side_set_name,
+        coupled_bc_index,
+        dirichlet_projector,
+        neumann_projector,
+        square_projector,
+        impedance,
+        robin_parameter,
+        variational,
+    )
+end
+
 function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     mesh::ExodusDatabase,
     side_set_name::String,
@@ -347,6 +386,33 @@ function SMCouplingSchwarzBC(
             num_nodes_sides,
             coupled_subsim,
             subsim,
+            robin_parameter,
+            variational,
+        )
+    elseif bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
+        # Impedance Z = √(ρ(λ + 2μ)), computed from material properties
+        model_params = subsim.params["model"]
+        mat_params = model_params["material"]
+        mat_blocks = mat_params["blocks"]
+        mat_name = first(values(mat_blocks))
+        mat_props = mat_params[mat_name]
+        E = Float64(mat_props["elastic modulus"])
+        ν = Float64(mat_props["Poisson's ratio"])
+        ρ = Float64(mat_props["density"])
+        λ = E * ν / ((1 + ν) * (1 - 2ν))
+        μ = E / (2 * (1 + ν))
+        impedance = sqrt(ρ * (λ + 2μ))
+        robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
+        SolidMechanicsImpedanceSchwarzBoundaryCondition(
+            input_mesh,
+            side_set_name,
+            coupled_side_set_name,
+            side_set_id,
+            side_set_node_indices,
+            num_nodes_sides,
+            coupled_subsim,
+            subsim,
+            impedance,
             robin_parameter,
             variational,
         )
