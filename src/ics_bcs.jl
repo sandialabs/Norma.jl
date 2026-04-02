@@ -229,6 +229,7 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
     side_set_node_indices::Vector{Int64},
     num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
+    subsim::Simulation, 
     robin_parameter::Float64,
     variational::Bool,
 )
@@ -246,6 +247,7 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
         local_from_global_map,
         global_from_local_map,
         coupled_subsim,
+        subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -345,6 +347,7 @@ function SMCouplingSchwarzBC(
             side_set_node_indices,
             num_nodes_sides,
             coupled_subsim,
+            subsim,
             robin_parameter,
             variational,
         )
@@ -560,11 +563,11 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
     parent_sim = bc.coupled_subsim.params["parent_simulation"]
     num_domains = parent_sim.num_domains
     controller = parent_sim.controller
-    iter = controller.iteration_number 
-    #println("IKT iter = ", iter)  
+    iter = controller.iteration_number
     coupled_subsim = bc.coupled_subsim
     coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    #println("IKT coupled_index = ", coupled_index) 
+    this_subsim = bc.subsim
+    this_index = parent_sim.subsim_name_index_map[this_subsim.name]
     # Neumann part of Robin RHS: -t_src projected (= get_dst_force which negates internal_force)
     neumann_force = get_dst_force(bc)
     # Displacement part of Robin RHS: α * W * u_src_projected
@@ -586,15 +589,9 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
         dst_disp[i, :] = dirichlet_projector * src_disp[i, :]
     end
     global_from_local_map = bc.global_from_local_map
-    #Get relaxation parameter from input file 
+    #Get relaxation parameter from input file
     theta = controller.relaxation_parameter
-    println("IKT theta from input file = ", theta) 
-    if (theta != 1.0 && num_domains > 2) 
-      throw("Relaxation + RR BCs not supported yet for > 2 subdomains!  Re-run with 'relaxation parameter = 1.0'.") 
-    end
-    # IKT HACK! the following is a hack just to test things out with relaxation.  It assumes just 2 subdomains
-    # and we are applying the relaxation to subdomain 1 
-    if (coupled_index == 1) #subdomain 2
+    if (this_index < coupled_index) #right subdomain
       for comp in 1:3
           alpha_W_u = α * (W * dst_disp[comp, :])
           for (i_local, i_global) in enumerate(global_from_local_map)
@@ -602,7 +599,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
               model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
           end
       end
-    else #subdomain 1
+    else #left subdomain
       #Set g and lambda to 0 for iter = 0
       if (iter == 0)
         n = length(model.boundary_force)

@@ -117,6 +117,7 @@ mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCoup
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
     coupled_subsim::Simulation
+    subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
