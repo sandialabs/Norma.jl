@@ -4,7 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-include("opinf/opinf_ics_bcs.jl")
 
 using Exodus
 

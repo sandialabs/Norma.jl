@@ -4,11 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-include("opinf/opinf_model.jl")
-include("constitutive.jl")
-include("j2_simo_hughes.jl")
-include("interpolation.jl")
-include("ics_bcs.jl")
 
 using Base.Threads: @threads, threadid, nthreads, maxthreadid
 

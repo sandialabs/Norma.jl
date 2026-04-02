@@ -7,13 +7,6 @@
 using Printf
 using YAML
 
-include("interpolation_types.jl")
-include("simulation_types.jl")
-include("minitensor.jl")
-include("model.jl")
-include("time_integrator.jl")
-include("solver.jl")
-include("io.jl")
 
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)

@@ -4,15 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-abstract type Simulation end
-const Parameters = Dict{String,Any}
-
-include("constitutive_types.jl")
-include("ics_bcs_types.jl")
-include("model_types.jl")
-include("time_integrator_types.jl")
-include("solver_types.jl")
-
 abstract type TimeController end
 abstract type SingleTimeController <: TimeController end
 abstract type MultiDomainTimeController <: TimeController end

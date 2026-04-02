@@ -6,7 +6,30 @@
 
 module Norma
 
+# --- Core utilities ---
 include("utils.jl")
+include("minitensor.jl")
+
+# --- Types (order matters due to cross-dependencies) ---
+include("base_types.jl")                # Simulation, Parameters
+include("interpolation_types.jl")       # @enum ElementType
+include("constitutive_types.jl")
+include("boundary_conditions_types.jl") # needs Simulation
+include("model_types.jl")              # needs BoundaryCondition
+include("time_integrator_types.jl")
+include("solver_types.jl")
+include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model
+
+# --- Methods ---
+include("constitutive.jl")
+include("interpolation.jl")
+include("opinf/opinf_model.jl")
+include("model.jl")
+include("boundary_conditions.jl")
+include("opinf/opinf_ics_bcs.jl")
+include("time_integrator.jl")
+include("solver.jl")
+include("io.jl")
 include("simulation.jl")
 
 function run(input_file::String)
