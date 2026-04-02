@@ -33,7 +33,7 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: ssx+
-      source: cantilever-end
+      source: cantilever-free
       source block: cantilever_free
       source side set: ssx-
 solver:

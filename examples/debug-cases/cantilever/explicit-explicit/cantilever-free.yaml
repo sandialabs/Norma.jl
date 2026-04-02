@@ -1,6 +1,6 @@
 type: single
 input mesh file: ../cantilever-free.g
-output mesh file: cantilever-end.e
+output mesh file: cantilever-free.e
 model:
   type: solid mechanics
   material:
@@ -12,8 +12,9 @@ model:
       Poisson's ratio: 0.25
       density: 2.61e-4
 time integrator:
-  type: Newmark
-  β: 0.25
+  type: central difference
+  initial time: 0.0
+  CFL: 0.2
   γ: 0.5
 initial conditions:
   displacement:
@@ -27,9 +28,5 @@ boundary conditions:
       source block: cantilever_clamped
       source side set: ssx+
 solver:
-  type: Hessian minimizer
-  step: full Newton
-  minimum iterations: 1
-  maximum iterations: 16
-  relative tolerance: 1.0e-10
-  absolute tolerance: 1.0e-06
+    type: explicit solver
+    step: explicit

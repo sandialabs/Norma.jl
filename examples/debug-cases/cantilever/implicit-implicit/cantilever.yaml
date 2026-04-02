@@ -1,5 +1,5 @@
 type: multi
-domains: ["cantilever-end.yaml", "cantilever-clamped.yaml"]
+domains: ["cantilever-free.yaml", "cantilever-clamped.yaml"]
 Exodus output interval: 1.0e-4
 CSV output interval: 1.0e-4
 initial time: 0.0
