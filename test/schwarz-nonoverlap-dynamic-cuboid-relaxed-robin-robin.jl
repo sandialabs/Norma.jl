@@ -6,7 +6,7 @@
 
 using YAML
 
-const rr_dynamic_example = "../examples/nonoverlap/dynamic-same-step/cuboids-robin-robin"
+const rr_dynamic_example = "../examples/nonoverlap/dynamic-same-step/cuboids-relaxed-robin-robin"
 
 # Run 5 steps (t = 0.05) of the given input file and return the simulation.
 function run_rr_dynamic(input_filename, extra_params=Dict())
