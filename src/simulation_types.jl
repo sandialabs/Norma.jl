@@ -46,10 +46,6 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     acce_hist::Vector{Vector{Vector{Float64}}}
     ∂Ω_f_hist::Vector{Vector{Vector{Float64}}}
     relaxation_parameter::Float64
-    relaxation_type::String
-    aitken_rho::Vector{Float64}                   # current ρ per domain
-    aitken_r_prev::Vector{Vector{Float64}}        # r⁽ⁿ⁻¹⁾ per domain
-    aitken_gamma_prev::Vector{Vector{Float64}}    # γ₁²(φ₁⁽ⁿ⁻¹⁾) per domain
     naive_stabilized::Bool
     lambda_disp::Vector{Vector{Float64}}
     lambda_velo::Vector{Vector{Float64}}

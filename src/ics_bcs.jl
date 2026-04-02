@@ -765,58 +765,14 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        if controller.relaxation_type == "classical"
+        # Classical relaxation
+        controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
+        controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
+        controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
-          controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-          controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
-          controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
-
-          integrator.displacement = controller.lambda_disp[coupled_index]
-          integrator.velocity = controller.lambda_velo[coupled_index]
-          integrator.acceleration = controller.lambda_acce[coupled_index]
-
-        elseif controller.relaxation_type == "aitken"
-
-          # Compute γ₁²(φ₁⁽ⁿ⁾): trace of own domain's solution on interface
-          dst_bc = coupled_subsim.model.boundary_conditions[bc.coupled_bc_index]
-          _, gammaji_disp, gammaji_velo, gammaji_acce = get_dst_curr_disp_velo_acce(dst_bc)
-
-          # Expand interface-sized gammaji to full-DOF size
-          gammaji_disp_full = _expand_to_full_dofs(gammaji_disp, dst_bc.global_from_local_map, num_dofs)
-          gammaji_velo_full = _expand_to_full_dofs(gammaji_velo, dst_bc.global_from_local_map, num_dofs)
-          gammaji_acce_full = _expand_to_full_dofs(gammaji_acce, dst_bc.global_from_local_map, num_dofs)
-
-          # Residual: r⁽ⁿ⁾ = γ₂(φ₂⁽ⁿ⁾) - γ₁²(φ₁⁽ⁿ⁾)
-          r_disp = interp_disp - gammaji_disp_full
-
-          # Compute adaptive ρ (Aitken Δ² acceleration)
-          iter = controller.iteration_number
-          if iter >= 2 && !isempty(controller.aitken_r_prev[coupled_index])
-              r_prev = controller.aitken_r_prev[coupled_index]
-              gamma_prev = controller.aitken_gamma_prev[coupled_index]
-              Δr = r_disp - r_prev
-              Δgamma = gammaji_disp_full - gamma_prev
-              Δr_norm_sq = dot(Δr, Δr)
-              if Δr_norm_sq > 0.0
-                  controller.aitken_rho[coupled_index] = -dot(Δr, Δgamma) / Δr_norm_sq
-              end
-          end
-          ρ = controller.aitken_rho[coupled_index]
-
-          # Store for next iteration
-          controller.aitken_r_prev[coupled_index] = copy(r_disp)
-          controller.aitken_gamma_prev[coupled_index] = copy(gammaji_disp_full)
-
-          # Aitken update: λ_{n+1} = λₙ + ρ⁽ⁿ⁾ r⁽ⁿ⁾
-          controller.lambda_disp[coupled_index] = λ_u_prev + ρ * r_disp
-          controller.lambda_velo[coupled_index] = λ_v_prev + ρ * (interp_velo - gammaji_velo_full)
-          controller.lambda_acce[coupled_index] = λ_a_prev + ρ * (interp_acce - gammaji_acce_full)
-
-          integrator.displacement = controller.lambda_disp[coupled_index]
-          integrator.velocity = controller.lambda_velo[coupled_index]
-          integrator.acceleration = controller.lambda_acce[coupled_index]
-
-        end
+        integrator.displacement = controller.lambda_disp[coupled_index]
+        integrator.velocity = controller.lambda_velo[coupled_index]
+        integrator.acceleration = controller.lambda_acce[coupled_index]
     else
         integrator.displacement = interp_disp
         integrator.velocity = interp_velo

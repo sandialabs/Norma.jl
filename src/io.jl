@@ -121,14 +121,14 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
             percent = 100 * stop / num_steps
             digits = max(0, Int64(ceil(log10(num_steps))) - 2)
             u_max = maximum(abs, model.current .- model.reference)
-            if is_output_step && wall_time > 0.0
-                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e : |U|_max = %.3e : wall = %.2fs",
-                           stop, num_steps, percent, time, u_max, wall_time)
-            elseif wall_time > 0.0
-                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e : wall = %.2fs",
-                           stop, num_steps, percent, time, wall_time)
+            if is_output_step && wall_time > 0.01
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : |U|_max = %.2e : wall = %s",
+                           stop, num_steps, percent, time, u_max, format_time(wall_time))
+            elseif wall_time > 0.01
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
+                           stop, num_steps, percent, time, format_time(wall_time))
             else
-                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e",
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e",
                            stop, num_steps, percent, time)
             end
         end
@@ -153,11 +153,11 @@ function write_stop(sim::MultiDomainSimulation; wall_time::Float64=0.0)
     time = sim.controller.time
     percent = 100 * stop / num_steps
     digits = max(0, Int64(ceil(log10(num_steps))) - 2)
-    if wall_time > 0.0
-        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e : wall = %.2fs",
-                   stop, num_steps, percent, time, wall_time)
+    if wall_time > 0.01
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
+                   stop, num_steps, percent, time, format_time(wall_time))
     else
-        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e",
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e",
                    stop, num_steps, percent, time)
     end
     for subsim in sim.subsims
@@ -191,6 +191,8 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
         writedlm_nodal_array(acce_filename, model.acceleration)
         kinetic_filename = prefix * "kinetic" * index_string * ".csv"
         writedlm(kinetic_filename, integrator.kinetic_energy, '\n')
+        total_filename = prefix * "total_energy" * index_string * ".csv"
+        writedlm(total_filename, integrator.stored_energy + integrator.kinetic_energy, '\n')
     end
     return nothing
 end

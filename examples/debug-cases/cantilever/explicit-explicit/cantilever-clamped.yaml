@@ -1,0 +1,42 @@
+type: single
+input mesh file: ../cantilever-clamped.g
+output mesh file: cantilever-clamped.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cantilever_clamped: hyperelastic
+    hyperelastic:
+      model: linear elastic
+      elastic modulus: 1.0e+06
+      Poisson's ratio: 0.25
+      density: 2.61e-4
+time integrator:
+  type: central difference
+  initial time: 0.0
+  CFL: 0.2
+  γ: 0.5
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: y
+      function: "0.01 * x * x"
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsx-
+      component: y
+      function: "0.0"
+    - node set: nsx-
+      component: z
+      function: "0.0"
+  Schwarz overlap:
+    - side set: ssx+
+      source: cantilever-free
+      source block: cantilever_free
+      source side set: ssx-
+solver:
+    type: explicit solver
+    step: explicit
