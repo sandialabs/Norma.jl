@@ -186,6 +186,17 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
             writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
             writedlm_nodal_array(disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices])
+
+            if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+                force_filename = prefix * side_set_name * "-force" * index_string * ".csv"
+                # See ics_bcs.get_dst_force() for this
+                # Will get projected with Neumann projector onto destination simulation boundary
+                force_global = model.internal_force
+                force = extract_local_vector(bc, force_global, 3)
+                num_nodes = length(bc.global_from_local_map)
+                force_out = reshape(force, (3, num_nodes))
+                writedlm_nodal_array(force_filename, force_out)
+            end
         end
     end
     return nothing

@@ -527,7 +527,8 @@ function save_curr_state(sim::SingleDomainSimulation)
         integrator.prev_velo = copy(integrator.velocity)
         integrator.prev_acce = copy(integrator.acceleration)
     end
-    return integrator.prev_∂Ω_f = copy(sim.model.internal_force)
+
+    integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
 end
 
 function restore_prev_state(sim::SingleDomainSimulation)
@@ -543,7 +544,9 @@ function restore_prev_state(sim::SingleDomainSimulation)
         integrator.velocity = copy(integrator.prev_velo)
         integrator.acceleration = copy(integrator.prev_acce)
     end
-    sim.model.internal_force = copy(integrator.prev_∂Ω_f)
+
+    set_internal_force!(sim.model, copy(integrator.prev_∂Ω_f))
+
     copy_solution_source_targets(sim.integrator, sim.solver, sim.model)
     return nothing
 end
@@ -565,7 +568,7 @@ function save_stop_state(sim::MultiDomainSimulation)
             controller.stop_velo[i] = copy(subsim.integrator.velocity)
             controller.stop_acce[i] = copy(subsim.integrator.acceleration)
         end
-        controller.stop_∂Ω_f[i] = copy(subsim.model.internal_force)
+        controller.stop_∂Ω_f[i] = copy(get_internal_force(subsim.model))
     end
 end
 
@@ -587,7 +590,8 @@ function restore_stop_state(sim::MultiDomainSimulation)
             subsim.integrator.velocity = copy(controller.stop_velo[i])
             subsim.integrator.acceleration = copy(controller.stop_acce[i])
         end
-        subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
+
+        set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
         copy_solution_source_targets(subsim.integrator, subsim.solver, subsim.model)
     end
 end
@@ -608,6 +612,16 @@ function save_schwarz_state(sim::MultiDomainSimulation)
 end
 
 function swap_swappable_bcs(sim::MultiDomainSimulation)
+    has_rom = any(subsim -> subsim.model isa RomModel, sim.subsims)
+    if has_rom
+        for subsim in sim.subsims
+            for bc in subsim.model.boundary_conditions
+                if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.swap_bcs == true
+                    norma_abort("swap BC types not supported with RomModel nonoverlapping Schwarz")
+                end
+            end
+        end
+    end
     for subsim in sim.subsims
         swap_swappable_bcs(subsim)
     end
@@ -693,7 +707,7 @@ function save_history_snapshot(controller::MultiDomainTimeController, sim::Singl
     push!(controller.disp_hist[subsim_index], copy(sim.integrator.displacement))
     push!(controller.velo_hist[subsim_index], copy(sim.integrator.velocity))
     push!(controller.acce_hist[subsim_index], copy(sim.integrator.acceleration))
-    push!(controller.∂Ω_f_hist[subsim_index], copy(sim.model.internal_force))
+    push!(controller.∂Ω_f_hist[subsim_index], copy(get_internal_force(sim.model)))
     return nothing
 end
 

@@ -630,5 +630,18 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     if model.inclined_support == true
         solver.gradient = model.global_transform' * solver.gradient
     end
+
+    # For nonoverlapping ROM, compute full-order internal force after solve is converged
+    if model isa RomModel
+        has_nonoverlap = any(bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition, model.boundary_conditions)
+        if has_nonoverlap
+            model.fom_model.time = model.time
+            copy_solution_source_targets(integrator, solver, model)
+            copy_solution_source_targets(model.fom_model, integrator.fom_integrator, solver.fom_solver)
+            # `evaluate` updates `model.fom_model.internal_force`
+            evaluate(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+        end
+    end
+
     return nothing
 end

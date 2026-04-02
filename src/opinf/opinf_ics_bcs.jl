@@ -4,7 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-        
+using Infiltrator
+
 function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
     fom_bc = SolidMechanicsDirichletBoundaryCondition(input_mesh,bc_params)
     node_set_name = bc_params["node set"]
@@ -16,9 +17,9 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
     disp_num = eval(Meta.parse(expression))
     velo_num = expand_derivatives(D(disp_num))
     acce_num = expand_derivatives(D(velo_num))
-    
+
     opinf_model_directory = bc_params["model-directory"]
-    py""" 
+    py"""
     import torch
     def get_model(model_file):
       import os
@@ -26,7 +27,7 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
       return torch.load(model_file,weights_only=False)
     """
     ensemble_size = bc_params["ensemble-size"]
-    
+
     if offset == 1
         offset_name = "x"
     end
@@ -38,17 +39,17 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
     end
 
 
-    model = [] 
+    model = []
     for i in 1:ensemble_size
       tmp =  py"get_model"(opinf_model_directory * "/BC-" * node_set_name * "-" * offset_name * "-" * string(i-1) * ".pt")
       push!(model,tmp)
-    end     
-            
+    end
+
     basis_file = bc_params["model-directory"] * "/nn-opinf-basis-" * node_set_name * "-" * offset_name * ".npz"
     basis = NPZ.npzread(basis_file)
     basis = basis["basis"]
-            
-            
+
+
     SolidMechanicsOpInfDirichletBC(
         node_set_name,
         offset,
@@ -61,8 +62,8 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
         model,
         basis,
     )
-end 
-    
+end
+
 function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
@@ -75,7 +76,7 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
 )
     fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(coupled_block_name,tol,side_set_name,side_set_node_indices,coupled_subsim,subsim,variational)
     opinf_model_directory = bc_params["model-directory"]
-    py""" 
+    py"""
     import torch
     def get_model(model_file):
       return torch.load(model_file,weights_only=False)
@@ -87,7 +88,7 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
       push!(model,tmp)
     end
 
-    basis_file = bc_params["model-directory"] * "/nn-opinf-basis-" * side_set_name * ".npz" 
+    basis_file = bc_params["model-directory"] * "/nn-opinf-basis-" * side_set_name * ".npz"
     basis = NPZ.npzread(basis_file)
     basis = basis["basis"]
 
@@ -136,7 +137,7 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
         push!(bc_vector,disp_val)
     end
 
-    py""" 
+    py"""
     import numpy as np
     def setup_inputs(x):
         xi = np.zeros((1,x.size))
@@ -144,7 +145,7 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
         inputs = torch.tensor(xi)
         return inputs
     """
-    
+
     reduced_bc_vector = bc.basis[1,:,:]' * bc_vector
     model_inputs = py"setup_inputs"(reduced_bc_vector)
     ensemble_size = size(bc.nn_model)[1]
@@ -152,11 +153,11 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
       reduced_forcing = bc.nn_model[i].forward(model_inputs)
       reduced_forcing = reduced_forcing.detach().numpy()[1,:]
       model.reduced_boundary_forcing[:] += reduced_forcing
-    end 
+    end
     model.reduced_boundary_forcing[:] = model.reduced_boundary_forcing[:] ./ ensemble_size
-end     
+end
 
-   
+
 function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
     if (typeof(bc.coupled_subsim.model) == SolidMechanics)
         ## Apply BC to the FOM vector
@@ -252,6 +253,8 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
         disp_val = model.fom_model.current[bc.offset, node_index] - model.fom_model.reference[bc.offset, node_index]
         push!(bc_vector, disp_val)
     end
+
+    # SM Dirichlet BC are only defined on a single x,y,z
     offset = bc.offset
     if offset == 1
         offset_name = "x"
@@ -262,29 +265,51 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
     if offset == 3
         offset_name = "z"
     end
+
+    # Compute contribution from BC
     op_name = "B_" * bc.name * "-" * offset_name
     bc_operator = model.opinf_rom[op_name]
-    # SM Dirichlet BC are only defined on a single x,y,z
-    return model.reduced_boundary_forcing[:] += bc_operator[1, :, :] * bc_vector
+    bc_contrib = bc_operator[1, :, :] * bc_vector
+    model.reduced_boundary_forcing[:] += bc_contrib
+
 end
 
 function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBoundaryCondition)
+
     if bc.coupled_subsim.model isa SolidMechanics || bc.coupled_subsim.model isa OpInfModel
-        ## Apply BC to the FOM vector
+        # Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
-        unique_node_indices = unique(bc.side_set_node_indices)
+        if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && !bc.is_dirichlet
+            nodal_force = get_dst_force(bc)
+            num_nodes = length(bc.global_from_local_map)
+            force = reshape(nodal_force, (3, num_nodes))
 
-        # populate our own BC vector
-        bc_vector = zeros(3, length(unique_node_indices))
-        for i in eachindex(unique_node_indices)
-            node_index = unique_node_indices[i]
-            bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
-        end
-        op_name = "B_" * bc.name
-        bc_operator = model.opinf_rom[op_name]
-        for i in 1:3
-            model.reduced_boundary_forcing[:] += bc_operator[i, :, :] * bc_vector[i, :]
+            # apply scaling
+            scale = get(model.opinf_rom, "force-input-scale", 1.0)
+            force .= scale .* force
+
+            # apply operator to BC internal force vector
+            op_name = "B_N_" * bc.name
+            bc_operator = model.opinf_rom[op_name]
+            for i in 1:3
+                bc_contrib = bc_operator[i, :, :] * force[i, :]
+                model.reduced_boundary_forcing[:] += bc_contrib
+            end
+        else
+            unique_node_indices = unique(bc.side_set_node_indices)
+
+            # populate our own BC vector
+            bc_vector = zeros(3, length(unique_node_indices))
+            for i in eachindex(unique_node_indices)
+                node_index = unique_node_indices[i]
+                bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
+            end
+            op_name = "B_" * bc.name
+            bc_operator = model.opinf_rom[op_name]
+            for i in 1:3
+                model.reduced_boundary_forcing[:] += bc_operator[i, :, :] * bc_vector[i, :]
+            end
         end
     else
         throw("ROM-ROM coupling not supported yet")
