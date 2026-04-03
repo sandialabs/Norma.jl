@@ -479,7 +479,7 @@ function SMCouplingSchwarzBC(
                 variational,
             )
         else
-            coupled_block_name = bc_params["coupled block"]
+            coupled_block_name = bc_params["source block"]
             tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
             SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
                 coupled_block_name,

@@ -51,15 +51,17 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
     global_from_local_map = bc.global_from_local_map
     theta = controller.relaxation_parameter
 
-    # RHS: g = -t_src + Z * W * u̇_src + α * W * u_src
+    # RHS (partner contribution only): g = -t_src + Z*W*u̇_src + α*W*u_src
+    # The self terms (Z*W*u̇_self + α*W*u_self) are handled by
+    # apply_impedance_bcs_internal_force! called at each Newton iteration.
     if (this_index < coupled_index)  # right subdomain
         for comp in 1:3
             Z_W_vdot = Z * (W * dst_velo[comp, :])
-            alpha_W_u = α * (W * dst_disp[comp, :])
+            α_W_u = α * (W * dst_disp[comp, :])
             for (i_local, i_global) in enumerate(global_from_local_map)
                 dof_i = 3 * (i_global - 1) + comp
                 model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] +
-                                                Z_W_vdot[i_local] + alpha_W_u[i_local]
+                                                Z_W_vdot[i_local] + α_W_u[i_local]
             end
         end
     else  # left subdomain (with relaxation)
@@ -72,10 +74,10 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
         controller.lambda_disp[coupled_index] = copy(model.boundary_force)
         for comp in 1:3
             Z_W_vdot = Z * (W * dst_velo[comp, :])
-            alpha_W_u = α * (W * dst_disp[comp, :])
+            α_W_u = α * (W * dst_disp[comp, :])
             for (i_local, i_global) in enumerate(global_from_local_map)
                 dof_i = 3 * (i_global - 1) + comp
-                rhs_i = neumann_force[3 * (i_local - 1) + comp] + Z_W_vdot[i_local] + alpha_W_u[i_local]
+                rhs_i = neumann_force[3 * (i_local - 1) + comp] + Z_W_vdot[i_local] + α_W_u[i_local]
                 controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * rhs_i
                 model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][dof_i]
             end
@@ -169,27 +171,26 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
 
     # Interpolate partner displacement and velocity at each overlap boundary node
     num_dst_nodes = length(unique_node_indices)
-    dst_velo = zeros(3, num_dst_nodes)
-    dst_disp = zeros(3, num_dst_nodes)
+    partner_velo = zeros(3, num_dst_nodes)
+    partner_disp = zeros(3, num_dst_nodes)
 
     for (i, node_index) in enumerate(unique_node_indices)
         coupled_node_indices = bc.coupled_nodes_indices[i]
         N = bc.interpolation_function_values[i]
         for comp in 1:3
-            dst_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
-            dst_disp[comp, i] = sum(
+            partner_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
+            partner_disp[comp, i] = sum(
                 (coupled_current[comp, coupled_node_indices] .- coupled_reference[comp, coupled_node_indices]) .* N
             )
         end
     end
 
-    # Apply variational impedance condition: f = W * (Z * u̇_partner + α * u_partner)
-    # The traction term (-t_partner) is omitted for overlap since we don't have
-    # the partner's traction at interior points — only its displacement and velocity.
-    # The impedance term Z * u̇ is the primary wave-absorbing mechanism.
+    # RHS (partner contribution only): f = W * (Z * u̇_partner + α * u_partner)
+    # The self terms (Z*W*u̇_self + α*W*u_self) are handled by
+    # apply_impedance_bcs_internal_force! called at each Newton iteration.
     for comp in 1:3
-        Z_vdot = Z * dst_velo[comp, :]
-        alpha_u = α * dst_disp[comp, :]
+        Z_vdot = Z * partner_velo[comp, :]
+        alpha_u = α * partner_disp[comp, :]
         rhs = W * (Z_vdot + alpha_u)
         for (i_local, i_global) in enumerate(global_from_local_map)
             dof_i = 3 * (i_global - 1) + comp
@@ -239,6 +240,52 @@ function compute_impedance_overlap_schwarz_projectors!(
 )
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     return nothing
+end
+
+# Compute the self-impedance internal force: W*(Z*u̇_self + α*u_self)
+# Called at each Newton iteration so it uses the current velocity/displacement.
+function apply_impedance_bcs_internal_force!(model::SolidMechanics)
+    for bc in model.boundary_conditions
+        if bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+            Z = bc.impedance
+            α = bc.robin_parameter
+            W = bc.square_projector
+            global_from_local_map = bc.global_from_local_map
+            num_nodes = length(global_from_local_map)
+            self_velo = zeros(num_nodes)
+            self_disp = zeros(num_nodes)
+            for comp in 1:3
+                for (i_local, i_global) in enumerate(global_from_local_map)
+                    self_velo[i_local] = model.velocity[comp, i_global]
+                    self_disp[i_local] = model.current[comp, i_global] - model.reference[comp, i_global]
+                end
+                f_imp = W * (Z * self_velo + α * self_disp)
+                for (i_local, i_global) in enumerate(global_from_local_map)
+                    dof_i = 3 * (i_global - 1) + comp
+                    model.internal_force[dof_i] += f_imp[i_local]
+                end
+            end
+        elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+            Z = bc.impedance
+            α = bc.robin_parameter
+            W = bc.square_projector
+            global_from_local_map = bc.global_from_local_map
+            num_nodes = length(global_from_local_map)
+            self_velo = zeros(num_nodes)
+            self_disp = zeros(num_nodes)
+            for comp in 1:3
+                for (i_local, i_global) in enumerate(global_from_local_map)
+                    self_velo[i_local] = model.velocity[comp, i_global]
+                    self_disp[i_local] = model.current[comp, i_global] - model.reference[comp, i_global]
+                end
+                f_imp = W * (Z * self_velo + α * self_disp)
+                for (i_local, i_global) in enumerate(global_from_local_map)
+                    dof_i = 3 * (i_global - 1) + comp
+                    model.internal_force[dof_i] += f_imp[i_local]
+                end
+            end
+        end
+    end
 end
 
 # ---------------------------------------------------------------------------
@@ -796,7 +843,7 @@ function create_bcs(params::Parameters)
                 boundary_condition = SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh, bc_setting_params)
                 append!(inclined_support_nodes, boundary_condition.node_set_node_indices)
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap"
+            elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap" || bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
                 sim = params["parent_simulation"]
                 subsim_name = params["name"]
                 subdomain_index = sim.subsim_name_index_map[subsim_name]
