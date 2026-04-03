@@ -11,6 +11,7 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
+    use_mass_inner_product = get(params["model"], "mass inner product", false)
     opinf_model_directory = params["model"]["model-directory"]
     basis_file = opinf_model_directory * "/nn-opinf-basis.npz"
     basis = NPZ.npzread(basis_file)
@@ -51,7 +52,42 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
         failed,
         fom_model,
         reference,
-        false
+        false,
+        use_mass_inner_product
+    )
+end
+
+function GalerkinRom(params::Parameters)
+    params["mesh smoothing"] = false
+    fom_model = SolidMechanics(params)
+    reference = fom_model.reference
+    use_mass_inner_product = get(params["model"], "mass inner product", false)
+    basis_file = params["model"]["model-file"]
+    basis = NPZ.npzread(basis_file)["basis"]
+    _, _, reduced_dim = size(basis)
+    num_dofs = reduced_dim
+    time = 0.0
+    failed = false
+    null_vec = zeros(num_dofs)
+    reduced_state = zeros(num_dofs)
+    reduced_velocity = zeros(num_dofs)
+    reduced_boundary_forcing = zeros(num_dofs)
+    free_dofs = trues(num_dofs)
+    boundary_conditions = Vector{BoundaryCondition}()
+    return GalerkinRom(
+        basis,
+        reduced_state,
+        reduced_velocity,
+        reduced_boundary_forcing,
+        null_vec,
+        free_dofs,
+        boundary_conditions,
+        time,
+        failed,
+        fom_model,
+        reference,
+        false,
+        use_mass_inner_product,
     )
 end
 
@@ -60,6 +96,7 @@ function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
+    use_mass_inner_product = get(params["model"], "mass inner product", false)
     opinf_model_file = params["model"]["model-file"]
     opinf_model = NPZ.npzread(opinf_model_file)
     basis = opinf_model["basis"]
@@ -88,6 +125,7 @@ function LinearOpInfRom(params::Parameters)
         fom_model,
         reference,
         false,
+        use_mass_inner_product,
     )
 end
 
@@ -95,6 +133,7 @@ function QuadraticOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
+    use_mass_inner_product = get(params["model"], "mass inner product", false)
     opinf_model_file = params["model"]["model-file"]
     opinf_model = NPZ.npzread(opinf_model_file)
     basis = opinf_model["basis"]
@@ -123,6 +162,7 @@ function QuadraticOpInfRom(params::Parameters)
         fom_model,
         reference,
         false,
+        use_mass_inner_product,
     )
 end
 
@@ -130,6 +170,7 @@ function CubicOpInfRom(params::Parameters)
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
+    use_mass_inner_product = get(params["model"], "mass inner product", false)
     opinf_model_file = params["model"]["model-file"]
     opinf_model = NPZ.npzread(opinf_model_file)
     basis = opinf_model["basis"]
@@ -158,5 +199,6 @@ function CubicOpInfRom(params::Parameters)
         fom_model,
         reference,
         false,
+        use_mass_inner_product,
     )
 end

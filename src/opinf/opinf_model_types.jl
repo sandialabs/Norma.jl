@@ -22,6 +22,7 @@ mutable struct NeuralNetworkOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end 
 
 mutable struct CubicOpInfRom <: OpInfModel
@@ -39,6 +40,7 @@ mutable struct CubicOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end
 
 mutable struct QuadraticOpInfRom <: OpInfModel
@@ -56,6 +58,7 @@ mutable struct QuadraticOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
 end
 
 mutable struct LinearOpInfRom <: OpInfModel
@@ -73,4 +76,22 @@ mutable struct LinearOpInfRom <: OpInfModel
     fom_model::SolidMechanics
     reference::Matrix{Float64}
     inclined_support::Bool
+    use_mass_inner_product::Bool
+end
+
+mutable struct GalerkinRom <: RomModel
+    basis::Array{Float64}
+    reduced_state::Vector{Float64}
+    reduced_velocity::Vector{Float64}
+    reduced_boundary_forcing::Vector{Float64}
+    #internal_force not used, but include to ease interfacing in Schwarz
+    internal_force::Vector{Float64}
+    free_dofs::BitVector
+    boundary_conditions::Vector{BoundaryCondition}
+    time::Float64
+    failed::Bool
+    fom_model::SolidMechanics
+    reference::Matrix{Float64}
+    inclined_support::Bool
+    use_mass_inner_product::Bool
 end
