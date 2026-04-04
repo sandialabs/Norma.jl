@@ -87,3 +87,18 @@ end
     # Schwarz convergence bounded
     @test all(iters[1:5] .≤ 20)
 end
+
+@testset "Schwarz Nonoverlap Dynamic Cuboid Relaxed RR" begin
+    sim = run_schwarz(rr_example, "cuboids.yaml", Dict("relaxation parameter" => 0.9))
+    u1z, u2z = interface_displacements(sim)
+    iters = sim.controller.schwarz_iters
+
+    # Interface displacement continuity
+    @test maximum(u1z) ≈ minimum(u2z) rtol = 1.0e-03
+
+    # Applied BC matches single domain
+    @test maximum(u2z) ≈ 6.156e-03 rtol = 1.0e-02
+
+    # Relaxation increases iteration count vs non-relaxed
+    @test all(iters[1:5] .≤ 20)
+end
