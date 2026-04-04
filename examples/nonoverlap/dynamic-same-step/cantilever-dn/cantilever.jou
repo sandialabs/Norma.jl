@@ -1,12 +1,11 @@
-${height = 1}
-${width = 0.5}
-${length = 10.0}
-${overlap_vol_frac = 0.20}
-${h_single = 0.333333}
-${h_clamped = 0.333333}
-${h_free = 0.333333}
-${domain_length_clamped = 6}
-${domain_length_free = 6}
+${height = 0.0254}
+${width = 0.0127}
+${length = 0.254}
+${h_single = 0.008467}
+${h_clamped = 0.008467}
+${h_free = 0.008467}
+${domain_length_clamped = 0.127}
+${domain_length_free = 0.127}
 
 create brick x {length} y {height} z {width}
 move volume 1 x {length / 2.0} include_merged
@@ -85,8 +84,7 @@ delete volume all
 compress ids
 
 create brick x {domain_length_free} y {height} z {width}
-move volume 1 x 4 include_merged
-move volume 1 x {domain_length_free / 2.0}
+move volume 1 x {domain_length_free / 2.0 + domain_length_clamped} include_merged
 move volume 1 z {width / 2.0} include_merged
 volume 1 size {h_free}
 mesh volume 1

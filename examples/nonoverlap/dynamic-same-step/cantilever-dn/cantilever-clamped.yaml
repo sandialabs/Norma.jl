@@ -1,28 +1,26 @@
 type: single
-input mesh file: ../cantilever.g
-output mesh file: cantilever.e
+input mesh file: cantilever-clamped.g
+output mesh file: cantilever-clamped.e
 model:
   type: solid mechanics
   material:
     blocks:
-      cantilever: hyperelastic
+      cantilever_clamped: hyperelastic
     hyperelastic:
       model: linear elastic
-      elastic modulus: 1.0e+06
+      elastic modulus: 6.895e+09
       Poisson's ratio: 0.25
-      density: 2.61e-4
+      density: 2768.0
 time integrator:
   type: Newmark
-  initial time: 0.0
-  final time: 3.0e-6
-  time step: 1.0e-6
   β: 0.25
   γ: 0.5
+  time step: 5.0e-07
 initial conditions:
   displacement:
     - node set: nsall
       component: y
-      function: "0.01 * x * x"
+      function: "0.393701 * x * x"
 boundary conditions:
   Dirichlet:
     - node set: nsx-
@@ -34,10 +32,16 @@ boundary conditions:
     - node set: nsx-
       component: z
       function: "0.0"
+  Schwarz DN nonoverlap:
+    - side set: ssx+
+      source: cantilever-free
+      source side set: ssx-
+      default BC type: Neumann
+      swap BC types: false
 solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-10
-  absolute tolerance: 1.0e-06
+  absolute tolerance: 2.54e-08

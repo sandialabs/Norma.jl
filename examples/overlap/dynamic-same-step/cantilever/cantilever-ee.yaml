@@ -1,12 +1,12 @@
 type: multi
-domains: ["cantilever-free.yaml", "cantilever-clamped.yaml"]
+domains: ["cantilever-free-ee.yaml", "cantilever-clamped-ee.yaml"]
 Exodus output interval: 1.0e-4
 CSV output interval: 1.0e-4
 initial time: 0.0
-#final time: 1.0e-1
+  #final time: 1.0e-1
 final time: 3.0e-6
 time step: 1.0e-6
 minimum iterations: 1
 maximum iterations: 128
 relative tolerance: 1.0e-08
-absolute tolerance: 1.0e-06
+absolute tolerance: 2.54e-08
