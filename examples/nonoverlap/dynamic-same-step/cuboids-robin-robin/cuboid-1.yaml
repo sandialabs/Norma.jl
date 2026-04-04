@@ -26,13 +26,12 @@ boundary conditions:
     - node set: nsz-
       component: z
       function: "0.0"
-  Schwarz DN nonoverlap:
+  Schwarz RR nonoverlap:
     - side set: ssz+
       source: cuboid-2
       source block: coarse
       source side set: ssz-
-      default BC type: Neumann
-      swap BC types: false
+      robin parameter: 4.0e+09
 solver:
   type: Hessian minimizer
   step: full Newton

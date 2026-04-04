@@ -31,7 +31,7 @@ const indexed_test_files = [
     (15, "schwarz-overlap-static-cuboid-hex8.jl"),
     (16, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
     (17, "schwarz-nonoverlap-static-cuboid-robin-robin.jl"),
-    (18, "schwarz-nonoverlap-dynamic-cuboid-relaxed-robin-robin.jl"),
+    (18, "schwarz-nonoverlap-dynamic-cuboid.jl"),
     (19, "transfer-operators.jl"),
     (20, "schwarz-contact-static-cubes.jl"),
     (21, "schwarz-contact-dynamic-cubes.jl"),
