@@ -243,10 +243,15 @@ function compute_impedance_overlap_schwarz_projectors!(
 end
 
 # Compute the self-impedance internal force: W*(Z*u̇_self + α*u_self)
-# Called at each Newton iteration so it uses the current velocity/displacement.
-function apply_impedance_bcs_internal_force!(model::SolidMechanics)
+# Returns a separate force vector rather than modifying model.internal_force,
+# because get_dst_force reads model.internal_force for traction transfer and
+# must see only the elastic internal force.
+function build_impedance_schwarz_force(model::SolidMechanics)
+    num_dofs = 3 * size(model.reference, 2)
+    f = zeros(num_dofs)
     for bc in model.boundary_conditions
-        if bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+        if bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition ||
+           bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
             Z = bc.impedance
             α = bc.robin_parameter
             W = bc.square_projector
@@ -262,30 +267,12 @@ function apply_impedance_bcs_internal_force!(model::SolidMechanics)
                 f_imp = W * (Z * self_velo + α * self_disp)
                 for (i_local, i_global) in enumerate(global_from_local_map)
                     dof_i = 3 * (i_global - 1) + comp
-                    model.internal_force[dof_i] += f_imp[i_local]
-                end
-            end
-        elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-            Z = bc.impedance
-            α = bc.robin_parameter
-            W = bc.square_projector
-            global_from_local_map = bc.global_from_local_map
-            num_nodes = length(global_from_local_map)
-            self_velo = zeros(num_nodes)
-            self_disp = zeros(num_nodes)
-            for comp in 1:3
-                for (i_local, i_global) in enumerate(global_from_local_map)
-                    self_velo[i_local] = model.velocity[comp, i_global]
-                    self_disp[i_local] = model.current[comp, i_global] - model.reference[comp, i_global]
-                end
-                f_imp = W * (Z * self_velo + α * self_disp)
-                for (i_local, i_global) in enumerate(global_from_local_map)
-                    dof_i = 3 * (i_global - 1) + comp
-                    model.internal_force[dof_i] += f_imp[i_local]
+                    f[dof_i] += f_imp[i_local]
                 end
             end
         end
     end
+    return f
 end
 
 # ---------------------------------------------------------------------------
