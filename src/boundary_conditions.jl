@@ -134,11 +134,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     variational::Bool,
 )
-    if coupled_subsim.model isa RomModel
-        coupled_mesh = coupled_subsim.model.fom_model.mesh
-    else
-        coupled_mesh = coupled_subsim.model.mesh
-    end
+    coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
     element_type = element_type_from_string(element_type_string)
@@ -188,11 +184,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     variational::Bool,
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
-    if coupled_subsim.model isa RomModel
-        coupled_mesh = coupled_subsim.model.fom_model.mesh
-    else
-        coupled_mesh = coupled_subsim.model.mesh
-    end
+    coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
     element_type = element_type_from_string(element_type_string)

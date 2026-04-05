@@ -13,6 +13,8 @@
 # The impedance term Z * u̇ absorbs outgoing waves at the interface,
 # preventing reflections that cause energy growth with mixed integrators.
 
+get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : sim.model
+
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
     Z = bc.impedance
     α = bc.robin_parameter
@@ -30,7 +32,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
 
     # Source displacement and velocity, projected to destination
     src_sim = bc.coupled_subsim
-    src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
+    src_model = get_fom_model(src_sim)
     src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
     num_src_nodes = length(src_global_from_local_map)
@@ -336,7 +338,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
     # Displacement part of Robin RHS: α * W * u_src_projected
     # Compute source displacement (current - reference) and project to destination
     src_sim = bc.coupled_subsim
-    src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
+    src_model = get_fom_model(src_sim)
     src_bc_index = bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
@@ -685,7 +687,7 @@ end
 
 function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_sim = dst_bc.coupled_subsim
-    src_model = src_sim.model isa RomModel ? src_sim.model.fom_model : src_sim.model
+    src_model = get_fom_model(src_sim)
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
@@ -715,59 +717,19 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     return dst_curr, dst_disp, dst_velo, dst_acce
 end
 
-function node_set_id_from_name(node_set_name::String, mesh::ExodusDatabase)
-    node_set_names = Exodus.read_names(mesh, NodeSet)
-    num_names = length(node_set_names)
-    node_set_index = 0
-    for index in 1:num_names
-        if node_set_name == node_set_names[index]
-            node_set_index = index
-            break
-        end
+function set_id_from_name(name::String, mesh::ExodusDatabase, ::Type{T}) where {T}
+    names = Exodus.read_names(mesh, T)
+    idx = findfirst(==(name), names)
+    if idx === nothing
+        type_str = T === NodeSet ? "node set" : T === SideSet ? "side set" : "block"
+        norma_abort("$type_str $name cannot be found in mesh")
     end
-    if node_set_index == 0
-        norma_abort("node set $node_set_name cannot be found in mesh")
-    end
-    node_set_ids = Exodus.read_ids(mesh, NodeSet)
-    node_set_id = node_set_ids[node_set_index]
-    return Int64(node_set_id)
+    return Int64(Exodus.read_ids(mesh, T)[idx])
 end
 
-function side_set_id_from_name(side_set_name::String, mesh::ExodusDatabase)
-    side_set_names = Exodus.read_names(mesh, SideSet)
-    num_names = length(side_set_names)
-    side_set_index = 0
-    for index in 1:num_names
-        if side_set_name == side_set_names[index]
-            side_set_index = index
-            break
-        end
-    end
-    if side_set_index == 0
-        norma_abort("side set $side_set_name cannot be found in mesh")
-    end
-    side_set_ids = Exodus.read_ids(mesh, SideSet)
-    side_set_id = side_set_ids[side_set_index]
-    return Int64(side_set_id)
-end
-
-function block_id_from_name(block_name::String, mesh::ExodusDatabase)
-    block_names = Exodus.read_names(mesh, Block)
-    num_names = length(block_names)
-    block_index = 0
-    for index in 1:num_names
-        if block_name == block_names[index]
-            block_index = index
-            break
-        end
-    end
-    if block_index == 0
-        norma_abort("block $block_name cannot be found in mesh")
-    end
-    block_ids = Exodus.read_ids(mesh, Block)
-    block_id = block_ids[block_index]
-    return Int64(block_id)
-end
+node_set_id_from_name(name::String, mesh::ExodusDatabase) = set_id_from_name(name, mesh, NodeSet)
+side_set_id_from_name(name::String, mesh::ExodusDatabase) = set_id_from_name(name, mesh, SideSet)
+block_id_from_name(name::String, mesh::ExodusDatabase) = set_id_from_name(name, mesh, Block)
 
 function component_offset_from_string(name::String)
     offset = 0
