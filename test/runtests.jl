@@ -8,8 +8,8 @@ using LinearAlgebra
 using Printf
 using Statistics
 using Test
+using Norma
 
-include("../src/Norma.jl")
 include("helpers.jl")
 
 # List of all test files (ordered)
@@ -31,7 +31,7 @@ const indexed_test_files = [
     (15, "schwarz-overlap-static-cuboid-hex8.jl"),
     (16, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
     (17, "schwarz-nonoverlap-static-cuboid-robin-robin.jl"),
-    (18, "schwarz-nonoverlap-dynamic-cuboid-robin-robin.jl"),
+    (18, "schwarz-nonoverlap-dynamic-cuboid.jl"),
     (19, "transfer-operators.jl"),
     (20, "schwarz-contact-static-cubes.jl"),
     (21, "schwarz-contact-dynamic-cubes.jl"),
@@ -68,6 +68,7 @@ const indexed_test_files = [
     (52, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
     (53, "single-static-solid-j2-plasticity.jl"),
     (54, "utils.jl"),
+    (55, "schwarz-nonoverlap-dynamic-cantilever-dn.jl"),
 ]
 
 # Extract test file names
@@ -76,7 +77,7 @@ const nnopinf_test_indices = Int[52]
 const all_test_files = [file for (_, file) in indexed_test_files]
 const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopinf_test_indices]
 # Optional test indices (excluded from quick runs)
-const optional_test_indices = Int[28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 52]
+const optional_test_indices = Int[28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 52, 55]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]

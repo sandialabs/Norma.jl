@@ -1,36 +1,41 @@
 type: single
-input mesh file: cuboid-1.g
-output mesh file: cuboid-1.e
+input mesh file: cantilever-clamped.g
+output mesh file: cantilever-clamped.e
 model:
   type: solid mechanics
   material:
     blocks:
-      fine: elastic
-    elastic:
+      cantilever_clamped: hyperelastic
+    hyperelastic:
       model: linear elastic
-      elastic modulus: 1.0e+09
+      elastic modulus: 6.895e+09
       Poisson's ratio: 0.25
-      density: 1000.0
+      density: 2768.0
 time integrator:
   type: Newmark
   β: 0.25
   γ: 0.5
+  time step: 5.0e-07
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: y
+      function: "0.393701 * x * x"
 boundary conditions:
   Dirichlet:
     - node set: nsx-
       component: x
       function: "0.0"
-    - node set: nsy-
+    - node set: nsx-
       component: y
       function: "0.0"
-    - node set: nsz-
+    - node set: nsx-
       component: z
       function: "0.0"
   Schwarz DN nonoverlap:
-    - side set: ssz+
-      source: cuboid-2
-      source block: coarse
-      source side set: ssz-
+    - side set: ssx+
+      source: cantilever-free
+      source side set: ssx-
       default BC type: Neumann
       swap BC types: false
 solver:
@@ -39,4 +44,4 @@ solver:
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-10
-  absolute tolerance: 1.0e-06
+  absolute tolerance: 2.54e-08

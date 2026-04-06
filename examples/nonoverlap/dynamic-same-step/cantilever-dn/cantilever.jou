@@ -1,16 +1,19 @@
-${side = 1.0}
-${height = 1.5}
-${h_fine = 0.25}
-${h_coarse = 0.50}
-${domain_height = height / 2.0}
-${offset = domain_height / 2.0}
+${height = 0.0254}
+${width = 0.0127}
+${length = 0.254}
+${h_single = 0.008467}
+${h_clamped = 0.008467}
+${h_free = 0.008467}
+${domain_length_clamped = 0.127}
+${domain_length_free = 0.127}
 
-# Single domain mesh (full height, fine mesh)
-create brick x {side} y {side} z {height}
-volume 1 size {h_fine}
+create brick x {length} y {height} z {width}
+move volume 1 x {length / 2.0} include_merged
+move volume 1 z {width / 2.0} include_merged
+volume 1 size {h_single}
 mesh volume 1
 block 1 volume 1
-block 1 name "cuboid"
+block 1 name "cantilever"
 nodeset 1 surface 4
 nodeset 1 name "nsx-"
 nodeset 2 surface 6
@@ -38,17 +41,17 @@ sideset 5 name "ssz-"
 sideset 6 surface 1
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "cuboid.g" overwrite
+export mesh "cantilever.g" overwrite
 delete volume all
 compress ids
 
-# Bottom domain (fine mesh)
-create brick x {side} y {side} z {domain_height}
-move volume 1 z {-offset} include_merged
-volume 1 size {h_fine}
+create brick x {domain_length_clamped} y {height} z {width}
+move volume 1 x {domain_length_clamped / 2.0} include_merged
+move volume 1 z {width / 2.0} include_merged
+volume 1 size {h_clamped}
 mesh volume 1
 block 1 volume 1
-block 1 name "fine"
+block 1 name "cantilever_clamped"
 nodeset 1 surface 4
 nodeset 1 name "nsx-"
 nodeset 2 surface 6
@@ -76,17 +79,17 @@ sideset 5 name "ssz-"
 sideset 6 surface 1
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "cuboid-1.g" overwrite
+export mesh "cantilever-clamped.g" overwrite
 delete volume all
 compress ids
 
-# Top domain (coarse mesh)
-create brick x {side} y {side} z {domain_height}
-move volume 1 z {offset} include_merged
-volume 1 size {h_coarse}
+create brick x {domain_length_free} y {height} z {width}
+move volume 1 x {domain_length_free / 2.0 + domain_length_clamped} include_merged
+move volume 1 z {width / 2.0} include_merged
+volume 1 size {h_free}
 mesh volume 1
 block 1 volume 1
-block 1 name "coarse"
+block 1 name "cantilever_free"
 nodeset 1 surface 4
 nodeset 1 name "nsx-"
 nodeset 2 surface 6
@@ -114,4 +117,4 @@ sideset 5 name "ssz-"
 sideset 6 surface 1
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "cuboid-2.g" overwrite
+export mesh "cantilever-free.g" overwrite

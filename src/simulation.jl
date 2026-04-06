@@ -7,13 +7,6 @@
 using Printf
 using YAML
 
-include("interpolation_types.jl")
-include("simulation_types.jl")
-include("minitensor.jl")
-include("model.jl")
-include("time_integrator.jl")
-include("solver.jl")
-include("io.jl")
 
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
@@ -39,22 +32,52 @@ function create_simulation(params::Parameters)
 end
 
 function SingleDomainSimulation(params::Parameters)
+    t_setup = time()
     basename = params["name"]
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
+    norma_log(0, :setup, "Input:  $input_mesh_file")
+    norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
     input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
     Exodus.copy(input_mesh, output_mesh_file)
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
+    n_nodes = Exodus.num_nodes(input_mesh.init)
+    n_elems = Exodus.num_elements(input_mesh.init)
+    norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
     controller = create_controller(params)
+    norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
+               controller.initial_time, controller.final_time,
+               controller.time_step, controller.num_stops - 1)
     model = create_model(params)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
+    norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+    norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
     failed = false
     return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed)
 end
+
+_integrator_name(::QuasiStatic) = "Quasi-static"
+_integrator_name(::Newmark) = "Newmark"
+_integrator_name(::CentralDifference) = "Central difference"
+_integrator_name(ig) = replace(string(typeof(ig)), r"^.*\." => "")
+
+_solver_name(::HessianMinimizer) = "Newton (Hessian minimizer)"
+_solver_name(::SteepestDescent) = "Steepest descent"
+_solver_name(::ExplicitSolver) = "Explicit"
+_solver_name(s) = replace(string(typeof(s)), r"^.*\." => "")
+
+function log_dof_counts(model::SolidMechanics)
+    n_dofs = length(model.free_dofs)
+    n_free = count(model.free_dofs)
+    norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained",
+               n_dofs, n_free, n_dofs - n_free)
+end
+
+log_dof_counts(::Model) = nothing
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
@@ -126,13 +149,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
     relaxation_parameter = get(params, "relaxation parameter", 1.0)
-    relaxation_type = get(params, "relaxation type", "classical")
-    if relaxation_type != "classical" && relaxation_type != "aitken"
-      throw("Invalid relaxation_type parameter!  Valid options are 'classical' (default) and 'aitken'.")
-    end
-    aitken_rho = fill(relaxation_parameter, num_domains)
-    aitken_r_prev = [Vector{Float64}() for _ in 1:num_domains]
-    aitken_gamma_prev = [Vector{Float64}() for _ in 1:num_domains]
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
@@ -179,10 +195,6 @@ function SolidMultiDomainTimeController(params::Parameters)
         acce_hist,
         ∂Ω_f_hist,
         relaxation_parameter,
-        relaxation_type,
-        aitken_rho,
-        aitken_r_prev,
-        aitken_gamma_prev,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
@@ -286,7 +298,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
         norma_abortf(
-            "Cannot adapt time step %.4e because decrease factor is %.4e. Enable adaptive time stepping.",
+            "Cannot adapt time step %.2e because decrease factor is %.2e. Enable adaptive time stepping.",
             time_step,
             decrease_factor,
         )
@@ -294,7 +306,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     new_time_step = decrease_factor * time_step
     minimum_time_step = sim.integrator.minimum_time_step
     if new_time_step < minimum_time_step
-        norma_abortf("Cannot adapt time step to %.4e because minimum is %.4e.", new_time_step, minimum_time_step)
+        norma_abortf("Cannot adapt time step to %.2e because minimum is %.2e.", new_time_step, minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
     return nothing
@@ -322,7 +334,7 @@ function advance_one_step(sim::SingleDomainSimulation)
         # For implicit, print each step's time interval (Newton iters follow).
         # For explicit, suppress — only output stops are printed.
         if !is_explicit
-            norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+            norma_logf(4, :advance, "Time = [%.2e, %.2e] : Δt = %.2e", prev_time, time, time_step)
         end
         apply_bcs(sim)
         solve(sim)
@@ -390,6 +402,7 @@ end
 function initialize(sim::SingleDomainSimulation)
     apply_ics(sim)
     apply_bcs(sim)
+    log_dof_counts(sim.model)
     initialize(sim.integrator, sim.solver, sim.model)
     save_curr_state(sim)
     return nothing
@@ -398,8 +411,15 @@ end
 function initialize(sim::MultiDomainSimulation)
     initialize_bc_projectors(sim)
     apply_ics(sim)
+    for (subsim_index, subsim) in enumerate(sim.subsims)
+        if subsim.model isa SolidMechanics
+            copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
+            save_history_snapshot(sim.controller, subsim, subsim_index)
+        end
+    end
     apply_bcs(sim)
     for subsim in sim.subsims
+        log_dof_counts(subsim.model)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
     end
@@ -512,16 +532,8 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
-    # Reset Aitken acceleration state for new time step
-    if sim.controller.relaxation_type == "aitken"
-        num_domains = sim.num_domains
-        sim.controller.aitken_rho .= sim.controller.relaxation_parameter
-        for i in 1:num_domains
-            empty!(sim.controller.aitken_r_prev[i])
-            empty!(sim.controller.aitken_gamma_prev[i])
-        end
-    end
     swap_swappable_bcs(sim)
+
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)
     end
@@ -537,7 +549,7 @@ function schwarz(sim::MultiDomainSimulation)
         norma_logf(
             0,
             :schwarz,
-            "Criterion [%d] %s = %.3e : %s = %.3e : %s",
+            "Criterion [%d] %s = %.2e : %s = %.2e : %s",
             iteration_number,
             "|ΔU|",
             ΔU,
@@ -700,9 +712,16 @@ function subcycle(sim::MultiDomainSimulation)
 end
 
 function subcycle(sim::SingleDomainSimulation)
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
+    t_last_log = time()
     while true
         advance_time(sim)
         advance_one_step(sim)
+        if is_explicit && time() - t_last_log >= 1.0
+            norma_logf(4, :progress, "Time = %.2e : Δt = %.2e",
+                       sim.integrator.time, sim.integrator.time_step)
+            t_last_log = time()
+        end
         if stop_subcyle(sim) == true
             break
         end
@@ -857,6 +876,10 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
         for bc in bcs
             if bc isa SolidMechanicsRobinSchwarzBoundaryCondition
                 compute_robin_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+                compute_impedance_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+                compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
                    bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 compute_dirichlet_projector(subsim.model, bc)

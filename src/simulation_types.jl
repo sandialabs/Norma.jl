@@ -4,15 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-abstract type Simulation end
-const Parameters = Dict{String,Any}
-
-include("constitutive_types.jl")
-include("ics_bcs_types.jl")
-include("model_types.jl")
-include("time_integrator_types.jl")
-include("solver_types.jl")
-
 abstract type TimeController end
 abstract type SingleTimeController <: TimeController end
 abstract type MultiDomainTimeController <: TimeController end
@@ -46,10 +37,6 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     acce_hist::Vector{Vector{Vector{Float64}}}
     ∂Ω_f_hist::Vector{Vector{Vector{Float64}}}
     relaxation_parameter::Float64
-    relaxation_type::String
-    aitken_rho::Vector{Float64}                   # current ρ per domain
-    aitken_r_prev::Vector{Vector{Float64}}        # r⁽ⁿ⁻¹⁾ per domain
-    aitken_gamma_prev::Vector{Vector{Float64}}    # γ₁²(φ₁⁽ⁿ⁻¹⁾) per domain
     naive_stabilized::Bool
     lambda_disp::Vector{Vector{Float64}}
     lambda_velo::Vector{Vector{Float64}}
