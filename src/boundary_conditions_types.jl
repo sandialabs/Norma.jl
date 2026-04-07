@@ -82,11 +82,19 @@ end
 
 mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
+    side_set_id::Int64
     side_set_node_indices::Vector{Int64}
+    num_nodes_sides::Vector{Int64}
+    local_from_global_map::Dict{Int64,Int64}
+    global_from_local_map::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
     coupled_subsim::Simulation
     subsim::Simulation
+    coupled_block_name::String
+    search_tolerance::Float64
+    dirichlet_projector::Matrix{Float64}
+    use_weak::Bool
 end
 
 # Impedance-matching overlap Schwarz: replaces DBC-DBC with absorbing

@@ -643,6 +643,56 @@ function get_rectangular_projection_matrix(
     return rectangular_projection_matrix
 end
 
+function get_overlap_rectangular_projection_matrix(
+    dst_model::SolidMechanics,
+    dst_bc::SolidMechanicsOverlapSchwarzBoundaryCondition,
+    src_model::SolidMechanics,
+    coupled_block_name::String,
+    tol::Float64,
+)
+    src_mesh = src_model.mesh
+    src_block_id = block_id_from_name(coupled_block_name, src_mesh)
+    src_element_type_string = Exodus.read_block_parameters(src_mesh, src_block_id)[1]
+    src_element_type = element_type_from_string(src_element_type_string)
+    src_num_nodes = size(src_model.reference, 2)
+    dst_local_from_global_map = dst_bc.local_from_global_map
+    dst_num_nodes_sides = dst_bc.num_nodes_sides
+    dst_side_set_node_indices = dst_bc.side_set_node_indices
+    dst_num_nodes = length(dst_local_from_global_map)
+    dst_coords = dst_model.reference
+    dst_side_set_node_index = 1
+    rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
+    for dst_num_nodes_side in dst_num_nodes_sides
+        dst_side_nodes = dst_side_set_node_indices[dst_side_set_node_index:(dst_side_set_node_index + dst_num_nodes_side - 1)]
+        dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
+        dst_side_coordinates = dst_coords[:, dst_side_nodes]
+        dst_element_type = get_element_type(2, Int64(dst_num_nodes_side))
+        dst_num_int_points = default_num_int_pts(dst_element_type)
+        dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
+        for dst_point in 1:dst_num_int_points
+            dst_Nₚ = dst_N[:, dst_point]
+            dst_dNdξₚ = dst_dNdξ[:, :, dst_point]
+            dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
+            dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
+            dst_wₚ = dst_w[dst_point]
+            dst_int_point_coord = dst_side_coordinates * dst_Nₚ
+            src_node_indices, ξ, found = find_point_in_mesh(
+                dst_int_point_coord, src_model, src_block_id, tol
+            )
+            if found == false
+                norma_abortf(
+                    "Weak overlap projector: could not find point (%.4e, %.4e, %.4e) in source mesh",
+                    dst_int_point_coord[1], dst_int_point_coord[2], dst_int_point_coord[3],
+                )
+            end
+            src_Nₚ = interpolate(src_element_type, ξ)[1]
+            rectangular_projection_matrix[dst_local_indices, src_node_indices] += dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
+        end
+        dst_side_set_node_index += dst_num_nodes_side
+    end
+    return rectangular_projection_matrix
+end
+
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)

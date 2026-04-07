@@ -67,12 +67,17 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
     side_set_name::String,
+    side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
     bc_params::Parameters,
 )
-    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(coupled_block_name,tol,side_set_name,side_set_node_indices,coupled_subsim,subsim)
+    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(
+        coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
+        num_nodes_sides, coupled_subsim, subsim, false
+    )
     opinf_model_directory = bc_params["model-directory"]
     py""" 
     import torch
@@ -119,8 +124,9 @@ function SMOpInfCouplingSchwarzBC(
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
     SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
-        coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, bc_params
-        )
+        coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
+        num_nodes_sides, coupled_subsim, subsim, bc_params
+    )
 end
 
 function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichletBC)

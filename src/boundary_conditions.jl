@@ -129,10 +129,16 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
     side_set_name::String,
+    side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
+    use_weak::Bool,
 )
+    mesh = get_fom_model(subsim).mesh
+    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
@@ -157,13 +163,22 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
         push!(coupled_nodes_indices, node_indices)
         push!(interpolation_function_values, N)
     end
+    dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     return SolidMechanicsOverlapSchwarzBoundaryCondition(
         side_set_name,
+        side_set_id,
         side_set_node_indices,
+        num_nodes_sides,
+        local_from_global_map,
+        global_from_local_map,
         coupled_nodes_indices,
         interpolation_function_values,
         coupled_subsim,
         subsim,
+        coupled_block_name,
+        tol,
+        dirichlet_projector,
+        use_weak,
     )
 end
 
@@ -390,8 +405,10 @@ function SMCouplingSchwarzBC(
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
     if bc_type == "Schwarz overlap"
+        use_weak = get(bc_params, "weak", false)
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim
+            coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
+            num_nodes_sides, coupled_subsim, subsim, use_weak
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")

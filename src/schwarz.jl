@@ -310,7 +310,11 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsContactSchwarz
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    coupling_strong_dbc(model, bc)
+    if bc.use_weak
+        coupling_weak_overlap_dbc(model, bc)
+    else
+        coupling_strong_dbc(model, bc)
+    end
     return nothing
 end
 
@@ -411,6 +415,36 @@ function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSch
         model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
 
         dof_index = (3 * node_index - 2):(3 * node_index)
+        model.free_dofs[dof_index] .= false
+    end
+end
+
+function coupling_weak_overlap_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    src_model = if bc.coupled_subsim.model isa SolidMechanics
+        bc.coupled_subsim.model
+    else
+        bc.coupled_subsim.model.fom_model
+    end
+
+    P = bc.dirichlet_projector
+    global_from_local_map = bc.global_from_local_map
+
+    for comp in 1:3
+        src_current = src_model.current[comp, :]
+        src_velocity = src_model.velocity[comp, :]
+        src_acceleration = src_model.acceleration[comp, :]
+        proj_current = P * src_current
+        proj_velocity = P * src_velocity
+        proj_acceleration = P * src_acceleration
+        for (i_local, i_global) in enumerate(global_from_local_map)
+            model.current[comp, i_global] = proj_current[i_local]
+            model.velocity[comp, i_global] = proj_velocity[i_local]
+            model.acceleration[comp, i_global] = proj_acceleration[i_local]
+        end
+    end
+
+    for i_global in global_from_local_map
+        dof_index = (3 * i_global - 2):(3 * i_global)
         model.free_dofs[dof_index] .= false
     end
 end
