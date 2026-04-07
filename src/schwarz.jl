@@ -149,7 +149,7 @@ end
 # ---------------------------------------------------------------------------
 #
 # Instead of overwriting DOFs (DBC-DBC), applies impedance-matching force:
-#   boundary_force += -t_partner + Z * u̇_partner  (pointwise interpolation)
+#   boundary_force += -t_partner + Z * u̇_partner  (strong interpolation)
 # DOFs remain free — waves pass through instead of reflecting.
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
@@ -233,7 +233,7 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
 end
 
 function pair_bc(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition, bc_index::Int64)
-    # Overlap BCs don't pair — they use pointwise interpolation from the partner's interior
+    # Overlap BCs don't pair — they use strong interpolation from the partner's interior
     return nothing
 end
 
@@ -303,22 +303,22 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        contact_variational_dbc(model, bc)
+        contact_weak_dbc(model, bc)
     else
-        contact_variational_nbc(model, bc)
+        contact_weak_nbc(model, bc)
     end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    coupling_pointwise_dbc(model, bc)
+    coupling_strong_dbc(model, bc)
     return nothing
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        coupling_variational_dbc(model, bc)
+        coupling_weak_dbc(model, bc)
     else
-        coupling_variational_nbc(model, bc)
+        coupling_weak_nbc(model, bc)
     end
 end
 
@@ -388,7 +388,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
     end
 end
 
-function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
     get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
         (field -> getfield(bc.coupled_subsim.model, field))
     else
@@ -415,7 +415,7 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
     end
 end
 
-function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
@@ -427,7 +427,7 @@ function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOv
     end
 end
 
-function coupling_variational_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function coupling_weak_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_force = get_dst_force(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
@@ -564,7 +564,7 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
     return tangent_projection * target + normal_projection * source
 end
 
-function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     normals = compute_normal(model.mesh, bc.side_set_id, model)
@@ -613,7 +613,7 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
     return nothing
 end
 
-function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+function contact_weak_nbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     friction_type = bc.friction_type
     nodal_force = get_dst_force(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model)

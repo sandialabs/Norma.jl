@@ -10,7 +10,6 @@ mutable struct SolidMechanicsOpInfOverlapSchwarzBoundaryCondition <: SolidMechan
     interpolation_function_values::Vector{Vector{Float64}}
     coupled_subsim::Simulation
     subsim::Simulation
-    variational::Bool
     fom_bc::SolidMechanicsOverlapSchwarzBoundaryCondition
     nn_model::Any
     basis::Array{Float64}

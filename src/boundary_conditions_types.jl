@@ -78,7 +78,6 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     rotation_matrix::Matrix{Float64}
     active_contact::Bool
     friction_type::Int64
-    variational::Bool
 end
 
 mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -88,11 +87,10 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     interpolation_function_values::Vector{Vector{Float64}}
     coupled_subsim::Simulation
     subsim::Simulation
-    variational::Bool
 end
 
 # Impedance-matching overlap Schwarz: replaces DBC-DBC with absorbing
-# conditions on the overlap boundaries. Same pointwise interpolation as
+# conditions on the overlap boundaries. Same strong interpolation as
 # regular overlap, but applies t + Z u̇ = g as a force (not a constraint).
 mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
@@ -108,7 +106,6 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     square_projector::Matrix{Float64}
     impedance::Float64
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
-    variational::Bool
 end
 
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -126,7 +123,6 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     square_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
-    variational::Bool
 end
 
 mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -144,7 +140,6 @@ mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCoup
     neumann_projector::Matrix{Float64}
     square_projector::Matrix{Float64}
     robin_parameter::Float64
-    variational::Bool
 end
 
 # Impedance-matching Robin-Robin Schwarz: t + Z u̇ + α W u = g
@@ -167,7 +162,6 @@ mutable struct SolidMechanicsImpedanceSchwarzBoundaryCondition <: SolidMechanics
     square_projector::Matrix{Float64}
     impedance::Float64           # Z = ρ c_p = √(ρ(λ + 2μ))
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
-    variational::Bool
 end
 
 include("opinf/opinf_ics_bcs_types.jl")

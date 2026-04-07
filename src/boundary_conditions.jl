@@ -132,7 +132,6 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     side_set_node_indices::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
-    variational::Bool,
 )
     coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
@@ -165,7 +164,6 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
         interpolation_function_values,
         coupled_subsim,
         subsim,
-        variational,
     )
 end
 
@@ -181,7 +179,6 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
-    variational::Bool,
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
@@ -204,7 +201,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         push!(coupled_nodes_indices, node_indices)
         push!(interpolation_function_values, N)
     end
-    # Surface projector infrastructure (for variational force application)
+    # Surface projector infrastructure (for weak force application)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     square_projector = Matrix{Float64}(undef, 0, 0)
@@ -222,7 +219,6 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         square_projector,
         impedance,
         robin_parameter,
-        variational,
     )
 end
 
@@ -251,7 +247,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     else
         norma_abort("Unknown or not implemented friction type : $friction_type_string")
     end
-    variational = get(bc_params, "variational", false)
     return SolidMechanicsContactSchwarzBoundaryCondition(
         side_set_name,
         side_set_id,
@@ -269,7 +264,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         rotation_matrix,
         active_contact,
         friction_type,
-        variational,
     )
 end
 
@@ -283,7 +277,6 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     subsim::Simulation, 
     robin_parameter::Float64,
-    variational::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -306,7 +299,6 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
         neumann_projector,
         square_projector,
         robin_parameter,
-        variational,
     )
 end
 
@@ -321,7 +313,6 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
-    variational::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -345,7 +336,6 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
         square_projector,
         impedance,
         robin_parameter,
-        variational,
     )
 end
 
@@ -359,7 +349,6 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     is_dirichlet::Bool,
     swap_bcs::Bool,
-    variational::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -382,7 +371,6 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         square_projector,
         is_dirichlet,
         swap_bcs,
-        variational,
     )
 end
 
@@ -401,10 +389,9 @@ function SMCouplingSchwarzBC(
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
-    variational = get(bc_params, "variational", false)
     if bc_type == "Schwarz overlap"
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational
+            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -426,7 +413,6 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             is_dirichlet,
             swap_bcs,
-            variational,
         )
     elseif bc_type == "Schwarz RR nonoverlap"
         robin_parameter = Float64(bc_params["robin parameter"])
@@ -440,7 +426,6 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             subsim,
             robin_parameter,
-            variational,
         )
     elseif bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
         # Impedance Z = √(ρ(λ + 2μ)), computed from material properties
@@ -468,7 +453,6 @@ function SMCouplingSchwarzBC(
                 subsim,
                 impedance,
                 robin_parameter,
-                variational,
             )
         else
             coupled_block_name = bc_params["source block"]
@@ -485,7 +469,6 @@ function SMCouplingSchwarzBC(
                 subsim,
                 impedance,
                 robin_parameter,
-                variational,
             )
         end
     else

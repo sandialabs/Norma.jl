@@ -70,10 +70,9 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     side_set_node_indices::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
-    variational::Bool,
     bc_params::Parameters,
 )
-    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(coupled_block_name,tol,side_set_name,side_set_node_indices,coupled_subsim,subsim,variational)
+    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(coupled_block_name,tol,side_set_name,side_set_node_indices,coupled_subsim,subsim)
     opinf_model_directory = bc_params["model-directory"]
     py""" 
     import torch
@@ -98,7 +97,6 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
         fom_bc.interpolation_function_values,
         coupled_subsim,
         subsim,
-        variational,
         fom_bc,
         model,
         basis
@@ -120,9 +118,8 @@ function SMOpInfCouplingSchwarzBC(
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
-    variational = get(bc_params, "variational", false)
     SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
-        coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational, bc_params
+        coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, bc_params
         )
 end
 
