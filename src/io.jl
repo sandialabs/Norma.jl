@@ -98,6 +98,16 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     return nothing
 end
 
+function get_umax(model::SolidMechanics)
+  u_max = maximum(abs, model.current .- model.reference)
+  return u_max
+end
+
+function get_umax(model::RomModel)
+  u_max = maximum(abs, model.fom_model.current .- model.fom_model.reference)
+  return u_max
+end 
+
 function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
     params = sim.params
     stop = sim.controller.stop
@@ -120,7 +130,7 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
         if !is_explicit || is_output_step
             percent = 100 * stop / num_steps
             digits = max(0, Int64(ceil(log10(num_steps))) - 2)
-            u_max = maximum(abs, model.current .- model.reference)
+            u_max = get_umax(model) 
             if is_output_step && wall_time > 0.01
                 norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : |U|_max = %.2e : wall = %s",
                            stop, num_steps, percent, time, u_max, format_time(wall_time))

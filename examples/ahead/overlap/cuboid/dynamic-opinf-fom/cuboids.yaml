@@ -1,5 +1,6 @@
 type: multi
 domains: ["cuboid-1.yaml", "cuboid-2.yaml"]
+CSV output interval: 0.01
 CSV write sidesets: true
 initial time: 0.0
 final time: 1.0
