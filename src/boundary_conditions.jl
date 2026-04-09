@@ -194,6 +194,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
+    impedance_scale::Float64,
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
@@ -234,6 +235,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         square_projector,
         impedance,
         robin_parameter,
+        impedance_scale,
     )
 end
 
@@ -458,6 +460,12 @@ function SMCouplingSchwarzBC(
         μ = E / (2 * (1 + ν))
         impedance = sqrt(ρ * (λ_lame + 2μ))
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
+        raw_scale = get(bc_params, "impedance scale", 1.0)
+        if raw_scale isa AbstractVector
+            impedance_scale = Float64.(raw_scale)
+        else
+            impedance_scale = [Float64(raw_scale)]
+        end
         if bc_type == "Schwarz impedance nonoverlap"
             SolidMechanicsImpedanceSchwarzBoundaryCondition(
                 input_mesh,
@@ -486,6 +494,7 @@ function SMCouplingSchwarzBC(
                 subsim,
                 impedance,
                 robin_parameter,
+                impedance_scale,
             )
         end
     else

@@ -114,6 +114,7 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     square_projector::Matrix{Float64}
     impedance::Float64
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
+    impedance_scale::Vector{Float64}  # multiplier on Z per step (default [1.0])
 end
 
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition

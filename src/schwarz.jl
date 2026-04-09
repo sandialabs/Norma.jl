@@ -152,8 +152,18 @@ end
 #   boundary_force += -t_partner + Z * u̇_partner  (strong interpolation)
 # DOFs remain free — waves pass through instead of reflecting.
 
+function _get_impedance_scale(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
+    scales = bc.impedance_scale
+    if length(scales) == 1
+        return scales[1]
+    end
+    parent_sim = bc.subsim.params["parent_simulation"]
+    step = max(1, parent_sim.controller.stop)
+    return scales[min(step, length(scales))]
+end
+
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
-    Z = bc.impedance
+    Z = bc.impedance * _get_impedance_scale(bc)
     α = bc.robin_parameter
     W = bc.square_projector
 
@@ -208,7 +218,7 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
     K_io = spzeros(num_dofs, num_dofs)
     for bc in model.boundary_conditions
         bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
-        Z = bc.impedance
+        Z = bc.impedance * _get_impedance_scale(bc)
         α = bc.robin_parameter
         W = bc.square_projector
         c_v = if integrator isa Newmark
