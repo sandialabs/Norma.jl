@@ -63,6 +63,25 @@ function visible_length(s::AbstractString)
     return length(replace(s, r"\e\[[0-9;]*m" => ""))
 end
 
+const NORMA_WRITE_LOG_FILE = Ref(true)
+const NORMA_LOG_FILE = Ref{Union{IOStream,Nothing}}(nothing)
+
+function open_log_file(input_file::AbstractString)
+    NORMA_WRITE_LOG_FILE[] || return nothing
+    NORMA_LOG_FILE[] === nothing || return nothing  # outermost run() owns the file
+    path = first(splitext(input_file)) * ".log"
+    NORMA_LOG_FILE[] = open(path, "w")
+    return nothing
+end
+
+function close_log_file()
+    io = NORMA_LOG_FILE[]
+    io === nothing && return nothing
+    close(io)
+    NORMA_LOG_FILE[] = nothing
+    return nothing
+end
+
 function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     indent = " "^level
     keyword_str = uppercase(string(keyword))[1:min(end, 7)]
@@ -81,6 +100,16 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     else
         wrapped = wrap_lines(msg, prefix; width=120 - length(prefix))
         println(wrapped)
+    end
+
+    io = NORMA_LOG_FILE[]
+    if io !== nothing
+        if visible_length(prefix * msg) <= 120
+            println(io, prefix, msg)
+        else
+            println(io, prefix, wrap_lines(msg, prefix; width=120 - length(prefix)))
+        end
+        flush(io)
     end
 end
 

@@ -34,8 +34,13 @@ include("io.jl")
 include("simulation.jl")
 
 function run(input_file::String)
-    norma_log(0, :norma, "BEGIN SIMULATION")
-    return run(create_simulation(input_file))
+    open_log_file(input_file)
+    try
+        norma_log(0, :norma, "BEGIN SIMULATION")
+        return run(create_simulation(input_file))
+    finally
+        close_log_file()
+    end
 end
 
 function run(params::Parameters)

@@ -12,6 +12,9 @@ using Norma
 
 include("helpers.jl")
 
+# Suppress per-input .log files during the test suite.
+Norma.NORMA_WRITE_LOG_FILE[] = false
+
 # List of all test files (ordered)
 const indexed_test_files = [
     (1, "minitensor.jl"),
