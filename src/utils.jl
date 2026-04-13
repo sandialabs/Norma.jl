@@ -104,10 +104,11 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
 
     io = NORMA_LOG_FILE[]
     if io !== nothing
-        if visible_length(prefix * msg) <= 120
-            println(io, prefix, msg)
+        plain = replace(msg, r"\e\[[0-9;]*m" => "")
+        if visible_length(prefix * plain) <= 120
+            println(io, prefix, plain)
         else
-            println(io, prefix, wrap_lines(msg, prefix; width=120 - length(prefix)))
+            println(io, prefix, wrap_lines(plain, prefix; width=120 - length(prefix)))
         end
         flush(io)
     end
