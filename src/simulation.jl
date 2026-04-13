@@ -52,6 +52,7 @@ function SingleDomainSimulation(params::Parameters)
                controller.initial_time, controller.final_time,
                controller.time_step, controller.num_stops - 1)
     model = create_model(params)
+    _log_materials(model, input_mesh)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
     norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
@@ -78,6 +79,30 @@ function log_dof_counts(model::SolidMechanics)
 end
 
 log_dof_counts(::Model) = nothing
+
+_material_name(m) = replace(string(typeof(m)), r"^.*\." => "")
+
+# Format a single material struct field as "name = value".  Floats get
+# scientific notation for readability; integers (e.g. SethHill's m, n)
+# print as-is.
+function _format_material_field(name::Symbol, value)
+    if value isa AbstractFloat
+        return @sprintf("%s = %.3e", String(name), value)
+    else
+        return string(name) * " = " * string(value)
+    end
+end
+
+function _log_materials(model::SolidMechanics, input_mesh)
+    block_names = Exodus.read_names(input_mesh, Block)
+    for (block_name, material) in zip(block_names, model.materials)
+        props = join((_format_material_field(f, getfield(material, f))
+                      for f in fieldnames(typeof(material))), ", ")
+        norma_log(0, :setup, "Block \"$block_name\": $(_material_name(material)) : $props")
+    end
+end
+
+_log_materials(::Model, _) = nothing
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
