@@ -666,11 +666,19 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     return nothing
                 end
                 state = model.state_old[block_index][block_element_index][point]
-                if material isa (Elastic)
-                    W, P, AA = constitutive(material, F)
-                else
-                    W, P, AA, state_new = constitutive(material, F, state)
-                    model.state[block_index][block_element_index][point] = state_new
+                local W, P, AA
+                try
+                    if material isa (Elastic)
+                        W, P, AA = constitutive(material, F)
+                    else
+                        W, P, AA, state_new = constitutive(material, F, state)
+                        model.state[block_index][block_element_index][point] = state_new
+                    end
+                catch e
+                    e isa _MATH_ERRORS || rethrow()
+                    model.failed = true
+                    norma_logf(4, :solve, "evaluate: caught %s in constitutive model", typeof(e))
+                    break  # skip remaining integration points for this element
                 end
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)

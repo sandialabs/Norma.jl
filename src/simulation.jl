@@ -337,7 +337,16 @@ function advance_one_step(sim::SingleDomainSimulation)
             norma_logf(4, :advance, "Time = [%.2e, %.2e] : Δt = %.2e", prev_time, time, time_step)
         end
         apply_bcs(sim)
-        solve(sim)
+        # Defense-in-depth: constitutive model evaluate() catches math errors
+        # and sets model.failed.  This outer catch handles the same errors if
+        # they escape from any other point in the solve path.
+        try
+            solve(sim)
+        catch e
+            e isa _MATH_ERRORS || rethrow()
+            norma_logf(4, :solve, "Caught %s during solve — treating as step failure", typeof(e))
+            sim.failed = sim.model.failed = sim.solver.failed = true
+        end
         if sim.failed == false
             increase_time_step(sim)
             save_curr_state(sim)
