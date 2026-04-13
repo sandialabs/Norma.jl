@@ -23,13 +23,13 @@ using YAML
     model_bracket1 = subsims[1].model
     model_bracket2 = subsims[2].model
 
-    rm("bracket.yaml")
-    rm("bracket-1.yaml")
-    rm("bracket-2.yaml")
-    rm("../bracket-1.g")
-    rm("../bracket-2.g")
-    rm("bracket-1.e")
-    rm("bracket-2.e")
+    rm("bracket.yaml"; force=true)
+    rm("bracket-1.yaml"; force=true)
+    rm("bracket-2.yaml"; force=true)
+    rm("../bracket-1.g"; force=true)
+    rm("../bracket-2.g"; force=true)
+    rm("bracket-1.e"; force=true)
+    rm("bracket-2.e"; force=true)
 
     min_disp_x_bracket1 = minimum(model_bracket1.current[1, :] - model_bracket1.reference[1, :])
     min_disp_y_bracket1 = minimum(model_bracket1.current[2, :] - model_bracket1.reference[2, :])

@@ -21,13 +21,13 @@ using YAML
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cubes.yaml")
-    rm("cube-1.yaml")
-    rm("cube-2.yaml")
-    rm("cube-1.g")
-    rm("cube-2.g")
-    rm("cube-1.e")
-    rm("cube-2.e")
+    rm("cubes.yaml"; force=true)
+    rm("cube-1.yaml"; force=true)
+    rm("cube-2.yaml"; force=true)
+    rm("cube-1.g"; force=true)
+    rm("cube-2.g"; force=true)
+    rm("cube-1.e"; force=true)
+    rm("cube-2.e"; force=true)
     min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
     max_disp_y_fine = maximum(model_fine.current[2, :] - model_fine.reference[2, :])
     max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])
@@ -72,13 +72,13 @@ end
     model_1 = subsims[1].model
     model_2 = subsims[2].model
 
-    rm("cubes.yaml")
-    rm("cube-1.yaml")
-    rm("cube-2.yaml")
-    rm("cube-1.g")
-    rm("cube-2.g")
-    rm("cube-1.e")
-    rm("cube-2.e")
+    rm("cubes.yaml"; force=true)
+    rm("cube-1.yaml"; force=true)
+    rm("cube-2.yaml"; force=true)
+    rm("cube-1.g"; force=true)
+    rm("cube-2.g"; force=true)
+    rm("cube-1.e"; force=true)
+    rm("cube-2.e"; force=true)
 
     # Enforce that the side set displacements are the same between the two blocks
     x1 = model_1.current[1, :]
@@ -118,13 +118,13 @@ end
         model_fine_temp = subsim_temp[1].model.current
         model_coarse_temp = subsim_temp[2].model.current
 
-        rm("cubes-test$i.yaml")
-        rm("cube-test$i-1.yaml")
-        rm("cube-test$i-2.yaml")
-        rm("cube-test$i-1.g")
-        rm("cube-test$i-2.g")
-        rm("cube-test$i-1.e")
-        rm("cube-test$i-2.e")
+        rm("cubes-test$i.yaml"; force=true)
+        rm("cube-test$i-1.yaml"; force=true)
+        rm("cube-test$i-2.yaml"; force=true)
+        rm("cube-test$i-1.g"; force=true)
+        rm("cube-test$i-2.g"; force=true)
+        rm("cube-test$i-1.e"; force=true)
+        rm("cube-test$i-2.e"; force=true)
 
         if (i == 1)
             model_fine = model_fine_temp

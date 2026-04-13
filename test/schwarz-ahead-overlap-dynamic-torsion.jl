@@ -23,13 +23,13 @@ using YAML
     model_torsion1 = subsims[1].model
     model_torsion2 = subsims[2].model
 
-    rm("torsion.yaml")
-    rm("torsion-1.yaml")
-    rm("torsion-2.yaml")
-    rm("../torsion-1.g")
-    rm("../torsion-2.g")
-    rm("torsion-1.e")
-    rm("torsion-2.e")
+    rm("torsion.yaml"; force=true)
+    rm("torsion-1.yaml"; force=true)
+    rm("torsion-2.yaml"; force=true)
+    rm("../torsion-1.g"; force=true)
+    rm("../torsion-2.g"; force=true)
+    rm("torsion-1.e"; force=true)
+    rm("torsion-2.e"; force=true)
 
     min_disp_x_torsion1 = minimum(model_torsion1.current[1, :] - model_torsion1.reference[1, :])
     min_disp_y_torsion1 = minimum(model_torsion1.current[2, :] - model_torsion1.reference[2, :])

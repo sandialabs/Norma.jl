@@ -24,9 +24,9 @@ using YAML
 
     integrator = simulation.integrator
     model = simulation.model
-    rm("sphere.yaml")
-    rm("sphere.g")
-    rm("sphere.e")
+    rm("sphere.yaml"; force=true)
+    rm("sphere.g"; force=true)
+    rm("sphere.e"; force=true)
 
     global_displacement = vec(model.current - model.reference)
     max_disp = maximum_components(global_displacement)
@@ -83,9 +83,9 @@ end
 
     integrator = simulation.integrator
     model = simulation.model
-    rm("sphere.yaml")
-    rm("sphere.g")
-    rm("sphere.e")
+    rm("sphere.yaml"; force=true)
+    rm("sphere.g"; force=true)
+    rm("sphere.e"; force=true)
 
     global_displacement = vec(model.current - model.reference)
     max_disp = maximum_components(global_displacement)
@@ -131,9 +131,9 @@ end
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model
-        rm("cube-test$i.yaml")
-        rm("cube-test$i.g")
-        rm("cube.e")
+        rm("cube-test$i.yaml"; force=true)
+        rm("cube-test$i.g"; force=true)
+        rm("cube.e"; force=true)
 
         # These displacements are obtained from an identical problem with
         # BCs coincident with the lab basis
@@ -258,9 +258,9 @@ end
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model
-        rm("cube-test$i.yaml")
-        rm("cube-test$i.g")
-        rm("cube.e")
+        rm("cube-test$i.yaml"; force=true)
+        rm("cube-test$i.g"; force=true)
+        rm("cube.e"; force=true)
 
         # These displacements are obtained from an identical problem with
         # BCs coincident with the lab basis
@@ -385,9 +385,9 @@ end
         simulation = Norma.run("cube-test$i.yaml")
         integrator = simulation.integrator
         model = simulation.model
-        rm("cube-test$i.yaml")
-        rm("cube-test$i.g")
-        rm("cube.e")
+        rm("cube-test$i.yaml"; force=true)
+        rm("cube-test$i.g"; force=true)
+        rm("cube.e"; force=true)
 
         # These displacements are obtained from an identical problem with
         # BCs coincident with the lab basis

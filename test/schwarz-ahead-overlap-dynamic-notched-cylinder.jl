@@ -31,13 +31,13 @@ using YAML
     model_1 = subsims[1].model
     model_2 = subsims[2].model
 
-    rm("notched-cylinder.yaml")
-    rm("notched-cylinder-1.yaml")
-    rm("notched-cylinder-2.yaml")
-    rm("../notched-cylinder-1.g")
-    rm("../notched-cylinder-2.g")
-    rm("notched-cylinder-1.e")
-    rm("notched-cylinder-2.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-1.yaml"; force=true)
+    rm("notched-cylinder-2.yaml"; force=true)
+    rm("../notched-cylinder-1.g"; force=true)
+    rm("../notched-cylinder-2.g"; force=true)
+    rm("notched-cylinder-1.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
     min_disp_x_1 = minimum(model_1.current[1, :] - model_1.reference[1, :])
     min_disp_y_1 = minimum(model_1.current[2, :] - model_1.reference[2, :])
@@ -88,13 +88,13 @@ end
     model_1 = subsims[1].model
     model_2 = subsims[2].model
 
-    rm("notched-cylinder.yaml")
-    rm("notched-cylinder-1.yaml")
-    rm("notched-cylinder-2.yaml")
-    rm("../notched-cylinder-1.g")
-    rm("../notched-cylinder-2.g")
-    rm("notched-cylinder-1.e")
-    rm("notched-cylinder-2.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-1.yaml"; force=true)
+    rm("notched-cylinder-2.yaml"; force=true)
+    rm("../notched-cylinder-1.g"; force=true)
+    rm("../notched-cylinder-2.g"; force=true)
+    rm("notched-cylinder-1.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
     min_disp_x_1 = minimum(model_1.current[1, :] - model_1.reference[1, :])
     min_disp_y_1 = minimum(model_1.current[2, :] - model_1.reference[2, :])

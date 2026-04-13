@@ -26,16 +26,16 @@ using YAML
     model_gauge = subsims[2].model
     model_holder1 = subsims[3].model
 
-    rm("laser-weld.yaml")
-    rm("holder-0.yaml")
-    rm("holder-1.yaml")
-    rm("gauge.yaml")
-    rm("../../holder-0.g")
-    rm("../../holder-1.g")
-    rm("../../gauge.g")
-    rm("holder-0.e")
-    rm("holder-1.e")
-    rm("gauge.e")
+    rm("laser-weld.yaml"; force=true)
+    rm("holder-0.yaml"; force=true)
+    rm("holder-1.yaml"; force=true)
+    rm("gauge.yaml"; force=true)
+    rm("../../holder-0.g"; force=true)
+    rm("../../holder-1.g"; force=true)
+    rm("../../gauge.g"; force=true)
+    rm("holder-0.e"; force=true)
+    rm("holder-1.e"; force=true)
+    rm("gauge.e"; force=true)
 
     min_disp_x_holder0 = minimum(model_holder0.current[1, :] - model_holder0.reference[1, :])
     min_disp_y_holder0 = minimum(model_holder0.current[2, :] - model_holder0.reference[2, :])

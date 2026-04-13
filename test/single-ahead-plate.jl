@@ -18,9 +18,9 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("plate.yaml")
-    rm("../plate.g")
-    rm("plate.e")
+    rm("plate.yaml"; force=true)
+    rm("../plate.g"; force=true)
+    rm("plate.e"; force=true)
 
     min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])

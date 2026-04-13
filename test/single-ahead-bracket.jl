@@ -18,9 +18,9 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("bracket.yaml")
-    rm("../bracket.g")
-    rm("bracket.e")
+    rm("bracket.yaml"; force=true)
+    rm("../bracket.g"; force=true)
+    rm("bracket.e"; force=true)
 
     min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])

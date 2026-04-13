@@ -20,9 +20,9 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("clamped.yaml")
-    rm("../clamped.g")
-    rm("clamped.e")
+    rm("clamped.yaml"; force=true)
+    rm("../clamped.g"; force=true)
+    rm("clamped.e"; force=true)
 
     z = model.reference[3, :]
     disp_x = model.current[1, :] - model.reference[1, :]

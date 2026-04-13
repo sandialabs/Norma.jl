@@ -23,13 +23,13 @@ using YAML
     model_plate1 = subsims[1].model
     model_plate2 = subsims[2].model
 
-    rm("plate.yaml")
-    rm("plate-1.yaml")
-    rm("plate-2.yaml")
-    rm("../plate-1.g")
-    rm("../plate-2.g")
-    rm("plate-1.e")
-    rm("plate-2.e")
+    rm("plate.yaml"; force=true)
+    rm("plate-1.yaml"; force=true)
+    rm("plate-2.yaml"; force=true)
+    rm("../plate-1.g"; force=true)
+    rm("../plate-2.g"; force=true)
+    rm("plate-1.e"; force=true)
+    rm("plate-2.e"; force=true)
 
     min_disp_x_plate1 = minimum(model_plate1.current[1, :] - model_plate1.reference[1, :])
     min_disp_y_plate1 = minimum(model_plate1.current[2, :] - model_plate1.reference[2, :])

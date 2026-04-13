@@ -23,15 +23,15 @@
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
-    rm("cuboid-1.yaml")
-    rm("cuboid-2.yaml")
-    rm("cuboid-1.g")
-    rm("cuboid-2.g")
-    rm("cuboid-1.e")
-    rm("cuboid-2.e")
-    rm("opinf-operator-1.npz")
-    rm("opinf-operator-2.npz")
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
+    rm("opinf-operator-1.npz"; force=true)
+    rm("opinf-operator-2.npz"; force=true)
 
     @test model_coarse.reduced_state[1] ≈ -1.2374221236454467e-5 rtol = 1.0e-05
     @test model_coarse.reduced_state[2] ≈ -1.2374220928969865e-5  rtol = 1.0e-05

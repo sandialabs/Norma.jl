@@ -8,9 +8,9 @@
     cp("../examples/single/implicit-dynamic-solid/sho/sho.g", "sho.g"; force=true)
     simulation = Norma.run("sho.yaml")
     integrator = simulation.integrator
-    rm("sho.yaml")
-    rm("sho.g")
-    rm("sho.e")
+    rm("sho.yaml"; force=true)
+    rm("sho.g"; force=true)
+    rm("sho.e"; force=true)
     displacement = integrator.displacement[end]
     velocity = integrator.velocity[end]
     acceleration = integrator.acceleration[end]

@@ -18,9 +18,9 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("notched-cylinder.yaml")
-    rm("../notched-cylinder.g")
-    rm("notched-cylinder.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("../notched-cylinder.g"; force=true)
+    rm("notched-cylinder.e"; force=true)
 
     min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
@@ -51,9 +51,9 @@ end
     sim = Norma.run(params)
     model = sim.model
 
-    rm("notched-cylinder.yaml")
-    rm("../notched-cylinder.g")
-    rm("notched-cylinder.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("../notched-cylinder.g"; force=true)
+    rm("notched-cylinder.e"; force=true)
 
     min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])

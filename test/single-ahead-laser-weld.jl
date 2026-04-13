@@ -18,9 +18,9 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("laser-weld.yaml")
-    rm("../../laser-weld.g")
-    rm("laser-weld.e")
+    rm("laser-weld.yaml"; force=true)
+    rm("../../laser-weld.g"; force=true)
+    rm("laser-weld.e"; force=true)
 
     min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
@@ -47,9 +47,9 @@ end
     sim = Norma.run(params)
     model = sim.model
 
-    rm("laser-weld.yaml")
-    rm("../../laser-weld.g")
-    rm("laser-weld.e")
+    rm("laser-weld.yaml"; force=true)
+    rm("../../laser-weld.g"; force=true)
+    rm("laser-weld.e"; force=true)
 
     min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
     min_disp_y = minimum(model.current[2, :] - model.reference[2, :])

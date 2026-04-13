@@ -22,13 +22,13 @@ using YAML
     integrator_fine = subsims[1].integrator
     model_coarse = subsims[2].model
     integrator_coarse = subsims[2].integrator
-    rm("bars.yaml")
-    rm("bar-1.yaml")
-    rm("bar-2.yaml")
-    rm("bar-1.g")
-    rm("bar-2.g")
-    rm("bar-1.e")
-    rm("bar-2.e")
+    rm("bars.yaml"; force=true)
+    rm("bar-1.yaml"; force=true)
+    rm("bar-2.yaml"; force=true)
+    rm("bar-1.g"; force=true)
+    rm("bar-2.g"; force=true)
+    rm("bar-1.e"; force=true)
+    rm("bar-2.e"; force=true)
     min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
     max_disp_y_fine = maximum(model_fine.current[2, :] - model_fine.reference[2, :])
     max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])

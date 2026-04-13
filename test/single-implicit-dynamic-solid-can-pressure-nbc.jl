@@ -9,9 +9,9 @@
     simulation = Norma.run("can.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("can.yaml")
-    rm("can.g")
-    rm("can.e")
+    rm("can.yaml"; force=true)
+    rm("can.g"; force=true)
+    rm("can.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ 9.042916992588757e-6 rtol = 1.0e-06

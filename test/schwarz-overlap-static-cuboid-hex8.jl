@@ -13,13 +13,13 @@
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
-    rm("cuboid-1.yaml")
-    rm("cuboid-2.yaml")
-    rm("cuboid-1.g")
-    rm("cuboid-2.g")
-    rm("cuboid-1.e")
-    rm("cuboid-2.e")
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
     min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
     min_disp_y_fine = minimum(model_fine.current[2, :] - model_fine.reference[2, :])
     max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])
@@ -58,13 +58,13 @@ end
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
-    rm("cuboid-1.yaml")
-    rm("cuboid-2.yaml")
-    rm("cuboid-1.g")
-    rm("cuboid-2.g")
-    rm("cuboid-1.e")
-    rm("cuboid-2.e")
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
     min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
     min_disp_y_fine = minimum(model_fine.current[2, :] - model_fine.reference[2, :])
     max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])
@@ -103,13 +103,13 @@ end
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
-    rm("cuboid-1.yaml")
-    rm("cuboid-2.yaml")
-    rm("cuboid-1.g")
-    rm("cuboid-2.g")
-    rm("cuboid-1.e")
-    rm("cuboid-2.e")
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
     min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
     min_disp_y_fine = minimum(model_fine.current[2, :] - model_fine.reference[2, :])
     max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])
@@ -148,13 +148,13 @@ end
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
-    rm("cuboid-1.yaml")
-    rm("cuboid-2.yaml")
-    rm("cuboid-1.g")
-    rm("cuboid-2.g")
-    rm("cuboid-1.e")
-    rm("cuboid-2.e")
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
     min_disp_x_fine = minimum(model_fine.current[1, :] - model_fine.reference[1, :])
     min_disp_y_fine = minimum(model_fine.current[2, :] - model_fine.reference[2, :])
     max_disp_z_fine = maximum(model_fine.current[3, :] - model_fine.reference[3, :])

@@ -25,13 +25,13 @@ using YAML
     model_clamped0 = subsims[1].model
     model_clamped1 = subsims[2].model
 
-    rm("clamped.yaml")
-    rm("clamped-1.yaml")
-    rm("clamped-2.yaml")
-    rm("../clamped-1.g")
-    rm("../clamped-2.g")
-    rm("clamped-1.e")
-    rm("clamped-2.e")
+    rm("clamped.yaml"; force=true)
+    rm("clamped-1.yaml"; force=true)
+    rm("clamped-2.yaml"; force=true)
+    rm("../clamped-1.g"; force=true)
+    rm("../clamped-2.g"; force=true)
+    rm("clamped-1.e"; force=true)
+    rm("clamped-2.e"; force=true)
 
     z0 = model_clamped0.reference[3, :]
     disp0_x = model_clamped0.current[1, :] - model_clamped0.reference[1, :]
