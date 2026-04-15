@@ -147,6 +147,15 @@ function SolidMechanics(params::Parameters)
 end
 
 function create_model(params::Parameters)
+    rbf_kernel_rom_list=[
+        "gaussian kernel rom",
+        "inverse-quadratic kernel rom",
+        "inverse-multiquadric kernel rom",
+        "thin-plate-spline kernel rom",
+        "basic-matern kernel rom",
+        "linear-matern kernel rom",
+        "quadatic-matern kernel rom",
+    ]
     model_params = params["model"]
     model_name = model_params["type"]
     if model_name == "solid mechanics"
@@ -154,14 +163,16 @@ function create_model(params::Parameters)
     elseif model_name == "mesh smoothing"
         params["mesh smoothing"] = true
         return SolidMechanics(params)
-    elseif model_name == "linear opinf rom"
+    elseif model_name in ["linear opinf rom", "linear kernel rom"]
         return LinearOpInfRom(params)
-    elseif model_name == "quadratic opinf rom"
+    elseif model_name in ["quadratic opinf rom", "quadratic kernel rom"]
         return QuadraticOpInfRom(params)
-    elseif model_name == "cubic opinf rom"
+    elseif model_name in ["cubic opinf rom", "cubic kernel rom"]
         return CubicOpInfRom(params)
     elseif model_name == "neural network opinf rom"
         return NeuralNetworkOpInfRom(params)
+    elseif model_name in rbf_kernel_rom_list
+        return RBFKernelROM(params)
     else
         norma_abort("Unknown type of model : $model_name")
     end
