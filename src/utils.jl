@@ -224,6 +224,8 @@ function colored_status(status::String)
         return _use_color() ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
     elseif status == "[CONVERGED]"
         return _use_color() ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
+    elseif status == "[INITIAL]"
+        return _use_color() ? "\e[36m[INITIAL]\e[39m" : "[INITIAL]"  # cyan
     else
         return status  # fallback (no color)
     end
