@@ -536,7 +536,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         bc isa SolidMechanicsRobinSchwarzBoundaryCondition
     ) &&
     controller.use_interface_predictor &&
-    controller.iteration_number == 1 &&
+    controller.iteration_number == 0 &&
     !isempty(controller.predictor_disp[coupled_index])
     if !isempty(time_hist)
         interp_disp = interpolate(time_hist, disp_hist, time)
@@ -570,9 +570,9 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         θ = controller.relaxation_parameter
 
         iter = controller.iteration_number
-        λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
-        λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
-        λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
+        λ_u_prev = iter < 1 ? interp_disp : controller.lambda_disp[coupled_index]
+        λ_v_prev = iter < 1 ? interp_velo : controller.lambda_velo[coupled_index]
+        λ_a_prev = iter < 1 ? interp_acce : controller.lambda_acce[coupled_index]
 
         # Classical relaxation
         controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev

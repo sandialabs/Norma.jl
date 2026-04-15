@@ -60,7 +60,7 @@ using YAML
     @test avg_stress_2 ≈
         [-101340.89672529901 -101446.28712096746 1.5977255795638144e6 121800.33493609141 122483.30918545111 37064.478126464295] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 4, 4, 4, 4, 5, 5] atol = 0
+    @test sim.controller.schwarz_iters ≈ [0, 0, 0, 0, 3, 3, 3, 3, 4, 4] atol = 0
 end
 
 @testset "Schwarz AHeaD Overlap Dynamic Notched Cylinder TET10-HEX8" begin
@@ -117,5 +117,5 @@ end
     @test avg_stress_2 ≈
         [-89472.31510791164 -89526.66568169543 1.6857645398230806e6 114694.99228486177 114706.49638144106 34816.156918097106] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 1, 3, 3, 3, 3, 3] atol = 0
+    @test sim.controller.schwarz_iters ≈ [0, 0, 0, 0, 0, 2, 2, 2, 2, 2] atol = 0
 end

@@ -561,7 +561,7 @@ function advance_independent(sim::MultiDomainSimulation)
 end
 
 function schwarz(sim::MultiDomainSimulation)
-    iteration_number = 1
+    iteration_number = 0
     sim.controller.is_schwarz = true
     save_stop_state(sim)
     save_schwarz_state(sim)
@@ -578,24 +578,46 @@ function schwarz(sim::MultiDomainSimulation)
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
-        raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
-        status = colored_status(raw_status)
-        norma_logf(
-            0,
-            :schwarz,
-            "Criterion [%d] %s = %.2e : %s = %.2e : %s",
-            iteration_number,
-            "|ΔU|",
-            ΔU,
-            "|ΔU|/|U|",
-            Δu,
-            status,
-        )
-        if stop_schwarz(sim, iteration_number + 1) == true
-            plural = iteration_number == 1 ? "" : "s"
-            norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
-            sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
-            break
+        if iteration_number == 0
+            # Initial Schwarz pass: there is no prior iterate to compare against,
+            # so the relative criterion is not yet a Schwarz convergence measure.
+            # Report the absolute update for reference and skip the relative test.
+            sim.controller.converged = false
+            norma_logf(
+                0,
+                :schwarz,
+                "Criterion [%d] |ΔU| = %.2e : |ΔU|/|U| = %8s : %s",
+                iteration_number,
+                ΔU,
+                "—",
+                colored_status("[INITIAL]"),
+            )
+            # Early exit: if the initial absolute update already meets the absolute
+            # tolerance, no further Schwarz iterations are needed. The relative test
+            # still cannot be applied on iteration 0 (no prior iterate).
+            if ΔU ≤ sim.controller.absolute_tolerance
+                norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
+                sim.controller.schwarz_iters[sim.controller.stop] = 0
+                break
+            end
+        else
+            raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
+            status = colored_status(raw_status)
+            norma_logf(
+                0,
+                :schwarz,
+                "Criterion [%d] |ΔU| = %.2e : |ΔU|/|U| = %.2e : %s",
+                iteration_number,
+                ΔU,
+                Δu,
+                status,
+            )
+            if stop_schwarz(sim, iteration_number + 1) == true
+                plural = iteration_number == 1 ? "" : "s"
+                norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
+                sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
+                break
+            end
         end
         iteration_number += 1
         save_schwarz_state(sim)

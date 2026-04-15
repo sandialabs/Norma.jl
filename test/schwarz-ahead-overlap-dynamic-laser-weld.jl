@@ -68,5 +68,5 @@ using YAML
     @test avg_stress_holder1 ≈
         [56175.5776544634 1.611857519176203e6 56430.374623511234 2138.110887978947 5.693916591553716e-9 -8.169333644521733e-8] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [23, 27, 29, 30, 31] atol = 0
+    @test sim.controller.schwarz_iters ≈ [22, 26, 28, 29, 30] atol = 0
 end
