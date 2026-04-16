@@ -589,7 +589,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
     # For ROM coupled subdomains, reconstruct FOM displacement from reduced state before reading it
     if coupled_subsim.model isa RomModel
-        copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+        reconstruct_fom_fields!(integrator, coupled_subsim.solver, coupled_subsim.model)
     end
     apply_bc_detail(model, bc)
 
@@ -599,7 +599,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator.acceleration .= saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
     if coupled_subsim.model isa RomModel
-        copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+        reconstruct_fom_fields!(integrator, coupled_subsim.solver, coupled_subsim.model)
     end
     return nothing
 end
