@@ -169,93 +169,72 @@ function create_step(solver_params::Parameters)
 end
 
 function copy_solution_source_to_targets(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    solver.solution = integrator.displacement
-    if model.inclined_support
-        model.displacement .= reshape(model.global_transform' * integrator.displacement, 3, :)
-    end
-    return nothing
+    model.inclined_support || return nothing
+    model.displacement .= reshape(model.global_transform' * integrator.displacement, 3, :)
 end
 
 function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::QuasiStatic)
+    model.inclined_support || return nothing
     integrator.displacement = solver.solution
-    if model.inclined_support
-        model.displacement .= reshape(model.global_transform' * solver.solution, 3, :)
-    end
-    return nothing
+    model.displacement .= reshape(model.global_transform' * solver.solution, 3, :)
 end
 
 function copy_solution_source_to_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
-    if model.inclined_support
-        integrator.displacement .= model.global_transform * reshape(model.displacement, :)
-    end
+    model.inclined_support || return nothing
+    integrator.displacement .= model.global_transform * reshape(model.displacement, :)
     solver.solution = integrator.displacement
-    return nothing
 end
 
 function copy_solution_source_to_targets(integrator::Newmark, solver::Solver, model::SolidMechanics)
-    solver.solution = integrator.displacement
-    if model.inclined_support
-        T = model.global_transform
-        model.displacement .= reshape(T' * integrator.displacement, 3, :)
-        model.velocity .= reshape(T' * integrator.velocity, 3, :)
-        model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
-    end
-    return nothing
+    model.inclined_support || return nothing
+    T = model.global_transform
+    model.displacement .= reshape(T' * integrator.displacement, 3, :)
+    model.velocity .= reshape(T' * integrator.velocity, 3, :)
+    model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
 end
 
 function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::Newmark)
+    model.inclined_support || return nothing
+    T = model.global_transform
     integrator.displacement = solver.solution
-    if model.inclined_support
-        T = model.global_transform
-        model.displacement .= reshape(T' * solver.solution, 3, :)
-        model.velocity .= reshape(T' * integrator.velocity, 3, :)
-        model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
-    end
-    return nothing
+    model.displacement .= reshape(T' * solver.solution, 3, :)
+    model.velocity .= reshape(T' * integrator.velocity, 3, :)
+    model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
 end
 
 function copy_solution_source_to_targets(model::SolidMechanics, integrator::Newmark, solver::Solver)
-    if model.inclined_support
-        T = model.global_transform
-        integrator.displacement .= T * reshape(model.displacement, :)
-        integrator.velocity .= T * reshape(model.velocity, :)
-        integrator.acceleration .= T * reshape(model.acceleration, :)
-    end
+    model.inclined_support || return nothing
+    T = model.global_transform
+    integrator.displacement .= T * reshape(model.displacement, :)
+    integrator.velocity .= T * reshape(model.velocity, :)
+    integrator.acceleration .= T * reshape(model.acceleration, :)
     solver.solution = integrator.displacement
-    return nothing
 end
 
 function copy_solution_source_to_targets(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    solver.solution = integrator.acceleration
-    if model.inclined_support
-        T = model.global_transform
-        model.displacement .= reshape(T' * integrator.displacement, 3, :)
-        model.velocity .= reshape(T' * integrator.velocity, 3, :)
-        model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
-    end
-    return nothing
+    model.inclined_support || return nothing
+    T = model.global_transform
+    model.displacement .= reshape(T' * integrator.displacement, 3, :)
+    model.velocity .= reshape(T' * integrator.velocity, 3, :)
+    model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
 end
 
 function copy_solution_source_to_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
+    model.inclined_support || return nothing
+    T = model.global_transform
     integrator.acceleration = solver.solution
-    if model.inclined_support
-        T = model.global_transform
-        model.displacement .= reshape(T' * integrator.displacement, 3, :)
-        model.velocity .= reshape(T' * integrator.velocity, 3, :)
-        model.acceleration .= reshape(T' * solver.solution, 3, :)
-    end
-    return nothing
+    model.displacement .= reshape(T' * integrator.displacement, 3, :)
+    model.velocity .= reshape(T' * integrator.velocity, 3, :)
+    model.acceleration .= reshape(T' * solver.solution, 3, :)
 end
 
 function copy_solution_source_to_targets(model::SolidMechanics, integrator::CentralDifference, solver::ExplicitSolver)
-    if model.inclined_support
-        T = model.global_transform
-        integrator.displacement .= T * reshape(model.displacement, :)
-        integrator.velocity .= T * reshape(model.velocity, :)
-        integrator.acceleration .= T * reshape(model.acceleration, :)
-    end
+    model.inclined_support || return nothing
+    T = model.global_transform
+    integrator.displacement .= T * reshape(model.displacement, :)
+    integrator.velocity .= T * reshape(model.velocity, :)
+    integrator.acceleration .= T * reshape(model.acceleration, :)
     solver.solution = integrator.acceleration
-    return nothing
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
