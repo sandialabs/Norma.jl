@@ -53,6 +53,7 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     predictor_∂Ω_f::Vector{Vector{Float64}}
     prev_stop_disp::Vector{Vector{Float64}}
     prev_stop_∂Ω_f::Vector{Vector{Float64}}
+    interface_mass_correction::Bool
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController
