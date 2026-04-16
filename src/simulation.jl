@@ -190,7 +190,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     predictor_∂Ω_f = [Vector{Float64}() for _ in 1:num_domains]
     prev_stop_disp = [Vector{Float64}() for _ in 1:num_domains]
     prev_stop_∂Ω_f = [Vector{Float64}() for _ in 1:num_domains]
-    interface_mass_correction = get(params, "interface mass correction", false)
 
     return SolidMultiDomainTimeController(
         minimum_iterations,
@@ -237,7 +236,6 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_∂Ω_f,
         prev_stop_disp,
         prev_stop_∂Ω_f,
-        interface_mass_correction,
     )
 end
 
@@ -458,9 +456,6 @@ function initialize(sim::MultiDomainSimulation)
         log_dof_counts(subsim.model)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
-    end
-    if sim.controller.interface_mass_correction
-        apply_interface_mass_correction!(sim)
     end
     detect_contact(sim)
     return nothing
