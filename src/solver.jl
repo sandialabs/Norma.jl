@@ -168,10 +168,6 @@ function create_step(solver_params::Parameters)
     end
 end
 
-function copy_solution_source_to_targets(::TimeIntegrator, ::Solver, ::SolidMechanics)
-    return nothing
-end
-
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
     evaluate(model, integrator, solver)
     if model.failed == true

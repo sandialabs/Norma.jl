@@ -587,8 +587,10 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         integrator.acceleration .= interp_acce
     end
 
-    # Apply boundary condition detail (syncs ROM fom_model displacement if coupled is a RomModel)
-    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    # For ROM coupled subdomains, reconstruct FOM displacement from reduced state before reading it
+    if coupled_subsim.model isa RomModel
+        copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    end
     apply_bc_detail(model, bc)
 
     # Restore previous state (in-place to keep alias intact)
@@ -596,7 +598,9 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator.velocity .= saved_velo
     integrator.acceleration .= saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
-    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    if coupled_subsim.model isa RomModel
+        copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    end
     return nothing
 end
 
