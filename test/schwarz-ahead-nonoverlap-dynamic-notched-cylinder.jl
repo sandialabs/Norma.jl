@@ -43,12 +43,12 @@ using YAML
     rm("notched-cylinder-1.e"; force=true)
     rm("notched-cylinder-2.e"; force=true)
 
-    min_disp_x_1 = minimum(model_1.current[1, :] - model_1.reference[1, :])
-    min_disp_y_1 = minimum(model_1.current[2, :] - model_1.reference[2, :])
-    max_disp_z_1 = maximum(model_1.current[3, :] - model_1.reference[3, :])
-    min_disp_x_2 = minimum(model_2.current[1, :] - model_2.reference[1, :])
-    min_disp_y_2 = minimum(model_2.current[2, :] - model_2.reference[2, :])
-    min_disp_z_2 = minimum(model_2.current[3, :] - model_2.reference[3, :])
+    min_disp_x_1 = minimum(model_1.displacement[1, :])
+    min_disp_y_1 = minimum(model_1.displacement[2, :])
+    max_disp_z_1 = maximum(model_1.displacement[3, :])
+    min_disp_x_2 = minimum(model_2.displacement[1, :])
+    min_disp_y_2 = minimum(model_2.displacement[2, :])
+    min_disp_z_2 = minimum(model_2.displacement[3, :])
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 

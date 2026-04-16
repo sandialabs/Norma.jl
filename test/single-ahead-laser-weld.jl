@@ -22,9 +22,9 @@ using YAML
     rm("../../laser-weld.g"; force=true)
     rm("laser-weld.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     @test min_disp_x ≈ -6.297730171953009e-5 atol = 1e-12
@@ -51,9 +51,9 @@ end
     rm("../../laser-weld.g"; force=true)
     rm("laser-weld.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     @test min_disp_x ≈ -0.006324585400834512 atol = 1e-12

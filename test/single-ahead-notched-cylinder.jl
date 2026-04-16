@@ -22,9 +22,9 @@ using YAML
     rm("../notched-cylinder.g"; force=true)
     rm("notched-cylinder.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     @test min_disp_x ≈ -1.9074596682447376e-5 atol = 1e-12
@@ -55,9 +55,9 @@ end
     rm("../notched-cylinder.g"; force=true)
     rm("notched-cylinder.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     @test min_disp_x ≈ -0.00036607877763784186 atol = 1e-12

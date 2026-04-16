@@ -28,7 +28,7 @@ using YAML
     rm("sphere.g"; force=true)
     rm("sphere.e"; force=true)
 
-    global_displacement = vec(model.current - model.reference)
+    global_displacement = vec(model.displacement)
     max_disp = maximum_components(global_displacement)
     min_disp = minimum_components(global_displacement)
 
@@ -87,7 +87,7 @@ end
     rm("sphere.g"; force=true)
     rm("sphere.e"; force=true)
 
-    global_displacement = vec(model.current - model.reference)
+    global_displacement = vec(model.displacement)
     max_disp = maximum_components(global_displacement)
     min_disp = minimum_components(global_displacement)
 

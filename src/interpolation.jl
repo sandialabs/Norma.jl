@@ -514,7 +514,7 @@ function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, si
     minimum_nodal_distance = Inf
     for num_nodes_side in num_nodes_sides
         face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
-        face_nodes = model.current[:, face_node_indices]
+        face_nodes = model.reference[:, face_node_indices] + model.displacement[:, face_node_indices]
         nodal_distance = get_minimum_distance_to_nodes(face_nodes, point)
         if nodal_distance < minimum_nodal_distance
             minimum_nodal_distance = nodal_distance
@@ -699,7 +699,7 @@ function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMe
     if model.kinematics == Finite
         coords = model.reference
     else
-        coords = model.current
+        coords = model.reference .+ model.displacement
     end
     num_nodes = length(local_from_global_map)
     space_dim, _ = size(coords)

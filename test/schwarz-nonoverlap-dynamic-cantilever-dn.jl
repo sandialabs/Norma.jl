@@ -52,21 +52,21 @@ end
     m_ref = sim_ref.model
     ref_x = m_ref.reference[1, :]
     tip_ref = argmax(ref_x)
-    uy_ref = m_ref.current[2, tip_ref] - m_ref.reference[2, tip_ref]
+    uy_ref = m_ref.displacement[2, tip_ref]
 
     # DN: get tip displacement from the free subdomain
     m_free = sim_dn.subsims[1].model  # cantilever-free is listed first in domains
     free_x = m_free.reference[1, :]
     tip_free = argmax(free_x)
-    uy_dn = m_free.current[2, tip_free] - m_free.reference[2, tip_free]
+    uy_dn = m_free.displacement[2, tip_free]
 
     # Tip displacement should match single domain within 1%
     @test uy_dn ≈ uy_ref rtol = 1.0e-02
 
     # Interface displacement continuity
     m_clamped = sim_dn.subsims[2].model  # cantilever-clamped is listed second
-    u1y = m_clamped.current[2, :] .- m_clamped.reference[2, :]
-    u2y = m_free.current[2, :] .- m_free.reference[2, :]
+    u1y = m_clamped.displacement[2, :]
+    u2y = m_free.displacement[2, :]
     clamped_x = m_clamped.reference[1, :]
     free_x2 = m_free.reference[1, :]
     # Interface at x = L/2 = 0.127 m

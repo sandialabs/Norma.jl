@@ -31,12 +31,12 @@ using YAML
     rm("plate-1.e"; force=true)
     rm("plate-2.e"; force=true)
 
-    min_disp_x_plate1 = minimum(model_plate1.current[1, :] - model_plate1.reference[1, :])
-    min_disp_y_plate1 = minimum(model_plate1.current[2, :] - model_plate1.reference[2, :])
-    max_disp_z_plate1 = maximum(model_plate1.current[3, :] - model_plate1.reference[3, :])
-    min_disp_x_plate2 = minimum(model_plate2.current[1, :] - model_plate2.reference[1, :])
-    min_disp_y_plate2 = minimum(model_plate2.current[2, :] - model_plate2.reference[2, :])
-    max_disp_z_plate2 = maximum(model_plate2.current[3, :] - model_plate2.reference[3, :])
+    min_disp_x_plate1 = minimum(model_plate1.displacement[1, :])
+    min_disp_y_plate1 = minimum(model_plate1.displacement[2, :])
+    max_disp_z_plate1 = maximum(model_plate1.displacement[3, :])
+    min_disp_x_plate2 = minimum(model_plate2.displacement[1, :])
+    min_disp_y_plate2 = minimum(model_plate2.displacement[2, :])
+    max_disp_z_plate2 = maximum(model_plate2.displacement[3, :])
     avg_stress_plate1 = average_components(model_plate1.stress)
     avg_stress_plate2 = average_components(model_plate2.stress)
 

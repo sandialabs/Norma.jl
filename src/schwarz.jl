@@ -39,7 +39,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
     src_disp = zeros(3, num_src_nodes)
     src_velo = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_disp[:, i_local] = src_model.current[:, i_global] - src_model.reference[:, i_global]
+        src_disp[:, i_local] = src_model.displacement[:, i_global]
         src_velo[:, i_local] = src_model.velocity[:, i_global]
     end
     dirichlet_projector = bc.dirichlet_projector
@@ -173,7 +173,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
         (field -> getfield(bc.coupled_subsim.model.fom_model, field))
     end
 
-    coupled_current   = get_coupled_field(:current)
+    coupled_displacement = get_coupled_field(:displacement)
     coupled_reference = get_coupled_field(:reference)
     coupled_velocity  = get_coupled_field(:velocity)
     coupled_internal  = get_coupled_field(:internal_force)
@@ -191,9 +191,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
         N = bc.interpolation_function_values[i]
         for comp in 1:3
             partner_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
-            partner_disp[comp, i] = sum(
-                (coupled_current[comp, coupled_node_indices] .- coupled_reference[comp, coupled_node_indices]) .* N
-            )
+            partner_disp[comp, i] = sum(coupled_displacement[comp, coupled_node_indices] .* N)
         end
     end
 
@@ -274,7 +272,7 @@ function build_impedance_schwarz_force(model::SolidMechanics)
             for comp in 1:3
                 for (i_local, i_global) in enumerate(global_from_local_map)
                     self_velo[i_local] = model.velocity[comp, i_global]
-                    self_disp[i_local] = model.current[comp, i_global] - model.reference[comp, i_global]
+                    self_disp[i_local] = model.displacement[comp, i_global]
                 end
                 f_imp = W * (Z * self_velo + α * self_disp)
                 for (i_local, i_global) in enumerate(global_from_local_map)
@@ -359,7 +357,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
     num_src_nodes = length(src_global_from_local_map)
     src_disp = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_disp[:, i_local] = src_model.current[:, i_global] - src_model.reference[:, i_global]
+        src_disp[:, i_local] = src_model.displacement[:, i_global]
     end
     dirichlet_projector = bc.dirichlet_projector
     num_dst_nodes = size(dirichlet_projector, 1)
@@ -409,7 +407,8 @@ function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSch
         (field -> getfield(bc.coupled_subsim.model.fom_model, field))
     end
 
-    current = get_coupled_field(:current)
+    coupled_reference = get_coupled_field(:reference)
+    coupled_displacement = get_coupled_field(:displacement)
     velocity = get_coupled_field(:velocity)
     acceleration = get_coupled_field(:acceleration)
 
@@ -420,7 +419,7 @@ function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSch
         coupled_node_indices = bc.coupled_nodes_indices[i]
         N = bc.interpolation_function_values[i]
 
-        model.current[:, node_index] = current[:, coupled_node_indices] * N
+        model.displacement[:, node_index] = (coupled_reference[:, coupled_node_indices] + coupled_displacement[:, coupled_node_indices]) * N - model.reference[:, node_index]
         model.velocity[:, node_index] = velocity[:, coupled_node_indices] * N
         model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
 
@@ -440,14 +439,14 @@ function coupling_weak_overlap_dbc(model::SolidMechanics, bc::SolidMechanicsOver
     global_from_local_map = bc.global_from_local_map
 
     for comp in 1:3
-        src_current = src_model.current[comp, :]
+        src_current = src_model.reference[comp, :] + src_model.displacement[comp, :]
         src_velocity = src_model.velocity[comp, :]
         src_acceleration = src_model.acceleration[comp, :]
         proj_current = P * src_current
         proj_velocity = P * src_velocity
         proj_acceleration = P * src_acceleration
         for (i_local, i_global) in enumerate(global_from_local_map)
-            model.current[comp, i_global] = proj_current[i_local]
+            model.displacement[comp, i_global] = proj_current[i_local] - model.reference[comp, i_global]
             model.velocity[comp, i_global] = proj_velocity[i_local]
             model.acceleration[comp, i_global] = proj_acceleration[i_local]
         end
@@ -463,7 +462,7 @@ function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSc
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
-        @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
+        @inbounds model.displacement[:, i_global] = nodal_curr[:, i_local] - model.reference[:, i_global]
         @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
         @inbounds model.acceleration[:, i_global] = nodal_acce[:, i_local]
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
@@ -513,10 +512,10 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator = coupled_subsim.integrator
     coupled_model = coupled_subsim.model
 
-    # Save current state
-    saved_disp = integrator.displacement
-    saved_velo = integrator.velocity
-    saved_acce = integrator.acceleration
+    # Save current state (copy data, not reference — aliased integrators share memory with model)
+    saved_disp = copy(integrator.displacement)
+    saved_velo = copy(integrator.velocity)
+    saved_acce = copy(integrator.acceleration)
     saved_∂Ω_f = get_internal_force(coupled_model)
 
     # Fetch interpolation inputs
@@ -579,23 +578,23 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
         controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
-        integrator.displacement = controller.lambda_disp[coupled_index]
-        integrator.velocity = controller.lambda_velo[coupled_index]
-        integrator.acceleration = controller.lambda_acce[coupled_index]
+        integrator.displacement .= controller.lambda_disp[coupled_index]
+        integrator.velocity .= controller.lambda_velo[coupled_index]
+        integrator.acceleration .= controller.lambda_acce[coupled_index]
     else
-        integrator.displacement = interp_disp
-        integrator.velocity = interp_velo
-        integrator.acceleration = interp_acce
+        integrator.displacement .= interp_disp
+        integrator.velocity .= interp_velo
+        integrator.acceleration .= interp_acce
     end
 
     # Apply boundary condition detail
     copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
 
-    # Restore previous state
-    integrator.displacement = saved_disp
-    integrator.velocity = saved_velo
-    integrator.acceleration = saved_acce
+    # Restore previous state (in-place to keep alias intact)
+    integrator.displacement .= saved_disp
+    integrator.velocity .= saved_velo
+    integrator.acceleration .= saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
 
     copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
@@ -616,9 +615,9 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
         normal = normals[:, i_local]
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
         if bc.friction_type == 0
-            @inbounds model.current[:, i_global] = transfer_normal_component(
-                nodal_curr[:, i_local], model.current[:, i_global], normal
-            )
+            @inbounds model.displacement[:, i_global] = transfer_normal_component(
+                nodal_curr[:, i_local], model.reference[:, i_global] + model.displacement[:, i_global], normal
+            ) - model.reference[:, i_global]
             @inbounds model.velocity[:, i_global] = transfer_normal_component(
                 nodal_velo[:, i_local], model.velocity[:, i_global], normal
             )
@@ -629,7 +628,7 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
             model.free_dofs[[3 * i_global - 1]] .= true
             model.free_dofs[[3 * i_global]] .= true
         elseif bc.friction_type == 1
-            @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
+            @inbounds model.displacement[:, i_global] = nodal_curr[:, i_local] - model.reference[:, i_global]
             @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
             @inbounds model.acceleration[:, i_global] = nodal_velo[:, i_local]
             model.free_dofs[global_range] .= false
@@ -741,7 +740,7 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     src_velo = zeros(3, num_src_nodes)
     src_acce = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_curr[:, i_local] = src_model.current[:, i_global]
+        src_curr[:, i_local] = src_model.reference[:, i_global] + src_model.displacement[:, i_global]
         src_refe[:, i_local] = src_model.reference[:, i_global]
         src_velo[:, i_local] = src_model.velocity[:, i_global]
         src_acce[:, i_local] = src_model.acceleration[:, i_global]
@@ -940,7 +939,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
                 disp_val = disp_num === nothing ? 0.0 : extract_value(substitute(disp_num, values))
                 velo_val = velo_num === nothing ? 0.0 : extract_value(substitute(velo_num, values))
                 if ic_type == "displacement"
-                    model.current[offset, node_index] = model.reference[offset, node_index] + disp_val
+                    model.displacement[offset, node_index] = disp_val
                     non_zero_velocity = !(velo_val ≈ 0.0)
                     if non_zero_velocity
                         assign_velocity!(model.velocity, offset, node_index, velo_val, "derived from displacement")

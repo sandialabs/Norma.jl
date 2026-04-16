@@ -99,12 +99,12 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
 end
 
 function get_umax(model::SolidMechanics)
-  u_max = maximum(abs, model.current .- model.reference)
+  u_max = maximum(abs, model.displacement)
   return u_max
 end
 
 function get_umax(model::RomModel)
-  u_max = maximum(abs, model.fom_model.current .- model.fom_model.reference)
+  u_max = maximum(abs, model.fom_model.displacement)
   return u_max
 end 
 
@@ -187,9 +187,9 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     free_dofs_filename = prefix * "free_dofs" * index_string * ".csv"
     writedlm(free_dofs_filename, model.free_dofs)
     curr_filename = prefix * "curr" * index_string * ".csv"
-    writedlm_nodal_array(curr_filename, model.current)
+    writedlm_nodal_array(curr_filename, model.reference .+ model.displacement)
     disp_filename = prefix * "disp" * index_string * ".csv"
-    writedlm_nodal_array(disp_filename, model.current - model.reference)
+    writedlm_nodal_array(disp_filename, model.displacement)
     time_filename = prefix * "time" * index_string * ".csv"
     writedlm(time_filename, integrator.time, '\n')
     potential_filename = prefix * "potential" * index_string * ".csv"
@@ -229,14 +229,10 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
-            writedlm(curr_filename, model.current[bc.offset, bc.node_set_node_indices])
+            writedlm(curr_filename, model.reference[bc.offset, bc.node_set_node_indices] + model.displacement[bc.offset, bc.node_set_node_indices])
             writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
             writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
-            writedlm(
-                disp_filename,
-                model.current[bc.offset, bc.node_set_node_indices] -
-                model.reference[bc.offset, bc.node_set_node_indices],
-            )
+            writedlm(disp_filename, model.displacement[bc.offset, bc.node_set_node_indices])
         elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition ||
             bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
             side_set_name = bc.name
@@ -245,10 +241,10 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
             unique_indices = unique(bc.side_set_node_indices)
-            writedlm_nodal_array(curr_filename, model.current[:, unique_indices])
+            writedlm_nodal_array(curr_filename, model.reference[:, unique_indices] .+ model.displacement[:, unique_indices])
             writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
             writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
-            writedlm_nodal_array(disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices])
+            writedlm_nodal_array(disp_filename, model.displacement[:, unique_indices])
         end
     end
     return nothing
@@ -263,10 +259,10 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     output_mesh = params["output_mesh"]
     Exodus.write_time(output_mesh, time_index, time)
 
-    displacement = model.current - model.reference
-    refe_x = model.current[1, :]
-    refe_y = model.current[2, :]
-    refe_z = model.current[3, :]
+    displacement = model.displacement
+    refe_x = model.reference[1, :] + model.displacement[1, :]
+    refe_y = model.reference[2, :] + model.displacement[2, :]
+    refe_z = model.reference[3, :] + model.displacement[3, :]
     Exodus.write_values(output_mesh, NodalVariable, time_index, "refe_x", refe_x)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "refe_y", refe_y)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "refe_z", refe_z)

@@ -31,12 +31,12 @@ using YAML
     rm("torsion-1.e"; force=true)
     rm("torsion-2.e"; force=true)
 
-    min_disp_x_torsion1 = minimum(model_torsion1.current[1, :] - model_torsion1.reference[1, :])
-    min_disp_y_torsion1 = minimum(model_torsion1.current[2, :] - model_torsion1.reference[2, :])
-    max_disp_z_torsion1 = maximum(model_torsion1.current[3, :] - model_torsion1.reference[3, :])
-    min_disp_x_torsion2 = minimum(model_torsion2.current[1, :] - model_torsion2.reference[1, :])
-    min_disp_y_torsion2 = minimum(model_torsion2.current[2, :] - model_torsion2.reference[2, :])
-    max_disp_z_torsion2 = maximum(model_torsion2.current[3, :] - model_torsion2.reference[3, :])
+    min_disp_x_torsion1 = minimum(model_torsion1.displacement[1, :])
+    min_disp_y_torsion1 = minimum(model_torsion1.displacement[2, :])
+    max_disp_z_torsion1 = maximum(model_torsion1.displacement[3, :])
+    min_disp_x_torsion2 = minimum(model_torsion2.displacement[1, :])
+    min_disp_y_torsion2 = minimum(model_torsion2.displacement[2, :])
+    max_disp_z_torsion2 = maximum(model_torsion2.displacement[3, :])
     avg_stress_torsion1 = average_components(model_torsion1.stress)
     avg_stress_torsion2 = average_components(model_torsion2.stress)
 

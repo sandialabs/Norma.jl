@@ -22,9 +22,9 @@ using YAML
     rm("../bracket.g"; force=true)
     rm("bracket.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     println(avg_stress)

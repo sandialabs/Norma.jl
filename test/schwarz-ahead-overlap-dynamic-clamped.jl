@@ -34,9 +34,9 @@ using YAML
     rm("clamped-2.e"; force=true)
 
     z0 = model_clamped0.reference[3, :]
-    disp0_x = model_clamped0.current[1, :] - model_clamped0.reference[1, :]
-    disp0_y = model_clamped0.current[2, :] - model_clamped0.reference[2, :]
-    disp0_z = model_clamped0.current[3, :] - model_clamped0.reference[3, :]
+    disp0_x = model_clamped0.displacement[1, :]
+    disp0_y = model_clamped0.displacement[2, :]
+    disp0_z = model_clamped0.displacement[3, :]
     velo0_x = model_clamped0.velocity[1, :]
     velo0_y = model_clamped0.velocity[2, :]
     velo0_z = model_clamped0.velocity[3, :]
@@ -45,9 +45,9 @@ using YAML
     acce0_z = model_clamped0.acceleration[3, :]
 
     z1 = model_clamped1.reference[3, :]
-    disp1_x = model_clamped1.current[1, :] - model_clamped1.reference[1, :]
-    disp1_y = model_clamped1.current[2, :] - model_clamped1.reference[2, :]
-    disp1_z = model_clamped1.current[3, :] - model_clamped1.reference[3, :]
+    disp1_x = model_clamped1.displacement[1, :]
+    disp1_y = model_clamped1.displacement[2, :]
+    disp1_z = model_clamped1.displacement[3, :]
     velo1_x = model_clamped1.velocity[1, :]
     velo1_y = model_clamped1.velocity[2, :]
     velo1_z = model_clamped1.velocity[3, :]

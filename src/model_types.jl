@@ -62,7 +62,7 @@ mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
     reference::Matrix{Float64}
-    current::Matrix{Float64}
+    displacement::Matrix{Float64}
     velocity::Matrix{Float64}
     acceleration::Matrix{Float64}
     internal_force::Vector{Float64}

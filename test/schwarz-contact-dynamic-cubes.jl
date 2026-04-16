@@ -32,12 +32,12 @@ using YAML
     rm("cube-2.e"; force=true)
 
     # Enforce that the side set displacements are the same between the two blocks
-    x1 = model_1.current[1, :]
-    y1 = model_1.current[2, :]
-    z1 = model_1.current[3, :]
-    x2 = model_2.current[1, :]
-    y2 = model_2.current[2, :]
-    z2 = model_2.current[3, :]
+    x1 = model_1.reference[1, :] + model_1.displacement[1, :]
+    y1 = model_1.reference[2, :] + model_1.displacement[2, :]
+    z1 = model_1.reference[3, :] + model_1.displacement[3, :]
+    x2 = model_2.reference[1, :] + model_2.displacement[1, :]
+    y2 = model_2.reference[2, :] + model_2.displacement[2, :]
+    z2 = model_2.reference[3, :] + model_2.displacement[3, :]
 
     face_pairs = Dict(19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17)
 
@@ -76,12 +76,12 @@ end
     rm("cube-2.e"; force=true)
 
     # Enforce that the side set displacements are the same between the two blocks
-    x1 = model_1.current[1, :]
-    y1 = model_1.current[2, :]
-    z1 = model_1.current[3, :]
-    x2 = model_2.current[1, :]
-    y2 = model_2.current[2, :]
-    z2 = model_2.current[3, :]
+    x1 = model_1.reference[1, :] + model_1.displacement[1, :]
+    y1 = model_1.reference[2, :] + model_1.displacement[2, :]
+    z1 = model_1.reference[3, :] + model_1.displacement[3, :]
+    x2 = model_2.reference[1, :] + model_2.displacement[1, :]
+    y2 = model_2.reference[2, :] + model_2.displacement[2, :]
+    z2 = model_2.reference[3, :] + model_2.displacement[3, :]
 
     face_pairs = Dict(19 => 1, 20 => 2, 21 => 3, 22 => 4, 23 => 9, 24 => 10, 25 => 13, 26 => 14, 27 => 17)
 
@@ -110,8 +110,8 @@ end
         params["name"] = input_file
         sim = Norma.run(params)
         subsim_temp = sim.subsims
-        model_fine_temp = subsim_temp[1].model.current
-        model_coarse_temp = subsim_temp[2].model.current
+        model_fine_temp = subsim_temp[1].model.reference .+ subsim_temp[1].model.displacement
+        model_coarse_temp = subsim_temp[2].model.reference .+ subsim_temp[2].model.displacement
 
         rm("cubes-test$i.yaml"; force=true)
         rm("cube-test$i-1.yaml"; force=true)
@@ -166,8 +166,8 @@ end
         params["name"] = input_file
         sim = Norma.run(params)
         subsim_temp = sim.subsims
-        model_fine_temp = subsim_temp[1].model.current
-        model_coarse_temp = subsim_temp[2].model.current
+        model_fine_temp = subsim_temp[1].model.reference .+ subsim_temp[1].model.displacement
+        model_coarse_temp = subsim_temp[2].model.reference .+ subsim_temp[2].model.displacement
 
         rm("cubes-test$i.yaml"; force=true)
         rm("cube-test$i-1.yaml"; force=true)

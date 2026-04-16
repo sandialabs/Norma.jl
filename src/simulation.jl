@@ -21,14 +21,40 @@ function create_simulation(params::Parameters)
     if sim_type == "single"
         sim = SingleDomainSimulation(params)
         create_bcs(sim)
+        initialize_storage(sim)
         return sim
     elseif sim_type == "multi"
         sim = MultiDomainSimulation(params)
         create_bcs(sim)
+        initialize_storage(sim)
         return sim
     else
         norma_abort("Unknown type of simulation: $sim_type")
     end
+end
+
+function initialize_storage(sim::SingleDomainSimulation)
+    model = sim.model
+    integrator = sim.integrator
+    solver = sim.solver
+    model isa SolidMechanics && !model.inclined_support || return nothing
+    num_dof = length(model.free_dofs)
+    integrator.displacement = unsafe_wrap(Vector{Float64}, pointer(model.displacement), num_dof)
+    integrator.velocity = unsafe_wrap(Vector{Float64}, pointer(model.velocity), num_dof)
+    integrator.acceleration = unsafe_wrap(Vector{Float64}, pointer(model.acceleration), num_dof)
+    if solver isa ExplicitSolver
+        solver.solution = unsafe_wrap(Vector{Float64}, pointer(model.acceleration), num_dof)
+    else
+        solver.solution = unsafe_wrap(Vector{Float64}, pointer(model.displacement), num_dof)
+    end
+    return nothing
+end
+
+function initialize_storage(sim::MultiDomainSimulation)
+    for subsim in sim.subsims
+        initialize_storage(subsim)
+    end
+    return nothing
 end
 
 function SingleDomainSimulation(params::Parameters)
@@ -650,9 +676,9 @@ function restore_prev_state(sim::SingleDomainSimulation)
         integrator.velocity = global_transform * integrator.prev_velo
         integrator.acceleration = global_transform * integrator.prev_acce
     else
-        integrator.displacement = copy(integrator.prev_disp)
-        integrator.velocity = copy(integrator.prev_velo)
-        integrator.acceleration = copy(integrator.prev_acce)
+        integrator.displacement .= integrator.prev_disp
+        integrator.velocity .= integrator.prev_velo
+        integrator.acceleration .= integrator.prev_acce
     end
     sim.model.internal_force = copy(integrator.prev_∂Ω_f)
     copy_solution_source_to_targets(sim.integrator, sim.solver, sim.model)
@@ -704,9 +730,9 @@ function restore_stop_state(sim::MultiDomainSimulation)
             subsim.integrator.velocity = global_transform * controller.stop_velo[i]
             subsim.integrator.acceleration = global_transform * controller.stop_acce[i]
         else
-            subsim.integrator.displacement = copy(controller.stop_disp[i])
-            subsim.integrator.velocity = copy(controller.stop_velo[i])
-            subsim.integrator.acceleration = copy(controller.stop_acce[i])
+            subsim.integrator.displacement .= controller.stop_disp[i]
+            subsim.integrator.velocity .= controller.stop_velo[i]
+            subsim.integrator.acceleration .= controller.stop_acce[i]
         end
         subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
         copy_solution_source_to_targets(subsim.integrator, subsim.solver, subsim.model)
@@ -880,7 +906,7 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     # Tolerance value to calculate closest point projection, to avoid projection failure
     # Set to 10 times the minimum characteristic edge length of the side set nodes
     # TODO (BRP): perhaps calculate this "characteristic size" a priori, and only recalculate for finite kinematics
-    nodal_points = model.current[:, unique_node_indices]
+    nodal_points = model.reference[:, unique_node_indices] + model.displacement[:, unique_node_indices]
     # Compute minimum distances between the nodes in the side set
     max_distance_tolerance =
         10 * minimum([
@@ -889,7 +915,7 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
         ])
 
     for node_index in unique_node_indices
-        point = model.current[:, node_index]
+        point = model.reference[:, node_index] + model.displacement[:, node_index]
         # Precompute the face node distance
         face_nodes, face_node_indices, min_distance = closest_face_to_point(point, coupled_model, coupled_side_set_id)
         if min_distance > max_distance_tolerance

@@ -513,7 +513,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCond
         acce_val = bc.acce_fun(txzy)
 
         dof_index = 3 * (node_index - 1) + bc.offset
-        model.current[bc.offset, node_index] = model.reference[bc.offset, node_index] + disp_val
+        model.displacement[bc.offset, node_index] = disp_val
         model.velocity[bc.offset, node_index] = velo_val
         model.acceleration[bc.offset, node_index] = acce_val
         model.free_dofs[dof_index] = false
@@ -564,7 +564,7 @@ function apply_robin_bcs_internal_force!(model::SolidMechanics)
             for (i, node_i) in enumerate(side_nodes)
                 dof_i = 3 * (node_i - 1) + bc.offset
                 for (j, node_j) in enumerate(side_nodes)
-                    u_j = model.current[bc.offset, node_j] - model.reference[bc.offset, node_j]
+                    u_j = model.displacement[bc.offset, node_j]
                     model.internal_force[dof_i] += K_side[i, j] * u_j
                 end
             end
@@ -633,7 +633,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoun
         axis = normalize(SVector{3,Float64}(normal_vals))
         rotation_matrix = compute_rotation_matrix(axis)
 
-        original_disp = model.current[:, node_index] - model.reference[:, node_index]
+        original_disp = model.displacement[:, node_index]
         original_velocity = model.velocity[:, node_index]
         original_acceleration = model.acceleration[:, node_index]
 
@@ -651,8 +651,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoun
 
         model.velocity[:, node_index] = rotation_matrix' * SVector(local_original_velocity)
         model.acceleration[:, node_index] = rotation_matrix' * SVector(local_original_acceleration)
-        model.current[:, node_index] =
-            model.reference[:, node_index] + rotation_matrix' * SVector(local_original_displacement)
+        model.displacement[:, node_index] = rotation_matrix' * SVector(local_original_displacement)
 
         global_base = 3 * (node_index - 1)
         model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =

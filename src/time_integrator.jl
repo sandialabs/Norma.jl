@@ -256,7 +256,8 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
     Δt = integrator.time_step
     β = integrator.β
     γ = integrator.γ
-    u = integrator.displacement = solver.solution
+    integrator.displacement = solver.solution
+    u = integrator.displacement
     u_pre = integrator.disp_pre
     v_pre = integrator.velo_pre
     integrator.acceleration[free] = (u[free] - u_pre[free]) / β / Δt / Δt
@@ -307,7 +308,8 @@ end
 function correct(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     Δt = integrator.time_step
     γ = integrator.γ
-    a = integrator.acceleration = solver.solution
+    integrator.acceleration = solver.solution
+    a = integrator.acceleration
     free = model.free_dofs
     integrator.velocity[free] += γ * Δt * a[free]
     copy_solution_source_to_targets(integrator, solver, model)

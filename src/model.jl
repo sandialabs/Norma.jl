@@ -13,14 +13,11 @@ function SolidMechanics(params::Parameters)
     coords = read_coordinates(input_mesh)
     num_nodes = Exodus.num_nodes(input_mesh.init)
     reference = Matrix{Float64}(undef, 3, num_nodes)
-    current = Matrix{Float64}(undef, 3, num_nodes)
-    velocity = Matrix{Float64}(undef, 3, num_nodes)
-    acceleration = Matrix{Float64}(undef, 3, num_nodes)
+    displacement = zeros(3, num_nodes)
+    velocity = zeros(3, num_nodes)
+    acceleration = zeros(3, num_nodes)
     for node in 1:num_nodes
         reference[:, node] = coords[:, node]
-        current[:, node] = coords[:, node]
-        velocity[:, node] = [0.0, 0.0, 0.0]
-        acceleration[:, node] = [0.0, 0.0, 0.0]
     end
     material_params = model_params["material"]
     material_blocks = material_params["blocks"]
@@ -117,7 +114,7 @@ function SolidMechanics(params::Parameters)
         input_mesh,
         materials,
         reference,
-        current,
+        displacement,
         velocity,
         acceleration,
         internal_force,
@@ -235,7 +232,7 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
-            element_curr_pos = model.current[:, node_indices]
+            element_curr_pos = model.reference[:, node_indices] + model.displacement[:, node_indices]
             minimum_element_characteristic_length = characteristic_element_length_centroid(element_curr_pos)
             minimum_block_characteristic_length = min(
                 minimum_block_characteristic_length, minimum_element_characteristic_length
@@ -647,7 +644,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             else
                 element_reference_position = model.reference[:, node_indices]
             end
-            element_current_position = model.current[:, node_indices]
+            element_current_position = model.reference[:, node_indices] + model.displacement[:, node_indices]
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]

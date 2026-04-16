@@ -19,8 +19,8 @@ const cantilever_weak_example = "../examples/overlap/dynamic-same-step/cantileve
     end
     rm("cantilever-clamped.e"; force=true)
     rm("cantilever-free.e"; force=true)
-    max_disp_y_clamped = maximum(model_clamped.current[2, :] - model_clamped.reference[2, :])
-    max_disp_y_free = maximum(model_free.current[2, :] - model_free.reference[2, :])
+    max_disp_y_clamped = maximum(model_clamped.displacement[2, :])
+    max_disp_y_free = maximum(model_free.displacement[2, :])
     @test max_disp_y_clamped ≈ 9.147e-03 rtol = 1.0e-02
     @test max_disp_y_free ≈ 2.509e-02 rtol = 1.0e-02
 end

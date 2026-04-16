@@ -135,7 +135,7 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
     bc_vector = zeros(0)
     for node_index ∈ bc.fom_bc.node_set_node_indices
         dof_index = 3 * (node_index - 1) + bc.fom_bc.offset
-        disp_val = model.fom_model.current[bc.fom_bc.offset,node_index] - model.fom_model.reference[bc.fom_bc.offset, node_index]
+        disp_val = model.fom_model.displacement[bc.fom_bc.offset, node_index]
         push!(bc_vector,disp_val)
     end
 
@@ -170,7 +170,7 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOv
         bc_vector = zeros(3, length(unique_node_indices))
         for i in 1:length(unique_node_indices)
             node_index = unique_node_indices[i]
-            bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
+            bc_vector[:, i] = model.fom_model.displacement[:, node_index]
         end
 
         py"""
@@ -211,7 +211,7 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
         return nothing
     end
     n_var, n_node, n_mode = model.basis.size
-    n_var_fom, n_node_fom = size(model.fom_model.current)
+    n_var_fom, n_node_fom = size(model.fom_model.displacement)
 
     # Make sure basis is the right size
     if n_var != n_var_fom || n_node != n_node_fom
@@ -225,7 +225,7 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
         for j in 1:n_node
             for n in 1:n_var
                 model.reduced_state[k] +=
-                    model.basis[n, j, k] * (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
+                    model.basis[n, j, k] * model.fom_model.displacement[n, j]
                 model.reduced_velocity[k] += model.basis[n, j, k] * (model.fom_model.velocity[n, j])
             end
         end
@@ -252,7 +252,7 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
     apply_bc(model.fom_model, bc)
     bc_vector = zeros(0)
     for node_index in bc.node_set_node_indices
-        disp_val = model.fom_model.current[bc.offset, node_index] - model.fom_model.reference[bc.offset, node_index]
+        disp_val = model.fom_model.displacement[bc.offset, node_index]
         push!(bc_vector, disp_val)
     end
     offset = bc.offset
@@ -282,7 +282,7 @@ function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBou
         bc_vector = zeros(3, length(unique_node_indices))
         for i in eachindex(unique_node_indices)
             node_index = unique_node_indices[i]
-            bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
+            bc_vector[:, i] = model.fom_model.displacement[:, node_index]
         end
         op_name = "B_" * bc.name
         bc_operator = model.opinf_rom[op_name]
