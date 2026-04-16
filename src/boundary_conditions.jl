@@ -32,33 +32,6 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     )
 end
 
-function SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
-    node_set_name = bc_params["node set"]
-    expression = bc_params["function"]
-    node_set_id = node_set_id_from_name(node_set_name, input_mesh)
-    node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
-
-    # Build symbolic expressions
-    disp_num = eval(Meta.parse(expression))
-    velo_num = expand_derivatives(D(disp_num))
-    acce_num = expand_derivatives(D(velo_num))
-
-    # Compile them into functions
-    disp_fun = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
-    velo_fun = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
-    acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
-
-    reference_normal_expression_vector = bc_params["normal vector"]
-    reference_normal_nums = [eval(Meta.parse(string(ref_exp))) for ref_exp in reference_normal_expression_vector]
-
-    reference_funs = [
-        eval(build_function(norm_num, [t, x, y, z]; expression=Val(false))) for norm_num in reference_normal_nums
-    ]
-    return SolidMechanicsInclinedDirichletBoundaryCondition(
-        node_set_name, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun, reference_funs
-    )
-end
-
 function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
@@ -618,43 +591,4 @@ function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     end
 end
 
-function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoundaryCondition)
-    for node_index in bc.node_set_node_indices
-        txzy = (
-            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
-        )
 
-        disp_val = bc.disp_fun(txzy)
-        velo_val = bc.velo_fun(txzy)
-        acce_val = bc.acce_fun(txzy)
-
-        # Local basis from reference normal
-        normal_vals = [norm_fun(txzy) for norm_fun in bc.reference_funs]
-        axis = normalize(SVector{3,Float64}(normal_vals))
-        rotation_matrix = compute_rotation_matrix(axis)
-
-        original_disp = model.displacement[:, node_index]
-        original_velocity = model.velocity[:, node_index]
-        original_acceleration = model.acceleration[:, node_index]
-
-        local_original_displacement = MVector(rotation_matrix * original_disp)
-        local_original_velocity = MVector(rotation_matrix * original_velocity)
-        local_original_acceleration = MVector(rotation_matrix * original_acceleration)
-
-        model.free_dofs[3 * node_index - 2] = false
-        model.free_dofs[3 * node_index - 1] = true
-        model.free_dofs[3 * node_index] = true
-
-        local_original_displacement[1] = disp_val
-        local_original_velocity[1] = velo_val
-        local_original_acceleration[1] = acce_val
-
-        model.velocity[:, node_index] = rotation_matrix' * SVector(local_original_velocity)
-        model.acceleration[:, node_index] = rotation_matrix' * SVector(local_original_acceleration)
-        model.displacement[:, node_index] = rotation_matrix' * SVector(local_original_displacement)
-
-        global_base = 3 * (node_index - 1)
-        model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
-            rotation_matrix
-    end
-end

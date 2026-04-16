@@ -51,7 +51,6 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
         failed,
         fom_model,
         reference,
-        false
     )
 end
 
@@ -87,7 +86,6 @@ function LinearOpInfRom(params::Parameters)
         failed,
         fom_model,
         reference,
-        false,
     )
 end
 
@@ -122,7 +120,6 @@ function QuadraticOpInfRom(params::Parameters)
         failed,
         fom_model,
         reference,
-        false,
     )
 end
 
@@ -157,6 +154,5 @@ function CubicOpInfRom(params::Parameters)
         failed,
         fom_model,
         reference,
-        false,
     )
 end

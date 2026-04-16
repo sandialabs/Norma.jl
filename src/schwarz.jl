@@ -587,7 +587,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         integrator.acceleration .= interp_acce
     end
 
-    # Apply boundary condition detail
+    # Apply boundary condition detail (syncs ROM fom_model displacement if coupled is a RomModel)
     copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     apply_bc_detail(model, bc)
 
@@ -596,7 +596,6 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     integrator.velocity .= saved_velo
     integrator.acceleration .= saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
-
     copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
     return nothing
 end
@@ -638,7 +637,6 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
         # Update the rotation matrix
         axis = SVector{3,Float64}(-normalize(normal))
         bc.rotation_matrix = compute_rotation_matrix(axis)
-        model.global_transform[global_range, global_range] = bc.rotation_matrix
     end
 end
 
@@ -652,7 +650,6 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
             end
         end
     end
-    copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
     return nothing
 end
 
@@ -803,7 +800,6 @@ function create_bcs(params::Parameters)
     end
     input_mesh = params["input_mesh"]
     bc_params = params["boundary conditions"]
-    inclined_support_nodes = Vector{Int64}()
     for (bc_type, bc_type_params) in bc_params
         for bc_setting_params in bc_type_params
             if bc_type == "Dirichlet"
@@ -831,10 +827,6 @@ function create_bcs(params::Parameters)
                     coupled_subsim, input_mesh, bc_setting_params
                 )
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Inclined Dirichlet"
-                boundary_condition = SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh, bc_setting_params)
-                append!(inclined_support_nodes, boundary_condition.node_set_node_indices)
-                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap" || bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
                 sim = params["parent_simulation"]
                 subsim_name = params["name"]
@@ -859,11 +851,6 @@ function create_bcs(params::Parameters)
                 norma_abort("Unknown boundary condition type : $bc_type")
             end
         end
-    end
-    # BRP: do not support applying multiple inclined support BCs to a single node
-    duplicate_inclined_support_conditions = length(unique(inclined_support_nodes)) < length(inclined_support_nodes)
-    if duplicate_inclined_support_conditions
-        norma_abort("Cannot apply multiple inclined BCs to a single node.")
     end
     return boundary_conditions
 end
@@ -951,7 +938,6 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
             end
         end
     end
-    copy_solution_source_to_targets(model, integrator, solver)
     return nothing
 end
 
@@ -979,9 +965,6 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
             coupled_bc.is_dirichlet = !bc.is_dirichlet
             bc.coupled_bc_index = coupled_bc_index
             coupled_bc.coupled_bc_index = bc_index
-            if coupled_bc.is_dirichlet == false
-                coupled_model.inclined_support = false
-            end
         end
     end
     return nothing

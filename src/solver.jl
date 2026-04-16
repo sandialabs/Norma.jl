@@ -168,73 +168,8 @@ function create_step(solver_params::Parameters)
     end
 end
 
-function copy_solution_source_to_targets(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    model.inclined_support || return nothing
-    model.displacement .= reshape(model.global_transform' * integrator.displacement, 3, :)
-end
-
-function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::QuasiStatic)
-    model.inclined_support || return nothing
-    integrator.displacement = solver.solution
-    model.displacement .= reshape(model.global_transform' * solver.solution, 3, :)
-end
-
-function copy_solution_source_to_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
-    model.inclined_support || return nothing
-    integrator.displacement .= model.global_transform * reshape(model.displacement, :)
-    solver.solution = integrator.displacement
-end
-
-function copy_solution_source_to_targets(integrator::Newmark, solver::Solver, model::SolidMechanics)
-    model.inclined_support || return nothing
-    T = model.global_transform
-    model.displacement .= reshape(T' * integrator.displacement, 3, :)
-    model.velocity .= reshape(T' * integrator.velocity, 3, :)
-    model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
-end
-
-function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::Newmark)
-    model.inclined_support || return nothing
-    T = model.global_transform
-    integrator.displacement = solver.solution
-    model.displacement .= reshape(T' * solver.solution, 3, :)
-    model.velocity .= reshape(T' * integrator.velocity, 3, :)
-    model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
-end
-
-function copy_solution_source_to_targets(model::SolidMechanics, integrator::Newmark, solver::Solver)
-    model.inclined_support || return nothing
-    T = model.global_transform
-    integrator.displacement .= T * reshape(model.displacement, :)
-    integrator.velocity .= T * reshape(model.velocity, :)
-    integrator.acceleration .= T * reshape(model.acceleration, :)
-    solver.solution = integrator.displacement
-end
-
-function copy_solution_source_to_targets(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    model.inclined_support || return nothing
-    T = model.global_transform
-    model.displacement .= reshape(T' * integrator.displacement, 3, :)
-    model.velocity .= reshape(T' * integrator.velocity, 3, :)
-    model.acceleration .= reshape(T' * integrator.acceleration, 3, :)
-end
-
-function copy_solution_source_to_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
-    model.inclined_support || return nothing
-    T = model.global_transform
-    integrator.acceleration = solver.solution
-    model.displacement .= reshape(T' * integrator.displacement, 3, :)
-    model.velocity .= reshape(T' * integrator.velocity, 3, :)
-    model.acceleration .= reshape(T' * solver.solution, 3, :)
-end
-
-function copy_solution_source_to_targets(model::SolidMechanics, integrator::CentralDifference, solver::ExplicitSolver)
-    model.inclined_support || return nothing
-    T = model.global_transform
-    integrator.displacement .= T * reshape(model.displacement, :)
-    integrator.velocity .= T * reshape(model.velocity, :)
-    integrator.acceleration .= T * reshape(model.acceleration, :)
-    solver.solution = integrator.acceleration
+function copy_solution_source_to_targets(::TimeIntegrator, ::Solver, ::SolidMechanics)
+    return nothing
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
@@ -257,14 +192,8 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     K_total = nnz(K_io) > 0 ? K_total + K_io : K_total
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
-    if model.inclined_support == true
-        T = model.global_transform
-        solver.gradient = T * (model.internal_force + rs_internal_force + is_internal_force - external_force)
-        solver.hessian = T * K_total * T'
-    else
-        solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
-        solver.hessian = K_total
-    end
+    solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
+    solver.hessian = K_total
     return nothing
 end
 
@@ -280,11 +209,7 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     K_rs = build_robin_schwarz_stiffness(model)
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
-    if model.inclined_support == true
-        solver.gradient = model.global_transform * (model.internal_force + rs_internal_force + is_internal_force - external_force)
-    else
-        solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
-    end
+    solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
     return nothing
 end
 
@@ -314,12 +239,6 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
     internal_force = internal_force + rs_internal_force + is_internal_force
-    if model.inclined_support == true
-        global_transform = model.global_transform
-        internal_force = global_transform * internal_force
-        external_force = global_transform * external_force
-        stiffness = global_transform * stiffness * global_transform'
-    end
     solver.hessian = stiffness + model.mass / β / Δt / Δt
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
@@ -345,11 +264,6 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
     internal_force = internal_force + rs_internal_force + is_internal_force
-    if model.inclined_support == true
-        external_force = model.global_transform * external_force
-        internal_force = model.global_transform * internal_force
-    end
-    # External and internal force in local
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     # Gradient -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
@@ -379,7 +293,6 @@ function backtrack_line_search(
         norma_logf(8, :linesearch, "Line Search [%d] |ΔX| = %.2e", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
-        copy_solution_source_to_targets(solver, model, integrator)
         evaluate(integrator, solver, model)
         if model.failed == true
             step_length *= backtrack_factor
@@ -393,7 +306,6 @@ function backtrack_line_search(
         step_length *= backtrack_factor
     end
     solver.solution .= initial_solution
-    copy_solution_source_to_targets(solver, model, integrator)
     model.compute_stiffness = compute_stiffness
     model.compute_mass = compute_mass
     model.compute_lumped_mass = compute_lumped_mass
@@ -542,9 +454,6 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             end
             break
         end
-    end
-    if model.inclined_support == true
-        solver.gradient = model.global_transform' * solver.gradient
     end
     return nothing
 end

@@ -21,8 +21,7 @@ mutable struct NeuralNetworkOpInfRom <: OpInfModel
     failed::Bool
     fom_model::SolidMechanics
     reference::Matrix{Float64}
-    inclined_support::Bool
-end 
+end
 
 mutable struct CubicOpInfRom <: OpInfModel
     opinf_rom::Dict{Any,Any}
@@ -38,7 +37,6 @@ mutable struct CubicOpInfRom <: OpInfModel
     failed::Bool
     fom_model::SolidMechanics
     reference::Matrix{Float64}
-    inclined_support::Bool
 end
 
 mutable struct QuadraticOpInfRom <: OpInfModel
@@ -55,7 +53,6 @@ mutable struct QuadraticOpInfRom <: OpInfModel
     failed::Bool
     fom_model::SolidMechanics
     reference::Matrix{Float64}
-    inclined_support::Bool
 end
 
 mutable struct LinearOpInfRom <: OpInfModel
@@ -72,5 +69,4 @@ mutable struct LinearOpInfRom <: OpInfModel
     failed::Bool
     fom_model::SolidMechanics
     reference::Matrix{Float64}
-    inclined_support::Bool
 end

@@ -37,7 +37,7 @@ function initialize_storage(sim::SingleDomainSimulation)
     model = sim.model
     integrator = sim.integrator
     solver = sim.solver
-    model isa SolidMechanics && !model.inclined_support || return nothing
+    model isa SolidMechanics || return nothing
     num_dof = length(model.free_dofs)
     integrator.displacement = unsafe_wrap(Vector{Float64}, pointer(model.displacement), num_dof)
     integrator.velocity = unsafe_wrap(Vector{Float64}, pointer(model.velocity), num_dof)
@@ -291,13 +291,6 @@ end
 
 function create_bcs(sim::SingleDomainSimulation)
     boundary_conditions = create_bcs(sim.params)
-    for bc in boundary_conditions
-        if bc isa SolidMechanicsInclinedDirichletBoundaryCondition ||
-            bc isa SolidMechanicsContactSchwarzBoundaryCondition
-            sim.model.inclined_support = true
-            break
-        end
-    end
     return sim.model.boundary_conditions = boundary_conditions
 end
 
@@ -473,7 +466,6 @@ function initialize(sim::MultiDomainSimulation)
     apply_ics(sim)
     for (subsim_index, subsim) in enumerate(sim.subsims)
         if subsim.model isa SolidMechanics
-            copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
             save_history_snapshot(sim.controller, subsim, subsim_index)
         end
     end
@@ -654,34 +646,19 @@ end
 
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
-    if sim.model.inclined_support == true
-        global_transform_T = sim.model.global_transform'
-        integrator.prev_disp = global_transform_T * integrator.displacement
-        integrator.prev_velo = global_transform_T * integrator.velocity
-        integrator.prev_acce = global_transform_T * integrator.acceleration
-    else
-        integrator.prev_disp = copy(integrator.displacement)
-        integrator.prev_velo = copy(integrator.velocity)
-        integrator.prev_acce = copy(integrator.acceleration)
-    end
+    integrator.prev_disp = copy(integrator.displacement)
+    integrator.prev_velo = copy(integrator.velocity)
+    integrator.prev_acce = copy(integrator.acceleration)
     return integrator.prev_∂Ω_f = copy(sim.model.internal_force)
 end
 
 function restore_prev_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
     integrator.time = integrator.prev_time
-    if sim.model.inclined_support == true
-        global_transform = sim.model.global_transform
-        integrator.displacement = global_transform * integrator.prev_disp
-        integrator.velocity = global_transform * integrator.prev_velo
-        integrator.acceleration = global_transform * integrator.prev_acce
-    else
-        integrator.displacement .= integrator.prev_disp
-        integrator.velocity .= integrator.prev_velo
-        integrator.acceleration .= integrator.prev_acce
-    end
+    integrator.displacement .= integrator.prev_disp
+    integrator.velocity .= integrator.prev_velo
+    integrator.acceleration .= integrator.prev_acce
     sim.model.internal_force = copy(integrator.prev_∂Ω_f)
-    copy_solution_source_to_targets(sim.integrator, sim.solver, sim.model)
     return nothing
 end
 
@@ -701,17 +678,9 @@ function save_stop_state(sim::MultiDomainSimulation)
     end
     for i in 1:num_domains
         subsim = subsims[i]
-        # If this model has inclined support on, we need to rotate the integrator values
-        if subsim.model.inclined_support == true
-            global_transform_T = subsim.model.global_transform'
-            controller.stop_disp[i] = global_transform_T * subsim.integrator.displacement
-            controller.stop_velo[i] = global_transform_T * subsim.integrator.velocity
-            controller.stop_acce[i] = global_transform_T * subsim.integrator.acceleration
-        else
-            controller.stop_disp[i] = copy(subsim.integrator.displacement)
-            controller.stop_velo[i] = copy(subsim.integrator.velocity)
-            controller.stop_acce[i] = copy(subsim.integrator.acceleration)
-        end
+        controller.stop_disp[i] = copy(subsim.integrator.displacement)
+        controller.stop_velo[i] = copy(subsim.integrator.velocity)
+        controller.stop_acce[i] = copy(subsim.integrator.acceleration)
         controller.stop_∂Ω_f[i] = copy(subsim.model.internal_force)
     end
 end
@@ -723,19 +692,10 @@ function restore_stop_state(sim::MultiDomainSimulation)
     for i in 1:num_domains
         subsim = subsims[i]
         subsim.integrator.time = controller.prev_time
-        # If this model has inclined support on, we need to rotate the integrator values
-        if subsim.model.inclined_support == true
-            global_transform = subsim.model.global_transform
-            subsim.integrator.displacement = global_transform * controller.stop_disp[i]
-            subsim.integrator.velocity = global_transform * controller.stop_velo[i]
-            subsim.integrator.acceleration = global_transform * controller.stop_acce[i]
-        else
-            subsim.integrator.displacement .= controller.stop_disp[i]
-            subsim.integrator.velocity .= controller.stop_velo[i]
-            subsim.integrator.acceleration .= controller.stop_acce[i]
-        end
+        subsim.integrator.displacement .= controller.stop_disp[i]
+        subsim.integrator.velocity .= controller.stop_velo[i]
+        subsim.integrator.acceleration .= controller.stop_acce[i]
         subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
-        copy_solution_source_to_targets(subsim.integrator, subsim.solver, subsim.model)
     end
 end
 

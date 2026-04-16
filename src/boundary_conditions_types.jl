@@ -24,16 +24,6 @@ mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegular
     acce_fun::Function
 end
 
-mutable struct SolidMechanicsInclinedDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
-    name::String
-    node_set_id::Int64
-    node_set_node_indices::Vector{Int64}
-    disp_fun::Function
-    velo_fun::Function
-    acce_fun::Function
-    reference_funs::Vector{Function}
-end
-
 mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
     name::String
     offset::Int64

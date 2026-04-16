@@ -106,10 +106,6 @@ function SolidMechanics(params::Parameters)
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
-    inclined_support = false
-    num_dofs = 3 * num_nodes
-    global_transform = sparse(I, num_dofs, num_dofs)
-
     return SolidMechanics(
         input_mesh,
         materials,
@@ -137,8 +133,6 @@ function SolidMechanics(params::Parameters)
         failed,
         mesh_smoothing,
         smooth_reference,
-        inclined_support,
-        global_transform,
         kinematics,
     )
 end
