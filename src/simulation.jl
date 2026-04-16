@@ -829,19 +829,24 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     controller = sim.controller
     subsims = sim.subsims
     num_domains = sim.num_domains
-    norms_disp = zeros(num_domains)
+    norms_pos = zeros(num_domains)
     norms_diff = zeros(num_domains)
     for i in 1:num_domains
         Δt = controller.time_step
-        x_prev = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
-        x_curr = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
-        norms_disp[i] = norm(x_curr)
-        norms_diff[i] = norm(x_curr - x_prev)
+        u_prev = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
+        u_curr = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
+        if subsims[i].model isa SolidMechanics
+            X = vec(subsims[i].model.reference)
+            norms_pos[i] = norm(X + u_curr)
+        else
+            norms_pos[i] = norm(u_curr)
+        end
+        norms_diff[i] = norm(u_curr - u_prev)
     end
-    norm_disp = norm(norms_disp)
+    norm_pos = norm(norms_pos)
     norm_diff = norm(norms_diff)
     controller.absolute_error = norm_diff
-    controller.relative_error = norm_disp > 0.0 ? norm_diff / norm_disp : norm_diff
+    controller.relative_error = norm_pos > 0.0 ? norm_diff / norm_pos : norm_diff
     conv_abs = controller.absolute_error ≤ controller.absolute_tolerance
     conv_rel = controller.relative_error ≤ controller.relative_tolerance
     controller.converged = conv_abs || conv_rel
