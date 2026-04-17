@@ -16,6 +16,12 @@ Manifest.toml
 .JuliaFormatter.toml
 CLAUDE.md
 
+# Claude Code session data
+.claude/
+
+# Simulation log output
+*.log
+
 # CSV output artifacts
 *.csv
 # ROM training data (intentionally tracked)
