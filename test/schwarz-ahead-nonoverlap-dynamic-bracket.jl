@@ -40,17 +40,17 @@ using YAML
     avg_stress_bracket1 = average_components(model_bracket1.stress)
     avg_stress_bracket2 = average_components(model_bracket2.stress)
 
-    @test min_disp_x_bracket1 ≈ -2.292363909493874e-5 atol = 1e-12
-    @test min_disp_y_bracket1 ≈ -2.6772610574016253e-5 atol = 1e-12
-    @test max_disp_z_bracket1 ≈ 8.406701507824004e-5 atol = 1e-8
-    @test min_disp_x_bracket2 ≈ -0.00010879133317491518 atol = 1e-12
-    @test min_disp_y_bracket2 ≈ -4.821150003511687e-5 atol = 1e-12
-    @test max_disp_z_bracket2 ≈ 0.0008416546150997427 atol = 1e-8
+    @test min_disp_x_bracket1 ≈ -2.3109772377374713e-5 atol = 1e-12
+    @test min_disp_y_bracket1 ≈ -2.623329287039511e-5 atol = 1e-12
+    @test max_disp_z_bracket1 ≈ 8.31361801725248e-5 atol = 1e-8
+    @test min_disp_x_bracket2 ≈ -0.00010880437118793661 atol = 1e-12
+    @test min_disp_y_bracket2 ≈ -4.797628710582998e-5 atol = 1e-12
+    @test max_disp_z_bracket2 ≈ 0.0008416981567619049 atol = 1e-8
     @test avg_stress_bracket1 ≈
-        [1.4344587897170822e6 147404.28440152534 80028.09147772216 1331.5200561233653 -4.470431261192811e6 -102990.28645337945] atol =
+        [1.4192413927539876e6 142067.40948548086 70530.12143907226 4401.570527509202 -4.429717408950668e6 -82089.66015702633] atol =
         1.0e1
     @test avg_stress_bracket2 ≈
-        [-887460.5393152214 320509.9388991009 -380020.14019136556 -350857.5055218009 1.0378814655089243e6 -1.285348432558279e6] atol =
+        [-703646.6975001757 339049.60129851574 -373930.8318747518 -356610.12719172344 1.0757881235065155e6 -1.2796784551721965e6] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [
         1,
@@ -70,38 +70,38 @@ using YAML
         1,
         1,
         1,
+        1,
+        1,
+        2,
+        1,
         2,
         2,
-        3,
+        1,
+        2,
         3,
         3,
         4,
-        6,
-        7,
-        8,
-        8,
-        8,
-        8,
-        7,
-        7,
-        7,
-        8,
-        9,
-        9,
-        10,
-        10,
-        10,
-        10,
-        10,
-        10,
-        10,
-        10,
-        9,
-        9,
-        9,
-        9,
-        8,
-        8,
-        8,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
     ] atol = 0
 end
