@@ -48,6 +48,33 @@
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-01
 end
 
+@testset "Schwarz Nonoverlap Static Cuboid Hex8 Interface Predictor" begin
+    src = "../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann/"
+    cp(src * "cuboids-predictor.yaml", "cuboids-predictor.yaml"; force=true)
+    cp(src * "cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp(src * "cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp(src * "cuboid-1.g", "cuboid-1.g"; force=true)
+    cp(src * "cuboid-2.g", "cuboid-2.g"; force=true)
+
+    sim = Norma.run("cuboids-predictor.yaml")
+    model_fine = sim.subsims[1].model
+
+    rm("cuboids-predictor.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
+
+    @test sim.controller.use_interface_predictor == true
+    @test sim.failed == false
+    # Same physics as the baseline: at t = 1.0 the solution matches.
+    @test maximum(model_fine.displacement[3, :]) ≈ 0.5 rtol = 1.0e-06
+    avg_stress_fine = average_components(model_fine.stress)
+    @test avg_stress_fine[3] ≈ 5.0e+08 rtol = 1.0e-06
+end
+
 # @testset "Schwarz Nonoverlap Static Cuboid Hex8 Different Steps" begin
 #     cp("../examples/nonoverlap/static-different-steps/cuboids/cuboids.yaml","cuboids.yaml", force=true)
 #     cp("../examples/nonoverlap/static-different-steps/cuboids/cuboid-1.yaml","cuboid-1.yaml", force=true)

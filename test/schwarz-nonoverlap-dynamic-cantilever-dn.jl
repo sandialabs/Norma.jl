@@ -49,6 +49,7 @@ end
     sim_ref = run_cantilever_single(num_steps)
     sim_dn = run_cantilever_dn(num_steps, "cantilever-multi.yaml")
     sim_aitken = run_cantilever_dn(num_steps, "cantilever-multi-aitken.yaml")
+    sim_pred = run_cantilever_dn(num_steps, "cantilever-multi-predictor.yaml")
 
     # Reference: get tip displacement (max x node, y-component)
     m_ref = sim_ref.model
@@ -92,4 +93,13 @@ end
     iters_aitken = sim_aitken.controller.schwarz_iters[1:num_steps]
     @test sum(iters_aitken) < sum(iters)
     @test all(iters_aitken .≤ 10)
+
+    # Interface predictor: same physics, exercises compute_interface_predictor!
+    m_free_pred = sim_pred.subsims[1].model
+    uy_pred = m_free_pred.displacement[2, tip_free]
+    @test uy_pred ≈ uy_ref rtol = 1.0e-02
+    @test sim_pred.controller.use_interface_predictor == true
+    # Predictor should not make convergence worse than classical relaxation.
+    iters_pred = sim_pred.controller.schwarz_iters[1:num_steps]
+    @test all(iters_pred .≤ 30)
 end
