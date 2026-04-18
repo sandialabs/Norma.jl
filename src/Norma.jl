@@ -18,7 +18,8 @@ include("boundary_conditions_types.jl") # needs Simulation
 include("model_types.jl")              # needs BoundaryCondition
 include("time_integrator_types.jl")
 include("solver_types.jl")
-include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model
+include("swap_types.jl")                # SwapCriterion, SwapPlan
+include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model, SwapPlan
 
 # --- Methods ---
 include("constitutive.jl")
@@ -32,6 +33,7 @@ include("time_integrator.jl")
 include("solver.jl")
 include("io.jl")
 include("simulation.jl")
+include("swap.jl")
 
 function run(input_file::String)
     open_log_file(input_file)

@@ -170,15 +170,17 @@ function MultiDomainSimulation(params::Parameters)
         subsim_index += 1
     end
     num_domains = length(subsims)
+    swaps = parse_swap_plans(params)
     failed = false
     sim = MultiDomainSimulation(
         basename, params, controller, num_domains, subsims,
-        handle_by_name, name_by_handle, failed,
+        handle_by_name, name_by_handle, swaps, failed,
     )
     for (i, subsim) in enumerate(sim.subsims)
         subsim.parent = sim
         subsim.handle = DomainHandle(i)
     end
+    validate_swap_plans(sim)
     return sim
 end
 
@@ -322,6 +324,7 @@ function evolve(sim::Simulation)
     t_batch = time()
     while true
         advance_control_time(sim)
+        maybe_apply_swaps!(sim)
         sync_control_time(sim)
         advance_control(sim)
         write_stop(sim; wall_time=time() - t_batch)

@@ -89,5 +89,6 @@ mutable struct MultiDomainSimulation <: Simulation
     subsims::Vector{SingleDomainSimulation}
     handle_by_name::Dict{String,DomainHandle}
     name_by_handle::Vector{String}
+    swaps::Vector{SwapPlan}
     failed::Bool
 end
