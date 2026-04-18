@@ -58,7 +58,6 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     num_nodes_sides::Vector{Int64}
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
-    coupled_subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
@@ -68,6 +67,9 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     rotation_matrix::Matrix{Float64}
     active_contact::Bool
     friction_type::Int64
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -79,12 +81,13 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     global_from_local_map::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
-    coupled_subsim::Simulation
-    subsim::Simulation
     coupled_block_name::String
     search_tolerance::Float64
     dirichlet_projector::Matrix{Float64}
     use_weak::Bool
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 # Impedance-matching overlap Schwarz: replaces DBC-DBC with absorbing
@@ -99,12 +102,13 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     interpolation_function_values::Vector{Vector{Float64}}
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
-    coupled_subsim::Simulation
-    subsim::Simulation
     square_projector::Matrix{Float64}
     impedance::Float64
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
     impedance_scale::Vector{Float64}  # multiplier on Z per step (default [1.0])
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -114,7 +118,6 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     num_nodes_sides::Vector{Int64}
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
-    coupled_subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
@@ -122,6 +125,9 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     square_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
@@ -131,14 +137,15 @@ mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCoup
     num_nodes_sides::Vector{Int64}
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
-    coupled_subsim::Simulation
-    subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
     square_projector::Matrix{Float64}
     robin_parameter::Float64
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 # Impedance-matching Robin-Robin Schwarz: t + Z u̇ + α W u = g
@@ -152,8 +159,6 @@ mutable struct SolidMechanicsImpedanceSchwarzBoundaryCondition <: SolidMechanics
     num_nodes_sides::Vector{Int64}
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
-    coupled_subsim::Simulation
-    subsim::Simulation
     coupled_bc_name::String
     coupled_bc_index::Int64
     dirichlet_projector::Matrix{Float64}
@@ -161,6 +166,9 @@ mutable struct SolidMechanicsImpedanceSchwarzBoundaryCondition <: SolidMechanics
     square_projector::Matrix{Float64}
     impedance::Float64           # Z = ρ c_p = √(ρ(λ + 2μ))
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 include("opinf/opinf_ics_bcs_types.jl")

@@ -15,23 +15,27 @@
 
 get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : sim.model
 
+# Resolve the partner (coupled) subsim of a Schwarz BC through its parent via
+# the stable handle, so that swapping a subsim in its parent slot is transparent
+# to every BC.
+coupled_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.coupled_handle.id]
+self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsims[bc.self_handle.id]
+
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
     Z = bc.impedance
     α = bc.robin_parameter
     W = bc.square_projector
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     controller = parent_sim.controller
     iter = controller.iteration_number
-    coupled_subsim = bc.coupled_subsim
-    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    this_subsim = bc.subsim
-    this_index = parent_sim.subsim_name_index_map[this_subsim.name]
+    coupled_index = bc.coupled_handle.id
+    this_index = bc.self_handle.id
 
     # Neumann part: -t_src projected
     neumann_force = get_dst_force(bc)
 
     # Source displacement and velocity, projected to destination
-    src_sim = bc.coupled_subsim
+    src_sim = coupled_subsim_of(bc)
     src_model = get_fom_model(src_sim)
     src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
@@ -124,7 +128,7 @@ end
 
 function pair_bc(bc::SolidMechanicsImpedanceSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name
@@ -157,7 +161,7 @@ function _get_impedance_scale(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryC
     if length(scales) == 1
         return scales[1]
     end
-    parent_sim = bc.subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     step = max(1, parent_sim.controller.stop)
     return scales[min(step, length(scales))]
 end
@@ -167,10 +171,11 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     α = bc.robin_parameter
     W = bc.square_projector
 
-    get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
-        (field -> getfield(bc.coupled_subsim.model, field))
+    coupled_model_obj = coupled_subsim_of(bc).model
+    get_coupled_field = if coupled_model_obj isa SolidMechanics
+        (field -> getfield(coupled_model_obj, field))
     else
-        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+        (field -> getfield(coupled_model_obj.fom_model, field))
     end
 
     coupled_displacement = get_coupled_field(:displacement)
@@ -337,19 +342,17 @@ end
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBoundaryCondition)
     α = bc.robin_parameter
     W = bc.square_projector
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     num_domains = parent_sim.num_domains
     controller = parent_sim.controller
     iter = controller.iteration_number
-    coupled_subsim = bc.coupled_subsim
-    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    this_subsim = bc.subsim
-    this_index = parent_sim.subsim_name_index_map[this_subsim.name]
+    coupled_index = bc.coupled_handle.id
+    this_index = bc.self_handle.id
     # Neumann part of Robin RHS: -t_src projected (= get_dst_force which negates internal_force)
     neumann_force = get_dst_force(bc)
     # Displacement part of Robin RHS: α * W * u_src_projected
     # Compute source displacement (current - reference) and project to destination
-    src_sim = bc.coupled_subsim
+    src_sim = coupled_subsim_of(bc)
     src_model = get_fom_model(src_sim)
     src_bc_index = bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -401,10 +404,11 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
 end
 
 function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
-        (field -> getfield(bc.coupled_subsim.model, field))
+    coupled_model_obj = coupled_subsim_of(bc).model
+    get_coupled_field = if coupled_model_obj isa SolidMechanics
+        (field -> getfield(coupled_model_obj, field))
     else
-        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+        (field -> getfield(coupled_model_obj.fom_model, field))
     end
 
     coupled_reference = get_coupled_field(:reference)
@@ -429,11 +433,8 @@ function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSch
 end
 
 function coupling_weak_overlap_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    src_model = if bc.coupled_subsim.model isa SolidMechanics
-        bc.coupled_subsim.model
-    else
-        bc.coupled_subsim.model.fom_model
-    end
+    coupled_model_obj = coupled_subsim_of(bc).model
+    src_model = coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
 
     P = bc.dirichlet_projector
     global_from_local_map = bc.global_from_local_map
@@ -500,7 +501,7 @@ function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_ma
 end
 
 function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     controller = parent_sim.controller
 
     # Skip application if contact is inactive
@@ -508,7 +509,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         return nothing
     end
 
-    coupled_subsim = bc.coupled_subsim
+    coupled_subsim = coupled_subsim_of(bc)
     integrator = coupled_subsim.integrator
     coupled_model = coupled_subsim.model
 
@@ -520,7 +521,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
     # Fetch interpolation inputs
     time = model.time
-    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
+    coupled_index = bc.coupled_handle.id
     num_dofs = length(coupled_subsim.model.free_dofs)
 
     time_hist = controller.time_hist[coupled_index]
@@ -694,7 +695,7 @@ function extract_local_vector(bc::SolidMechanicsSchwarzBoundaryCondition, global
 end
 
 function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_model = dst_bc.coupled_subsim.model
+    src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     H = get_square_projection_matrix(src_model, src_bc)
@@ -704,7 +705,7 @@ function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SolidMecha
 end
 
 function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_model = dst_bc.coupled_subsim.model
+    src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     W = get_square_projection_matrix(dst_model, dst_bc)
@@ -714,7 +715,7 @@ function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMec
 end
 
 function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_sim = dst_bc.coupled_subsim
+    src_sim = coupled_subsim_of(dst_bc)
     src_model = src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -730,7 +731,7 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
 end
 
 function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_sim = dst_bc.coupled_subsim
+    src_sim = coupled_subsim_of(dst_bc)
     src_model = get_fom_model(src_sim)
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -797,8 +798,9 @@ function extract_value(symbol::Num)
     return Float64(symbol.val)
 end
 
-function create_bcs(params::Parameters)
+function _create_bcs(subsim::SingleDomainSimulation)
     boundary_conditions = Vector{BoundaryCondition}()
+    params = subsim.params
     if haskey(params, "boundary conditions") == false
         return boundary_conditions
     end
@@ -822,33 +824,24 @@ function create_bcs(params::Parameters)
                 boundary_condition = SolidMechanicsRobinBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
-                sim = params["parent_simulation"]
+                sim = subsim.parent
                 sim.controller.schwarz_contact = true
                 coupled_subsim_name = bc_setting_params["source"]
-                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
-                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
                 boundary_condition = SolidMechanicsContactSchwarzBoundaryCondition(
-                    coupled_subsim, input_mesh, bc_setting_params
+                    subsim, coupled_subsim, input_mesh, bc_setting_params
                 )
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap" || bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
-                sim = params["parent_simulation"]
-                subsim_name = params["name"]
-                subdomain_index = sim.subsim_name_index_map[subsim_name]
-                subsim = sim.subsims[subdomain_index]
+                sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
-                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
-                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
                 boundary_condition = SMCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "OpInf Schwarz overlap"
-                sim = params["parent_simulation"]
-                subsim_name = params["name"]
-                subdomain_index = sim.subsim_name_index_map[subsim_name]
-                subsim = sim.subsims[subdomain_index]
+                sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
-                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
-                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
                 boundary_condition = SMOpInfCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             else
@@ -962,7 +955,7 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
         return nothing
     end
     coupled_bc_name = bc.coupled_bc_name
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name
@@ -976,7 +969,7 @@ end
 
 function pair_bc(bc::SolidMechanicsRobinSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name

@@ -84,8 +84,14 @@ function SingleDomainSimulation(params::Parameters)
     norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
     norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
     failed = false
-    return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed)
+    return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing)
 end
+
+# True when this subsim belongs to a MultiDomainSimulation (i.e., is coupled).
+is_coupled(sim::SingleDomainSimulation) = sim.parent !== nothing
+
+# Resolve a domain name to its stable handle within a MultiDomainSimulation.
+handle(sim::MultiDomainSimulation, name::String) = sim.handle_by_name[name]
 
 _integrator_name(::QuasiStatic) = "Quasi-static"
 _integrator_name(::Newmark) = "Newmark"
@@ -140,7 +146,8 @@ function MultiDomainSimulation(params::Parameters)
     integrator_dt = params["time step"]
     exodus_interval = Float64(get(params, "Exodus output interval", integrator_dt))
     csv_interval = Float64(get(params, "CSV output interval", 0.0))
-    subsim_name_index_map = Dict{String,Int64}()
+    handle_by_name = Dict{String,DomainHandle}()
+    name_by_handle = String[]
     subsim_index = 1
     for domain_path in domain_paths
         domain_name = stripped_name(domain_path)
@@ -158,14 +165,19 @@ function MultiDomainSimulation(params::Parameters)
         subsim = SingleDomainSimulation(subparams)
         params[domain_name] = subsim.params
         push!(subsims, subsim)
-        subsim_name_index_map[domain_name] = subsim_index
+        handle_by_name[domain_name] = DomainHandle(subsim_index)
+        push!(name_by_handle, domain_name)
         subsim_index += 1
     end
     num_domains = length(subsims)
     failed = false
-    sim = MultiDomainSimulation(basename, params, controller, num_domains, subsims, subsim_name_index_map, failed)
-    for subsim in sim.subsims
-        subsim.params["parent_simulation"] = sim
+    sim = MultiDomainSimulation(
+        basename, params, controller, num_domains, subsims,
+        handle_by_name, name_by_handle, failed,
+    )
+    for (i, subsim) in enumerate(sim.subsims)
+        subsim.parent = sim
+        subsim.handle = DomainHandle(i)
     end
     return sim
 end
@@ -290,7 +302,7 @@ function create_controller(params::Parameters)
 end
 
 function create_bcs(sim::SingleDomainSimulation)
-    boundary_conditions = create_bcs(sim.params)
+    boundary_conditions = _create_bcs(sim)
     return sim.model.boundary_conditions = boundary_conditions
 end
 
@@ -859,7 +871,7 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     parametric_tol = 1.0e-06
     overlap = false
     unique_node_indices = unique(bc.side_set_node_indices)
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
     coupled_side_set_id = coupled_bc.side_set_id
 
@@ -928,7 +940,7 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
             elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
                 compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
-                coupled_model = get_fom_model(bc.coupled_subsim)
+                coupled_model = get_fom_model(coupled_subsim_of(bc))
                 W = get_square_projection_matrix(subsim.model, bc)
                 L = get_overlap_rectangular_projection_matrix(
                     subsim.model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
@@ -1014,13 +1026,13 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
             bc_k isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
             bc_k isa SolidMechanicsRobinSchwarzBoundaryCondition || continue
 
-            dom_j = sim.subsim_name_index_map[bc_k.coupled_subsim.name]
+            dom_j = bc_k.coupled_handle.id
             pair = minmax(dom_k, dom_j)
             pair ∈ processed && continue
             push!(processed, pair)
 
             subsim_j = sim.subsims[dom_j]
-            bc_j = bc_k.coupled_subsim.model.boundary_conditions[bc_k.coupled_bc_index]
+            bc_j = subsim_j.model.boundary_conditions[bc_k.coupled_bc_index]
 
             # Projectors: P_kj maps from domain j's interface space to domain k's
             #             P_jk maps from domain k's interface space to domain j's

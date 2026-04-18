@@ -146,12 +146,13 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
         global_from_local_map,
         coupled_nodes_indices,
         interpolation_function_values,
-        coupled_subsim,
-        subsim,
         coupled_block_name,
         tol,
         dirichlet_projector,
         use_weak,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -203,17 +204,21 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         interpolation_function_values,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
-        subsim,
         square_projector,
         impedance,
         robin_parameter,
         impedance_scale,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
 function SolidMechanicsContactSchwarzBoundaryCondition(
-    coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters
+    subsim::SingleDomainSimulation,
+    coupled_subsim::SingleDomainSimulation,
+    input_mesh::ExodusDatabase,
+    bc_params::Parameters,
 )
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
@@ -244,7 +249,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -254,6 +258,9 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         rotation_matrix,
         active_contact,
         friction_type,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -281,14 +288,15 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
-        subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
         neumann_projector,
         square_projector,
         robin_parameter,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -317,8 +325,6 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
-        subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -326,6 +332,9 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
         square_projector,
         impedance,
         robin_parameter,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -336,6 +345,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
     num_nodes_sides::Vector{Int64},
+    subsim::Simulation,
     coupled_subsim::Simulation,
     is_dirichlet::Bool,
     swap_bcs::Bool,
@@ -353,7 +363,6 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -361,6 +370,9 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         square_projector,
         is_dirichlet,
         swap_bcs,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -402,6 +414,7 @@ function SMCouplingSchwarzBC(
             side_set_id,
             side_set_node_indices,
             num_nodes_sides,
+            subsim,
             coupled_subsim,
             is_dirichlet,
             swap_bcs,

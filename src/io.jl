@@ -126,7 +126,7 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
 
     # For explicit dynamics, only print at output steps (suppresses per-step noise).
     # For implicit/quasi-static, print every step (Newton iterations provide context).
-    if haskey(params, "parent_simulation") == false
+    if !is_coupled(sim)
         if !is_explicit || is_output_step
             percent = 100 * stop / num_steps
             digits = max(0, Int64(ceil(log10(num_steps))) - 2)

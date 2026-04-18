@@ -8,11 +8,12 @@ mutable struct SolidMechanicsOpInfOverlapSchwarzBoundaryCondition <: SolidMechan
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
-    coupled_subsim::Simulation
-    subsim::Simulation
     fom_bc::SolidMechanicsOverlapSchwarzBoundaryCondition
     nn_model::Any
     basis::Array{Float64}
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
 end
 
 mutable struct SolidMechanicsOpInfDirichletBC <: SolidMechanicsRegularBoundaryCondition

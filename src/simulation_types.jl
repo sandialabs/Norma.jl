@@ -73,6 +73,12 @@ mutable struct SingleDomainSimulation <: Simulation
     solver::Solver
     model::Model
     failed::Bool
+    # Back-reference to the MultiDomainSimulation that owns this subsim, and a
+    # stable slot id. Both are nothing when the simulation is run standalone.
+    # Typed against the abstract Simulation because MultiDomainSimulation is
+    # defined below.
+    parent::Union{Nothing,Simulation}
+    handle::Union{Nothing,DomainHandle}
 end
 
 mutable struct MultiDomainSimulation <: Simulation
@@ -81,6 +87,7 @@ mutable struct MultiDomainSimulation <: Simulation
     controller::MultiDomainTimeController
     num_domains::Int64
     subsims::Vector{SingleDomainSimulation}
-    subsim_name_index_map::Dict{String,Int64}
+    handle_by_name::Dict{String,DomainHandle}
+    name_by_handle::Vector{String}
     failed::Bool
 end

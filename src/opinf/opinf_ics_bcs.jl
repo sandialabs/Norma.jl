@@ -100,11 +100,12 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
         fom_bc.side_set_node_indices,
         fom_bc.coupled_nodes_indices,
         fom_bc.interpolation_function_values,
-        coupled_subsim,
-        subsim,
         fom_bc,
         model,
-        basis
+        basis,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -161,7 +162,7 @@ end
 
    
 function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
-    if (typeof(bc.coupled_subsim.model) == SolidMechanics)
+    if (typeof(coupled_subsim_of(bc).model) == SolidMechanics)
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc.fom_bc)
 
@@ -272,7 +273,8 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
 end
 
 function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics || bc.coupled_subsim.model isa OpInfModel
+    coupled_model = coupled_subsim_of(bc).model
+    if coupled_model isa SolidMechanics || coupled_model isa OpInfModel
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
