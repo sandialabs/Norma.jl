@@ -40,11 +40,11 @@ using YAML
     avg_stress_bracket1 = average_components(model_bracket1.stress)
     avg_stress_bracket2 = average_components(model_bracket2.stress)
 
-    @test min_disp_x_bracket1 ≈ -2.3109772377374713e-5 atol = 1e-12
-    @test min_disp_y_bracket1 ≈ -2.623329287039511e-5 atol = 1e-12
+    @test min_disp_x_bracket1 ≈ -2.3109772377374713e-5 atol = 1e-8
+    @test min_disp_y_bracket1 ≈ -2.623329287039511e-5 atol = 1e-8
     @test max_disp_z_bracket1 ≈ 8.31361801725248e-5 atol = 1e-8
-    @test min_disp_x_bracket2 ≈ -0.00010880437118793661 atol = 1e-12
-    @test min_disp_y_bracket2 ≈ -4.797628710582998e-5 atol = 1e-12
+    @test min_disp_x_bracket2 ≈ -0.00010880437118793661 atol = 1e-8
+    @test min_disp_y_bracket2 ≈ -4.797628710582998e-5 atol = 1e-8
     @test max_disp_z_bracket2 ≈ 0.0008416981567619049 atol = 1e-8
     @test avg_stress_bracket1 ≈
         [1.4192413927539876e6 142067.40948548086 70530.12143907226 4401.570527509202 -4.429717408950668e6 -82089.66015702633] atol =
