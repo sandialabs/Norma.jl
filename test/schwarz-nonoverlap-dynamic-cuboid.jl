@@ -104,6 +104,24 @@ end
     @test all(iters[1:5] .≤ 20)
 end
 
+@testset "Schwarz Nonoverlap Dynamic Cuboid RR Interface Predictor" begin
+    sim = run_schwarz(rr_example, "cuboids-predictor.yaml")
+    u1z, u2z = interface_displacements(sim)
+    iters = sim.controller.schwarz_iters
+
+    @test sim.controller.use_interface_predictor == true
+    @test sim.failed == false
+
+    # Interface displacement continuity
+    @test maximum(u1z) ≈ minimum(u2z) rtol = 1.0e-03
+
+    # Applied BC matches single domain
+    @test maximum(u2z) ≈ 6.156e-03 rtol = 1.0e-02
+
+    # Schwarz convergence bounded
+    @test all(iters[1:5] .≤ 20)
+end
+
 @testset "Schwarz Nonoverlap Dynamic Cuboid Impedance" begin
     sim = run_schwarz(imp_example, "cuboids.yaml")
     u1z, u2z = interface_displacements(sim)
