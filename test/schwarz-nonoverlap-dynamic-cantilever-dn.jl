@@ -24,18 +24,19 @@ function run_cantilever_single(num_steps)
     return sim
 end
 
-# Run the DN Schwarz cantilever for a given number of steps.
-function run_cantilever_dn(num_steps)
-    for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
+# Run the DN Schwarz cantilever for a given number of steps using the
+# specified multi-domain driver YAML.
+function run_cantilever_dn(num_steps, driver)
+    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml",
               "cantilever-clamped.g", "cantilever-free.g"]
         cp("$cantilever_dn_example/$f", f; force=true)
     end
-    params = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
+    params = YAML.load_file(driver; dicttype=Norma.Parameters)
     dt = 5.0e-07
     params["final time"] = num_steps * dt
-    params["name"] = "cantilever-multi.yaml"
+    params["name"] = driver
     sim = Norma.run(params)
-    for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
+    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml",
               "cantilever-clamped.g", "cantilever-free.g",
               "cantilever-clamped.e", "cantilever-free.e"]
         rm(f; force=true)
@@ -46,7 +47,8 @@ end
 @testset "Schwarz Nonoverlap Dynamic Cantilever DN" begin
     num_steps = 10
     sim_ref = run_cantilever_single(num_steps)
-    sim_dn = run_cantilever_dn(num_steps)
+    sim_dn = run_cantilever_dn(num_steps, "cantilever-multi.yaml")
+    sim_aitken = run_cantilever_dn(num_steps, "cantilever-multi-aitken.yaml")
 
     # Reference: get tip displacement (max x node, y-component)
     m_ref = sim_ref.model
@@ -79,4 +81,15 @@ end
     # Schwarz convergence bounded
     iters = sim_dn.controller.schwarz_iters[1:num_steps]
     @test all(iters .≤ 30)
+
+    # Aitken: same physics (reuse tip node index from free subdomain).
+    m_free_aitken = sim_aitken.subsims[1].model
+    uy_aitken = m_free_aitken.displacement[2, tip_free]
+    @test uy_aitken ≈ uy_ref rtol = 1.0e-02
+    @test sim_aitken.controller.relaxation_method == :aitken
+
+    # Aitken should reduce Schwarz iterations vs classical θ=0.5 on this problem.
+    iters_aitken = sim_aitken.controller.schwarz_iters[1:num_steps]
+    @test sum(iters_aitken) < sum(iters)
+    @test all(iters_aitken .≤ 10)
 end

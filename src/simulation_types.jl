@@ -37,10 +37,15 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     acce_hist::Vector{Vector{Vector{Float64}}}
     ∂Ω_f_hist::Vector{Vector{Vector{Float64}}}
     relaxation_parameter::Float64
+    relaxation_method::Symbol
     naive_stabilized::Bool
     lambda_disp::Vector{Vector{Float64}}
     lambda_velo::Vector{Vector{Float64}}
     lambda_acce::Vector{Vector{Float64}}
+    aitken_prev_residual_disp::Vector{Vector{Float64}}
+    aitken_prev_residual_velo::Vector{Vector{Float64}}
+    aitken_prev_residual_acce::Vector{Vector{Float64}}
+    aitken_theta_disp::Vector{Float64}
     is_schwarz::Bool
     schwarz_contact::Bool
     active_contact::Bool

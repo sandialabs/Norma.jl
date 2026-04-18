@@ -213,11 +213,33 @@ function SolidMultiDomainTimeController(params::Parameters)
     velo_hist = [Vector{Float64}[] for _ in 1:num_domains]
     acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
-    relaxation_parameter = get(params, "relaxation parameter", 1.0)
+    has_relaxation_key = haskey(params, "relaxation")
+    has_relaxation_parameter = haskey(params, "relaxation parameter")
+    if has_relaxation_key && has_relaxation_parameter
+        norma_abort(
+            "Schwarz controller: specify either `relaxation: aitken` or `relaxation parameter: <float>`, not both.",
+        )
+    end
+    relaxation_method = :fixed
+    relaxation_parameter = 1.0
+    if has_relaxation_key
+        relaxation_value = params["relaxation"]
+        if relaxation_value isa AbstractString && lowercase(relaxation_value) == "aitken"
+            relaxation_method = :aitken
+        else
+            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken` is recognized).")
+        end
+    elseif has_relaxation_parameter
+        relaxation_parameter = Float64(params["relaxation parameter"])
+    end
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_acce = [Vector{Float64}[] for _ in 1:num_domains]
+    aitken_prev_residual_disp = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_prev_residual_velo = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_prev_residual_acce = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_theta_disp = ones(Float64, num_domains)
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
@@ -260,10 +282,15 @@ function SolidMultiDomainTimeController(params::Parameters)
         acce_hist,
         ∂Ω_f_hist,
         relaxation_parameter,
+        relaxation_method,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
         lambda_acce,
+        aitken_prev_residual_disp,
+        aitken_prev_residual_velo,
+        aitken_prev_residual_acce,
+        aitken_theta_disp,
         is_schwarz,
         schwarz_contact,
         active_contact,

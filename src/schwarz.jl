@@ -4,6 +4,8 @@
 # and contact Schwarz BCs. Projectors, time history interpolation,
 # and interface force/displacement transfer.
 
+using LinearAlgebra: dot
+
 # ---------------------------------------------------------------------------
 # Impedance-matching Robin Schwarz: t + Z u̇ + α W u = g
 # ---------------------------------------------------------------------------
@@ -20,6 +22,51 @@ get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : 
 # to every BC.
 coupled_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.coupled_handle.id]
 self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsims[bc.self_handle.id]
+
+# Safeguard bounds for Aitken θ. Very small ‖δ‖² implies a stale residual
+# direction; clamp aggressive magnitudes to avoid divergence on near-parallel
+# residuals.
+const AITKEN_THETA_MIN = 0.1
+const AITKEN_THETA_MAX = 2.0
+const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
+
+# Returns the relaxation factor θ applied to interp_disp for this Schwarz
+# iterate. Fixed mode returns the user-configured constant; Aitken mode uses
+# Irons–Tuck with the previous residual stored on the controller.
+function relaxation_theta!(
+    controller::MultiDomainTimeController,
+    slot::Int,
+    iter::Int,
+    interp_disp::AbstractVector{Float64},
+    lambda_prev::AbstractVector{Float64},
+)
+    if controller.relaxation_method !== :aitken
+        return controller.relaxation_parameter
+    end
+    if iter < 1
+        controller.aitken_theta_disp[slot] = 1.0
+        controller.aitken_prev_residual_disp[slot] = Float64[]
+        return 1.0
+    end
+    residual = interp_disp .- lambda_prev
+    prev_residual = controller.aitken_prev_residual_disp[slot]
+    θ_prev = controller.aitken_theta_disp[slot]
+    θ = 1.0
+    if !isempty(prev_residual) && length(prev_residual) == length(residual)
+        δ = residual .- prev_residual
+        δ_sq = dot(δ, δ)
+        if δ_sq > AITKEN_DELTA_SQ_FLOOR
+            θ = -θ_prev * dot(prev_residual, δ) / δ_sq
+            θ = clamp(θ, AITKEN_THETA_MIN, AITKEN_THETA_MAX)
+        else
+            θ = θ_prev
+        end
+    end
+    controller.aitken_prev_residual_disp[slot] = residual
+    controller.aitken_theta_disp[slot] = θ
+    norma_logf(1, :schwarz, "Aitken θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
+    return θ
+end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
     Z = bc.impedance
@@ -567,14 +614,13 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
     # Apply relaxed update if needed
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-        θ = controller.relaxation_parameter
-
         iter = controller.iteration_number
         λ_u_prev = iter < 1 ? interp_disp : controller.lambda_disp[coupled_index]
         λ_v_prev = iter < 1 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 1 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        # Classical relaxation
+        θ = relaxation_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+
         controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
         controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
         controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
