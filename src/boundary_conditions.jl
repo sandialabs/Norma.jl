@@ -168,7 +168,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
-    impedance_scale::Float64,
+    impedance_scale::Vector{Float64},
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
