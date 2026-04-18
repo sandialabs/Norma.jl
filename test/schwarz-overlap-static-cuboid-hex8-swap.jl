@@ -35,9 +35,8 @@
     @test sim.failed == false
     @test sim.controller.time ≈ 1.0 rtol = 1.0e-09
 
-    # Softer phase-2 material (E halved) with kinematically-fixed overlap:
-    # displacement is pinned by Dirichlet BCs + Schwarz interpolation, but
-    # stress halves with E.  Baseline (no swap) σ_zz ≈ 5e8; phase-2 ≈ 2.5e8.
+    # Phase-2 matches phase-1 materials, so the post-swap solution should
+    # match the no-swap baseline stress of 5e8.
     avg_stress_fine = average_components(sim.subsims[1].model.stress)
-    @test avg_stress_fine[3] ≈ 2.5e8 rtol = 1.0e-06
+    @test avg_stress_fine[3] ≈ 5.0e8 rtol = 1.0e-06
 end
