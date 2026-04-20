@@ -5,15 +5,15 @@ function RBFKernelROM(params::Parameters)
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
     rom_model_file = params["model"]["model-file"]
-    rom_model = NPZ.npzread(rom_model_file)
+    opinf_rom = NPZ.npzread(rom_model_file)
 
     interpolant = RBFKernelInterpolant(
-        get_rbf_kernel(params["model"]["rbf-type"], rom_model["rbf-shape-parameter"]),
-        Matrix{Float64}(rom_model["rbf-coefficients"]),
-        Matrix{Float64}(rom_model["input-data"]),
+        get_rbf_kernel(params["model"]["rbf-type"], opinf_rom["rbf-shape-parameter"]),
+        Matrix{Float64}(opinf_rom["rbf-coefficients"]),
+        Matrix{Float64}(opinf_rom["input-data"]),
     )
 
-    basis = rom_model["basis"]
+    basis = opinf_rom["basis"]
     _, _, reduced_dim = size(basis)
     num_dofs = reduced_dim
     time = 0.0
@@ -28,6 +28,7 @@ function RBFKernelROM(params::Parameters)
     boundary_conditions = Vector{BoundaryCondition}()
     return RBFKernelROM(
         interpolant,
+        opinf_rom,
         forcing,
         basis,
         reduced_state,

@@ -2,6 +2,7 @@ include("rbf.jl")
 
 mutable struct RBFKernelROM <: OpInfModel
     interpolant::RBFKernelInterpolant
+    opinf_rom::Dict{Any,Any}
     forcing::Vector{Float64}
     basis::Array{Float64}
     reduced_state::Vector{Float64}
