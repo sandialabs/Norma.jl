@@ -24,6 +24,7 @@ include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model
 include("constitutive.jl")
 include("interpolation.jl")
 include("opinf/opinf_model.jl")
+include("kroms/krom_model.jl")
 include("model.jl")
 include("boundary_conditions.jl")
 include("schwarz.jl")

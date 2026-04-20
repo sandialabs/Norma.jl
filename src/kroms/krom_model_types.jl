@@ -1,4 +1,6 @@
-mutable struct RBFKernelROM <: RomModel
+include("rbf.jl")
+
+mutable struct RBFKernelROM <: OpInfModel
     interpolant::RBFKernelInterpolant
     forcing::Vector{Float64}
     basis::Array{Float64}

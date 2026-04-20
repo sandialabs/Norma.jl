@@ -91,3 +91,4 @@ mutable struct SolidMechanics <: Model
 end
 
 include("opinf/opinf_model_types.jl")
+include("kroms/krom_model_types.jl")

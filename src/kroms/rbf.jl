@@ -1,5 +1,5 @@
-using LinearAlgebra
-using Printf
+# using LinearAlgebra
+# using Printf
 
 include("rbf_types.jl")
 include("helpers.jl")
@@ -179,5 +179,5 @@ function test_fd_jac()
     _test_fd_jac_for_decreasing_h(f, x, dfdx(x))
 end
 
-test_rbf()
-test_fd_jac()
+# test_rbf()
+# test_fd_jac()

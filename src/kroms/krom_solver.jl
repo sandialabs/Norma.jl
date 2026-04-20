@@ -9,7 +9,7 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::RB
 
     # Create tangent stiffness for quadratic operator
     val, LHS_nonlinear = evaluate_rbf_interpolant(model.interpolant, solver.solution)
-    LHS_linear = I / (dt * dt * beta) 
+    LHS_linear = I / (dt * dt * beta)
 
     RHS =
         model.forcing +

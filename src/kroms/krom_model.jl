@@ -8,20 +8,17 @@ function RBFKernelROM(params::Parameters)
     rom_model = NPZ.npzread(rom_model_file)
 
     interpolant = RBFKernelInterpolant(
-        get_rbf_kernel(
-            params["model"]["type"], 
-            rom_model["rbf-shape-parameter"]
-        ),
+        get_rbf_kernel(params["model"]["rbf-type"], rom_model["rbf-shape-parameter"]),
         Matrix{Float64}(rom_model["rbf-coefficients"]),
         Matrix{Float64}(rom_model["input-data"]),
     )
-    forcing = rom_model["f"]
-    
+
     basis = rom_model["basis"]
     _, _, reduced_dim = size(basis)
     num_dofs = reduced_dim
     time = 0.0
     failed = false
+    forcing = zeros(num_dofs)
     null_vec = zeros(num_dofs)
 
     reduced_state = zeros(num_dofs)
@@ -31,7 +28,7 @@ function RBFKernelROM(params::Parameters)
     boundary_conditions = Vector{BoundaryCondition}()
     return RBFKernelROM(
         interpolant,
-        forcing, 
+        forcing,
         basis,
         reduced_state,
         reduced_velocity,
@@ -47,20 +44,20 @@ function RBFKernelROM(params::Parameters)
     )
 end
 
-function get_rbf_kernel(model_type::String, shape::Float64)
-    if model_type == "gaussian kernel rom"
+function get_rbf_kernel(rbf_type::String, shape::Float64)
+    if rbf_type == "gaussian"
         return GaussianRBFKernel(shape)
-    elseif model_type == "inverse-quadratic kernel rom"
+    elseif rbf_type == "inverse-quadratic"
         return InverseQuadraticRBFKernel(shape)
-    elseif model_type == "inverse-multiquadric kernel rom"
+    elseif rbf_type == "inverse-multiquadric"
         return InverseMultiquadricRBFKernel(shape)
-    elseif model_type == "thin-plate-spline kernel rom"
+    elseif rbf_type == "thin-plate-spline"
         return ThinPlateSplineRBFKernel(shape)
-    elseif model_type == "basic-matern kernel rom"
+    elseif rbf_type == "basic-matern"
         return BasicMaternKernel(shape)
-    elseif model_type == "linear-matern kernel rom"
+    elseif rbf_type == "linear-matern"
         return LinearMaternKernel(shape)
-    elseif model_type == "quadatic-matern kernel rom"
+    elseif rbf_type == "quadatic-matern"
         return QuadraticMaternKernel(shape)
     end
 end
