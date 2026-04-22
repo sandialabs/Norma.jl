@@ -6,7 +6,7 @@ include("helpers.jl")
 
 function evaluate_rbf_interpolant(interpolant::RBFKernelInterpolant, y::Vector{Float64})
     val, jac = evaluate_kernel_with_jacobian(interpolant.rbf, interpolant.training_data, y)
-    return -interpolant.coefficients*val, -interpolant.coefficients*jac
+    return interpolant.coefficients*val, interpolant.coefficients*jac
 end
 
 function evaluate_kernel_with_jacobian(

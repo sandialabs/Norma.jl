@@ -35,9 +35,7 @@ function test_compute_squared_distances()
     error = frobenius_norm(true_dists-computed_dists)
 
     println("squared distance error = ", error)
-    if error > 1e-16
-        return false
-    else
-        return true
-    end
+    return error < 1e-15
 end
+
+# println(test_compute_squared_distances())
