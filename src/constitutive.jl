@@ -195,8 +195,14 @@ end
 ]
 
 function second_from_fourth(AA::SArray{Tuple{3,3,3,3},Float64,4})
-    # Reshape the 3x3x3x3 tensor to 9x9 directly
-    return SMatrix{9,9,Float64,81}(reshape(AA, 9, 9)')
+    # Row-major pair packing: M[3(i-1)+j, 3(k-1)+l] = AA[i,j,k,l].
+    # Matches the row-major layout of the gradient operator so that
+    # grad_op' * M * grad_op yields the standard element stiffness.
+    M = MMatrix{9,9,Float64,81}(undef)
+    @inbounds for i in 1:3, j in 1:3, k in 1:3, l in 1:3
+        M[3 * (i - 1) + j, 3 * (k - 1) + l] = AA[i, j, k, l]
+    end
+    return SMatrix(M)
 end
 
 const I3 = @SMatrix [

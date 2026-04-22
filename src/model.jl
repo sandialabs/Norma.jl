@@ -550,7 +550,7 @@ function compute_element_threadlocal_arrays!(
 ) where {T,N}
     t = threadid()
     grad_op = create_gradient_operator(dNdX)
-    stress = SVector{9,Float64}(P)
+    stress = SVector{9,Float64}(P')
     element_arrays_tl.energy[t] += W * dvol
     add_internal_force!(element_arrays_tl.internal_force[t], grad_op, stress, dvol)
     if flags.compute_lumped_mass == true
@@ -644,7 +644,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 dNdξ = dN[:, :, point]
                 dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
                 dNdX = dXdξ \ dNdξ
-                F = SMatrix{3,3,Float64,9}(dNdX * element_current_position')
+                F = SMatrix{3,3,Float64,9}(element_current_position * dNdX')
                 J = det(F)
                 if J ≤ 0.0 || isfinite(J) == false
                     model.failed = true
