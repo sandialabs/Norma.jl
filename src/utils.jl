@@ -46,12 +46,14 @@ const NORMA_COLORS = Dict(
     :linesearch => :cyan,
     :norma => :magenta,
     :output => :cyan,
+    :progress => :green,
     :recover => :yellow,
     :schwarz => :light_blue,
     :setup => :magenta,
     :solve => :cyan,
     :step => :green,
     :stop => :blue,
+    :swap => :light_magenta,
     :summary => :magenta,
     :test => :light_green,
     :time => :light_cyan,
@@ -60,6 +62,25 @@ const NORMA_COLORS = Dict(
 
 function visible_length(s::AbstractString)
     return length(replace(s, r"\e\[[0-9;]*m" => ""))
+end
+
+const NORMA_WRITE_LOG_FILE = Ref(true)
+const NORMA_LOG_FILE = Ref{Union{IOStream,Nothing}}(nothing)
+
+function open_log_file(input_file::AbstractString)
+    NORMA_WRITE_LOG_FILE[] || return nothing
+    NORMA_LOG_FILE[] === nothing || return nothing  # outermost run() owns the file
+    path = first(splitext(input_file)) * ".log"
+    NORMA_LOG_FILE[] = open(path, "w")
+    return nothing
+end
+
+function close_log_file()
+    io = NORMA_LOG_FILE[]
+    io === nothing && return nothing
+    close(io)
+    NORMA_LOG_FILE[] = nothing
+    return nothing
 end
 
 function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
@@ -80,6 +101,17 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     else
         wrapped = wrap_lines(msg, prefix; width=120 - length(prefix))
         println(wrapped)
+    end
+
+    io = NORMA_LOG_FILE[]
+    if io !== nothing
+        plain = replace(msg, r"\e\[[0-9;]*m" => "")
+        if visible_length(prefix * plain) <= 120
+            println(io, prefix, plain)
+        else
+            println(io, prefix, wrap_lines(plain, prefix; width=120 - length(prefix)))
+        end
+        flush(io)
     end
 end
 
@@ -193,6 +225,8 @@ function colored_status(status::String)
         return _use_color() ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
     elseif status == "[CONVERGED]"
         return _use_color() ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
+    elseif status == "[INITIAL]"
+        return _use_color() ? "\e[36m[INITIAL]\e[39m" : "[INITIAL]"  # cyan
     else
         return status  # fallback (no color)
     end

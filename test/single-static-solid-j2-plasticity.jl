@@ -27,9 +27,9 @@
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
 
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)

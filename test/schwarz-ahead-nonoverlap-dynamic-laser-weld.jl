@@ -26,26 +26,26 @@ using YAML
     model_gauge = subsims[2].model
     model_holder1 = subsims[3].model
 
-    rm("laser-weld.yaml")
-    rm("holder-0.yaml")
-    rm("holder-1.yaml")
-    rm("gauge.yaml")
-    rm("../../holder-0.g")
-    rm("../../holder-1.g")
-    rm("../../gauge.g")
-    rm("holder-0.e")
-    rm("holder-1.e")
-    rm("gauge.e")
+    rm("laser-weld.yaml"; force=true)
+    rm("holder-0.yaml"; force=true)
+    rm("holder-1.yaml"; force=true)
+    rm("gauge.yaml"; force=true)
+    rm("../../holder-0.g"; force=true)
+    rm("../../holder-1.g"; force=true)
+    rm("../../gauge.g"; force=true)
+    rm("holder-0.e"; force=true)
+    rm("holder-1.e"; force=true)
+    rm("gauge.e"; force=true)
 
-    min_disp_x_holder0 = minimum(model_holder0.current[1, :] - model_holder0.reference[1, :])
-    min_disp_y_holder0 = minimum(model_holder0.current[2, :] - model_holder0.reference[2, :])
-    max_disp_z_holder0 = maximum(model_holder0.current[3, :] - model_holder0.reference[3, :])
-    min_disp_x_gauge = minimum(model_gauge.current[1, :] - model_gauge.reference[1, :])
-    min_disp_y_gauge = minimum(model_gauge.current[2, :] - model_gauge.reference[2, :])
-    max_disp_z_gauge = maximum(model_gauge.current[3, :] - model_gauge.reference[3, :])
-    min_disp_x_holder1 = minimum(model_holder1.current[1, :] - model_holder1.reference[1, :])
-    min_disp_y_holder1 = minimum(model_holder1.current[2, :] - model_holder1.reference[2, :])
-    max_disp_z_holder1 = maximum(model_holder1.current[3, :] - model_holder1.reference[3, :])
+    min_disp_x_holder0 = minimum(model_holder0.displacement[1, :])
+    min_disp_y_holder0 = minimum(model_holder0.displacement[2, :])
+    max_disp_z_holder0 = maximum(model_holder0.displacement[3, :])
+    min_disp_x_gauge = minimum(model_gauge.displacement[1, :])
+    min_disp_y_gauge = minimum(model_gauge.displacement[2, :])
+    max_disp_z_gauge = maximum(model_gauge.displacement[3, :])
+    min_disp_x_holder1 = minimum(model_holder1.displacement[1, :])
+    min_disp_y_holder1 = minimum(model_holder1.displacement[2, :])
+    max_disp_z_holder1 = maximum(model_holder1.displacement[3, :])
     avg_stress_holder0 = average_components(model_holder0.stress)
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
@@ -60,13 +60,13 @@ using YAML
     @test min_disp_y_holder1 ≈ 0.0002347720124472319 atol = 1e-12
     @test max_disp_z_holder1 ≈ 0.0 atol = 1e-12
     @test avg_stress_holder0 ≈
-        [-347.2952621025714 1.779756641336082e6 -50228.8267131982 -45948.63812512076 1256.8140734551034 1552.3817735536772] atol =
+        [-346.98214729874337 1.779760561862967e6 -50233.06035476495 -45951.88333708876 1255.3331344265928 1554.3140211168936] atol =
         1.0e1
     @test avg_stress_gauge ≈
-        [16307.91045774699 1.8456134951562744e6 122515.71404194713 4597.490270138605 29921.25462126608 69.25014793291975] atol =
+        [16328.8628137128 1.84664104865588e6 121467.20818681682 4584.026400893279 29936.877739450956 69.36019489750036] atol =
         1.0e1
     @test avg_stress_holder1 ≈
-        [-1055.1081565396116 1.7715920026799848e6 -54253.75330945497 50596.86677411042 1621.9244363209552 -1379.4346869455705] atol =
+        [-1054.751995236128 1.7715978058931958e6 -54259.9126842316 50591.113276641314 1620.4225341530955 -1379.8420874727585] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [26, 38, 44, 48, 51] atol = 0
+    @test sim.controller.schwarz_iters ≈ [25, 37, 43, 47, 50] atol = 0
 end

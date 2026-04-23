@@ -12,6 +12,9 @@ using Norma
 
 include("helpers.jl")
 
+# Suppress per-input .log files during the test suite.
+Norma.NORMA_WRITE_LOG_FILE[] = false
+
 # List of all test files (ordered)
 const indexed_test_files = [
     (1, "minitensor.jl"),
@@ -35,8 +38,7 @@ const indexed_test_files = [
     (19, "transfer-operators.jl"),
     (20, "schwarz-contact-static-cubes.jl"),
     (21, "schwarz-contact-dynamic-cubes.jl"),
-    (22, "solid-inclined-displacement.jl"),
-    (23, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (22, "opinf-schwarz-overlap-cuboid-hex8.jl"),
     (24, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
     (25, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
     (26, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
@@ -69,6 +71,10 @@ const indexed_test_files = [
     (53, "single-static-solid-j2-plasticity.jl"),
     (54, "utils.jl"),
     (55, "schwarz-nonoverlap-dynamic-cantilever-dn.jl"),
+    (56, "schwarz-overlap-dynamic-cantilever-weak.jl"),
+    (57, "schwarz-overlap-static-cuboid-hex8-swap.jl"),
+    (58, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
+    (59, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
 ]
 
 # Extract test file names

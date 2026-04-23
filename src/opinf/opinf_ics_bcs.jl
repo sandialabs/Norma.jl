@@ -67,13 +67,17 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
     side_set_name::String,
+    side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
-    variational::Bool,
     bc_params::Parameters,
 )
-    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(coupled_block_name,tol,side_set_name,side_set_node_indices,coupled_subsim,subsim,variational)
+    fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(
+        coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
+        num_nodes_sides, coupled_subsim, subsim, false
+    )
     opinf_model_directory = bc_params["model-directory"]
     py""" 
     import torch
@@ -96,12 +100,12 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
         fom_bc.side_set_node_indices,
         fom_bc.coupled_nodes_indices,
         fom_bc.interpolation_function_values,
-        coupled_subsim,
-        subsim,
-        variational,
         fom_bc,
         model,
-        basis
+        basis,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -120,10 +124,10 @@ function SMOpInfCouplingSchwarzBC(
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
-    variational = get(bc_params, "variational", false)
     SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
-        coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational, bc_params
-        )
+        coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
+        num_nodes_sides, coupled_subsim, subsim, bc_params
+    )
 end
 
 function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichletBC)
@@ -132,7 +136,7 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
     bc_vector = zeros(0)
     for node_index ∈ bc.fom_bc.node_set_node_indices
         dof_index = 3 * (node_index - 1) + bc.fom_bc.offset
-        disp_val = model.fom_model.current[bc.fom_bc.offset,node_index] - model.fom_model.reference[bc.fom_bc.offset, node_index]
+        disp_val = model.fom_model.displacement[bc.fom_bc.offset, node_index]
         push!(bc_vector,disp_val)
     end
 
@@ -158,7 +162,7 @@ end
 
    
 function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
-    if (typeof(bc.coupled_subsim.model) == SolidMechanics)
+    if (typeof(coupled_subsim_of(bc).model) == SolidMechanics)
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc.fom_bc)
 
@@ -167,7 +171,7 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOv
         bc_vector = zeros(3, length(unique_node_indices))
         for i in 1:length(unique_node_indices)
             node_index = unique_node_indices[i]
-            bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
+            bc_vector[:, i] = model.fom_model.displacement[:, node_index]
         end
 
         py"""
@@ -208,7 +212,7 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
         return nothing
     end
     n_var, n_node, n_mode = model.basis.size
-    n_var_fom, n_node_fom = size(model.fom_model.current)
+    n_var_fom, n_node_fom = size(model.fom_model.displacement)
 
     # Make sure basis is the right size
     if n_var != n_var_fom || n_node != n_node_fom
@@ -222,7 +226,7 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
         for j in 1:n_node
             for n in 1:n_var
                 model.reduced_state[k] +=
-                    model.basis[n, j, k] * (model.fom_model.current[n, j] - model.fom_model.reference[n, j])
+                    model.basis[n, j, k] * model.fom_model.displacement[n, j]
                 model.reduced_velocity[k] += model.basis[n, j, k] * (model.fom_model.velocity[n, j])
             end
         end
@@ -249,7 +253,7 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
     apply_bc(model.fom_model, bc)
     bc_vector = zeros(0)
     for node_index in bc.node_set_node_indices
-        disp_val = model.fom_model.current[bc.offset, node_index] - model.fom_model.reference[bc.offset, node_index]
+        disp_val = model.fom_model.displacement[bc.offset, node_index]
         push!(bc_vector, disp_val)
     end
     offset = bc.offset
@@ -269,7 +273,8 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
 end
 
 function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBoundaryCondition)
-    if bc.coupled_subsim.model isa SolidMechanics || bc.coupled_subsim.model isa OpInfModel
+    coupled_model = coupled_subsim_of(bc).model
+    if coupled_model isa SolidMechanics || coupled_model isa OpInfModel
         ## Apply BC to the FOM vector
         apply_bc_detail(model.fom_model, bc)
 
@@ -279,7 +284,7 @@ function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBou
         bc_vector = zeros(3, length(unique_node_indices))
         for i in eachindex(unique_node_indices)
             node_index = unique_node_indices[i]
-            bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
+            bc_vector[:, i] = model.fom_model.displacement[:, node_index]
         end
         op_name = "B_" * bc.name
         bc_operator = model.opinf_rom[op_name]

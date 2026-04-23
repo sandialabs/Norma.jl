@@ -32,33 +32,6 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     )
 end
 
-function SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
-    node_set_name = bc_params["node set"]
-    expression = bc_params["function"]
-    node_set_id = node_set_id_from_name(node_set_name, input_mesh)
-    node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
-
-    # Build symbolic expressions
-    disp_num = eval(Meta.parse(expression))
-    velo_num = expand_derivatives(D(disp_num))
-    acce_num = expand_derivatives(D(velo_num))
-
-    # Compile them into functions
-    disp_fun = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
-    velo_fun = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
-    acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
-
-    reference_normal_expression_vector = bc_params["normal vector"]
-    reference_normal_nums = [eval(Meta.parse(string(ref_exp))) for ref_exp in reference_normal_expression_vector]
-
-    reference_funs = [
-        eval(build_function(norm_num, [t, x, y, z]; expression=Val(false))) for norm_num in reference_normal_nums
-    ]
-    return SolidMechanicsInclinedDirichletBoundaryCondition(
-        node_set_name, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun, reference_funs
-    )
-end
-
 function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
@@ -129,11 +102,16 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
     tol::Float64,
     side_set_name::String,
+    side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
-    variational::Bool,
+    use_weak::Bool,
 )
+    mesh = get_fom_model(subsim).mesh
+    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
+    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
@@ -158,14 +136,23 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
         push!(coupled_nodes_indices, node_indices)
         push!(interpolation_function_values, N)
     end
+    dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     return SolidMechanicsOverlapSchwarzBoundaryCondition(
         side_set_name,
+        side_set_id,
         side_set_node_indices,
+        num_nodes_sides,
+        local_from_global_map,
+        global_from_local_map,
         coupled_nodes_indices,
         interpolation_function_values,
-        coupled_subsim,
-        subsim,
-        variational,
+        coupled_block_name,
+        tol,
+        dirichlet_projector,
+        use_weak,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -181,7 +168,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
-    variational::Bool,
+    impedance_scale::Vector{Float64},
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
@@ -204,7 +191,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         push!(coupled_nodes_indices, node_indices)
         push!(interpolation_function_values, N)
     end
-    # Surface projector infrastructure (for variational force application)
+    # Surface projector infrastructure (for weak force application)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     square_projector = Matrix{Float64}(undef, 0, 0)
@@ -217,17 +204,21 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         interpolation_function_values,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
-        subsim,
         square_projector,
         impedance,
         robin_parameter,
-        variational,
+        impedance_scale,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
 function SolidMechanicsContactSchwarzBoundaryCondition(
-    coupled_subsim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters
+    subsim::SingleDomainSimulation,
+    coupled_subsim::SingleDomainSimulation,
+    input_mesh::ExodusDatabase,
+    bc_params::Parameters,
 )
     side_set_name = bc_params["side set"]
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
@@ -251,7 +242,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     else
         norma_abort("Unknown or not implemented friction type : $friction_type_string")
     end
-    variational = get(bc_params, "variational", false)
     return SolidMechanicsContactSchwarzBoundaryCondition(
         side_set_name,
         side_set_id,
@@ -259,7 +249,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -269,7 +258,9 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         rotation_matrix,
         active_contact,
         friction_type,
-        variational,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -283,7 +274,6 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     subsim::Simulation, 
     robin_parameter::Float64,
-    variational::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -298,15 +288,15 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
-        subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
         neumann_projector,
         square_projector,
         robin_parameter,
-        variational,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -321,7 +311,6 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
-    variational::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -336,8 +325,6 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
-        subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -345,7 +332,9 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
         square_projector,
         impedance,
         robin_parameter,
-        variational,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -356,10 +345,10 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     side_set_id::Int64,
     side_set_node_indices::Vector{Int64},
     num_nodes_sides::Vector{Int64},
+    subsim::Simulation,
     coupled_subsim::Simulation,
     is_dirichlet::Bool,
     swap_bcs::Bool,
-    variational::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -374,7 +363,6 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         num_nodes_sides,
         local_from_global_map,
         global_from_local_map,
-        coupled_subsim,
         coupled_side_set_name,
         coupled_bc_index,
         dirichlet_projector,
@@ -382,7 +370,9 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         square_projector,
         is_dirichlet,
         swap_bcs,
-        variational,
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
     )
 end
 
@@ -401,10 +391,11 @@ function SMCouplingSchwarzBC(
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     num_nodes_sides = Int64.(num_nodes_sides)
     side_set_node_indices = Int64.(side_set_node_indices)
-    variational = get(bc_params, "variational", false)
     if bc_type == "Schwarz overlap"
+        use_weak = get(bc_params, "weak", false)
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_node_indices, coupled_subsim, subsim, variational
+            coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
+            num_nodes_sides, coupled_subsim, subsim, use_weak
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -423,10 +414,10 @@ function SMCouplingSchwarzBC(
             side_set_id,
             side_set_node_indices,
             num_nodes_sides,
+            subsim,
             coupled_subsim,
             is_dirichlet,
             swap_bcs,
-            variational,
         )
     elseif bc_type == "Schwarz RR nonoverlap"
         robin_parameter = Float64(bc_params["robin parameter"])
@@ -440,7 +431,6 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             subsim,
             robin_parameter,
-            variational,
         )
     elseif bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
         # Impedance Z = √(ρ(λ + 2μ)), computed from material properties
@@ -456,6 +446,12 @@ function SMCouplingSchwarzBC(
         μ = E / (2 * (1 + ν))
         impedance = sqrt(ρ * (λ_lame + 2μ))
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
+        raw_scale = get(bc_params, "impedance scale", 1.0)
+        if raw_scale isa AbstractVector
+            impedance_scale = Float64.(raw_scale)
+        else
+            impedance_scale = [Float64(raw_scale)]
+        end
         if bc_type == "Schwarz impedance nonoverlap"
             SolidMechanicsImpedanceSchwarzBoundaryCondition(
                 input_mesh,
@@ -468,7 +464,6 @@ function SMCouplingSchwarzBC(
                 subsim,
                 impedance,
                 robin_parameter,
-                variational,
             )
         else
             coupled_block_name = bc_params["source block"]
@@ -485,7 +480,7 @@ function SMCouplingSchwarzBC(
                 subsim,
                 impedance,
                 robin_parameter,
-                variational,
+                impedance_scale,
             )
         end
     else
@@ -504,7 +499,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCond
         acce_val = bc.acce_fun(txzy)
 
         dof_index = 3 * (node_index - 1) + bc.offset
-        model.current[bc.offset, node_index] = model.reference[bc.offset, node_index] + disp_val
+        model.displacement[bc.offset, node_index] = disp_val
         model.velocity[bc.offset, node_index] = velo_val
         model.acceleration[bc.offset, node_index] = acce_val
         model.free_dofs[dof_index] = false
@@ -555,7 +550,7 @@ function apply_robin_bcs_internal_force!(model::SolidMechanics)
             for (i, node_i) in enumerate(side_nodes)
                 dof_i = 3 * (node_i - 1) + bc.offset
                 for (j, node_j) in enumerate(side_nodes)
-                    u_j = model.current[bc.offset, node_j] - model.reference[bc.offset, node_j]
+                    u_j = model.displacement[bc.offset, node_j]
                     model.internal_force[dof_i] += K_side[i, j] * u_j
                 end
             end
@@ -609,44 +604,4 @@ function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
     end
 end
 
-function apply_bc(model::SolidMechanics, bc::SolidMechanicsInclinedDirichletBoundaryCondition)
-    for node_index in bc.node_set_node_indices
-        txzy = (
-            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
-        )
 
-        disp_val = bc.disp_fun(txzy)
-        velo_val = bc.velo_fun(txzy)
-        acce_val = bc.acce_fun(txzy)
-
-        # Local basis from reference normal
-        normal_vals = [norm_fun(txzy) for norm_fun in bc.reference_funs]
-        axis = normalize(SVector{3,Float64}(normal_vals))
-        rotation_matrix = compute_rotation_matrix(axis)
-
-        original_disp = model.current[:, node_index] - model.reference[:, node_index]
-        original_velocity = model.velocity[:, node_index]
-        original_acceleration = model.acceleration[:, node_index]
-
-        local_original_displacement = MVector(rotation_matrix * original_disp)
-        local_original_velocity = MVector(rotation_matrix * original_velocity)
-        local_original_acceleration = MVector(rotation_matrix * original_acceleration)
-
-        model.free_dofs[3 * node_index - 2] = false
-        model.free_dofs[3 * node_index - 1] = true
-        model.free_dofs[3 * node_index] = true
-
-        local_original_displacement[1] = disp_val
-        local_original_velocity[1] = velo_val
-        local_original_acceleration[1] = acce_val
-
-        model.velocity[:, node_index] = rotation_matrix' * SVector(local_original_velocity)
-        model.acceleration[:, node_index] = rotation_matrix' * SVector(local_original_acceleration)
-        model.current[:, node_index] =
-            model.reference[:, node_index] + rotation_matrix' * SVector(local_original_displacement)
-
-        global_base = 3 * (node_index - 1)
-        model.global_transform[(global_base + 1):(global_base + 3), (global_base + 1):(global_base + 3)] =
-            rotation_matrix
-    end
-end

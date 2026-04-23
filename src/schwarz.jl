@@ -4,6 +4,8 @@
 # and contact Schwarz BCs. Projectors, time history interpolation,
 # and interface force/displacement transfer.
 
+using LinearAlgebra: dot
+
 # ---------------------------------------------------------------------------
 # Impedance-matching Robin Schwarz: t + Z u̇ + α W u = g
 # ---------------------------------------------------------------------------
@@ -15,23 +17,72 @@
 
 get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : sim.model
 
+# Resolve the partner (coupled) subsim of a Schwarz BC through its parent via
+# the stable handle, so that swapping a subsim in its parent slot is transparent
+# to every BC.
+coupled_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.coupled_handle.id]
+self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsims[bc.self_handle.id]
+
+# Safeguard bounds for Aitken θ. Very small ‖δ‖² implies a stale residual
+# direction; clamp aggressive magnitudes to avoid divergence on near-parallel
+# residuals.
+const AITKEN_THETA_MIN = 0.1
+const AITKEN_THETA_MAX = 2.0
+const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
+
+# Returns the relaxation factor θ applied to interp_disp for this Schwarz
+# iterate. Fixed mode returns the user-configured constant; Aitken mode uses
+# Irons–Tuck with the previous residual stored on the controller.
+function relaxation_theta!(
+    controller::MultiDomainTimeController,
+    slot::Int,
+    iter::Int,
+    interp_disp::AbstractVector{Float64},
+    lambda_prev::AbstractVector{Float64},
+)
+    if controller.relaxation_method !== :aitken
+        return controller.relaxation_parameter
+    end
+    if iter < 1
+        controller.aitken_theta_disp[slot] = 1.0
+        controller.aitken_prev_residual_disp[slot] = Float64[]
+        return 1.0
+    end
+    residual = interp_disp .- lambda_prev
+    prev_residual = controller.aitken_prev_residual_disp[slot]
+    θ_prev = controller.aitken_theta_disp[slot]
+    θ = 1.0
+    if !isempty(prev_residual) && length(prev_residual) == length(residual)
+        δ = residual .- prev_residual
+        δ_sq = dot(δ, δ)
+        if δ_sq > AITKEN_DELTA_SQ_FLOOR
+            θ = -θ_prev * dot(prev_residual, δ) / δ_sq
+            θ = clamp(θ, AITKEN_THETA_MIN, AITKEN_THETA_MAX)
+        else
+            θ = θ_prev
+        end
+    end
+    controller.aitken_prev_residual_disp[slot] = residual
+    controller.aitken_theta_disp[slot] = θ
+    norma_logf(1, :schwarz, "Aitken θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
+    return θ
+end
+
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
     Z = bc.impedance
     α = bc.robin_parameter
     W = bc.square_projector
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     controller = parent_sim.controller
     iter = controller.iteration_number
-    coupled_subsim = bc.coupled_subsim
-    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    this_subsim = bc.subsim
-    this_index = parent_sim.subsim_name_index_map[this_subsim.name]
+    coupled_index = bc.coupled_handle.id
+    this_index = bc.self_handle.id
 
     # Neumann part: -t_src projected
     neumann_force = get_dst_force(bc)
 
     # Source displacement and velocity, projected to destination
-    src_sim = bc.coupled_subsim
+    src_sim = coupled_subsim_of(bc)
     src_model = get_fom_model(src_sim)
     src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
@@ -39,7 +90,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
     src_disp = zeros(3, num_src_nodes)
     src_velo = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_disp[:, i_local] = src_model.current[:, i_global] - src_model.reference[:, i_global]
+        src_disp[:, i_local] = src_model.displacement[:, i_global]
         src_velo[:, i_local] = src_model.velocity[:, i_global]
     end
     dirichlet_projector = bc.dirichlet_projector
@@ -124,7 +175,7 @@ end
 
 function pair_bc(bc::SolidMechanicsImpedanceSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name
@@ -149,21 +200,32 @@ end
 # ---------------------------------------------------------------------------
 #
 # Instead of overwriting DOFs (DBC-DBC), applies impedance-matching force:
-#   boundary_force += -t_partner + Z * u̇_partner  (pointwise interpolation)
+#   boundary_force += -t_partner + Z * u̇_partner  (strong interpolation)
 # DOFs remain free — waves pass through instead of reflecting.
 
+function _get_impedance_scale(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
+    scales = bc.impedance_scale
+    if length(scales) == 1
+        return scales[1]
+    end
+    parent_sim = bc.parent
+    step = max(1, parent_sim.controller.stop)
+    return scales[min(step, length(scales))]
+end
+
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
-    Z = bc.impedance
+    Z = bc.impedance * _get_impedance_scale(bc)
     α = bc.robin_parameter
     W = bc.square_projector
 
-    get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
-        (field -> getfield(bc.coupled_subsim.model, field))
+    coupled_model_obj = coupled_subsim_of(bc).model
+    get_coupled_field = if coupled_model_obj isa SolidMechanics
+        (field -> getfield(coupled_model_obj, field))
     else
-        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+        (field -> getfield(coupled_model_obj.fom_model, field))
     end
 
-    coupled_current   = get_coupled_field(:current)
+    coupled_displacement = get_coupled_field(:displacement)
     coupled_reference = get_coupled_field(:reference)
     coupled_velocity  = get_coupled_field(:velocity)
     coupled_internal  = get_coupled_field(:internal_force)
@@ -181,9 +243,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
         N = bc.interpolation_function_values[i]
         for comp in 1:3
             partner_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
-            partner_disp[comp, i] = sum(
-                (coupled_current[comp, coupled_node_indices] .- coupled_reference[comp, coupled_node_indices]) .* N
-            )
+            partner_disp[comp, i] = sum(coupled_displacement[comp, coupled_node_indices] .* N)
         end
     end
 
@@ -208,7 +268,7 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
     K_io = spzeros(num_dofs, num_dofs)
     for bc in model.boundary_conditions
         bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
-        Z = bc.impedance
+        Z = bc.impedance * _get_impedance_scale(bc)
         α = bc.robin_parameter
         W = bc.square_projector
         c_v = if integrator isa Newmark
@@ -233,7 +293,7 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
 end
 
 function pair_bc(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition, bc_index::Int64)
-    # Overlap BCs don't pair — they use pointwise interpolation from the partner's interior
+    # Overlap BCs don't pair — they use strong interpolation from the partner's interior
     return nothing
 end
 
@@ -264,7 +324,7 @@ function build_impedance_schwarz_force(model::SolidMechanics)
             for comp in 1:3
                 for (i_local, i_global) in enumerate(global_from_local_map)
                     self_velo[i_local] = model.velocity[comp, i_global]
-                    self_disp[i_local] = model.current[comp, i_global] - model.reference[comp, i_global]
+                    self_disp[i_local] = model.displacement[comp, i_global]
                 end
                 f_imp = W * (Z * self_velo + α * self_disp)
                 for (i_local, i_global) in enumerate(global_from_local_map)
@@ -303,41 +363,43 @@ end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        contact_variational_dbc(model, bc)
+        contact_weak_dbc(model, bc)
     else
-        contact_variational_nbc(model, bc)
+        contact_weak_nbc(model, bc)
     end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    coupling_pointwise_dbc(model, bc)
+    if bc.use_weak
+        coupling_weak_overlap_dbc(model, bc)
+    else
+        coupling_strong_dbc(model, bc)
+    end
     return nothing
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     if bc.is_dirichlet == true
-        coupling_variational_dbc(model, bc)
+        coupling_weak_dbc(model, bc)
     else
-        coupling_variational_nbc(model, bc)
+        coupling_weak_nbc(model, bc)
     end
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBoundaryCondition)
     α = bc.robin_parameter
     W = bc.square_projector
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     num_domains = parent_sim.num_domains
     controller = parent_sim.controller
     iter = controller.iteration_number
-    coupled_subsim = bc.coupled_subsim
-    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
-    this_subsim = bc.subsim
-    this_index = parent_sim.subsim_name_index_map[this_subsim.name]
+    coupled_index = bc.coupled_handle.id
+    this_index = bc.self_handle.id
     # Neumann part of Robin RHS: -t_src projected (= get_dst_force which negates internal_force)
     neumann_force = get_dst_force(bc)
     # Displacement part of Robin RHS: α * W * u_src_projected
     # Compute source displacement (current - reference) and project to destination
-    src_sim = bc.coupled_subsim
+    src_sim = coupled_subsim_of(bc)
     src_model = get_fom_model(src_sim)
     src_bc_index = bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -345,7 +407,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
     num_src_nodes = length(src_global_from_local_map)
     src_disp = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_disp[:, i_local] = src_model.current[:, i_global] - src_model.reference[:, i_global]
+        src_disp[:, i_local] = src_model.displacement[:, i_global]
     end
     dirichlet_projector = bc.dirichlet_projector
     num_dst_nodes = size(dirichlet_projector, 1)
@@ -388,14 +450,16 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
     end
 end
 
-function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    get_coupled_field = if bc.coupled_subsim.model isa SolidMechanics
-        (field -> getfield(bc.coupled_subsim.model, field))
+function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    coupled_model_obj = coupled_subsim_of(bc).model
+    get_coupled_field = if coupled_model_obj isa SolidMechanics
+        (field -> getfield(coupled_model_obj, field))
     else
-        (field -> getfield(bc.coupled_subsim.model.fom_model, field))
+        (field -> getfield(coupled_model_obj.fom_model, field))
     end
 
-    current = get_coupled_field(:current)
+    coupled_reference = get_coupled_field(:reference)
+    coupled_displacement = get_coupled_field(:displacement)
     velocity = get_coupled_field(:velocity)
     acceleration = get_coupled_field(:acceleration)
 
@@ -406,7 +470,7 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
         coupled_node_indices = bc.coupled_nodes_indices[i]
         N = bc.interpolation_function_values[i]
 
-        model.current[:, node_index] = current[:, coupled_node_indices] * N
+        model.displacement[:, node_index] = (coupled_reference[:, coupled_node_indices] + coupled_displacement[:, coupled_node_indices]) * N - model.reference[:, node_index]
         model.velocity[:, node_index] = velocity[:, coupled_node_indices] * N
         model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
 
@@ -415,11 +479,38 @@ function coupling_pointwise_dbc(model::SolidMechanics, bc::SolidMechanicsOverlap
     end
 end
 
-function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function coupling_weak_overlap_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    coupled_model_obj = coupled_subsim_of(bc).model
+    src_model = coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
+
+    P = bc.dirichlet_projector
+    global_from_local_map = bc.global_from_local_map
+
+    for comp in 1:3
+        src_current = src_model.reference[comp, :] + src_model.displacement[comp, :]
+        src_velocity = src_model.velocity[comp, :]
+        src_acceleration = src_model.acceleration[comp, :]
+        proj_current = P * src_current
+        proj_velocity = P * src_velocity
+        proj_acceleration = P * src_acceleration
+        for (i_local, i_global) in enumerate(global_from_local_map)
+            model.displacement[comp, i_global] = proj_current[i_local] - model.reference[comp, i_global]
+            model.velocity[comp, i_global] = proj_velocity[i_local]
+            model.acceleration[comp, i_global] = proj_acceleration[i_local]
+        end
+    end
+
+    for i_global in global_from_local_map
+        dof_index = (3 * i_global - 2):(3 * i_global)
+        model.free_dofs[dof_index] .= false
+    end
+end
+
+function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
-        @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
+        @inbounds model.displacement[:, i_global] = nodal_curr[:, i_local] - model.reference[:, i_global]
         @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
         @inbounds model.acceleration[:, i_global] = nodal_acce[:, i_local]
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
@@ -427,7 +518,7 @@ function coupling_variational_dbc(model::SolidMechanics, bc::SolidMechanicsNonOv
     end
 end
 
-function coupling_variational_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function coupling_weak_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_force = get_dst_force(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
@@ -457,7 +548,7 @@ function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_ma
 end
 
 function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
-    parent_sim = bc.coupled_subsim.params["parent_simulation"]
+    parent_sim = bc.parent
     controller = parent_sim.controller
 
     # Skip application if contact is inactive
@@ -465,19 +556,19 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         return nothing
     end
 
-    coupled_subsim = bc.coupled_subsim
+    coupled_subsim = coupled_subsim_of(bc)
     integrator = coupled_subsim.integrator
     coupled_model = coupled_subsim.model
 
-    # Save current state
-    saved_disp = integrator.displacement
-    saved_velo = integrator.velocity
-    saved_acce = integrator.acceleration
+    # Save current state (copy data, not reference — aliased integrators share memory with model)
+    saved_disp = copy(integrator.displacement)
+    saved_velo = copy(integrator.velocity)
+    saved_acce = copy(integrator.acceleration)
     saved_∂Ω_f = get_internal_force(coupled_model)
 
     # Fetch interpolation inputs
     time = model.time
-    coupled_index = parent_sim.subsim_name_index_map[coupled_subsim.name]
+    coupled_index = bc.coupled_handle.id
     num_dofs = length(coupled_subsim.model.free_dofs)
 
     time_hist = controller.time_hist[coupled_index]
@@ -492,7 +583,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         bc isa SolidMechanicsRobinSchwarzBoundaryCondition
     ) &&
     controller.use_interface_predictor &&
-    controller.iteration_number == 1 &&
+    controller.iteration_number == 0 &&
     !isempty(controller.predictor_disp[coupled_index])
     if !isempty(time_hist)
         interp_disp = interpolate(time_hist, disp_hist, time)
@@ -523,38 +614,40 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
 
     # Apply relaxed update if needed
     if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-        θ = controller.relaxation_parameter
-
         iter = controller.iteration_number
-        λ_u_prev = iter < 2 ? interp_disp : controller.lambda_disp[coupled_index]
-        λ_v_prev = iter < 2 ? interp_velo : controller.lambda_velo[coupled_index]
-        λ_a_prev = iter < 2 ? interp_acce : controller.lambda_acce[coupled_index]
+        λ_u_prev = iter < 1 ? interp_disp : controller.lambda_disp[coupled_index]
+        λ_v_prev = iter < 1 ? interp_velo : controller.lambda_velo[coupled_index]
+        λ_a_prev = iter < 1 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        # Classical relaxation
+        θ = relaxation_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+
         controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
         controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
         controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
-        integrator.displacement = controller.lambda_disp[coupled_index]
-        integrator.velocity = controller.lambda_velo[coupled_index]
-        integrator.acceleration = controller.lambda_acce[coupled_index]
+        integrator.displacement .= controller.lambda_disp[coupled_index]
+        integrator.velocity .= controller.lambda_velo[coupled_index]
+        integrator.acceleration .= controller.lambda_acce[coupled_index]
     else
-        integrator.displacement = interp_disp
-        integrator.velocity = interp_velo
-        integrator.acceleration = interp_acce
+        integrator.displacement .= interp_disp
+        integrator.velocity .= interp_velo
+        integrator.acceleration .= interp_acce
     end
 
-    # Apply boundary condition detail
-    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    # For ROM coupled subdomains, reconstruct FOM displacement from reduced state before reading it
+    if coupled_subsim.model isa RomModel
+        reconstruct_fom_fields!(integrator, coupled_subsim.solver, coupled_subsim.model)
+    end
     apply_bc_detail(model, bc)
 
-    # Restore previous state
-    integrator.displacement = saved_disp
-    integrator.velocity = saved_velo
-    integrator.acceleration = saved_acce
+    # Restore previous state (in-place to keep alias intact)
+    integrator.displacement .= saved_disp
+    integrator.velocity .= saved_velo
+    integrator.acceleration .= saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
-
-    copy_solution_source_to_targets(integrator, coupled_subsim.solver, coupled_subsim.model)
+    if coupled_subsim.model isa RomModel
+        reconstruct_fom_fields!(integrator, coupled_subsim.solver, coupled_subsim.model)
+    end
     return nothing
 end
 
@@ -564,7 +657,7 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
     return tangent_projection * target + normal_projection * source
 end
 
-function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     normals = compute_normal(model.mesh, bc.side_set_id, model)
@@ -572,9 +665,9 @@ function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContac
         normal = normals[:, i_local]
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
         if bc.friction_type == 0
-            @inbounds model.current[:, i_global] = transfer_normal_component(
-                nodal_curr[:, i_local], model.current[:, i_global], normal
-            )
+            @inbounds model.displacement[:, i_global] = transfer_normal_component(
+                nodal_curr[:, i_local], model.reference[:, i_global] + model.displacement[:, i_global], normal
+            ) - model.reference[:, i_global]
             @inbounds model.velocity[:, i_global] = transfer_normal_component(
                 nodal_velo[:, i_local], model.velocity[:, i_global], normal
             )
@@ -585,7 +678,7 @@ function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContac
             model.free_dofs[[3 * i_global - 1]] .= true
             model.free_dofs[[3 * i_global]] .= true
         elseif bc.friction_type == 1
-            @inbounds model.current[:, i_global] = nodal_curr[:, i_local]
+            @inbounds model.displacement[:, i_global] = nodal_curr[:, i_local] - model.reference[:, i_global]
             @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
             @inbounds model.acceleration[:, i_global] = nodal_velo[:, i_local]
             model.free_dofs[global_range] .= false
@@ -595,7 +688,6 @@ function contact_variational_dbc(model::SolidMechanics, bc::SolidMechanicsContac
         # Update the rotation matrix
         axis = SVector{3,Float64}(-normalize(normal))
         bc.rotation_matrix = compute_rotation_matrix(axis)
-        model.global_transform[global_range, global_range] = bc.rotation_matrix
     end
 end
 
@@ -609,11 +701,10 @@ function apply_naive_stabilized_bcs(subsim::SingleDomainSimulation)
             end
         end
     end
-    copy_solution_source_to_targets(subsim.model, subsim.integrator, subsim.solver)
     return nothing
 end
 
-function contact_variational_nbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
+function contact_weak_nbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     friction_type = bc.friction_type
     nodal_force = get_dst_force(bc)
     normals = compute_normal(model.mesh, bc.side_set_id, model)
@@ -650,7 +741,7 @@ function extract_local_vector(bc::SolidMechanicsSchwarzBoundaryCondition, global
 end
 
 function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_model = dst_bc.coupled_subsim.model
+    src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     H = get_square_projection_matrix(src_model, src_bc)
@@ -660,7 +751,7 @@ function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SolidMecha
 end
 
 function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_model = dst_bc.coupled_subsim.model
+    src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     W = get_square_projection_matrix(dst_model, dst_bc)
@@ -670,7 +761,7 @@ function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMec
 end
 
 function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_sim = dst_bc.coupled_subsim
+    src_sim = coupled_subsim_of(dst_bc)
     src_model = src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -686,7 +777,7 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
 end
 
 function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
-    src_sim = dst_bc.coupled_subsim
+    src_sim = coupled_subsim_of(dst_bc)
     src_model = get_fom_model(src_sim)
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -697,7 +788,7 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     src_velo = zeros(3, num_src_nodes)
     src_acce = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_curr[:, i_local] = src_model.current[:, i_global]
+        src_curr[:, i_local] = src_model.reference[:, i_global] + src_model.displacement[:, i_global]
         src_refe[:, i_local] = src_model.reference[:, i_global]
         src_velo[:, i_local] = src_model.velocity[:, i_global]
         src_acce[:, i_local] = src_model.acceleration[:, i_global]
@@ -753,14 +844,14 @@ function extract_value(symbol::Num)
     return Float64(symbol.val)
 end
 
-function create_bcs(params::Parameters)
+function _create_bcs(subsim::SingleDomainSimulation)
     boundary_conditions = Vector{BoundaryCondition}()
+    params = subsim.params
     if haskey(params, "boundary conditions") == false
         return boundary_conditions
     end
     input_mesh = params["input_mesh"]
     bc_params = params["boundary conditions"]
-    inclined_support_nodes = Vector{Int64}()
     for (bc_type, bc_type_params) in bc_params
         for bc_setting_params in bc_type_params
             if bc_type == "Dirichlet"
@@ -779,48 +870,30 @@ function create_bcs(params::Parameters)
                 boundary_condition = SolidMechanicsRobinBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
-                sim = params["parent_simulation"]
+                sim = subsim.parent
                 sim.controller.schwarz_contact = true
                 coupled_subsim_name = bc_setting_params["source"]
-                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
-                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
                 boundary_condition = SolidMechanicsContactSchwarzBoundaryCondition(
-                    coupled_subsim, input_mesh, bc_setting_params
+                    subsim, coupled_subsim, input_mesh, bc_setting_params
                 )
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Inclined Dirichlet"
-                boundary_condition = SolidMechanicsInclinedDirichletBoundaryCondition(input_mesh, bc_setting_params)
-                append!(inclined_support_nodes, boundary_condition.node_set_node_indices)
-                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap" || bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
-                sim = params["parent_simulation"]
-                subsim_name = params["name"]
-                subdomain_index = sim.subsim_name_index_map[subsim_name]
-                subsim = sim.subsims[subdomain_index]
+                sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
-                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
-                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
                 boundary_condition = SMCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "OpInf Schwarz overlap"
-                sim = params["parent_simulation"]
-                subsim_name = params["name"]
-                subdomain_index = sim.subsim_name_index_map[subsim_name]
-                subsim = sim.subsims[subdomain_index]
+                sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
-                coupled_subdomain_index = sim.subsim_name_index_map[coupled_subsim_name]
-                coupled_subsim = sim.subsims[coupled_subdomain_index]
+                coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
                 boundary_condition = SMOpInfCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
             else
                 norma_abort("Unknown boundary condition type : $bc_type")
             end
         end
-    end
-    # BRP: do not support applying multiple inclined support BCs to a single node
-    duplicate_inclined_support_conditions = length(unique(inclined_support_nodes)) < length(inclined_support_nodes)
-    if duplicate_inclined_support_conditions
-        norma_abort("Cannot apply multiple inclined BCs to a single node.")
     end
     return boundary_conditions
 end
@@ -896,7 +969,7 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
                 disp_val = disp_num === nothing ? 0.0 : extract_value(substitute(disp_num, values))
                 velo_val = velo_num === nothing ? 0.0 : extract_value(substitute(velo_num, values))
                 if ic_type == "displacement"
-                    model.current[offset, node_index] = model.reference[offset, node_index] + disp_val
+                    model.displacement[offset, node_index] = disp_val
                     non_zero_velocity = !(velo_val ≈ 0.0)
                     if non_zero_velocity
                         assign_velocity!(model.velocity, offset, node_index, velo_val, "derived from displacement")
@@ -908,7 +981,6 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
             end
         end
     end
-    copy_solution_source_to_targets(model, integrator, solver)
     return nothing
 end
 
@@ -929,16 +1001,13 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
         return nothing
     end
     coupled_bc_name = bc.coupled_bc_name
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name
             coupled_bc.is_dirichlet = !bc.is_dirichlet
             bc.coupled_bc_index = coupled_bc_index
             coupled_bc.coupled_bc_index = bc_index
-            if coupled_bc.is_dirichlet == false
-                coupled_model.inclined_support = false
-            end
         end
     end
     return nothing
@@ -946,7 +1015,7 @@ end
 
 function pair_bc(bc::SolidMechanicsRobinSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name

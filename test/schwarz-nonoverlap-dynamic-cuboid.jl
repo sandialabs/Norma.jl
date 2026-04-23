@@ -46,15 +46,15 @@ end
 function interface_displacements(sim)
     m1 = sim.subsims[1].model
     m2 = sim.subsims[2].model
-    u1z = m1.current[3, :] .- m1.reference[3, :]
-    u2z = m2.current[3, :] .- m2.reference[3, :]
+    u1z = m1.displacement[3, :]
+    u2z = m2.displacement[3, :]
     return u1z, u2z
 end
 
 @testset "Single Domain Reference" begin
     sim = run_single_domain()
     m = sim.model
-    uz = m.current[3, :] .- m.reference[3, :]
+    uz = m.displacement[3, :]
     # Applied BC at t=0.05: u_z(z=0.75) = 0.5 - 0.5*cos(π*0.05) ≈ 6.156e-3
     @test maximum(uz) ≈ 6.156e-03 rtol = 1.0e-02
 end
@@ -101,6 +101,24 @@ end
     @test maximum(u2z) ≈ 6.156e-03 rtol = 1.0e-02
 
     # Relaxation increases iteration count vs non-relaxed
+    @test all(iters[1:5] .≤ 20)
+end
+
+@testset "Schwarz Nonoverlap Dynamic Cuboid RR Interface Predictor" begin
+    sim = run_schwarz(rr_example, "cuboids-predictor.yaml")
+    u1z, u2z = interface_displacements(sim)
+    iters = sim.controller.schwarz_iters
+
+    @test sim.controller.use_interface_predictor == true
+    @test sim.failed == false
+
+    # Interface displacement continuity
+    @test maximum(u1z) ≈ minimum(u2z) rtol = 1.0e-03
+
+    # Applied BC matches single domain
+    @test maximum(u2z) ≈ 6.156e-03 rtol = 1.0e-02
+
+    # Schwarz convergence bounded
     @test all(iters[1:5] .≤ 20)
 end
 

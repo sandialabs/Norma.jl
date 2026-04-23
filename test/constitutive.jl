@@ -163,6 +163,45 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
     end
 end
 
+@testset "Hyperelastic Objectivity Under Rigid Rotation" begin
+    # For a hyperelastic material σ(F) = σ(R·U) should equal R·σ(U)·Rᵀ
+    # (frame-indifference). This test would fail if F were stored as its
+    # transpose anywhere in the constitutive → Cauchy pipeline.
+    θ = π / 4
+    R = SMatrix{3,3,Float64,9}([
+        cos(θ) -sin(θ) 0.0
+        sin(θ)  cos(θ) 0.0
+        0.0     0.0    1.0
+    ])
+    U = SMatrix{3,3,Float64,9}([
+        1.20 0.05 0.00
+        0.05 0.95 0.00
+        0.00 0.00 1.10
+    ])
+    F_nostretch_rotation_only = R
+    F_stretch = U
+    F_combined = R * U
+
+    function cauchy(mat, F)
+        W, P, _ = Norma.constitutive(mat, F)
+        J = det(F)
+        return F * P' / J
+    end
+
+    params = Norma.Parameters("elastic modulus" => 1.0e9, "Poisson's ratio" => 0.3, "density" => 1.0)
+    for mat in (
+        Norma.SaintVenant_Kirchhoff(params),
+        Norma.Neohookean(params),
+    )
+        σ_U = cauchy(mat, F_stretch)
+        σ_RU = cauchy(mat, F_combined)
+        @test σ_RU ≈ R * σ_U * R' atol = 1.0e-08 * norm(σ_U)
+        # Pure rotation → zero Cauchy
+        σ_R = cauchy(mat, F_nostretch_rotation_only)
+        @test norm(σ_R) < 1.0e-06
+    end
+end
+
 @testset "J2Plasticity Constitutive At Identity" begin
     E = 200.0e9
     ν = 0.25

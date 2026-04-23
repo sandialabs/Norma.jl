@@ -23,20 +23,20 @@ using YAML
     model_plate1 = subsims[1].model
     model_plate2 = subsims[2].model
 
-    rm("plate.yaml")
-    rm("plate-1.yaml")
-    rm("plate-2.yaml")
-    rm("../plate-1.g")
-    rm("../plate-2.g")
-    rm("plate-1.e")
-    rm("plate-2.e")
+    rm("plate.yaml"; force=true)
+    rm("plate-1.yaml"; force=true)
+    rm("plate-2.yaml"; force=true)
+    rm("../plate-1.g"; force=true)
+    rm("../plate-2.g"; force=true)
+    rm("plate-1.e"; force=true)
+    rm("plate-2.e"; force=true)
 
-    min_disp_x_plate1 = minimum(model_plate1.current[1, :] - model_plate1.reference[1, :])
-    min_disp_y_plate1 = minimum(model_plate1.current[2, :] - model_plate1.reference[2, :])
-    max_disp_z_plate1 = maximum(model_plate1.current[3, :] - model_plate1.reference[3, :])
-    min_disp_x_plate2 = minimum(model_plate2.current[1, :] - model_plate2.reference[1, :])
-    min_disp_y_plate2 = minimum(model_plate2.current[2, :] - model_plate2.reference[2, :])
-    max_disp_z_plate2 = maximum(model_plate2.current[3, :] - model_plate2.reference[3, :])
+    min_disp_x_plate1 = minimum(model_plate1.displacement[1, :])
+    min_disp_y_plate1 = minimum(model_plate1.displacement[2, :])
+    max_disp_z_plate1 = maximum(model_plate1.displacement[3, :])
+    min_disp_x_plate2 = minimum(model_plate2.displacement[1, :])
+    min_disp_y_plate2 = minimum(model_plate2.displacement[2, :])
+    max_disp_z_plate2 = maximum(model_plate2.displacement[3, :])
     avg_stress_plate1 = average_components(model_plate1.stress)
     avg_stress_plate2 = average_components(model_plate2.stress)
 
@@ -47,61 +47,61 @@ using YAML
     @test min_disp_y_plate2 ≈ -4.800795014556214e-5 atol = 1e-12
     @test max_disp_z_plate2 ≈ 0.0007216778269555964 atol = 1e-12
     @test avg_stress_plate1 ≈
-        [977595.9630637506 85772.43956109945 141163.5317646388 -49663.11299128937 3.137536668989802e6 3493.7573966998607] atol =
+        [975536.448687521 84501.57108956022 144493.91446406025 -49647.800554565794 3.138547390302871e6 3441.401252454787] atol =
         1.0e1
     @test avg_stress_plate2 ≈
-        [540844.912808216 -117477.17517570367 -138702.5759558706 30518.477639077442 7.223736578711799e6 12844.149940346517] atol =
+        [471217.392627086 -149653.4943044766 -36898.736762170665 30561.69822969054 7.226041267577821e6 13263.07301094539] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [
-        54,
+        53,
+        64,
         65,
-        66,
-        73,
-        77,
-        74,
-        70,
         72,
-        75,
         76,
-        75,
         73,
-        71,
-        68,
-        65,
-        63,
-        62,
-        62,
-        63,
-        66,
-        68,
         69,
-        68,
-        66,
-        64,
-        63,
-        63,
-        63,
-        64,
-        64,
-        64,
-        65,
-        65,
-        65,
-        64,
-        64,
-        64,
-        65,
-        66,
+        71,
+        74,
+        75,
+        74,
+        72,
+        70,
         67,
-        67,
-        67,
-        67,
-        67,
-        66,
-        66,
         64,
-        63,
+        62,
         61,
-        59,
+        61,
+        62,
+        65,
+        67,
+        68,
+        67,
+        65,
+        63,
+        62,
+        62,
+        62,
+        63,
+        63,
+        63,
+        64,
+        64,
+        64,
+        63,
+        63,
+        63,
+        64,
+        65,
+        66,
+        66,
+        66,
+        66,
+        66,
+        65,
+        65,
+        63,
+        62,
+        60,
+        58,
     ] atol = 0
 end
