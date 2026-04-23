@@ -269,6 +269,8 @@ function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryConditio
     # Compute contribution from BC
     op_name = "B_" * bc.name * "-" * offset_name
     bc_operator = model.opinf_rom[op_name]
+    scale = get(model.opinf_rom, "input-scale-" * op_name, 1.0)
+    bc_vector .= scale .* bc_vector
     bc_contrib = bc_operator[1, :, :] * bc_vector
     model.reduced_boundary_forcing[:] += bc_contrib
 
@@ -286,7 +288,7 @@ function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBou
             force = reshape(nodal_force, (3, num_nodes))
 
             # apply scaling
-            scale = get(model.opinf_rom, "force-input-scale", 1.0)
+            scale = get(model.opinf_rom, "input-scale-B_N_" * bc.name, 1.0)
             force .= scale .* force
 
             # apply operator to BC internal force vector
@@ -305,6 +307,11 @@ function apply_bc_detail(model::OpInfModel, bc::SolidMechanicsCouplingSchwarzBou
                 node_index = unique_node_indices[i]
                 bc_vector[:, i] = model.fom_model.current[:, node_index] - model.fom_model.reference[:, node_index]
             end
+
+            # apply pre-scaling to input
+            scale = get(model.opinf_rom, "input-scale-B_" * bc.name, 1.0)
+            bc_vector .= scale .* bc_vector
+
             op_name = "B_" * bc.name
             bc_operator = model.opinf_rom[op_name]
             for i in 1:3
