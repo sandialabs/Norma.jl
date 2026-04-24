@@ -26,18 +26,22 @@ boundary conditions:
       source: joint-1
       source side set: schwarz_ss_parts_ss1
       source block: component
+      default BC type: Neumann
     - side set: schwarz_ss_bolts_ss2
       source: joint-1
       source side set: schwarz_ss_parts_ss2
       source block: component
+      default BC type: Neumann
     - side set: schwarz_ss_bolts_ss3
       source: joint-1
       source side set: schwarz_ss_parts_ss3
       source block: component
+      default BC type: Neumann
     - side set: schwarz_ss_bolts_ss4
       source: joint-1
       source side set: schwarz_ss_parts_ss4
       source block: component
+      default BC type: Neumann
 solver:
   type: Hessian minimizer
   step: full Newton

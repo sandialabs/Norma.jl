@@ -30,7 +30,7 @@ boundary conditions:
       source: cuboid-1
       source block: fine
       source side set: ssz+
-      default BC type: Neumann
+      default BC type: Dirichlet
       swap BC types: false
 solver:
   type: Hessian minimizer

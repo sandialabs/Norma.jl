@@ -34,6 +34,7 @@ boundary conditions:
       source block: upper
       source side set: schwarz_upper_ss
       search tolerance: 5.0e-02
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

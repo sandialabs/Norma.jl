@@ -35,6 +35,7 @@ boundary conditions:
       source: gauge
       source block: region_weld_1
       source side set: sideset_positive_y
+      default BC type: Neumann
 solver:
   type: Hessian minimizer
   step: full Newton

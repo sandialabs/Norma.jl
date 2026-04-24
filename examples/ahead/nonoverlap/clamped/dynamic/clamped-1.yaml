@@ -42,6 +42,7 @@ boundary conditions:
       source: clamped-2
       source block: fine
       source side set: ssz-
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton
