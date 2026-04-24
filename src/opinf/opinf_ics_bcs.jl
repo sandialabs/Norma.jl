@@ -4,8 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-using Infiltrator
-
 function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::Dict{String,Any})
     fom_bc = SolidMechanicsDirichletBoundaryCondition(input_mesh,bc_params)
     node_set_name = bc_params["node set"]
