@@ -836,14 +836,6 @@ function component_offset_from_string(name::String)
     return offset
 end
 
-function extract_value(value::Real)
-    return Float64(value)
-end
-
-function extract_value(symbol::Num)
-    return Float64(symbol.val)
-end
-
 function _create_bcs(subsim::SingleDomainSimulation)
     boundary_conditions = Vector{BoundaryCondition}()
     params = subsim.params
@@ -947,27 +939,30 @@ function apply_ics(params::Parameters, model::SolidMechanics, integrator::TimeIn
             node_set_id = node_set_id_from_name(node_set_name, input_mesh)
             node_set_node_indices = Exodus.read_node_set_nodes(input_mesh, node_set_id)
             # expression is an arbitrary function of t, x, y, z in the input file
-            # Parse and expand derivatives only once
+            # Compile to a Float64-valued callable once, then evaluate per node.
             if ic_type == "displacement"
                 disp_num = eval(Meta.parse(expression))
                 velo_num = expand_derivatives(D(disp_num))
+                disp_fn = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
+                velo_fn = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
             elseif ic_type == "velocity"
-                disp_num = nothing  # Not needed
+                disp_fn = nothing
                 velo_num = eval(Meta.parse(expression))
+                velo_fn = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
             else
                 norma_abort(
                     "Invalid initial condition type: '$ic_type'. Supported types are: displacement or velocity."
                 )
             end
             for node_index in node_set_node_indices
-                values = Dict(
-                    t => model.time,
-                    x => model.reference[1, node_index],
-                    y => model.reference[2, node_index],
-                    z => model.reference[3, node_index],
+                txzy = (
+                    model.time,
+                    model.reference[1, node_index],
+                    model.reference[2, node_index],
+                    model.reference[3, node_index],
                 )
-                disp_val = disp_num === nothing ? 0.0 : extract_value(substitute(disp_num, values))
-                velo_val = velo_num === nothing ? 0.0 : extract_value(substitute(velo_num, values))
+                disp_val = disp_fn === nothing ? 0.0 : Float64(disp_fn(txzy))
+                velo_val = Float64(velo_fn(txzy))
                 if ic_type == "displacement"
                     model.displacement[offset, node_index] = disp_val
                     non_zero_velocity = !(velo_val ≈ 0.0)
