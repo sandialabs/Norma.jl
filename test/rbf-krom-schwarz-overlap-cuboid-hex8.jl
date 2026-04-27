@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "RBF kernel Schwarz Overlap Dynamic Cuboid Hex8 Same Step" begin
+@testset "RBF Kernel ROM Schwarz Overlap Dynamic Cuboid Hex8 Same Step" begin
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-1.yaml",
         "cuboid-1.yaml";
