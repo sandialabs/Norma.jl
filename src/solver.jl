@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 
 include("opinf/opinf_solver.jl")
+include("kroms/krom_solver.jl")
 using IterativeSolvers
 using LinearAlgebra
 using Printf
