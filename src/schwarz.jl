@@ -43,7 +43,8 @@ function relaxation_theta!(
     if controller.relaxation_method !== :aitken
         return controller.relaxation_parameter
     end
-    if iter < 1
+    aitken_N0 = controller.aitken_N0
+    if iter < aitken_N0
         controller.aitken_theta_disp[slot] = controller.relaxation_parameter
         controller.aitken_prev_residual_disp[slot] = Float64[]
         return 1.0
