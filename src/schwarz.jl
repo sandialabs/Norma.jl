@@ -44,14 +44,14 @@ function relaxation_theta!(
         return controller.relaxation_parameter
     end
     if iter < 1
-        controller.aitken_theta_disp[slot] = 1.0
+        controller.aitken_theta_disp[slot] = controller.relaxation_parameter
         controller.aitken_prev_residual_disp[slot] = Float64[]
         return 1.0
     end
     residual = interp_disp .- lambda_prev
     prev_residual = controller.aitken_prev_residual_disp[slot]
     θ_prev = controller.aitken_theta_disp[slot]
-    θ = 1.0
+    θ = controller.relaxation_parameter
     if !isempty(prev_residual) && length(prev_residual) == length(residual)
         δ = residual .- prev_residual
         δ_sq = dot(δ, δ)
