@@ -76,6 +76,7 @@ const indexed_test_files = [
     (58, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
     (59, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
     (60, "single-static-solid-cube-swap.jl"),
+    (66, "single-static-solid-cube-swap-mesh-change.jl"),
     (61, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
     (62, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
     (63, "krom-schwarz-overlap-rom-rom-cuboid-hex8.jl"),

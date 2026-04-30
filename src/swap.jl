@@ -237,17 +237,27 @@ function align_replacement_time_single!(new::SingleDomainSimulation, old::Single
 end
 
 # ---------------------------------------------------------------------------
-# State transfer (same-mesh assumption)
+# State transfer
 # ---------------------------------------------------------------------------
 
 copy_model_state!(::Model, ::Model) = nothing
 
+# Public entry: dispatches to the cheap same-mesh direct copy when meshes
+# and per-QP state layouts match, otherwise to the cross-mesh L2 path.
 function copy_model_state!(dst::SolidMechanics, src::SolidMechanics)
-    if size(dst.displacement) != size(src.displacement)
-        norma_abortf(
-            "Replacement mesh size %s does not match original %s — same-mesh swap only",
-            string(size(dst.displacement)), string(size(src.displacement)))
+    if _meshes_match(dst, src) && _state_layouts_match(dst, src)
+        return _copy_model_state_direct!(dst, src)
     end
+    _ensure_recovery_for_swap!(dst)
+    if _has_ivs_to_transfer(dst, src)
+        _ensure_recovery_for_swap!(src)
+    end
+    return _copy_model_state_l2!(dst, src)
+end
+
+# Same-mesh, same per-QP state layout: direct copy.  Cheap, exact, and does
+# not require any recovery infrastructure to be enabled.
+function _copy_model_state_direct!(dst::SolidMechanics, src::SolidMechanics)
     dst.displacement .= src.displacement
     dst.velocity .= src.velocity
     dst.acceleration .= src.acceleration
@@ -259,5 +269,61 @@ function copy_model_state!(dst::SolidMechanics, src::SolidMechanics)
     dst.state = deepcopy(src.state)
     dst.stress = deepcopy(src.stress)
     dst.stored_energy = deepcopy(src.stored_energy)
+    return nothing
+end
+
+# Cross-mesh (or same mesh with different per-QP state layout): L2-projected
+# transfer of nodal kinematic state and per-QP internal variables.  Stress,
+# stored_energy, internal_force, and boundary_force are recomputed by the
+# next evaluate, so we don't transfer them.  The `.=` writes preserve the
+# integrator's unsafe_wrap views into the model's displacement / velocity /
+# acceleration buffers.
+function _copy_model_state_l2!(dst::SolidMechanics, src::SolidMechanics)
+    dst.displacement .= transfer_field(src, src.displacement, dst)
+    dst.velocity     .= transfer_field(src, src.velocity,     dst)
+    dst.acceleration .= transfer_field(src, src.acceleration, dst)
+    _transfer_qp_internal_variables!(dst, src)
+    dst.time = src.time
+    dst.strain_energy = src.strain_energy
+    return nothing
+end
+
+function _meshes_match(dst::SolidMechanics, src::SolidMechanics)
+    size(dst.reference) == size(src.reference) || return false
+    return isapprox(dst.reference, src.reference; atol=1.0e-12)
+end
+
+function _state_layouts_match(dst::SolidMechanics, src::SolidMechanics)
+    length(dst.state) == length(src.state) || return false
+    @inbounds for b in eachindex(dst.state)
+        length(dst.state[b]) == length(src.state[b]) || return false
+        for e in eachindex(dst.state[b])
+            length(dst.state[b][e]) == length(src.state[b][e]) || return false
+            for q in eachindex(dst.state[b][e])
+                length(dst.state[b][e][q]) == length(src.state[b][e][q]) || return false
+            end
+        end
+    end
+    return true
+end
+
+function _has_ivs_to_transfer(dst::SolidMechanics, src::SolidMechanics)
+    src_names = collect_internal_variable_names(src.materials)
+    dst_names = collect_internal_variable_names(dst.materials)
+    return !isempty(intersect(Set(src_names), Set(dst_names)))
+end
+
+# Build a consistent recovery on demand if the user didn't enable one.  The
+# freshly-built recovery_data lives on the model afterward; the next
+# initialize_writing(new) sees it and emits nodal stress output as a
+# byproduct of the swap (small surprise, but transparent).
+function _ensure_recovery_for_swap!(model::SolidMechanics)
+    if model.recovery_data isa NoRecovery
+        norma_log(0, :swap, "Building consistent recovery on demand for state transfer")
+        model.recovery_data = build_recovery_data(
+            :consistent, model.mesh, model.reference, model.num_int_pts,
+        )
+        model.recovered_stress = zeros(6, size(model.reference, 2))
+    end
     return nothing
 end

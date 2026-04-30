@@ -93,3 +93,77 @@ function transfer_field(
     _apply_inverse_mass!(out, dst_model.recovery_data)
     return out
 end
+
+# Transfer per-QP internal variables between meshes covering the same
+# physical geometry.  IVs common to both src and dst materials are L2-
+# projected from src QPs to src nodes (via src.recovery_data), L2-
+# transferred to dst nodes (via dst.recovery_data), and then sampled at
+# each dst QP and written into dst.state[b][e][q][k].  IVs in dst not in
+# src remain at their initial values (set in the model constructor); IVs
+# in src not in dst are silently dropped.
+function _transfer_qp_internal_variables!(dst::SolidMechanics, src::SolidMechanics)
+    src_names = collect_internal_variable_names(src.materials)
+    dst_names = collect_internal_variable_names(dst.materials)
+    common_set = intersect(Set(src_names), Set(dst_names))
+    isempty(common_set) && return nothing
+    common_list = [n for n in src_names if n in common_set]   # preserve src order
+
+    src_iv_nodal = zeros(length(common_list), size(src.reference, 2))
+    _assemble_l2_rhs_internal_variables!(src_iv_nodal, src, common_list)
+    _apply_inverse_mass!(src_iv_nodal, src.recovery_data)
+
+    dst_iv_nodal = transfer_field(src, src_iv_nodal, dst)
+
+    _sample_nodal_at_dst_qps!(dst, dst_iv_nodal, common_list)
+
+    # Mirror state into state_old so the next evaluate's read of state_old
+    # reflects the transferred values.
+    dst.state_old = deepcopy(dst.state)
+    return nothing
+end
+
+function _sample_nodal_at_dst_qps!(
+    dst::SolidMechanics,
+    nodal_iv::AbstractMatrix{Float64},
+    common_list::Vector{String},
+)
+    input_mesh = dst.mesh
+    blocks = Exodus.read_sets(input_mesh, Block)
+    for (block_index, block) in enumerate(blocks)
+        block_id = block.id
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
+        num_points = dst.num_int_pts[block_index]
+        N, _, _ = isoparametric(element_type, num_points)
+
+        mat_iv_names = internal_variable_names(dst.materials[block_index])
+        # block_iv_local[k] is the local IV index in this block's material
+        # for the k-th name in common_list (0 if absent).
+        block_iv_local = [something(findfirst(==(n), mat_iv_names), 0) for n in common_list]
+        any(>(0), block_iv_local) || continue
+
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        block_state = dst.state[block_index]
+        for block_element_index in 1:num_block_elements
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_connectivity[connectivity_indices]
+            element_state = block_state[block_element_index]
+            for point in 1:num_points
+                Np = N[:, point]
+                qp_state = element_state[point]
+                @inbounds for k in eachindex(common_list)
+                    local_idx = block_iv_local[k]
+                    local_idx == 0 && continue
+                    val = 0.0
+                    for a in 1:num_element_nodes
+                        val += Np[a] * nodal_iv[k, node_indices[a]]
+                    end
+                    qp_state[local_idx] = val
+                end
+            end
+        end
+    end
+    return nothing
+end
