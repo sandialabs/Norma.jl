@@ -107,8 +107,14 @@ function SolidMechanics(params::Parameters)
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
     recovery_kind = Symbol(get(model_params, "stress recovery", "none"))
+    recover_iv = Bool(get(model_params, "recover internal variables", false))
+    if recover_iv && recovery_kind === :none
+        norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped' or 'consistent'")
+    end
     recovery_data = build_recovery_data(recovery_kind, input_mesh, reference)
     recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
+    n_iv = recover_iv ? length(collect_internal_variable_names(materials)) : 0
+    recovered_internal_variables = n_iv > 0 ? zeros(n_iv, num_nodes) : zeros(0, 0)
     return SolidMechanics(
         input_mesh,
         materials,
@@ -139,6 +145,7 @@ function SolidMechanics(params::Parameters)
         kinematics,
         recovery_data,
         recovered_stress,
+        recovered_internal_variables,
     )
 end
 

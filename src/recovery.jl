@@ -137,6 +137,23 @@ function recover_stress!(model::SolidMechanics)
     return model
 end
 
+# Project per-QP internal variables (model.state[b][e][q], block-local indexing
+# into the material's IV name list) onto a nodal field stored in
+# model.recovered_internal_variables (n_iv × n_nodes), where n_iv is the union
+# of IV names across all materials.  Blocks whose material lacks a given IV
+# contribute zero to that component's RHS but still contribute their geometric
+# tributary to the (shared) projection mass.
+function recover_internal_variables!(model::SolidMechanics, all_iv_names::Vector{String})
+    rec = model.recovery_data
+    rec isa NoRecovery && return model
+    isempty(all_iv_names) && return model
+    nodal = model.recovered_internal_variables
+    fill!(nodal, 0.0)
+    _assemble_l2_rhs_internal_variables!(nodal, model, all_iv_names)
+    _apply_inverse_mass!(nodal, rec)
+    return model
+end
+
 function _assemble_l2_rhs_stress!(nodal::Matrix{Float64}, model::SolidMechanics)
     input_mesh = model.mesh
     blocks = Exodus.read_sets(input_mesh, Block)
@@ -166,6 +183,57 @@ function _assemble_l2_rhs_stress!(nodal::Matrix{Float64}, model::SolidMechanics)
                     NiJxW = Np[i] * dvol
                     for c in 1:6
                         nodal[c, n] += NiJxW * qp_stress[c]
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+function _assemble_l2_rhs_internal_variables!(
+    nodal::Matrix{Float64}, model::SolidMechanics, all_iv_names::Vector{String}
+)
+    input_mesh = model.mesh
+    blocks = Exodus.read_sets(input_mesh, Block)
+    n_iv = length(all_iv_names)
+    for (block_index, block) in enumerate(blocks)
+        mat_iv_names = internal_variable_names(model.materials[block_index])
+        # Map each global IV index to its local position in this block's
+        # material (0 if absent).  Computed once per block.
+        block_iv_local = Vector{Int}(undef, n_iv)
+        @inbounds for k in 1:n_iv
+            idx = findfirst(==(all_iv_names[k]), mat_iv_names)
+            block_iv_local[k] = idx === nothing ? 0 : idx
+        end
+        any(>(0), block_iv_local) || continue
+        block_id = block.id
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
+        num_points = default_num_int_pts(element_type)
+        N, dN, ip_weights = isoparametric(element_type, num_points)
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        block_state = model.state[block_index]
+        for block_element_index in 1:num_block_elements
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_connectivity[connectivity_indices]
+            element_reference_position = model.reference[:, node_indices]
+            element_state = block_state[block_element_index]
+            for point in 1:num_points
+                Np = N[:, point]
+                dNdξ = dN[:, :, point]
+                dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
+                dvol = det(dXdξ) * ip_weights[point]
+                qp_state = element_state[point]
+                @inbounds for i in 1:num_element_nodes
+                    n = node_indices[i]
+                    NiJxW = Np[i] * dvol
+                    for k in 1:n_iv
+                        local_idx = block_iv_local[k]
+                        local_idx == 0 && continue
+                        nodal[k, n] += NiJxW * qp_state[local_idx]
                     end
                 end
             end

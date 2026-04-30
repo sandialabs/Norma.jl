@@ -46,6 +46,11 @@ function initialize_writing(sim::SingleDomainSimulation)
     if !(sim.model isa RomModel) && !(sim.model.recovery_data isa NoRecovery)
         num_node_vars += 6
         append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+        if size(sim.model.recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(sim.model.materials)
+            num_node_vars += length(iv_names)
+            append!(node_var_names, [name * "_n" for name in iv_names])
+        end
     end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
@@ -301,6 +306,14 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
         Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
         Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
+        if size(model.recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(model.materials)
+            recover_internal_variables!(model, iv_names)
+            nodal_iv = model.recovered_internal_variables
+            for (k, name) in enumerate(iv_names)
+                Exodus.write_values(output_mesh, NodalVariable, time_index, name * "_n", nodal_iv[k, :])
+            end
+        end
     end
     stress = model.stress
     stored_energy = model.stored_energy
