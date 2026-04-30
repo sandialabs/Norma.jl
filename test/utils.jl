@@ -8,12 +8,12 @@ using Logging
 
 @testset "Utils Tests" begin
     @testset "Format Time" begin
-        @test Norma.format_time(0.0) == "0.0s"
-        @test Norma.format_time(59.9) == "59.9s"
-        @test Norma.format_time(60.0) == "1m 0.0s"
-        @test Norma.format_time(3600.0) == "1h 0m 0.0s"
-        @test Norma.format_time(86400.0) == "1d 0h 0m 0.0s"
-        @test Norma.format_time(90061.5) == "1d 1h 1m 1.5s"
+        @test Norma.format_time(0.0) == "0.00s"
+        @test Norma.format_time(59.9) == "59.90s"
+        @test Norma.format_time(60.0) == "1m 0.00s"
+        @test Norma.format_time(3600.0) == "1h 0m 0.00s"
+        @test Norma.format_time(86400.0) == "1d 0h 0m 0.00s"
+        @test Norma.format_time(90061.5) == "1d 1h 1m 1.50s"
     end
 
     @testset "Configure Logger" begin
@@ -63,14 +63,4 @@ using Logging
         end
     end
 
-    @testset "Enable Fpe Traps" begin
-        # This is platform-specific and side-effect prone
-        # So we test only that it runs without error
-        try
-            Norma.enable_fpe_traps()
-            @test true
-        catch e
-            @test false
-        end
-    end
 end

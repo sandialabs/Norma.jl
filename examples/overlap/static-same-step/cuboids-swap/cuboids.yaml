@@ -1,0 +1,16 @@
+type: multi
+domains: ["cuboid-1.yaml", "cuboid-2.yaml"]
+swaps:
+  - subsim: cuboid-1
+    replacement: cuboid-1-phase2.yaml
+    criterion:
+      type: time
+      t_swap: 0.45
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 0.2
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

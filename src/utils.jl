@@ -24,9 +24,11 @@ function wrap_lines(msg::AbstractString, prefix::AbstractString; width::Int=80)
     return join([i == 1 ? line : " "^length(prefix) * line for (i, line) in enumerate(lines)], "\n")
 end
 
-const NORMA_COLOR_OUTPUT =
-    (isdefined(Base, :have_color) && Base.have_color !== nothing ? Base.have_color : stdout isa Base.TTY) &&
-    get(ENV, "NORMA_NO_COLOR", "false") != "true"
+@inline _use_color() =
+    get(ENV, "NORMA_NO_COLOR", "false") != "true" &&
+    (get(ENV, "FORCE_COLOR", "") != "" ||
+     (isdefined(Base, :have_color) && Base.have_color === true) ||
+     stdout isa Base.TTY)
 
 const NORMA_COLORS = Dict(
     :abort => :light_red,
@@ -44,12 +46,14 @@ const NORMA_COLORS = Dict(
     :linesearch => :cyan,
     :norma => :magenta,
     :output => :cyan,
+    :progress => :green,
     :recover => :yellow,
     :schwarz => :light_blue,
     :setup => :magenta,
     :solve => :cyan,
     :step => :green,
     :stop => :blue,
+    :swap => :light_magenta,
     :summary => :magenta,
     :test => :light_green,
     :time => :light_cyan,
@@ -60,6 +64,25 @@ function visible_length(s::AbstractString)
     return length(replace(s, r"\e\[[0-9;]*m" => ""))
 end
 
+const NORMA_WRITE_LOG_FILE = Ref(true)
+const NORMA_LOG_FILE = Ref{Union{IOStream,Nothing}}(nothing)
+
+function open_log_file(input_file::AbstractString)
+    NORMA_WRITE_LOG_FILE[] || return nothing
+    NORMA_LOG_FILE[] === nothing || return nothing  # outermost run() owns the file
+    path = first(splitext(input_file)) * ".log"
+    NORMA_LOG_FILE[] = open(path, "w")
+    return nothing
+end
+
+function close_log_file()
+    io = NORMA_LOG_FILE[]
+    io === nothing && return nothing
+    close(io)
+    NORMA_LOG_FILE[] = nothing
+    return nothing
+end
+
 function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     indent = " "^level
     keyword_str = uppercase(string(keyword))[1:min(end, 7)]
@@ -67,17 +90,28 @@ function norma_log(level::Int, keyword::Symbol, msg::AbstractString)
     padded = rpad(bracketed, 9)
     prefix = indent * padded * " "
 
-    if NORMA_COLOR_OUTPUT
+    if _use_color()
         color = get(NORMA_COLORS, keyword, :default)
         printstyled(prefix; color=color, bold=true)
     else
         print(prefix)
     end
-    if visible_length(prefix * msg) <= 80
+    if visible_length(prefix * msg) <= 120
         println(msg)
     else
-        wrapped = wrap_lines(msg, prefix; width=80 - length(prefix))
+        wrapped = wrap_lines(msg, prefix; width=120 - length(prefix))
         println(wrapped)
+    end
+
+    io = NORMA_LOG_FILE[]
+    if io !== nothing
+        plain = replace(msg, r"\e\[[0-9;]*m" => "")
+        if visible_length(prefix * plain) <= 120
+            println(io, prefix, plain)
+        else
+            println(io, prefix, wrap_lines(plain, prefix; width=120 - length(prefix)))
+        end
+        flush(io)
     end
 end
 
@@ -149,31 +183,6 @@ function configure_logger()
     return nothing
 end
 
-# Constants for Linux/glibc FPE trap masks
-const FE_INVALID = 1    # 0x01
-const FE_DIVBYZERO = 4  # 0x04
-const FE_OVERFLOW = 8   # 0x08
-
-"""
-    enable_fpe_traps()
-
-Attempts to enable floating-point exceptions (FPE traps) on supported platforms.
-Catches invalid operations, divide-by-zero, and overflow. Only supported on Linux x86_64.
-Warns that parser behavior may break due to this setting.
-"""
-function enable_fpe_traps()
-    if Sys.islinux() && Sys.ARCH == :x86_64
-        norma_log(0, :warning, "Enabling FPE traps can break Julia's parser if done too early")
-        norma_log(0, :warning, "(e.g., before Meta.parse()).")
-        mask = FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW
-        ccall((:feenableexcept, "libm.so.6"), Cuint, (Cuint,), mask)
-        norma_log(0, :info, "Floating-point exceptions enabled (invalid, div-by-zero, overflow)")
-    else
-        norma_log(0, :warning, "FPE trap support not available on this platform: $(Sys.KERNEL) $(Sys.ARCH)")
-    end
-    return nothing
-end
-
 function format_time(seconds::Float64)::String
     days = floor(Int, seconds / 86400)  # 86400 seconds in a day
     seconds %= 86400
@@ -195,7 +204,7 @@ function format_time(seconds::Float64)::String
     if minutes > 0 || hours > 0 || days > 0  # Show minutes if higher units are non-zero
         push!(time_str, @sprintf("%dm", minutes))
     end
-    push!(time_str, @sprintf("%.1fs", seconds))
+    push!(time_str, @sprintf("%.2fs", seconds))
 
     return join(time_str, " ")
 end
@@ -209,13 +218,15 @@ end
 
 function colored_status(status::String)
     if status == "[WAIT]"
-        return NORMA_COLOR_OUTPUT ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
+        return _use_color() ? "\e[33m[WAIT]\e[39m" : "[WAIT]"  # yellow
     elseif status == "[DONE]"
-        return NORMA_COLOR_OUTPUT ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
+        return _use_color() ? "\e[32m[DONE]\e[39m" : "[DONE]"  # green
     elseif status == "[CONVERGING]"
-        return NORMA_COLOR_OUTPUT ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
+        return _use_color() ? "\e[33m[CONVERGING]\e[39m" : "[CONVERGING]"  # yellow
     elseif status == "[CONVERGED]"
-        return NORMA_COLOR_OUTPUT ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
+        return _use_color() ? "\e[32m[CONVERGED]\e[39m" : "[CONVERGED]"  # green
+    elseif status == "[INITIAL]"
+        return _use_color() ? "\e[36m[INITIAL]\e[39m" : "[INITIAL]"  # cyan
     else
         return status  # fallback (no color)
     end

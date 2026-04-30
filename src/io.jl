@@ -7,6 +7,25 @@
 using DelimitedFiles
 using Format
 
+function _is_output_time(time::Float64, initial_time::Float64, interval::Float64; tol::Float64=1e-10)
+    interval <= 0.0 && return false
+    elapsed = time - initial_time
+    n = round(elapsed / interval)
+    return abs(elapsed - n * interval) < tol * interval
+end
+
+function collect_internal_variable_names(materials::Vector{Solid})
+    all_names = String[]
+    for material in materials
+        for name in internal_variable_names(material)
+            if !(name in all_names)
+                push!(all_names, name)
+            end
+        end
+    end
+    return all_names
+end
+
 function initialize_writing(sim::SingleDomainSimulation)
     params = sim.params
     integrator = sim.integrator
@@ -24,21 +43,35 @@ function initialize_writing(sim::SingleDomainSimulation)
         num_node_vars += 6
         append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
     end
+    if !(sim.model isa RomModel) && !(sim.model.recovery_data isa NoRecovery)
+        num_node_vars += 6
+        append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+        if size(sim.model.recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(sim.model.materials)
+            num_node_vars += length(iv_names)
+            append!(node_var_names, [name * "_n" for name in iv_names])
+        end
+    end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
 
-    # get maximum number of quadrature points
+    # get maximum number of quadrature points (per-block override on the model)
     blocks = Exodus.read_sets(output_mesh, Block)
     max_num_int_points = 0
-    for block in blocks
-        block_id = block.id
-        element_type_string = Exodus.read_block_parameters(output_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+    for (block_index, block) in enumerate(blocks)
+        if sim.model isa RomModel
+            block_id = block.id
+            element_type_string = Exodus.read_block_parameters(output_mesh, block_id)[1]
+            element_type = element_type_from_string(element_type_string)
+            num_points = default_num_int_pts(element_type)
+        else
+            num_points = sim.model.num_int_pts[block_index]
+        end
         max_num_int_points = max(max_num_int_points, num_points)
     end
 
-    num_element_vars = 7 * max_num_int_points + 1
+    all_iv_names = sim.model isa RomModel ? String[] : collect_internal_variable_names(sim.model.materials)
+    num_element_vars = (7 + length(all_iv_names)) * max_num_int_points + 1
     Exodus.write_number_of_variables(output_mesh, ElementVariable, num_element_vars)
 
     el_var_names = String[]
@@ -51,6 +84,9 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(el_var_names, "stress_xz" * ip_str)
         push!(el_var_names, "stress_xy" * ip_str)
         push!(el_var_names, "von_mises_stress" * ip_str)
+        for iv_name in all_iv_names
+            push!(el_var_names, iv_name * ip_str)
+        end
     end
     push!(el_var_names, "stored_energy")
     Exodus.write_names(output_mesh, ElementVariable, el_var_names)
@@ -75,24 +111,56 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
     return nothing
 end
 
-function write_stop(sim::SingleDomainSimulation)
+function get_umax(model::SolidMechanics)
+  u_max = maximum(abs, model.displacement)
+  return u_max
+end
+
+function get_umax(model::RomModel)
+  u_max = maximum(abs, model.fom_model.displacement)
+  return u_max
+end 
+
+function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
     params = sim.params
     stop = sim.controller.stop
     num_steps = sim.controller.num_stops - 1
     time = sim.controller.time
     name = sim.name
-    if haskey(params, "parent_simulation") == false
-        percent = 100 * stop / num_steps
-        digits = max(0, Int64(ceil(log10(num_steps))) - 2)
-        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
+    model = sim.model
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
+    dt_default = params["time integrator"]["time step"]
+    exodus_interval = Float64(get(params, "Exodus output interval", dt_default))
+    csv_interval    = Float64(get(params, "CSV output interval", 0.0))
+    initial_time = sim.controller.initial_time
+    is_exodus_step = _is_output_time(time, initial_time, exodus_interval)
+    is_csv_step    = _is_output_time(time, initial_time, csv_interval)
+    is_output_step = is_exodus_step || is_csv_step
+
+    # For explicit dynamics, only print at output steps (suppresses per-step noise).
+    # For implicit/quasi-static, print every step (Newton iterations provide context).
+    if !is_coupled(sim)
+        if !is_explicit || is_output_step
+            percent = 100 * stop / num_steps
+            digits = max(0, Int64(ceil(log10(num_steps))) - 2)
+            u_max = get_umax(model) 
+            if is_output_step && wall_time > 0.01
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : |U|_max = %.2e : wall = %s",
+                           stop, num_steps, percent, time, u_max, format_time(wall_time))
+            elseif wall_time > 0.01
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
+                           stop, num_steps, percent, time, format_time(wall_time))
+            else
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e",
+                           stop, num_steps, percent, time)
+            end
+        end
     end
-    exodus_interval = get(params, "Exodus output interval", 1)::Int64
-    if exodus_interval > 0 && stop % exodus_interval == 0
+    if is_exodus_step
         norma_log(0, :output, "Exodus II Database for $name [EXO]")
         write_stop_exodus(sim, sim.model)
     end
-    csv_interval = get(params, "CSV output interval", 0)::Int64
-    if csv_interval > 0 && stop % csv_interval == 0
+    if is_csv_step
         norma_log(0, :output, "Comma Separated Values for $name [CSV]")
         write_stop_csv(sim, sim.model)
         if haskey(params, "CSV write sidesets") == true
@@ -102,13 +170,19 @@ function write_stop(sim::SingleDomainSimulation)
     return nothing
 end
 
-function write_stop(sim::MultiDomainSimulation)
+function write_stop(sim::MultiDomainSimulation; wall_time::Float64=0.0)
     stop = sim.controller.stop
     num_steps = sim.controller.num_stops - 1
     time = sim.controller.time
     percent = 100 * stop / num_steps
     digits = max(0, Int64(ceil(log10(num_steps))) - 2)
-    norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.4e", stop, num_steps, percent, time)
+    if wall_time > 0.01
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
+                   stop, num_steps, percent, time, format_time(wall_time))
+    else
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e",
+                   stop, num_steps, percent, time)
+    end
     for subsim in sim.subsims
         write_stop(subsim)
     end
@@ -126,9 +200,9 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     free_dofs_filename = prefix * "free_dofs" * index_string * ".csv"
     writedlm(free_dofs_filename, model.free_dofs)
     curr_filename = prefix * "curr" * index_string * ".csv"
-    writedlm_nodal_array(curr_filename, model.current)
+    writedlm_nodal_array(curr_filename, model.reference .+ model.displacement)
     disp_filename = prefix * "disp" * index_string * ".csv"
-    writedlm_nodal_array(disp_filename, model.current - model.reference)
+    writedlm_nodal_array(disp_filename, model.displacement)
     time_filename = prefix * "time" * index_string * ".csv"
     writedlm(time_filename, integrator.time, '\n')
     potential_filename = prefix * "potential" * index_string * ".csv"
@@ -140,6 +214,8 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
         writedlm_nodal_array(acce_filename, model.acceleration)
         kinetic_filename = prefix * "kinetic" * index_string * ".csv"
         writedlm(kinetic_filename, integrator.kinetic_energy, '\n')
+        total_filename = prefix * "total_energy" * index_string * ".csv"
+        writedlm(total_filename, integrator.stored_energy + integrator.kinetic_energy, '\n')
     end
     return nothing
 end
@@ -166,14 +242,10 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
-            writedlm(curr_filename, model.current[bc.offset, bc.node_set_node_indices])
+            writedlm(curr_filename, model.reference[bc.offset, bc.node_set_node_indices] + model.displacement[bc.offset, bc.node_set_node_indices])
             writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
             writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
-            writedlm(
-                disp_filename,
-                model.current[bc.offset, bc.node_set_node_indices] -
-                model.reference[bc.offset, bc.node_set_node_indices],
-            )
+            writedlm(disp_filename, model.displacement[bc.offset, bc.node_set_node_indices])
         elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition ||
             bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
             side_set_name = bc.name
@@ -182,21 +254,10 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
             unique_indices = unique(bc.side_set_node_indices)
-            writedlm_nodal_array(curr_filename, model.current[:, unique_indices])
+            writedlm_nodal_array(curr_filename, model.reference[:, unique_indices] .+ model.displacement[:, unique_indices])
             writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
             writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
-            writedlm_nodal_array(disp_filename, model.current[:, unique_indices] - model.reference[:, unique_indices])
-
-            if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-                force_filename = prefix * side_set_name * "-force" * index_string * ".csv"
-                # See ics_bcs.get_dst_force() for this
-                # Will get projected with Neumann projector onto destination simulation boundary
-                force_global = model.internal_force
-                force = extract_local_vector(bc, force_global, 3)
-                num_nodes = length(bc.global_from_local_map)
-                force_out = reshape(force, (3, num_nodes))
-                writedlm_nodal_array(force_filename, force_out)
-            end
+            writedlm_nodal_array(disp_filename, model.displacement[:, unique_indices])
         end
     end
     return nothing
@@ -211,10 +272,10 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     output_mesh = params["output_mesh"]
     Exodus.write_time(output_mesh, time_index, time)
 
-    displacement = model.current - model.reference
-    refe_x = model.current[1, :]
-    refe_y = model.current[2, :]
-    refe_z = model.current[3, :]
+    displacement = model.displacement
+    refe_x = model.reference[1, :] + model.displacement[1, :]
+    refe_y = model.reference[2, :] + model.displacement[2, :]
+    refe_z = model.reference[3, :] + model.displacement[3, :]
     Exodus.write_values(output_mesh, NodalVariable, time_index, "refe_x", refe_x)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "refe_y", refe_y)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "refe_z", refe_z)
@@ -240,14 +301,35 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_y", acce_y)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_z", acce_z)
     end
+    if !(model.recovery_data isa NoRecovery)
+        recover_stress!(model)
+        nodal_sigma = model.recovered_stress
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_n", nodal_sigma[1, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_n", nodal_sigma[2, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_n", nodal_sigma[3, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
+        if size(model.recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(model.materials)
+            recover_internal_variables!(model, iv_names)
+            nodal_iv = model.recovered_internal_variables
+            for (k, name) in enumerate(iv_names)
+                Exodus.write_values(output_mesh, NodalVariable, time_index, name * "_n", nodal_iv[k, :])
+            end
+        end
+    end
     stress = model.stress
     stored_energy = model.stored_energy
+    state = model.state
+    all_iv_names = collect_internal_variable_names(model.materials)
     blocks = Exodus.read_sets(output_mesh, Block)
-    for (block, block_stress, block_stored_energy) in zip(blocks, stress, stored_energy)
+    for (block_index, (block, block_stress, block_stored_energy, block_state)) in
+        enumerate(zip(blocks, stress, stored_energy, state))
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(output_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         stress_xx = zeros(num_block_elements, num_points)
         stress_yy = zeros(num_block_elements, num_points)
         stress_zz = zeros(num_block_elements, num_points)
@@ -282,6 +364,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 von_mises_stress[block_element_index, point] = sigma_vm
             end
         end
+        mat_iv_names = isempty(all_iv_names) ? String[] : internal_variable_names(model.materials[block_index])
         for point in 1:num_points
             ip_str = "_" * string(point)
             Exodus.write_values(
@@ -310,6 +393,17 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 "von_mises_stress" * ip_str,
                 von_mises_stress[:, point],
             )
+            for iv_name in all_iv_names
+                iv_idx = findfirst(==(iv_name), mat_iv_names)
+                if iv_idx !== nothing
+                    values = [block_state[elem][point][iv_idx] for elem in 1:num_block_elements]
+                else
+                    values = zeros(num_block_elements)
+                end
+                Exodus.write_values(
+                    output_mesh, ElementVariable, time_index, Int64(block_id), iv_name * ip_str, values
+                )
+            end
         end
         Exodus.write_values(
             output_mesh, ElementVariable, time_index, Int64(block_id), "stored_energy", block_stored_energy

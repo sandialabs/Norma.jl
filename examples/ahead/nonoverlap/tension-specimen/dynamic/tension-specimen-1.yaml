@@ -1,7 +1,6 @@
 type: single
 input mesh file: ../../../../../lower.g 
 output mesh file: tension-specimen-1.e 
-CSV output interval: 1
 CSV write sidesets: true
 model:
   type: solid mechanics
@@ -28,7 +27,7 @@ boundary conditions:
     - node set: sym_z_lower
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: schwarz_lower_ss
       source: tension-specimen-2
       source block: upper

@@ -161,6 +161,28 @@ function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{5})
     return ξ, w
 end
 
+# Keast rule 6: degree 4, 14 points, all positive weights — required for a PD
+# consistent mass on TET10 (the 4-pt and 5-pt rules give rank-deficient or
+# sign-indefinite element mass).  Source: Patrick Keast, "Moderate Degree
+# Tetrahedral Quadrature Formulas," CMAME 55(3):339-348, 1986.  Coefficients
+# transcribed from John Burkardt's `tetrahedron_keast_rule` (LGPL).
+function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{14})
+    A2 = 0.698419704324386603
+    B2 = 0.100526765225204467
+    A3 = 0.0568813795204234229
+    B3 = 0.314372873493192195
+    w1 = 0.00317460317460317450
+    w2 = 0.0147649707904967828
+    w3 = 0.0221397911142651221
+    ξ = @SMatrix [
+        0.0 0.5 0.5 0.5 0.0 0.0 A2 B2 B2 B2 A3 B3 B3 B3
+        0.5 0.0 0.5 0.0 0.5 0.0 B2 B2 B2 A2 B3 B3 B3 A3
+        0.5 0.5 0.0 0.0 0.0 0.5 B2 B2 A2 B2 B3 B3 A3 B3
+    ]
+    w = @SVector [w1, w1, w1, w1, w1, w1, w2, w2, w2, w2, w3, w3, w3, w3]
+    return ξ, w
+end
+
 function barycentric(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
     ξ, w = barycentric_quadrature(Val(D), Val(N), Val(G))
     T = eltype(ξ)
@@ -401,10 +423,28 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::F
         wₚ = w[point]
         point_coord = nodal_coord * Nₚ
         txzy = (time, point_coord[1], point_coord[2], point_coord[3])
-        traction_val = traction_fun(txzy...)
+        traction_val = traction_fun(txzy)
         nodal_force_component += traction_val * Nₚ * j * wₚ
     end
     return nodal_force_component
+end
+
+
+function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float64)
+    _, num_side_nodes = size(nodal_coord)
+    element_type = get_element_type(2, num_side_nodes)
+    num_int_points = default_num_int_pts(element_type)
+    N, dNdξ, w, _ = isoparametric(element_type, num_int_points)
+    nodal_stiffness_component = zeros(num_side_nodes, num_side_nodes)
+    for point in 1:num_int_points
+        Nₚ = N[:, point]
+        dNdξₚ = dNdξ[:, :, point]
+        dXdξ = dNdξₚ * nodal_coord'
+        j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
+        wₚ = w[point]
+        nodal_stiffness_component += Nₚ*Nₚ' * j * wₚ
+    end
+    return nodal_stiffness_component
 end
 
 function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun::Function, time::Float64)
@@ -423,7 +463,7 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
         wₚ = w[point]
         point_coord = nodal_coord * Nₚ
         txzy = (time, point_coord[1], point_coord[2], point_coord[3])
-        pressure_val = pressure_fun(txzy...)
+        pressure_val = pressure_fun(txzy)
         nodal_force_component += normal * (pressure_val * Nₚ * j * wₚ)'
     end
     return nodal_force_component
@@ -496,7 +536,7 @@ function closest_face_to_point(point::Vector{Float64}, model::SolidMechanics, si
     minimum_nodal_distance = Inf
     for num_nodes_side in num_nodes_sides
         face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
-        face_nodes = model.current[:, face_node_indices]
+        face_nodes = model.reference[:, face_node_indices] + model.displacement[:, face_node_indices]
         nodal_distance = get_minimum_distance_to_nodes(face_nodes, point)
         if nodal_distance < minimum_nodal_distance
             minimum_nodal_distance = nodal_distance
@@ -625,13 +665,63 @@ function get_rectangular_projection_matrix(
     return rectangular_projection_matrix
 end
 
+function get_overlap_rectangular_projection_matrix(
+    dst_model::SolidMechanics,
+    dst_bc::SolidMechanicsOverlapSchwarzBoundaryCondition,
+    src_model::SolidMechanics,
+    coupled_block_name::String,
+    tol::Float64,
+)
+    src_mesh = src_model.mesh
+    src_block_id = block_id_from_name(coupled_block_name, src_mesh)
+    src_element_type_string = Exodus.read_block_parameters(src_mesh, src_block_id)[1]
+    src_element_type = element_type_from_string(src_element_type_string)
+    src_num_nodes = size(src_model.reference, 2)
+    dst_local_from_global_map = dst_bc.local_from_global_map
+    dst_num_nodes_sides = dst_bc.num_nodes_sides
+    dst_side_set_node_indices = dst_bc.side_set_node_indices
+    dst_num_nodes = length(dst_local_from_global_map)
+    dst_coords = dst_model.reference
+    dst_side_set_node_index = 1
+    rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
+    for dst_num_nodes_side in dst_num_nodes_sides
+        dst_side_nodes = dst_side_set_node_indices[dst_side_set_node_index:(dst_side_set_node_index + dst_num_nodes_side - 1)]
+        dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
+        dst_side_coordinates = dst_coords[:, dst_side_nodes]
+        dst_element_type = get_element_type(2, Int64(dst_num_nodes_side))
+        dst_num_int_points = default_num_int_pts(dst_element_type)
+        dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
+        for dst_point in 1:dst_num_int_points
+            dst_Nₚ = dst_N[:, dst_point]
+            dst_dNdξₚ = dst_dNdξ[:, :, dst_point]
+            dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
+            dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
+            dst_wₚ = dst_w[dst_point]
+            dst_int_point_coord = dst_side_coordinates * dst_Nₚ
+            src_node_indices, ξ, found = find_point_in_mesh(
+                dst_int_point_coord, src_model, src_block_id, tol
+            )
+            if found == false
+                norma_abortf(
+                    "Weak overlap projector: could not find point (%.4e, %.4e, %.4e) in source mesh",
+                    dst_int_point_coord[1], dst_int_point_coord[2], dst_int_point_coord[3],
+                )
+            end
+            src_Nₚ = interpolate(src_element_type, ξ)[1]
+            rectangular_projection_matrix[dst_local_indices, src_node_indices] += dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
+        end
+        dst_side_set_node_index += dst_num_nodes_side
+    end
+    return rectangular_projection_matrix
+end
+
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     if model.kinematics == Finite
         coords = model.reference
     else
-        coords = model.current
+        coords = model.reference .+ model.displacement
     end
     num_nodes = length(local_from_global_map)
     space_dim, _ = size(coords)

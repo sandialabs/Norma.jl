@@ -6,12 +6,47 @@
 
 module Norma
 
+# --- Core utilities ---
 include("utils.jl")
+include("minitensor.jl")
+
+# --- Types (order matters due to cross-dependencies) ---
+include("base_types.jl")                # Simulation, Parameters
+include("interpolation_types.jl")       # @enum ElementType
+include("constitutive_types.jl")
+include("boundary_conditions_types.jl") # needs Simulation
+include("recovery_types.jl")           # needs to precede model_types.jl
+include("model_types.jl")              # needs BoundaryCondition, AbstractRecoveryData
+include("time_integrator_types.jl")
+include("solver_types.jl")
+include("swap_types.jl")                # SwapCriterion, SwapPlan
+include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model, SwapPlan
+
+# --- Methods ---
+include("constitutive.jl")
+include("interpolation.jl")
+include("opinf/opinf_model.jl")
+include("kroms/krom_model.jl")
+include("model.jl")
+include("recovery.jl")
+include("boundary_conditions.jl")
+include("schwarz.jl")
+include("field_transfer.jl")
+include("opinf/opinf_ics_bcs.jl")
+include("time_integrator.jl")
+include("solver.jl")
+include("io.jl")
 include("simulation.jl")
+include("swap.jl")
 
 function run(input_file::String)
-    norma_log(0, :norma, "BEGIN SIMULATION")
-    return run(create_simulation(input_file))
+    open_log_file(input_file)
+    try
+        norma_log(0, :norma, "BEGIN SIMULATION")
+        return run(create_simulation(input_file))
+    finally
+        close_log_file()
+    end
 end
 
 function run(params::Parameters)
@@ -21,9 +56,6 @@ end
 
 function run(sim::Simulation)
     start_time = time()
-    if get(sim.params, "enable FPE", false) == true
-        enable_fpe_traps()
-    end
     evolve(sim)
     elapsed_time = time() - start_time
     norma_log(0, :done, "Simulation Complete")

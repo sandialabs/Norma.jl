@@ -24,7 +24,7 @@ boundary conditions:
     - node set: nsz+
       component: z
       function: "0.5 - 0.5 * cos(pi * t)"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: ssz-
       source: cuboid-1
       source block: fine

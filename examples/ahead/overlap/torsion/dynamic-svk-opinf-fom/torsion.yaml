@@ -1,7 +1,6 @@
 type: multi
 domains: ["torsion-1.yaml", "torsion-2.yaml"]
-Exodus output interval: 1
-CSV output interval: 1
+CSV output interval: 1.0e-6
 CSV write sidesets: true
 initial time: 0.0
 final time: 2.0e-3

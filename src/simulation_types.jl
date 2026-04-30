@@ -4,15 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-abstract type Simulation end
-const Parameters = Dict{String,Any}
-
-include("constitutive_types.jl")
-include("ics_bcs_types.jl")
-include("model_types.jl")
-include("time_integrator_types.jl")
-include("solver_types.jl")
-
 abstract type TimeController end
 abstract type SingleTimeController <: TimeController end
 abstract type MultiDomainTimeController <: TimeController end
@@ -46,15 +37,27 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     acce_hist::Vector{Vector{Vector{Float64}}}
     ∂Ω_f_hist::Vector{Vector{Vector{Float64}}}
     relaxation_parameter::Float64
+    relaxation_method::Symbol
     naive_stabilized::Bool
     lambda_disp::Vector{Vector{Float64}}
     lambda_velo::Vector{Vector{Float64}}
     lambda_acce::Vector{Vector{Float64}}
+    aitken_prev_residual_disp::Vector{Vector{Float64}}
+    aitken_prev_residual_velo::Vector{Vector{Float64}}
+    aitken_prev_residual_acce::Vector{Vector{Float64}}
+    aitken_theta_disp::Vector{Float64}
     is_schwarz::Bool
     schwarz_contact::Bool
     active_contact::Bool
     contact_hist::Vector{Bool}
     schwarz_iters::Vector{Int64}
+    use_interface_predictor::Bool
+    predictor_disp::Vector{Vector{Float64}}
+    predictor_velo::Vector{Vector{Float64}}
+    predictor_acce::Vector{Vector{Float64}}
+    predictor_∂Ω_f::Vector{Vector{Float64}}
+    prev_stop_disp::Vector{Vector{Float64}}
+    prev_stop_∂Ω_f::Vector{Vector{Float64}}
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController
@@ -75,6 +78,12 @@ mutable struct SingleDomainSimulation <: Simulation
     solver::Solver
     model::Model
     failed::Bool
+    # Back-reference to the MultiDomainSimulation that owns this subsim, and a
+    # stable slot id. Both are nothing when the simulation is run standalone.
+    # Typed against the abstract Simulation because MultiDomainSimulation is
+    # defined below.
+    parent::Union{Nothing,Simulation}
+    handle::Union{Nothing,DomainHandle}
 end
 
 mutable struct MultiDomainSimulation <: Simulation
@@ -83,6 +92,8 @@ mutable struct MultiDomainSimulation <: Simulation
     controller::MultiDomainTimeController
     num_domains::Int64
     subsims::Vector{SingleDomainSimulation}
-    subsim_name_index_map::Dict{String,Int64}
+    handle_by_name::Dict{String,DomainHandle}
+    name_by_handle::Vector{String}
+    swaps::Vector{SwapPlan}
     failed::Bool
 end

@@ -27,7 +27,7 @@ boundary conditions:
     - node set: top-one-point
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: schwarz_ss_top
       source: vessel-1
       source side set: schwarz_ss_bottom

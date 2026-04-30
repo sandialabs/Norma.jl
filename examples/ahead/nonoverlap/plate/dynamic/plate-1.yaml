@@ -26,7 +26,7 @@ boundary conditions:
     - node set: nsx-
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: ssx+
       source: plate-2
       source block: coarse

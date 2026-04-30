@@ -62,7 +62,7 @@ mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
     reference::Matrix{Float64}
-    current::Matrix{Float64}
+    displacement::Matrix{Float64}
     velocity::Matrix{Float64}
     acceleration::Matrix{Float64}
     internal_force::Vector{Float64}
@@ -85,9 +85,12 @@ mutable struct SolidMechanics <: Model
     failed::Bool
     mesh_smoothing::Bool
     smooth_reference::String
-    inclined_support::Bool
-    global_transform::SparseMatrixCSC{Float64,Int64}
     kinematics::Kinematics
+    recovery_data::AbstractRecoveryData
+    recovered_stress::Matrix{Float64}
+    recovered_internal_variables::Matrix{Float64}
+    num_int_pts::Vector{Int}
 end
 
 include("opinf/opinf_model_types.jl")
+include("kroms/krom_model_types.jl")

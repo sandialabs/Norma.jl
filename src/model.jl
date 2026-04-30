@@ -4,10 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-include("opinf/opinf_model.jl")
-include("constitutive.jl")
-include("interpolation.jl")
-include("ics_bcs.jl")
 
 using Base.Threads: @threads, threadid, nthreads, maxthreadid
 
@@ -17,14 +13,11 @@ function SolidMechanics(params::Parameters)
     coords = read_coordinates(input_mesh)
     num_nodes = Exodus.num_nodes(input_mesh.init)
     reference = Matrix{Float64}(undef, 3, num_nodes)
-    current = Matrix{Float64}(undef, 3, num_nodes)
-    velocity = Matrix{Float64}(undef, 3, num_nodes)
-    acceleration = Matrix{Float64}(undef, 3, num_nodes)
+    displacement = zeros(3, num_nodes)
+    velocity = zeros(3, num_nodes)
+    acceleration = zeros(3, num_nodes)
     for node in 1:num_nodes
         reference[:, node] = coords[:, node]
-        current[:, node] = coords[:, node]
-        velocity[:, node] = [0.0, 0.0, 0.0]
-        acceleration[:, node] = [0.0, 0.0, 0.0]
     end
     material_params = model_params["material"]
     material_blocks = material_params["blocks"]
@@ -71,11 +64,16 @@ function SolidMechanics(params::Parameters)
     state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
+    num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
+    num_int_pts = Vector{Int}(undef, num_blocks)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        block_name = element_block_names[block_index]
+        num_points = haskey(num_int_pts_overrides, block_name) ?
+            Int(num_int_pts_overrides[block_name]) : default_num_int_pts(element_type)
+        num_int_pts[block_index] = num_points
         material = materials[block_index]
         num_states = number_states(material)
         if (num_states > 0)
@@ -113,15 +111,20 @@ function SolidMechanics(params::Parameters)
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
-    inclined_support = false
-    num_dofs = 3 * num_nodes
-    global_transform = sparse(I, num_dofs, num_dofs)
-
+    recovery_kind = Symbol(get(model_params, "stress recovery", "none"))
+    recover_iv = Bool(get(model_params, "recover internal variables", false))
+    if recover_iv && recovery_kind === :none
+        norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped' or 'consistent'")
+    end
+    recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
+    recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
+    n_iv = recover_iv ? length(collect_internal_variable_names(materials)) : 0
+    recovered_internal_variables = n_iv > 0 ? zeros(n_iv, num_nodes) : zeros(0, 0)
     return SolidMechanics(
         input_mesh,
         materials,
         reference,
-        current,
+        displacement,
         velocity,
         acceleration,
         internal_force,
@@ -144,9 +147,11 @@ function SolidMechanics(params::Parameters)
         failed,
         mesh_smoothing,
         smooth_reference,
-        inclined_support,
-        global_transform,
         kinematics,
+        recovery_data,
+        recovered_stress,
+        recovered_internal_variables,
+        num_int_pts,
     )
 end
 
@@ -158,14 +163,16 @@ function create_model(params::Parameters)
     elseif model_name == "mesh smoothing"
         params["mesh smoothing"] = true
         return SolidMechanics(params)
-    elseif model_name == "linear opinf rom"
+    elseif model_name in ["linear opinf rom", "linear kernel rom"]
         return LinearOpInfRom(params)
-    elseif model_name == "quadratic opinf rom"
+    elseif model_name in ["quadratic opinf rom", "quadratic kernel rom"]
         return QuadraticOpInfRom(params)
-    elseif model_name == "cubic opinf rom"
+    elseif model_name in ["cubic opinf rom", "cubic kernel rom"]
         return CubicOpInfRom(params)
     elseif model_name == "neural network opinf rom"
         return NeuralNetworkOpInfRom(params)
+    elseif model_name == "rbf kernel rom"
+        return RBFKernelROM(params)
     else
         norma_abort("Unknown type of model : $model_name")
     end
@@ -181,6 +188,8 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
             h = equal_volume_tet_h(u, v, w)
         elseif smooth_reference == "average edge length"
             h = avg_edge_length_tet_h(u, v, w)
+        elseif smooth_reference == "max"
+            h = max(avg_edge_length_tet_h(u, v, w), equal_volume_tet_h(u, v, w))
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
@@ -237,7 +246,7 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
-            element_curr_pos = model.current[:, node_indices]
+            element_curr_pos = model.reference[:, node_indices] + model.displacement[:, node_indices]
             minimum_element_characteristic_length = characteristic_element_length_centroid(element_curr_pos)
             minimum_block_characteristic_length = min(
                 minimum_block_characteristic_length, minimum_element_characteristic_length
@@ -268,11 +277,6 @@ function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9},
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
-function voigt_cauchy_from_stress(
-    _::PlasticLinearHardening, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64
-)
-    return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
-end
 
 function dense(indices::Vector{Int64}, values::Vector{Float64}, vector_size::Int64)
     dense_vector = zeros(vector_size)
@@ -566,7 +570,7 @@ function compute_element_threadlocal_arrays!(
 ) where {T,N}
     t = threadid()
     grad_op = create_gradient_operator(dNdX)
-    stress = SVector{9,Float64}(P)
+    stress = SVector{9,Float64}(P')
     element_arrays_tl.energy[t] += W * dvol
     add_internal_force!(element_arrays_tl.internal_force[t], grad_op, stress, dvol)
     if flags.compute_lumped_mass == true
@@ -638,7 +642,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
@@ -654,13 +658,13 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             else
                 element_reference_position = model.reference[:, node_indices]
             end
-            element_current_position = model.current[:, node_indices]
+            element_current_position = model.reference[:, node_indices] + model.displacement[:, node_indices]
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
                 dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
                 dNdX = dXdξ \ dNdξ
-                F = SMatrix{3,3,Float64,9}(dNdX * element_current_position')
+                F = SMatrix{3,3,Float64,9}(element_current_position * dNdX')
                 J = det(F)
                 if J ≤ 0.0 || isfinite(J) == false
                     model.failed = true
@@ -672,12 +676,20 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                     log_matrix(4, :info, "Current Configuration", element_current_position)
                     return nothing
                 end
-                state = model.state[block_index][block_element_index][point]
-                if material isa (Elastic)
-                    W, P, AA = constitutive(material, F)
-                else
-                    W, P, AA, state_new = constitutive(material, F, state)
-                    model.state[block_index][block_element_index][point] = state_new
+                state = model.state_old[block_index][block_element_index][point]
+                local W, P, AA
+                try
+                    if material isa (Elastic)
+                        W, P, AA = constitutive(material, F)
+                    else
+                        W, P, AA, state_new = constitutive(material, F, state)
+                        model.state[block_index][block_element_index][point] = state_new
+                    end
+                catch e
+                    e isa _MATH_ERRORS || rethrow()
+                    model.failed = true
+                    norma_logf(4, :solve, "evaluate: caught %s in constitutive model", typeof(e))
+                    break  # skip remaining integration points for this element
                 end
                 ip_weight = ip_weights[point]
                 det_dXdξ = det(dXdξ)

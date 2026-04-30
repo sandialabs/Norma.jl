@@ -24,7 +24,7 @@ boundary conditions:
     - node set: nodeset_negative_z
       component: z
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: sideset_negative_y
       source: gauge
       source block: region_weld_1

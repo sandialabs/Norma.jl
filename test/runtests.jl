@@ -8,9 +8,12 @@ using LinearAlgebra
 using Printf
 using Statistics
 using Test
+using Norma
 
-include("../src/Norma.jl")
 include("helpers.jl")
+
+# Suppress per-input .log files during the test suite.
+Norma.NORMA_WRITE_LOG_FILE[] = false
 
 # List of all test files (ordered)
 const indexed_test_files = [
@@ -19,60 +22,74 @@ const indexed_test_files = [
     (3, "constitutive.jl"),
     (4, "single-static-solid-cube.jl"),
     (5, "single-static-solid-neumann-bc.jl"),
-    (6, "single-implicit-dynamic-solid-cube.jl"),
-    (7, "single-implicit-dynamic-solid-sho.jl"),
-    (8, "single-implicit-dynamic-solid-clamped.jl"),
-    (9, "single-explicit-dynamic-solid-cube.jl"),
-    (10, "single-explicit-dynamic-solid-sho.jl"),
-    (11, "single-explicit-dynamic-solid-clamped.jl"),
-    (12, "tet4-static-solid-cube.jl"),
-    (13, "tet10-static-solid-cube.jl"),
-    (14, "schwarz-overlap-static-cuboid-hex8.jl"),
-    (15, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
-    (16, "transfer-operators.jl"),
-    (17, "schwarz-contact-static-cubes.jl"),
-    (18, "schwarz-contact-dynamic-cubes.jl"),
-    (19, "solid-inclined-displacement.jl"),
-    (20, "opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (21, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
-    (22, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (23, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
-    (24, "adaptive-time-stepping.jl"),
-    (25, "schwarz-ahead-overlap-dynamic-clamped.jl"),
-    (26, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
-    (26, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
-    (28, "schwarz-ahead-overlap-dynamic-torsion.jl"),
-    (29, "schwarz-ahead-overlap-dynamic-bracket.jl"),
-    (30, "schwarz-ahead-overlap-dynamic-plate.jl"),
-    (31, "single-ahead-clamped.jl"),
-    (32, "single-ahead-notched-cylinder.jl"),
-    (33, "single-ahead-laser-weld.jl"),
-    (34, "single-ahead-torsion.jl"),
-    (35, "single-ahead-bracket.jl"),
-    (36, "single-ahead-plate.jl"),
-    (37, "schwarz-ahead-nonoverlap-dynamic-clamped.jl"),
-    (38, "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl"),
-    (39, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
-    (40, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
-    (41, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
-    (42, "single-static-solid-pressure-bc.jl"),
-    (43, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"),
-    (44, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"),
-    (45, "single-implicit-dynamic-solid-can-pressure-nbc.jl"),
-    (46, "single-static-solid-cube-sd-dbc.jl"),
-    (47, "constitutive-model-energy-gradient.jl"),
-    (48, "smoothing.jl"),
-    (49, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
-    (50, "utils.jl"), # Must go last due to FPE traps
+    (6, "single-static-solid-robin-bc.jl"),
+    (7, "single-implicit-dynamic-solid-cube.jl"),
+    (8, "single-implicit-dynamic-solid-sho.jl"),
+    (9, "single-implicit-dynamic-solid-clamped.jl"),
+    (10, "single-explicit-dynamic-solid-cube.jl"),
+    (11, "single-explicit-dynamic-solid-sho.jl"),
+    (12, "single-explicit-dynamic-solid-clamped.jl"),
+    (13, "tet4-static-solid-cube.jl"),
+    (14, "tet10-static-solid-cube.jl"),
+    (15, "schwarz-overlap-static-cuboid-hex8.jl"),
+    (16, "schwarz-nonoverlap-static-cuboid-hex8.jl"),
+    (17, "schwarz-nonoverlap-static-cuboid-robin-robin.jl"),
+    (18, "schwarz-nonoverlap-dynamic-cuboid.jl"),
+    (19, "transfer-operators.jl"),
+    (20, "schwarz-contact-static-cubes.jl"),
+    (21, "schwarz-contact-dynamic-cubes.jl"),
+    (22, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (24, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+    (25, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (26, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (27, "adaptive-time-stepping.jl"),
+    (28, "schwarz-ahead-overlap-dynamic-clamped.jl"),
+    (29, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
+    (29, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
+    (31, "schwarz-ahead-overlap-dynamic-torsion.jl"),
+    (32, "schwarz-ahead-overlap-dynamic-bracket.jl"),
+    (33, "schwarz-ahead-overlap-dynamic-plate.jl"),
+    (34, "single-ahead-clamped.jl"),
+    (35, "single-ahead-notched-cylinder.jl"),
+    (36, "single-ahead-laser-weld.jl"),
+    (37, "single-ahead-torsion.jl"),
+    (38, "single-ahead-bracket.jl"),
+    (39, "single-ahead-plate.jl"),
+    (40, "schwarz-ahead-nonoverlap-dynamic-clamped.jl"),
+    (41, "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl"),
+    (42, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
+    (43, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
+    (44, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
+    (45, "single-static-solid-pressure-bc.jl"),
+    (46, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"),
+    (47, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"),
+    (48, "single-implicit-dynamic-solid-can-pressure-nbc.jl"),
+    (49, "single-static-solid-cube-sd-dbc.jl"),
+    (50, "constitutive-model-energy-gradient.jl"),
+    (51, "smoothing.jl"),
+    (52, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
+    (53, "single-static-solid-j2-plasticity.jl"),
+    (54, "utils.jl"),
+    (55, "schwarz-nonoverlap-dynamic-cantilever-dn.jl"),
+    (56, "schwarz-overlap-dynamic-cantilever-weak.jl"),
+    (57, "schwarz-overlap-static-cuboid-hex8-swap.jl"),
+    (58, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
+    (59, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
+    (60, "single-static-solid-cube-swap.jl"),
+    (61, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
+    (62, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
+    (63, "krom-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+    (64, "recovery-cube.jl"),
+    (65, "transfer-volumetric.jl"),
 ]
 
 # Extract test file names
-const nnopinf_test_indices = Int[49]
+const nnopinf_test_indices = Int[52]
 
 const all_test_files = [file for (_, file) in indexed_test_files]
 const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopinf_test_indices]
 # Optional test indices (excluded from quick runs)
-const optional_test_indices = Int[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 49]
+const optional_test_indices = Int[28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 52, 55]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]

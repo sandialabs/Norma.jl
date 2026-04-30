@@ -24,7 +24,7 @@ boundary conditions:
     - node set: +Z_top
       component: z
       function: "0.0064 * (0.5 - 0.5 * cos(pi * t))"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: -Z_topSS
       source: notched-cylinder-1
       source side set: +Z_bottomSS

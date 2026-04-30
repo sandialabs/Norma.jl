@@ -27,7 +27,7 @@ initial conditions:
       component: z
       function: "ifelse(x > 0.099, 100.0, 0.0)"
 boundary conditions:
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: ssx-
       source: plate-1
       source block: fine

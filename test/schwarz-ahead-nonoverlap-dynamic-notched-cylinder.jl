@@ -35,20 +35,20 @@ using YAML
     model_1 = subsims[1].model
     model_2 = subsims[2].model
 
-    rm("notched-cylinder.yaml")
-    rm("notched-cylinder-1.yaml")
-    rm("notched-cylinder-2.yaml")
-    rm("../notched-cylinder-1.g")
-    rm("../notched-cylinder-2.g")
-    rm("notched-cylinder-1.e")
-    rm("notched-cylinder-2.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-1.yaml"; force=true)
+    rm("notched-cylinder-2.yaml"; force=true)
+    rm("../notched-cylinder-1.g"; force=true)
+    rm("../notched-cylinder-2.g"; force=true)
+    rm("notched-cylinder-1.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
-    min_disp_x_1 = minimum(model_1.current[1, :] - model_1.reference[1, :])
-    min_disp_y_1 = minimum(model_1.current[2, :] - model_1.reference[2, :])
-    max_disp_z_1 = maximum(model_1.current[3, :] - model_1.reference[3, :])
-    min_disp_x_2 = minimum(model_2.current[1, :] - model_2.reference[1, :])
-    min_disp_y_2 = minimum(model_2.current[2, :] - model_2.reference[2, :])
-    min_disp_z_2 = minimum(model_2.current[3, :] - model_2.reference[3, :])
+    min_disp_x_1 = minimum(model_1.displacement[1, :])
+    min_disp_y_1 = minimum(model_1.displacement[2, :])
+    max_disp_z_1 = maximum(model_1.displacement[3, :])
+    min_disp_x_2 = minimum(model_2.displacement[1, :])
+    min_disp_y_2 = minimum(model_2.displacement[2, :])
+    min_disp_z_2 = minimum(model_2.displacement[3, :])
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 
@@ -64,5 +64,5 @@ using YAML
     @test avg_stress_2 ≈
         [-101340.89672529901 -101446.28712096746 1.5977255795638144e6 121800.33493609141 122483.30918545111 37064.478126464295] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 4, 4, 4, 4, 5, 5] atol = 0
+    @test sim.controller.schwarz_iters ≈ [0, 0, 0, 0, 3, 3, 3, 3, 4, 4] atol = 0
 end

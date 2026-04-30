@@ -25,18 +25,18 @@ using YAML
     model_clamped0 = subsims[1].model
     model_clamped1 = subsims[2].model
 
-    rm("clamped.yaml")
-    rm("clamped-1.yaml")
-    rm("clamped-2.yaml")
-    rm("../clamped-1.g")
-    rm("../clamped-2.g")
-    rm("clamped-1.e")
-    rm("clamped-2.e")
+    rm("clamped.yaml"; force=true)
+    rm("clamped-1.yaml"; force=true)
+    rm("clamped-2.yaml"; force=true)
+    rm("../clamped-1.g"; force=true)
+    rm("../clamped-2.g"; force=true)
+    rm("clamped-1.e"; force=true)
+    rm("clamped-2.e"; force=true)
 
     z0 = model_clamped0.reference[3, :]
-    disp0_x = model_clamped0.current[1, :] - model_clamped0.reference[1, :]
-    disp0_y = model_clamped0.current[2, :] - model_clamped0.reference[2, :]
-    disp0_z = model_clamped0.current[3, :] - model_clamped0.reference[3, :]
+    disp0_x = model_clamped0.displacement[1, :]
+    disp0_y = model_clamped0.displacement[2, :]
+    disp0_z = model_clamped0.displacement[3, :]
     velo0_x = model_clamped0.velocity[1, :]
     velo0_y = model_clamped0.velocity[2, :]
     velo0_z = model_clamped0.velocity[3, :]
@@ -45,9 +45,9 @@ using YAML
     acce0_z = model_clamped0.acceleration[3, :]
 
     z1 = model_clamped1.reference[3, :]
-    disp1_x = model_clamped1.current[1, :] - model_clamped1.reference[1, :]
-    disp1_y = model_clamped1.current[2, :] - model_clamped1.reference[2, :]
-    disp1_z = model_clamped1.current[3, :] - model_clamped1.reference[3, :]
+    disp1_x = model_clamped1.displacement[1, :]
+    disp1_y = model_clamped1.displacement[2, :]
+    disp1_z = model_clamped1.displacement[3, :]
     velo1_x = model_clamped1.velocity[1, :]
     velo1_y = model_clamped1.velocity[2, :]
     velo1_z = model_clamped1.velocity[3, :]
@@ -107,8 +107,8 @@ using YAML
     acce0_z_norm = norm(acce0_z_exact)
     acce0_z_relerr = acce0_z_err / acce0_z_norm
 
-    @test disp0_z_relerr ≈ 0.022031767756555413 atol = 1e-12
-    @test velo0_z_relerr ≈ 0.04874736761742479 atol = 1e-12
+    @test disp0_z_relerr ≈ 0.02203176833389421 atol = 1e-12
+    @test velo0_z_relerr ≈ 0.04874736898174163 atol = 1e-12
     @test acce0_z_relerr ≈ 0.11433470809918797 atol = 1e-6
     @test norm(disp0_x) ≈ 0.0 atol = 0.0
     @test norm(disp0_y) ≈ 0.0 atol = 0.0
@@ -163,8 +163,8 @@ using YAML
     acce1_z_norm = norm(acce1_z_exact)
     acce1_z_relerr = acce1_z_err / acce1_z_norm
 
-    @test disp1_z_relerr ≈ 0.02203176775652283 atol = 1e-12
-    @test velo1_z_relerr ≈ 0.0487473676174047 atol = 1e-12
+    @test disp1_z_relerr ≈ 0.02203176833386584 atol = 1e-12
+    @test velo1_z_relerr ≈ 0.04874736898176951 atol = 1e-12
     @test acce1_z_relerr ≈ 0.11433470809930901 atol = 1e-6
     @test norm(disp1_x) ≈ 0.0 atol = 0.0
     @test norm(disp1_y) ≈ 0.0 atol = 0.0
@@ -174,105 +174,105 @@ using YAML
     @test norm(acce1_y) ≈ 0.0 atol = 0.0
 
     @test sim.controller.schwarz_iters ≈ [
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
     ] atol = 0
 end

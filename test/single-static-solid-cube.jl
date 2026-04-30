@@ -4,14 +4,14 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "Single Static Solid Cube" begin
-    cp("../examples/single/static-solid/cube/cube.yaml", "cube.yaml"; force=true)
-    cp("../examples/single/static-solid/cube/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06
@@ -26,14 +26,14 @@
 end
 
 @testset "Single Static Solid Cube Line Search" begin
-    cp("../examples/single/static-solid/cube/cube-line-search.yaml", "cube-line-search.yaml"; force=true)
-    cp("../examples/single/static-solid/cube/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube-line-search.yaml", "cube-line-search.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube-line-search.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube-line-search.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube-line-search.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06
@@ -48,14 +48,14 @@ end
 end
 
 @testset "Single Static Solid Cube Steepest Descent" begin
-    cp("../examples/single/static-solid/cube/cube-steepest-descent.yaml", "cube-steepest-descent.yaml"; force=true)
-    cp("../examples/single/static-solid/cube/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube-steepest-descent.yaml", "cube-steepest-descent.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube-steepest-descent.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube-steepest-descent.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube-steepest-descent.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06

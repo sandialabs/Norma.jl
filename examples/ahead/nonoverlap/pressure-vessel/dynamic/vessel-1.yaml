@@ -24,7 +24,7 @@ boundary conditions:
     - node set: y-symm
       component: y
       function: "0.0"
-  Schwarz nonoverlap:
+  Schwarz DN nonoverlap:
     - side set: schwarz_ss_bottom
       source: vessel-2
       source block: vessel-top
