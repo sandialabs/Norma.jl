@@ -79,6 +79,8 @@ const indexed_test_files = [
     (61, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
     (62, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
     (63, "krom-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+    (64, "recovery-cube.jl"),
+    (65, "transfer-volumetric.jl"),
 ]
 
 # Extract test file names
