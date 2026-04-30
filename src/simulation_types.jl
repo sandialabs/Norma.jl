@@ -84,6 +84,10 @@ mutable struct SingleDomainSimulation <: Simulation
     # defined below.
     parent::Union{Nothing,Simulation}
     handle::Union{Nothing,DomainHandle}
+    # Mid-run swap plans on this single-domain simulation.  Empty when the sim
+    # is itself a subsim of a MultiDomainSimulation (which carries its own
+    # swap list at the parent level).
+    swaps::Vector{SwapPlan}
 end
 
 mutable struct MultiDomainSimulation <: Simulation

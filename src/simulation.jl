@@ -84,7 +84,10 @@ function SingleDomainSimulation(params::Parameters)
     norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
     norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
     failed = false
-    return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing)
+    swaps = parse_swap_plans(params)
+    sim = SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps)
+    validate_swap_plans(sim)
+    return sim
 end
 
 # True when this subsim belongs to a MultiDomainSimulation (i.e., is coupled).

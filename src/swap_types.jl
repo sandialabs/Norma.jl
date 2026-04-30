@@ -12,10 +12,12 @@ struct TimeSwapCriterion <: SwapCriterion
     t_swap::Float64
 end
 
-# A scheduled swap: replace the subsim named `subsim_name` with the sim
-# described by `replacement_file` once `criterion` fires. One-shot.
+# A scheduled swap: replace a simulation with the one described by
+# `replacement_file` once `criterion` fires.  `subsim_name` is required for
+# multi-domain swaps (it selects which subsim to replace) and `nothing` for
+# single-domain swaps (where there is no choice).  One-shot.
 mutable struct SwapPlan
-    subsim_name::String
+    subsim_name::Union{Nothing,String}
     criterion::SwapCriterion
     replacement_file::String
     applied::Bool
