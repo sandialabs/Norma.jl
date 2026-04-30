@@ -4,6 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using SparseArrays
+
 abstract type AbstractRecoveryData end
 
 struct NoRecovery <: AbstractRecoveryData end
@@ -14,4 +16,13 @@ struct NoRecovery <: AbstractRecoveryData end
 # higher-order quadrature rules).
 struct LumpedRecovery <: AbstractRecoveryData
     inv_m::Vector{Float64}
+end
+
+# Geometry-only (density-free), scalar (1 DOF/node) consistent projection
+# mass: M_ij = Σ_e Σ_q N_i(ξ_q) N_j(ξ_q) w_q |J|.  The matrix is symmetric
+# positive definite, so we cache a Cholesky factorization once at setup and
+# back-substitute per component at output time.
+struct ConsistentRecovery{F} <: AbstractRecoveryData
+    M::SparseMatrixCSC{Float64,Int64}
+    factor::F
 end

@@ -41,6 +41,65 @@ end
 
 build_recovery_mass_lumped(model::SolidMechanics) = build_recovery_mass_lumped(model.mesh, model.reference)
 
+function build_recovery_mass_consistent(input_mesh::ExodusDatabase, reference::Matrix{Float64})::SparseMatrixCSC{Float64,Int64}
+    n_nodes = size(reference, 2)
+    blocks = Exodus.read_sets(input_mesh, Block)
+    nnz_estimate = 0
+    for block in blocks
+        block_id = block.id
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
+        _, num_element_nodes = get_element_dim_nodes(element_type)
+        num_block_elements = size(get_block_connectivity(input_mesh, block_id), 1)
+        nnz_estimate += num_block_elements * num_element_nodes * num_element_nodes
+    end
+    rows = Vector{Int64}(undef, nnz_estimate)
+    cols = Vector{Int64}(undef, nnz_estimate)
+    vals = Vector{Float64}(undef, nnz_estimate)
+    idx = 0
+    for block in blocks
+        block_id = block.id
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
+        num_points = default_num_int_pts(element_type)
+        N, dN, ip_weights = isoparametric(element_type, num_points)
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        M_e = Matrix{Float64}(undef, num_element_nodes, num_element_nodes)
+        for block_element_index in 1:num_block_elements
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_connectivity[connectivity_indices]
+            element_reference_position = reference[:, node_indices]
+            fill!(M_e, 0.0)
+            for point in 1:num_points
+                Np = N[:, point]
+                dNdξ = dN[:, :, point]
+                dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
+                dvol = det(dXdξ) * ip_weights[point]
+                @inbounds for i in 1:num_element_nodes
+                    NiJxW = Np[i] * dvol
+                    for j in 1:num_element_nodes
+                        M_e[i, j] += NiJxW * Np[j]
+                    end
+                end
+            end
+            @inbounds for i in 1:num_element_nodes
+                gi = node_indices[i]
+                for j in 1:num_element_nodes
+                    idx += 1
+                    rows[idx] = gi
+                    cols[idx] = node_indices[j]
+                    vals[idx] = M_e[i, j]
+                end
+            end
+        end
+    end
+    return sparse(rows, cols, vals, n_nodes, n_nodes)
+end
+
+build_recovery_mass_consistent(model::SolidMechanics) = build_recovery_mass_consistent(model.mesh, model.reference)
+
 function build_recovery_data(kind::Symbol, input_mesh::ExodusDatabase, reference::Matrix{Float64})::AbstractRecoveryData
     if kind === :none
         return NoRecovery()
@@ -57,8 +116,12 @@ function build_recovery_data(kind::Symbol, input_mesh::ExodusDatabase, reference
             end
         end
         return LumpedRecovery(inv_m)
+    elseif kind === :consistent
+        M = build_recovery_mass_consistent(input_mesh, reference)
+        factor = cholesky(Symmetric(M))
+        return ConsistentRecovery(M, factor)
     else
-        norma_abort("Unknown stress recovery kind: '$kind' (expected :none or :lumped)")
+        norma_abort("Unknown stress recovery kind: '$kind' (expected :none, :lumped, or :consistent)")
     end
 end
 
@@ -119,6 +182,13 @@ function _apply_inverse_mass!(nodal::Matrix{Float64}, rec::LumpedRecovery)
         for c in 1:size(nodal, 1)
             nodal[c, n] *= w
         end
+    end
+    return nothing
+end
+
+function _apply_inverse_mass!(nodal::Matrix{Float64}, rec::ConsistentRecovery)
+    @views for c in 1:size(nodal, 1)
+        nodal[c, :] = rec.factor \ nodal[c, :]
     end
     return nothing
 end
