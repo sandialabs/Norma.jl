@@ -55,14 +55,18 @@ function initialize_writing(sim::SingleDomainSimulation)
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
 
-    # get maximum number of quadrature points
+    # get maximum number of quadrature points (per-block override on the model)
     blocks = Exodus.read_sets(output_mesh, Block)
     max_num_int_points = 0
-    for block in blocks
-        block_id = block.id
-        element_type_string = Exodus.read_block_parameters(output_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+    for (block_index, block) in enumerate(blocks)
+        if sim.model isa RomModel
+            block_id = block.id
+            element_type_string = Exodus.read_block_parameters(output_mesh, block_id)[1]
+            element_type = element_type_from_string(element_type_string)
+            num_points = default_num_int_pts(element_type)
+        else
+            num_points = sim.model.num_int_pts[block_index]
+        end
         max_num_int_points = max(max_num_int_points, num_points)
     end
 
@@ -325,7 +329,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(output_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         stress_xx = zeros(num_block_elements, num_points)
         stress_yy = zeros(num_block_elements, num_points)
         stress_zz = zeros(num_block_elements, num_points)

@@ -89,6 +89,7 @@ mutable struct SolidMechanics <: Model
     recovery_data::AbstractRecoveryData
     recovered_stress::Matrix{Float64}
     recovered_internal_variables::Matrix{Float64}
+    num_int_pts::Vector{Int}
 end
 
 include("opinf/opinf_model_types.jl")

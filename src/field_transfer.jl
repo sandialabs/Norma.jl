@@ -39,11 +39,11 @@ function transfer_field(
     dst_mesh = dst_model.mesh
     dst_blocks = Exodus.read_sets(dst_mesh, Block)
     point_buf = Vector{Float64}(undef, 3)
-    for dst_block in dst_blocks
+    for (dst_block_index, dst_block) in enumerate(dst_blocks)
         dst_block_id = dst_block.id
         dst_et_str = Exodus.read_block_parameters(dst_mesh, dst_block_id)[1]
         dst_et = element_type_from_string(dst_et_str)
-        dst_npts = default_num_int_pts(dst_et)
+        dst_npts = dst_model.num_int_pts[dst_block_index]
         N_dst, dN_dst, dst_w = isoparametric(dst_et, dst_npts)
         dst_conn = get_block_connectivity(dst_mesh, dst_block_id)
         n_dst_elem, n_dst_nodes_per_elem = size(dst_conn)

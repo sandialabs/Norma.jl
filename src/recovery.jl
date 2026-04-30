@@ -8,15 +8,17 @@
 #   m_i = Σ_e Σ_q N_i(ξ_q) w_q |J(ξ_q)|
 # Density-free by design — the same projection works regardless of material
 # density per block, which matters for multi-material problems.
-function build_recovery_mass_lumped(input_mesh::ExodusDatabase, reference::Matrix{Float64})::Vector{Float64}
+function build_recovery_mass_lumped(
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::Vector{Float64}
     n_nodes = size(reference, 2)
     m = zeros(Float64, n_nodes)
     blocks = Exodus.read_sets(input_mesh, Block)
-    for block in blocks
+    for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
@@ -39,9 +41,12 @@ function build_recovery_mass_lumped(input_mesh::ExodusDatabase, reference::Matri
     return m
 end
 
-build_recovery_mass_lumped(model::SolidMechanics) = build_recovery_mass_lumped(model.mesh, model.reference)
+build_recovery_mass_lumped(model::SolidMechanics) =
+    build_recovery_mass_lumped(model.mesh, model.reference, model.num_int_pts)
 
-function build_recovery_mass_consistent(input_mesh::ExodusDatabase, reference::Matrix{Float64})::SparseMatrixCSC{Float64,Int64}
+function build_recovery_mass_consistent(
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::SparseMatrixCSC{Float64,Int64}
     n_nodes = size(reference, 2)
     blocks = Exodus.read_sets(input_mesh, Block)
     nnz_estimate = 0
@@ -57,11 +62,11 @@ function build_recovery_mass_consistent(input_mesh::ExodusDatabase, reference::M
     cols = Vector{Int64}(undef, nnz_estimate)
     vals = Vector{Float64}(undef, nnz_estimate)
     idx = 0
-    for block in blocks
+    for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
@@ -98,13 +103,16 @@ function build_recovery_mass_consistent(input_mesh::ExodusDatabase, reference::M
     return sparse(rows, cols, vals, n_nodes, n_nodes)
 end
 
-build_recovery_mass_consistent(model::SolidMechanics) = build_recovery_mass_consistent(model.mesh, model.reference)
+build_recovery_mass_consistent(model::SolidMechanics) =
+    build_recovery_mass_consistent(model.mesh, model.reference, model.num_int_pts)
 
-function build_recovery_data(kind::Symbol, input_mesh::ExodusDatabase, reference::Matrix{Float64})::AbstractRecoveryData
+function build_recovery_data(
+    kind::Symbol, input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::AbstractRecoveryData
     if kind === :none
         return NoRecovery()
     elseif kind === :lumped
-        m = build_recovery_mass_lumped(input_mesh, reference)
+        m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
         # Match Carina: invert only positive entries; leave the rest at zero so
         # orphan nodes (or sign cancellation in higher-order quadrature) yield a
         # zero recovered value at those nodes rather than aborting the run.
@@ -117,7 +125,7 @@ function build_recovery_data(kind::Symbol, input_mesh::ExodusDatabase, reference
         end
         return LumpedRecovery(inv_m)
     elseif kind === :consistent
-        M = build_recovery_mass_consistent(input_mesh, reference)
+        M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
         factor = cholesky(Symmetric(M))
         return ConsistentRecovery(M, factor)
     else
@@ -161,7 +169,7 @@ function _assemble_l2_rhs_stress!(nodal::Matrix{Float64}, model::SolidMechanics)
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
@@ -210,7 +218,7 @@ function _assemble_l2_rhs_internal_variables!(
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)

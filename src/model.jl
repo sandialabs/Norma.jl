@@ -64,11 +64,16 @@ function SolidMechanics(params::Parameters)
     state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
+    num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
+    num_int_pts = Vector{Int}(undef, num_blocks)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        block_name = element_block_names[block_index]
+        num_points = haskey(num_int_pts_overrides, block_name) ?
+            Int(num_int_pts_overrides[block_name]) : default_num_int_pts(element_type)
+        num_int_pts[block_index] = num_points
         material = materials[block_index]
         num_states = number_states(material)
         if (num_states > 0)
@@ -111,7 +116,7 @@ function SolidMechanics(params::Parameters)
     if recover_iv && recovery_kind === :none
         norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped' or 'consistent'")
     end
-    recovery_data = build_recovery_data(recovery_kind, input_mesh, reference)
+    recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
     recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
     n_iv = recover_iv ? length(collect_internal_variable_names(materials)) : 0
     recovered_internal_variables = n_iv > 0 ? zeros(n_iv, num_nodes) : zeros(0, 0)
@@ -146,6 +151,7 @@ function SolidMechanics(params::Parameters)
         recovery_data,
         recovered_stress,
         recovered_internal_variables,
+        num_int_pts,
     )
 end
 
@@ -636,7 +642,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
