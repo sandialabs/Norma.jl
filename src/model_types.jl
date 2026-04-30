@@ -86,6 +86,8 @@ mutable struct SolidMechanics <: Model
     mesh_smoothing::Bool
     smooth_reference::String
     kinematics::Kinematics
+    recovery_data::AbstractRecoveryData
+    recovered_stress::Matrix{Float64}
 end
 
 include("opinf/opinf_model_types.jl")

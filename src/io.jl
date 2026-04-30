@@ -43,6 +43,10 @@ function initialize_writing(sim::SingleDomainSimulation)
         num_node_vars += 6
         append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
     end
+    if !(sim.model isa RomModel) && !(sim.model.recovery_data isa NoRecovery)
+        num_node_vars += 6
+        append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+    end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
 
@@ -287,6 +291,16 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_x", acce_x)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_y", acce_y)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_z", acce_z)
+    end
+    if !(model.recovery_data isa NoRecovery)
+        recover_stress!(model)
+        nodal_sigma = model.recovered_stress
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_n", nodal_sigma[1, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_n", nodal_sigma[2, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_n", nodal_sigma[3, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
     end
     stress = model.stress
     stored_energy = model.stored_energy

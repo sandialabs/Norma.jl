@@ -106,6 +106,9 @@ function SolidMechanics(params::Parameters)
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
+    recovery_kind = Symbol(get(model_params, "stress recovery", "none"))
+    recovery_data = build_recovery_data(recovery_kind, input_mesh, reference)
+    recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
     return SolidMechanics(
         input_mesh,
         materials,
@@ -134,6 +137,8 @@ function SolidMechanics(params::Parameters)
         mesh_smoothing,
         smooth_reference,
         kinematics,
+        recovery_data,
+        recovered_stress,
     )
 end
 

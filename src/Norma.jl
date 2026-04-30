@@ -15,7 +15,8 @@ include("base_types.jl")                # Simulation, Parameters
 include("interpolation_types.jl")       # @enum ElementType
 include("constitutive_types.jl")
 include("boundary_conditions_types.jl") # needs Simulation
-include("model_types.jl")              # needs BoundaryCondition
+include("recovery_types.jl")           # needs to precede model_types.jl
+include("model_types.jl")              # needs BoundaryCondition, AbstractRecoveryData
 include("time_integrator_types.jl")
 include("solver_types.jl")
 include("swap_types.jl")                # SwapCriterion, SwapPlan
@@ -27,6 +28,7 @@ include("interpolation.jl")
 include("opinf/opinf_model.jl")
 include("kroms/krom_model.jl")
 include("model.jl")
+include("recovery.jl")
 include("boundary_conditions.jl")
 include("schwarz.jl")
 include("opinf/opinf_ics_bcs.jl")
