@@ -161,6 +161,28 @@ function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{5})
     return ξ, w
 end
 
+# Keast rule 6: degree 4, 14 points, all positive weights — required for a PD
+# consistent mass on TET10 (the 4-pt and 5-pt rules give rank-deficient or
+# sign-indefinite element mass).  Source: Patrick Keast, "Moderate Degree
+# Tetrahedral Quadrature Formulas," CMAME 55(3):339-348, 1986.  Coefficients
+# transcribed from John Burkardt's `tetrahedron_keast_rule` (LGPL).
+function barycentric_quadrature(::Val{3}, ::Val{10}, ::Val{14})
+    A2 = 0.698419704324386603
+    B2 = 0.100526765225204467
+    A3 = 0.0568813795204234229
+    B3 = 0.314372873493192195
+    w1 = 0.00317460317460317450
+    w2 = 0.0147649707904967828
+    w3 = 0.0221397911142651221
+    ξ = @SMatrix [
+        0.0 0.5 0.5 0.5 0.0 0.0 A2 B2 B2 B2 A3 B3 B3 B3
+        0.5 0.0 0.5 0.0 0.5 0.0 B2 B2 B2 A2 B3 B3 B3 A3
+        0.5 0.5 0.0 0.0 0.0 0.5 B2 B2 A2 B2 B3 B3 A3 B3
+    ]
+    w = @SVector [w1, w1, w1, w1, w1, w1, w2, w2, w2, w2, w3, w3, w3, w3]
+    return ξ, w
+end
+
 function barycentric(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
     ξ, w = barycentric_quadrature(Val(D), Val(N), Val(G))
     T = eltype(ξ)
