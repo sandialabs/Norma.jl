@@ -42,6 +42,7 @@ boundary conditions:
       source: torsion-2
       source block: top
       source side set: -Z_ss
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

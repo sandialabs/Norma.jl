@@ -44,18 +44,22 @@ boundary conditions:
       source: joint-2
       source block: component
       source side set: schwarz_ss_bolts_ss1
+      default BC type: Dirichlet
     - side set: schwarz_ss_parts_ss2
       source: joint-2
       source block: component
       source side set: schwarz_ss_bolts_ss2
+      default BC type: Dirichlet
     - side set: schwarz_ss_parts_ss3
       source: joint-2
       source block: component
       source side set: schwarz_ss_bolts_ss3
+      default BC type: Dirichlet
     - side set: schwarz_ss_parts_ss4
       source: joint-2
       source block: component
       source side set: schwarz_ss_bolts_ss4
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

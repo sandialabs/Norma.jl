@@ -33,6 +33,7 @@ boundary conditions:
       source side set: schwarz_lower_ss 
       source block: lower
       search tolerance: 5.0e-02
+      default BC type: Neumann
 solver:
   type: Hessian minimizer
   step: full Newton
