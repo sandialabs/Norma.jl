@@ -1,11 +1,11 @@
 type: single
 input mesh file: ../clamped-2.g
 output mesh file: clamped-2.e
-CSV output interval: 1.0e-6
+CSV output interval: 1.0e-7
 CSV write sidesets: true
 model:
   type: linear opinf rom
-  model-file: ../dynamic-linear-elastic-fom-rom/opinf-operator-2.npz
+  model-file: opinf-operator-2.npz
   material:
     blocks:
       fine: hyperelastic
