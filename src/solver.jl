@@ -461,7 +461,10 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             model.boundary_conditions,
         )
         if needs_force
-            evaluate(integrator, solver, model)
+            model.fom_model.time = model.time
+            reconstruct_fom_fields!(integrator, solver, model)
+            # `evaluate` updates `model.fom_model.internal_force`
+            evaluate(integrator.fom_integrator, solver.fom_solver, model.fom_model)
         end
     end
     return nothing

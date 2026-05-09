@@ -741,6 +741,9 @@ function restore_stop_state(sim::MultiDomainSimulation)
         subsim.integrator.velocity .= controller.stop_velo[i]
         subsim.integrator.acceleration .= controller.stop_acce[i]
         set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
+        if subsim.model isa RomModel
+            reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)
+        end
     end
 end
 
