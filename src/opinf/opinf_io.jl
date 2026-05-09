@@ -64,24 +64,24 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::RomModel)
 
     # Re-construct full state only when we need internal force for nonoverlap output.
     if has_nonoverlap
-        for i in 1:size(model.fom_model.current)[2]
+        for i in 1:size(model.fom_model.displacement)[2]
             x_dof_index = 3 * (i - 1) + 1
             y_dof_index = 3 * (i - 1) + 2
             z_dof_index = 3 * (i - 1) + 3
             if model.fom_model.free_dofs[x_dof_index]
-                model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+                model.fom_model.displacement[1, i] = model.basis[1, i, :]'displacement
                 model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
                 model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
             end
 
             if model.fom_model.free_dofs[y_dof_index]
-                model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+                model.fom_model.displacement[2, i] = model.basis[2, i, :]'displacement
                 model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
                 model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
             end
 
             if model.fom_model.free_dofs[z_dof_index]
-                model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+                model.fom_model.displacement[3, i] = model.basis[3, i, :]'displacement
                 model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
                 model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
             end
@@ -110,19 +110,19 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::RomModel)
             y_dof_index = 3 * (i - 1) + 2
             z_dof_index = 3 * (i - 1) + 3
             if model.fom_model.free_dofs[x_dof_index]
-                model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+                model.fom_model.displacement[1, i] = model.basis[1, i, :]'displacement 
                 model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
                 model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
             end
 
             if model.fom_model.free_dofs[y_dof_index]
-                model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+                model.fom_model.displacement[2, i] = model.basis[2, i, :]'displacement
                 model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
                 model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
             end
 
             if model.fom_model.free_dofs[z_dof_index]
-                model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+                model.fom_model.displacement[3, i] = model.basis[3, i, :]'displacement 
                 model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
                 model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
             end
@@ -145,33 +145,22 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::RomModel)
             if offset == 3
                 offset_name = "z"
             end
-            curr_filename = prefix * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
             disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
-            writedlm(curr_filename, model.fom_model.current[bc.offset, bc.node_set_node_indices])
+            writedlm(disp_filename, model.fom_model.displacement[bc.offset, bc.node_set_node_indices])
             writedlm(velo_filename, model.fom_model.velocity[bc.offset, bc.node_set_node_indices])
             writedlm(acce_filename, model.fom_model.acceleration[bc.offset, bc.node_set_node_indices])
-            writedlm(
-                disp_filename,
-                model.fom_model.current[bc.offset, bc.node_set_node_indices] -
-                model.fom_model.reference[bc.offset, bc.node_set_node_indices],
-            )
         elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition ||
             bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
             side_set_name = bc.name
-            curr_filename = prefix * side_set_name * "-curr" * index_string * ".csv"
             disp_filename = prefix * side_set_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
             unique_indices = unique(bc.side_set_node_indices)
-            writedlm_nodal_array(curr_filename, model.fom_model.current[:, unique_indices])
+            writedlm_nodal_array(disp_filename, model.fom_model.displacement[:, unique_indices])
             writedlm_nodal_array(velo_filename, model.fom_model.velocity[:, unique_indices])
             writedlm_nodal_array(acce_filename, model.fom_model.acceleration[:, unique_indices])
-            writedlm_nodal_array(
-                disp_filename,
-                model.fom_model.current[:, unique_indices] - model.fom_model.reference[:, unique_indices],
-            )
 
             if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 force_filename = prefix * side_set_name * "-force" * index_string * ".csv"

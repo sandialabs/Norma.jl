@@ -13,8 +13,6 @@ mutable struct NeuralNetworkOpInfRom <: OpInfModel
     reduced_state::Vector{Float64}
     reduced_velocity::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}
-    #internal_force not used, but include to ease interfacing in Schwarz
-    internal_force::Vector{Float64}
     free_dofs::BitVector
     boundary_conditions::Vector{BoundaryCondition}
     time::Float64
@@ -29,8 +27,6 @@ mutable struct CubicOpInfRom <: OpInfModel
     reduced_state::Vector{Float64}
     reduced_velocity::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}
-    #internal_force not used, but include to ease interfacing in Schwarz
-    internal_force::Vector{Float64}
     free_dofs::BitVector
     boundary_conditions::Vector{BoundaryCondition}
     time::Float64
@@ -45,8 +41,6 @@ mutable struct QuadraticOpInfRom <: OpInfModel
     reduced_state::Vector{Float64}
     reduced_velocity::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}
-    #internal_force not used, but include to ease interfacing in Schwarz
-    internal_force::Vector{Float64}
     free_dofs::BitVector
     boundary_conditions::Vector{BoundaryCondition}
     time::Float64
@@ -61,8 +55,6 @@ mutable struct LinearOpInfRom <: OpInfModel
     reduced_state::Vector{Float64}
     reduced_velocity::Vector{Float64}
     reduced_boundary_forcing::Vector{Float64}
-    #internal_force not used, but include to ease interfacing in Schwarz
-    internal_force::Vector{Float64}
     free_dofs::BitVector
     boundary_conditions::Vector{BoundaryCondition}
     time::Float64
