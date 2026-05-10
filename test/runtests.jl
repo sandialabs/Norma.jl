@@ -82,6 +82,10 @@ const indexed_test_files = [
     (63, "recovery-cube.jl"),
     (64, "transfer-volumetric.jl"),
     (65, "single-static-solid-cube-swap-mesh-change.jl"),
+    (66, "schwarz-ahead-nonoverlap-dynamic-cuboid.jl"),
+    (67, "schwarz-ahead-nonoverlap-dynamic-cuboid-fom-rom.jl"),
+    (68, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-fom.jl"),
+    (69, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-rom.jl"),
 ]
 
 # Extract test file names
