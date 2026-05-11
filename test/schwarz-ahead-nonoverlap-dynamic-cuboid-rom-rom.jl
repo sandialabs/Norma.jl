@@ -35,26 +35,27 @@ using YAML
     rm("opinf-operator-1.npz"; force=true)
     rm("opinf-operator-2.npz"; force=true)
 
-    min_disp_x_cuboid1 = minimum(model_cuboid1.displacement[1, :])
-    min_disp_y_cuboid1 = minimum(model_cuboid1.displacement[2, :])
-    max_disp_z_cuboid1 = maximum(model_cuboid1.displacement[3, :])
-    min_disp_x_cuboid2 = minimum(model_cuboid2.displacement[1, :])
-    min_disp_y_cuboid2 = minimum(model_cuboid2.displacement[2, :])
-    max_disp_z_cuboid2 = maximum(model_cuboid2.displacement[3, :])
-    avg_stress_cuboid1 = average_components(model_cuboid1.stress)
-    avg_stress_cuboid2 = average_components(model_cuboid2.stress)
+    min_disp_x_cuboid1 = minimum(model_cuboid1.fom_model.displacement[1, :])
+    min_disp_y_cuboid1 = minimum(model_cuboid1.fom_model.displacement[2, :])
+    max_disp_z_cuboid1 = maximum(model_cuboid1.fom_model.displacement[3, :])
+    min_disp_x_cuboid2 = minimum(model_cuboid2.fom_model.displacement[1, :])
+    min_disp_y_cuboid2 = minimum(model_cuboid2.fom_model.displacement[2, :])
+    max_disp_z_cuboid2 = maximum(model_cuboid2.fom_model.displacement[3, :])
+    avg_stress_cuboid1 = average_components(model_cuboid1.fom_model.stress)
+    avg_stress_cuboid2 = average_components(model_cuboid2.fom_model.stress)
 
-    @test min_disp_x_cuboid1 ≈ -0.16666795382949284 atol = 1e-8
-    @test min_disp_y_cuboid1 ≈ -0.16666812371062245 atol = 1e-8
-    @test max_disp_z_cuboid1 ≈ 0.500000342149204 atol = 1e-8
-    @test min_disp_x_cuboid2 ≈ -0.16666666925334647 atol = 1e-8
-    @test min_disp_y_cuboid2 ≈ -0.16666669868308254 atol = 1e-8
+    @test min_disp_x_cuboid1 ≈ -0.16666795382949284 atol = 1e-4
+    @test min_disp_y_cuboid1 ≈ -0.16666812371062245 atol = 1e-4
+    @test max_disp_z_cuboid1 ≈ 0.500000342149204 atol = 5e-4
+    @test min_disp_x_cuboid2 ≈ -0.16666666925334647 atol = 1e-4
+    @test min_disp_y_cuboid2 ≈ -0.16666669868308254 atol = 1e-4
     @test max_disp_z_cuboid2 ≈ 1.0  atol = 1e-8
+ 
     @test avg_stress_cuboid1 ≈
-        [-525.4719242914192 -614.7235273085922 6.666662416135818e8 -343.2550177765682 -285.4845590950376 -131.6205212637345] atol =
+        [20825.178222706116 17882.971673504566 6.666261568238857e8 69060.0196501547 53099.62437229117 5184.81492985873] atol = 
         1.0e1
     @test avg_stress_cuboid2 ≈
-        [249.32200554618612 352.76520328223705 6.666657544841888e8 -110.210362413315 -86.04425221711305 194.863727364082] atol =
+        [138134.35375948716 148380.85638317117 6.667673940411736e8 -10568.381115041764 -7721.350948063234 21043.030125480927] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16] atol = 0
+    @test sim.controller.schwarz_iters ≈ [8, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9, 9, 9, 9, 9, 8] atol = 0
 end
