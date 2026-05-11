@@ -452,5 +452,20 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             break
         end
     end
+    # Recompute FOM internal force after ROM converges so it is current for
+    # any subsequent BC or history queries (e.g. Schwarz Neumann transfer).
+    # Only needed when this subdomain sends Neumann data (i.e., applies Dirichlet).
+    if is_rom_model
+        needs_force = any(
+            bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.is_dirichlet,
+            model.boundary_conditions,
+        )
+        if needs_force
+            model.fom_model.time = model.time
+            reconstruct_fom_fields!(integrator, solver, model)
+            # `evaluate` updates `model.fom_model.internal_force`
+            evaluate(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+        end
+    end
     return nothing
 end

@@ -694,7 +694,7 @@ function save_curr_state(sim::SingleDomainSimulation)
     integrator.prev_disp = copy(integrator.displacement)
     integrator.prev_velo = copy(integrator.velocity)
     integrator.prev_acce = copy(integrator.acceleration)
-    return integrator.prev_∂Ω_f = copy(sim.model.internal_force)
+    return integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
 end
 
 function restore_prev_state(sim::SingleDomainSimulation)
@@ -703,7 +703,7 @@ function restore_prev_state(sim::SingleDomainSimulation)
     integrator.displacement .= integrator.prev_disp
     integrator.velocity .= integrator.prev_velo
     integrator.acceleration .= integrator.prev_acce
-    sim.model.internal_force = copy(integrator.prev_∂Ω_f)
+    set_internal_force!(sim.model, copy(integrator.prev_∂Ω_f))
     return nothing
 end
 
@@ -726,7 +726,7 @@ function save_stop_state(sim::MultiDomainSimulation)
         controller.stop_disp[i] = copy(subsim.integrator.displacement)
         controller.stop_velo[i] = copy(subsim.integrator.velocity)
         controller.stop_acce[i] = copy(subsim.integrator.acceleration)
-        controller.stop_∂Ω_f[i] = copy(subsim.model.internal_force)
+        controller.stop_∂Ω_f[i] = copy(get_internal_force(subsim.model))
     end
 end
 
@@ -740,7 +740,10 @@ function restore_stop_state(sim::MultiDomainSimulation)
         subsim.integrator.displacement .= controller.stop_disp[i]
         subsim.integrator.velocity .= controller.stop_velo[i]
         subsim.integrator.acceleration .= controller.stop_acce[i]
-        subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
+        set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
+        if subsim.model isa RomModel
+            reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)
+        end
     end
 end
 
@@ -984,9 +987,10 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
                 coupled_model = get_fom_model(coupled_subsim_of(bc))
-                W = get_square_projection_matrix(subsim.model, bc)
+                fom_model = get_fom_model(subsim)
+                W = get_square_projection_matrix(fom_model, bc)
                 L = get_overlap_rectangular_projection_matrix(
-                    subsim.model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
+                    fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
                 )
                 bc.dirichlet_projector = (W \ I) * L
             elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
@@ -994,7 +998,8 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 compute_dirichlet_projector(subsim.model, bc)
                 compute_neumann_projector(subsim.model, bc)
                 if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-                    bc.square_projector = get_square_projection_matrix(subsim.model, bc)
+                    fom_model = get_fom_model(subsim)
+                    bc.square_projector = get_square_projection_matrix(fom_model, bc)
                 end
             end
         end

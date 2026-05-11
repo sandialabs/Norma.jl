@@ -6,8 +6,8 @@ import numpy as np
 if __name__ == '__main__':
   
   settings = {}
-  settings['fom-yaml-file'] = "../fom-fom/clamped-1.yaml"
-  settings['training-data-directories'] = ["../fom-fom"]
+  settings['fom-yaml-file'] = "../dynamic-linear-elastic-fom-fom/clamped-1.yaml"
+  settings['training-data-directories'] = ["../dynamic-linear-elastic-fom-fom"]
   settings['model-type'] = 'linear'
   settings['stop-training-time'] = 'end'
   settings['training-skip-steps'] = 2

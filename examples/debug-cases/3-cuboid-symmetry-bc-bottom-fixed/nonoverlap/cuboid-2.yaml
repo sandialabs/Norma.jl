@@ -26,10 +26,12 @@ boundary conditions:
       source: cuboid-1
       source block: fine
       source side set: ssz+
+      default BC type: Neumann
     - side set: ssz+
       source: cuboid-3
       source block: coarse
       source side set: ssz-
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton
