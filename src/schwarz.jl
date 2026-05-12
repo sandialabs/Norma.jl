@@ -431,13 +431,13 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
       if (iter == 0)
         n = length(model.boundary_force)
         g = zeros(n)
-      else  
+      else
         #this plays role of g_1.  hijack lambda_disp to store it.
         #In particular, we set g to past lambda_disp
-        g = controller.lambda_disp[coupled_index]  
+        g = controller.lambda_disp[coupled_index]
       end
-      #println("IKT g norm = ", norm(g)) 
-      #initialize lambda_disp  = model.boundary_force 
+      #println("IKT g norm = ", norm(g))
+      #initialize lambda_disp  = model.boundary_force
       controller.lambda_disp[coupled_index] = copy(model.boundary_force)
       for comp in 1:3
           alpha_W_u = α * (W * dst_disp[comp, :])
@@ -809,7 +809,7 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     dst_acce = zeros(3, num_dst_nodes)
     for i in 1:3
         dst_curr[i, :] = dirichlet_projector * src_curr[i, :]
-        dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :]) 
+        dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :])
         dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
         dst_acce[i, :] = dirichlet_projector * src_acce[i, :]
     end

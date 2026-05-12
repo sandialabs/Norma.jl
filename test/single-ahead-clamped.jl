@@ -41,7 +41,7 @@ using YAML
     s = 0.02
     T = 1.0e-3
 
-    #Create and populate exact solution vectors 
+    #Create and populate exact solution vectors
     n = size(z)[1]
     disp_z_exact = zeros(Float64, n)
     velo_z_exact = zeros(Float64, n)

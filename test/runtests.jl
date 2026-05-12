@@ -145,7 +145,7 @@ function parse_args(args)
         Norma.norma_log(0, :info, "Running quick test set.")
         filter(t -> t[1] in quick_test_indices, indexed_test_files)
     elseif nnopinf
-        indexed_test_files 
+        indexed_test_files
     else
         Norma.norma_log(0, :info, "Running standard test suite.")
         filter(t -> t[1] in standard_test_indices, indexed_test_files)

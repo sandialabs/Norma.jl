@@ -23,7 +23,7 @@ if __name__ == '__main__':
   snapshots_dict = normaopinf.opinf.get_processed_snapshots(settings)
   settings['model-name'] = 'opinf-operator-1'
   normaopinf.opinf.make_opinf_model_from_snapshots_dict(snapshots_dict,settings)
-  
+
   settings = {}
   settings['fom-yaml-file'] = "../../dynamic-linear-elastic-fom-fom/clamped-2.yaml"
   settings['training-data-directories'] = ["../../dynamic-linear-elastic-fom-fom"]

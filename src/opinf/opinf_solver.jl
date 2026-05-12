@@ -258,7 +258,7 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
         xi[0] = x
         inputs = torch.tensor(xi)
         return inputs
-    """ 
+    """
     ensemble_size = size(model.nn_model)[1]
     stiffness = zeros( num_dof,num_dof )
     #Kx,K = model.nn_model[1].forward(model_inputs,return_stiffness=true)
@@ -269,14 +269,14 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
       #Kx += Kxt
       Kt = Kt.detach().numpy()[1,:,:]
       stiffness += Kt
-    
+
     end
     stiffness = stiffness./ensemble_size
     LHS = I / (dt*dt*beta) - stiffness
     RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
-    
+
     residual = RHS - LHS * solver.solution
     solver.hessian[:,:] = LHS
     solver.gradient[:] = -residual
-end 
+end
 

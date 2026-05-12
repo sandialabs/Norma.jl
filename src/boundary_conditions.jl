@@ -75,11 +75,11 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
     offset = component_offset_from_string(bc_params["component"])
     robin_parameter = bc_params["robin parameter"]
     tol = 1.0e-16
-    if (abs(robin_parameter) < tol) 
+    if (abs(robin_parameter) < tol)
         norma_abort(
                 "The robin parameter is close to zero.  Robin BC is equivalent " *
                 "to Neumann BC. Use Neumann BC in input file.")
-    end 
+    end
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     side_set_node_indices = Int64.(side_set_node_indices)
@@ -89,10 +89,10 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
 
     # Compile them into functions
     traction_fun = eval(build_function(rhs_num, [t, x, y, z]; expression=Val(false)))
- 
+
     #We want to set traction + robin_parameter * disp = traction_fun
     return SolidMechanicsRobinBoundaryCondition(
-        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, 
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices,
         traction_fun, robin_parameter
     )
 end
@@ -272,7 +272,7 @@ function SolidMechanicsRobinSchwarzBoundaryCondition(
     side_set_node_indices::Vector{Int64},
     num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
-    subsim::Simulation, 
+    subsim::Simulation,
     robin_parameter::Float64,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)

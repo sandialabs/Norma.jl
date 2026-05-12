@@ -117,7 +117,7 @@ using YAML
     @test norm(acce0_x) ≈ 0.0 atol = 1.0e-18
     @test norm(acce0_y) ≈ 0.0 atol = 1.0e-18
 
-    #Create and populate exact solution vectors - Omega2 
+    #Create and populate exact solution vectors - Omega2
     n1 = size(z1)[1]
     disp1_z_exact = zeros(Float64, n1)
     velo1_z_exact = zeros(Float64, n1)

@@ -1,6 +1,6 @@
 type: single
-input mesh file: ../bolts_sticky_tet4.g 
-output mesh file: joint-1.e 
+input mesh file: ../bolts_sticky_tet4.g
+output mesh file: joint-1.e
 #CSV output interval: 1
 #CSV write sidesets: true
 model:

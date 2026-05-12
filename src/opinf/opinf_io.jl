@@ -110,7 +110,7 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::RomModel)
             y_dof_index = 3 * (i - 1) + 2
             z_dof_index = 3 * (i - 1) + 3
             if model.fom_model.free_dofs[x_dof_index]
-                model.fom_model.displacement[1, i] = model.basis[1, i, :]'displacement 
+                model.fom_model.displacement[1, i] = model.basis[1, i, :]'displacement
                 model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
                 model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
             end
@@ -122,7 +122,7 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::RomModel)
             end
 
             if model.fom_model.free_dofs[z_dof_index]
-                model.fom_model.displacement[3, i] = model.basis[3, i, :]'displacement 
+                model.fom_model.displacement[3, i] = model.basis[3, i, :]'displacement
                 model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
                 model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
             end

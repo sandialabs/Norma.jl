@@ -61,7 +61,7 @@ using YAML
     s = 0.02
     T = 1.0e-3
 
-    #Create and populate exact solution vectors  
+    #Create and populate exact solution vectors
     n0 = size(z0)[1]
     disp0_z_exact = zeros(Float64, n0)
     velo0_z_exact = zeros(Float64, n0)
@@ -117,7 +117,7 @@ using YAML
     @test norm(acce0_x) ≈ 0.0 atol = 0.0
     @test norm(acce0_y) ≈ 0.0 atol = 0.0
 
-    #Create and populate exact solution vectors  
+    #Create and populate exact solution vectors
     n1 = size(z1)[1]
     disp1_z_exact = zeros(Float64, n1)
     velo1_z_exact = zeros(Float64, n1)

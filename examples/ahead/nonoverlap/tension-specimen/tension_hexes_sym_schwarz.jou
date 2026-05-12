@@ -95,12 +95,12 @@ block 2 name "upper"
 #nodeset 8 surface 83
 #nodeset 8 name "schwarz_upper"
 
-#sidesets 
+#sidesets
 #sideset 1 surface 75
-#sideset 1 name "schwarz_lower_ss" 
+#sideset 1 name "schwarz_lower_ss"
 
 #sideset 2 surface 83
-#sideset 2 name "schwarz_upper_ss" 
+#sideset 2 name "schwarz_upper_ss"
 
 # mesh gauge
 volume 1 size {gauge_mesh}
@@ -125,30 +125,30 @@ set large exodus file on
 export mesh "lower.g" block 1 overwrite
 export mesh "upper.g" block 2 overwrite
 
-reset 
+reset
 import mesh geometry "lower.g"
-sideset 1 surface 6 
-sideset 1 name "schwarz_lower_ss" 
-nodeset 1 surface 4 
-nodeset 1 name "sym_y" 
-nodeset 2 surface 1 
-nodeset 2 name "sym_z_lower" 
-nodeset 3 surface 2 
+sideset 1 surface 6
+sideset 1 name "schwarz_lower_ss"
+nodeset 1 surface 4
+nodeset 1 name "sym_y"
+nodeset 2 surface 1
+nodeset 2 name "sym_z_lower"
+nodeset 3 surface 2
 nodeset 3 name "sym_x_lower"
-nodeset 4 surface 6 
+nodeset 4 surface 6
 nodeset 4 name "schwarz_lower"
 mesh volume 1
 export mesh "lower.g" block all overwrite
 
-reset 
+reset
 import mesh geometry "upper.g"
-sideset 1 surface 3 
-sideset 1 name "schwarz_upper_ss" 
-nodeset 1 surface 2 
+sideset 1 surface 3
+sideset 1 name "schwarz_upper_ss"
+nodeset 1 surface 2
 nodeset 1 name "sym_x_upper"
-nodeset 2 surface 1 
-nodeset 2 name "sym_z_upper" 
-nodeset 3 surface 3 
+nodeset 2 surface 1
+nodeset 2 name "sym_z_upper"
+nodeset 3 surface 3
 nodeset 3 name "schwarz_upper"
 nodeset 4 surface 5
 nodeset 4 name "upper_grip"

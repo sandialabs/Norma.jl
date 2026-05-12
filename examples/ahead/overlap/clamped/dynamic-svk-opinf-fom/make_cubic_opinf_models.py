@@ -16,7 +16,7 @@ if __name__ == '__main__':
   settings['truncation-type'] = 'size'
   settings['boundary-truncation-type'] =  'size'
   settings['truncation-value'] = 20
-  settings['boundary-truncation-value'] = 4 
+  settings['boundary-truncation-value'] = 4
   settings['regularization-parameter'] =  1.e-11
   settings['trial-space-splitting-type'] = 'split'
   settings['acceleration-computation-type'] = 'acceleration-snapshots'

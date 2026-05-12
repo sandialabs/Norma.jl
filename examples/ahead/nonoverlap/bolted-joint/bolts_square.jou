@@ -44,7 +44,7 @@ unite volume 8 9
 brick x {cut_cube_side} y {3} z {cut_cube_side}
 move volume 10 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
 webcut volume 1 2 tool volume 10
-delete volume 1 2 3 10 
+delete volume 1 2 3 10
 
 
 imprint volume 8 11

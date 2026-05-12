@@ -52,7 +52,7 @@ volume 11 copy move x -2.5 z -2.5
 
 # subtract and keep bolts in plate
 subtract volume 11 13 14 15 from volume 1 keep
-delete volume 1 
+delete volume 1
 
 # be very specific about imprinting and merging
 imprint volume 11 13 14 15 16
