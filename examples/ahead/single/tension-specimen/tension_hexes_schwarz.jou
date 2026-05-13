@@ -56,28 +56,28 @@ merge all
 
 # declare blocks and nodesets
 ## upper specimen
-#block 1 volume 34 32 33 35 16 3 11 21 30 31 28 29 8 13 23 18  
+#block 1 volume 34 32 33 35 16 3 11 21 30 31 28 29 8 13 23 18
 ## lower specimen
-#block 2 volume 1 2 9 24 10 22 25 12 17 15 27 19 20 26 14 7 
+#block 2 volume 1 2 9 24 10 22 25 12 17 15 27 19 20 26 14 7
 
 # Need to duplicate block descriptions for overlap in Schwarz
-set duplicate block elements on 
+set duplicate block elements on
 
 block 1 volume 30 29 28 31 26 25 24 27 11 21 16 3 7 12 22 17 14 1 9 19 8 13 18 23
-block 2 volume 11 21 16 3 7 12 22 17 2 10 20 15 34 35 33 32 
+block 2 volume 11 21 16 3 7 12 22 17 2 10 20 15 34 35 33 32
 block 3 volume 30 29 28 31 26 25 24 27 11 21 16 3 7 12 22 17 14 1 9 19 8 13 18 23
 block 3 volume 11 21 16 3 7 12 22 17 2 10 20 15 34 35 33 32
 block 1 name "ends"
 block 2 name "gauge"
 block 3 name "tension"
 
-nodeset 1 surface 137 85 77 133 
+nodeset 1 surface 137 85 77 133
 nodeset 1 name "lower_grip"
 
-nodeset 2 surface 121 129 177 181 
+nodeset 2 surface 121 129 177 181
 nodeset 2 name "upper_grip"
 
-nodeset 3 surface 139 84 132 78 
+nodeset 3 surface 139 84 132 78
 nodeset 3 name "lower_end"
 
 nodeset 4 surface 178 124 126 180
@@ -92,7 +92,7 @@ nodeset 6 name "schwarz_upper_gauge"
 nodeset 7 surface 196 202 184 190
 nodeset 7 name "schwarz_lower_transition"
 
-nodeset 8 surface 226 208 214 220 
+nodeset 8 surface 226 208 214 220
 nodeset 8 name "schwarz_upper_transition"
 
 # mesh gauge

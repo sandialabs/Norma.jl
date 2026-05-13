@@ -20,7 +20,7 @@ nodeset 3 surface 3
 nodeset 4 surface 5
 nodeset 5 surface 2
 nodeset 6 surface 1
-sideset 1 surface 1 2 3 4 5 6 
+sideset 1 surface 1 2 3 4 5 6
 sideset 1 name "all"
 set large exodus file off
 export mesh "cube.g" overwrite

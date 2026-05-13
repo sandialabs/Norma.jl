@@ -1,6 +1,6 @@
 type: single
-input mesh file: ../part_sticky.g 
-output mesh file: joint-2.e 
+input mesh file: ../part_sticky.g
+output mesh file: joint-2.e
 #CSV output interval: 1
 #CSV write sidesets: true
 model:

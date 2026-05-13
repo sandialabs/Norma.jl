@@ -77,33 +77,33 @@ for i=0:100:10000
   z1ind1 = z1(ind1);
   z2ind2 = z2(ind2);
   zz = uniquetol(sort([z1ind1;z2ind2]), 1e-5);
-  dz1ind1 = dispz1(ind1,ctr); 
-  dz2ind2 = dispz2(ind2,ctr); 
-  vz1ind1 = veloz1(ind1,ctr); 
-  vz2ind2 = veloz2(ind2,ctr); 
-  az1ind1 = accez1(ind1,ctr); 
-  az2ind2 = accez2(ind2,ctr); 
+  dz1ind1 = dispz1(ind1,ctr);
+  dz2ind2 = dispz2(ind2,ctr);
+  vz1ind1 = veloz1(ind1,ctr);
+  vz2ind2 = veloz2(ind2,ctr);
+  az1ind1 = accez1(ind1,ctr);
+  az2ind2 = accez2(ind2,ctr);
   for k = 1:length(zz)
-    ii1 = find(z1ind1 == zz(k)); 
-    ii2 = find(z2ind2 == zz(k)); 
-    dispz_merged(k,1) = 0; 
-    veloz_merged(k,1) = 0; 
-    accez_merged(k,1) = 0; 
-    if length(ii1) > 0 
-      dispz_merged(k,1) = dispz_merged(k,1) + dz1ind1(ii1); 
-      veloz_merged(k,1) = veloz_merged(k,1) + vz1ind1(ii1); 
-      accez_merged(k,1) = accez_merged(k,1) + az1ind1(ii1); 
+    ii1 = find(z1ind1 == zz(k));
+    ii2 = find(z2ind2 == zz(k));
+    dispz_merged(k,1) = 0;
+    veloz_merged(k,1) = 0;
+    accez_merged(k,1) = 0;
+    if length(ii1) > 0
+      dispz_merged(k,1) = dispz_merged(k,1) + dz1ind1(ii1);
+      veloz_merged(k,1) = veloz_merged(k,1) + vz1ind1(ii1);
+      accez_merged(k,1) = accez_merged(k,1) + az1ind1(ii1);
     end
-    if length(ii2) > 0 
-      dispz_merged(k,1) = dispz_merged(k,1) + dz2ind2(ii2); 
-      veloz_merged(k,1) = veloz_merged(k,1) + vz2ind2(ii2); 
-      accez_merged(k,1) = accez_merged(k,1) + az2ind2(ii2); 
+    if length(ii2) > 0
+      dispz_merged(k,1) = dispz_merged(k,1) + dz2ind2(ii2);
+      veloz_merged(k,1) = veloz_merged(k,1) + vz2ind2(ii2);
+      accez_merged(k,1) = accez_merged(k,1) + az2ind2(ii2);
     end
-    if length(ii1) + length(ii2) > 1 
-      dispz_merged(k,1) = dispz_merged(k,1)/2; 
-      veloz_merged(k,1) = veloz_merged(k,1)/2; 
-      accez_merged(k,1) = accez_merged(k,1)/2; 
-    end 
+    if length(ii1) + length(ii2) > 1
+      dispz_merged(k,1) = dispz_merged(k,1)/2;
+      veloz_merged(k,1) = veloz_merged(k,1)/2;
+      accez_merged(k,1) = accez_merged(k,1)/2;
+    end
   end
   c = sqrt(1e9/1e3);
   a = 0.001;

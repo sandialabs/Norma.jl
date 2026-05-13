@@ -21,7 +21,7 @@ function barycentric_shape_functions(::Val{2}, ::Val{6}, ξ::SVector{2,T}) where
     t1 = ξ[1]
     t2 = ξ[2]
     N = @SVector [
-        t0 * (2t0 - one(T)), #node 0 - corner 
+        t0 * (2t0 - one(T)), #node 0 - corner
         t1 * (2t1 - one(T)), #node 1 - corner
         t2 * (2t2 - one(T)), #node 2 - corner
         4t0 * t1,            #node 3 - middle

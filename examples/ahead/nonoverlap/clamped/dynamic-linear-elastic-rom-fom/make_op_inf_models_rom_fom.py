@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 if __name__ == '__main__':
-  
+
   settings = {}
   settings['fom-yaml-file'] = "../dynamic-linear-elastic-fom-fom/clamped-1.yaml"
   settings['training-data-directories'] = ["../dynamic-linear-elastic-fom-fom"]
@@ -20,12 +20,12 @@ if __name__ == '__main__':
   settings['truncation-value'] = 30
   settings['boundary-truncation-type'] = 'size'
   settings['boundary-truncation-value'] = 4
-  
+
   #settings['truncation-type'] = 'energy'
   #settings['truncation-value'] = 1 - 1e-7
   #settings['boundary-truncation-type'] =  'energy'
   #settings['boundary-truncation-value'] = 1 - 1e-7
-  
+
   #settings['regularization-parameter'] =  1.0e-4
   settings['regularization-parameter'] =  1.0e-5
   #settings['trial-space-splitting-type'] = 'split'

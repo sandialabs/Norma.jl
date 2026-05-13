@@ -1,6 +1,6 @@
 type: single
-input mesh file: ../../../../../../bolts_tet4_square_separate_ss.g 
-output mesh file: joint-1.e 
+input mesh file: ../../../../../../bolts_tet4_square_separate_ss.g
+output mesh file: joint-1.e
 model:
   type: solid mechanics
   material:

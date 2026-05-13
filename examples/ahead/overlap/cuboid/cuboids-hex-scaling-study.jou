@@ -1,13 +1,13 @@
 ${side = 1.0}
 ${height = 4.0}
-${overlap = 0.4} 
-${num_sd = 6} 
+${overlap = 0.4}
+${num_sd = 6}
 ${h_fine = 0.1}
 ${h_coarse = 0.1}
 ${L = (height + overlap * (num_sd - 1)) / num_sd}
-${Lhalf = L / 2.0} 
-${offset = height / 2.0 - Lhalf} 
-${shift = L - overlap} 
+${Lhalf = L / 2.0}
+${offset = height / 2.0 - Lhalf}
+${shift = L - overlap}
 
 create brick x {side} y {side} z {L}
 move volume 1 z {-offset} include_merged
@@ -44,7 +44,7 @@ export mesh "cuboid-1.g" overwrite
 
 
 #{_i = 2}
-${num_sd_minus_1 = num_sd - 1} 
+${num_sd_minus_1 = num_sd - 1}
 #{loop(num_sd_minus_1)}
     delete mesh
     move volume 1 z {shift} include_merged

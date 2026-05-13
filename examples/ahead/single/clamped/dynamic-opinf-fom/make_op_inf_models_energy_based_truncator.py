@@ -15,7 +15,7 @@ if __name__ == '__main__':
   settings['forcing'] =  False
   settings['truncation-type'] = 'energy'
   settings['boundary-truncation-type'] =  'energy'
-  settings['truncation-value'] = 1. - 1e-5 
+  settings['truncation-value'] = 1. - 1e-5
   settings['boundary-truncation-value'] = 1. - 1e-5
   settings['regularization-parameter'] =  1e-11
   settings['trial-space-splitting-type'] = 'split'
