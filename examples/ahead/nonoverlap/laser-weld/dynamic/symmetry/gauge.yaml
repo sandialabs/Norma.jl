@@ -3,6 +3,7 @@ input mesh file: ../../gauge.g
 output mesh file: gauge.e
 model:
   type: solid mechanics
+  stress recovery: consistent
   material:
     blocks:
       bead_weld: hyperelastic

@@ -3,6 +3,7 @@ input mesh file: ../../holder-0.g
 output mesh file: holder-0.e
 model:
   type: solid mechanics
+  stress recovery: consistent
   material:
     blocks:
       holder_0: hyperelastic
