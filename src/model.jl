@@ -26,10 +26,9 @@ function SolidMechanics(params::Parameters)
     num_blocks = length(blocks)
     if num_blocks_params ≠ num_blocks
         norma_abortf(
-            "Number of blocks in mesh %s (%d) must be equal to number of blocks in materials %s (%d).",
-            model_params["mesh"],
+            "Number of element blocks in mesh '%s' (%d) does not match number of material blocks (%d).",
+            input_mesh.file_name,
             num_blocks,
-            model_params["material"],
             num_blocks_params,
         )
     end
