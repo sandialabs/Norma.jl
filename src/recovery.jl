@@ -41,9 +41,6 @@ function build_recovery_mass_lumped(
     return m
 end
 
-build_recovery_mass_lumped(model::SolidMechanics) =
-    build_recovery_mass_lumped(model.mesh, model.reference, model.num_int_pts)
-
 function build_recovery_mass_consistent(
     input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
 )::SparseMatrixCSC{Float64,Int64}
@@ -103,8 +100,29 @@ function build_recovery_mass_consistent(
     return sparse(rows, cols, vals, n_nodes, n_nodes)
 end
 
-build_recovery_mass_consistent(model::SolidMechanics) =
-    build_recovery_mass_consistent(model.mesh, model.reference, model.num_int_pts)
+# Lumped recovery operator.  Match Carina: invert only positive lumped-mass
+# entries and leave the rest at zero, so orphan nodes (or sign cancellation in
+# higher-order quadrature) yield a zero recovered value there rather than
+# aborting the run.
+function _build_lumped_recovery(
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::LumpedRecovery
+    m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
+    inv_m = zeros(Float64, length(m))
+    @inbounds for i in eachindex(m)
+        m[i] > 0.0 && (inv_m[i] = 1.0 / m[i])
+    end
+    return LumpedRecovery(inv_m)
+end
+
+# Consistent recovery operator: cache a Cholesky factorization of the SPD
+# consistent mass matrix for per-component back-substitution at output time.
+function _build_consistent_recovery(
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::ConsistentRecovery
+    M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
+    return ConsistentRecovery(M, cholesky(Symmetric(M)))
+end
 
 function build_recovery_data(
     kind::Symbol, input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
@@ -112,38 +130,14 @@ function build_recovery_data(
     if kind === :none
         return NoRecovery()
     elseif kind === :lumped
-        m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
-        # Match Carina: invert only positive entries; leave the rest at zero so
-        # orphan nodes (or sign cancellation in higher-order quadrature) yield a
-        # zero recovered value at those nodes rather than aborting the run.
-        n = length(m)
-        inv_m = zeros(Float64, n)
-        @inbounds for i in 1:n
-            if m[i] > 0.0
-                inv_m[i] = 1.0 / m[i]
-            end
-        end
-        return LumpedRecovery(inv_m)
+        return _build_lumped_recovery(input_mesh, reference, num_int_pts)
     elseif kind === :consistent
-        M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
-        factor = cholesky(Symmetric(M))
-        return ConsistentRecovery(M, factor)
+        return _build_consistent_recovery(input_mesh, reference, num_int_pts)
     elseif kind === :both
-        # Build lumped component.
-        m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
-        n = length(m)
-        inv_m = zeros(Float64, n)
-        @inbounds for i in 1:n
-            if m[i] > 0.0
-                inv_m[i] = 1.0 / m[i]
-            end
-        end
-        lumped = LumpedRecovery(inv_m)
-        # Build consistent component (reuses the same quadrature data).
-        M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
-        factor = cholesky(Symmetric(M))
-        consistent = ConsistentRecovery(M, factor)
-        return BothRecovery(lumped, consistent)
+        return BothRecovery(
+            _build_lumped_recovery(input_mesh, reference, num_int_pts),
+            _build_consistent_recovery(input_mesh, reference, num_int_pts),
+        )
     else
         norma_abort("Unknown stress recovery kind: '$kind' (expected :none, :lumped, :consistent, or :both)")
     end

@@ -4,17 +4,16 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Tests for StressRecoverySwapCriterion.  The criterion fires when the
-# relative Frobenius-norm difference between the lumped and consistent
-# L2-projected stress fields falls below a given tolerance.
+# Tests for StressRecoverySwapCriterion with direction: coarsen — the swap
+# fires when the relative Frobenius-norm difference between the lumped and
+# consistent L2-projected stress fields falls BELOW the tolerance.
 #
 # For a uniform hex8 cube under uniaxial loading the stress field is
-# elementally constant; both projection methods recover it exactly so their
-# difference is at the level of floating-point rounding (~1e-14), which is
-# far below the default 1 % tolerance.  The swap therefore fires on the
-# first time step at which non-zero stress is present, i.e. step 2 (the
-# criterion is evaluated *before* each solve, so step 1 sees zero stress and
-# also fires trivially).
+# elementally constant; both projection methods recover it exactly, so their
+# relative difference is at the level of floating-point rounding (~1e-14),
+# far below the 1 % tolerance.  The coarsen criterion therefore fires on the
+# first evaluation, and the simulation runs to completion as the phase-2
+# (replacement) model.
 
 @testset "Single Static Solid Cube Mid-Run Stress Recovery-based Swap" begin
     cp("../examples/single/static-solid/cube-swap/standard/cube.g", "cube.g"; force=true)

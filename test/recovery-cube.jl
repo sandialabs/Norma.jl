@@ -7,16 +7,18 @@
 using Exodus
 
 # Read the six Voigt stress components from the last time step of an Exodus
-# file.  `prefix` is prepended to "sigma_*_n" so callers can request e.g.
-# "lumped_" or "consistent_" fields written by the 'both' recovery mode, or
-# the empty string (default) for single-type recovery.
-function _read_recovered_stress(exo_path::String, prefix::String = "")
+# file.  `qualifier` selects which projected field to read: "cons" or "lump"
+# for the 'both' recovery mode (names like sigma_xx_cons_n), or the empty
+# string (default) for single-type recovery (names like sigma_xx_n).  The
+# returned dictionary is always keyed by the bare "sigma_*_n" component name.
+function _read_recovered_stress(exo_path::String, qualifier::String = "")
     exo = ExodusDatabase(exo_path, "r")
     last_step = Exodus.read_number_of_time_steps(exo)
     components = Dict{String,Vector{Float64}}()
-    for comp in ("sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n")
-        full_name = prefix * comp
-        components[comp] = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, full_name))
+    for axes in ("xx", "yy", "zz", "yz", "xz", "xy")
+        key = "sigma_" * axes * "_n"
+        read_name = isempty(qualifier) ? key : "sigma_" * axes * "_" * qualifier * "_n"
+        components[key] = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, read_name))
     end
     Exodus.close(exo)
     return components
@@ -196,8 +198,8 @@ solver:
 """)
     end
     Norma.run("cube.yaml")
-    σ_l = _read_recovered_stress("cube.e", "lumped_")
-    σ_c = _read_recovered_stress("cube.e", "consistent_")
+    σ_l = _read_recovered_stress("cube.e", "lump")
+    σ_c = _read_recovered_stress("cube.e", "cons")
     rm("cube.yaml"; force=true)
     rm("cube.g"; force=true)
     rm("cube.e"; force=true)
