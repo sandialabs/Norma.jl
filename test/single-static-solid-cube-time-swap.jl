@@ -3,13 +3,13 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-@testset "Single Static Solid Cube Mid-Run Swap" begin
-    cp("../examples/single/static-solid/cube-swap/standard/cube.yaml", "cube.yaml"; force=true)
-    cp("../examples/single/static-solid/cube-swap/standard/cube-phase2.yaml", "cube-phase2.yaml"; force=true)
+@testset "Single Static Solid Cube Mid-Run Time Swap" begin
+    cp("../examples/single/static-solid/cube-swap/standard/cube-t-swap.yaml", "cube-t-swap.yaml"; force=true)
+    cp("../examples/single/static-solid/cube-swap/standard/cube-t-swap-phase2.yaml", "cube-t-swap-phase2.yaml"; force=true)
     cp("../examples/single/static-solid/cube-swap/standard/cube.g", "cube.g"; force=true)
-    sim = Norma.run("cube.yaml")
-    rm("cube.yaml"; force=true)
-    rm("cube-phase2.yaml"; force=true)
+    sim = Norma.run("cube-t-swap.yaml")
+    rm("cube-t-swap.yaml"; force=true)
+    rm("cube-t-swap-phase2.yaml"; force=true)
     rm("cube.g"; force=true)
     rm("cube.e"; force=true)
     rm("cube-phase2.e"; force=true)
@@ -17,7 +17,7 @@
     # The replacement was substituted in place: name reflects the phase-2 YAML
     # and the plan list (now mirroring the replacement's, which has none) is
     # empty.
-    @test sim.name == "cube-phase2"
+    @test sim.name == "cube-t-swap-phase2"
     @test isempty(sim.swaps)
     # Simulation reached final time without failure.
     @test sim.failed == false

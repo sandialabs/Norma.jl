@@ -1,6 +1,6 @@
 type: single
 swaps:
-  - replacement: cube-phase2.yaml
+  - replacement: cube-t-swap-phase2.yaml
     criterion:
       type: time
       t_swap: 0.45

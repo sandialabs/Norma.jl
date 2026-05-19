@@ -16,7 +16,7 @@
 # criterion is evaluated *before* each solve, so step 1 sees zero stress and
 # also fires trivially).
 
-@testset "StressRecoverySwapCriterion — single-domain, uniaxial cube" begin
+@testset "Single Static Solid Cube Mid-Run Stress Recovery-based Swap" begin
     cp("../examples/single/static-solid/cube-swap/standard/cube.g", "cube.g"; force=true)
     cp("../examples/single/static-solid/cube-swap/standard/cube-sr-swap.yaml", "cube-sr-swap.yaml"; force=true)
     cp("../examples/single/static-solid/cube-swap/standard/cube-sr-swap-phase2.yaml", "cube-sr-swap-phase2.yaml"; force=true)

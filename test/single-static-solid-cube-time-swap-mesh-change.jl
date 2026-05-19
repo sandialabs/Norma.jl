@@ -12,7 +12,7 @@
 # Neither YAML enables `stress recovery`, so the swap exercises the
 # auto-build path that constructs a consistent recovery on demand to do the
 # L2 transfer of the kinematic state.
-@testset "Single Static Solid Cube Mid-Run Swap (cross-mesh)" begin
+@testset "Single Static Solid Cube Mid-Run Time Swap (cross-mesh)" begin
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube-hex8.g"; force=true)
     cp("../examples/element-types/tet4/cube/cube.g", "cube-tet4.g"; force=true)
     cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-hex8.yaml", "cube-hex8.yaml"; force=true)

@@ -75,13 +75,13 @@ const indexed_test_files = [
     (56, "schwarz-overlap-static-cuboid-hex8-swap.jl"),
     (57, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
     (58, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
-    (59, "single-static-solid-cube-swap.jl"),
+    (59, "single-static-solid-cube-time-swap.jl"),
     (60, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
     (61, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
     (62, "krom-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
     (63, "recovery-cube.jl"),
     (64, "transfer-volumetric.jl"),
-    (65, "single-static-solid-cube-swap-mesh-change.jl"),
+    (65, "single-static-solid-cube-time-swap-mesh-change.jl"),
     (66, "schwarz-ahead-nonoverlap-dynamic-cuboid.jl"),
     (67, "schwarz-ahead-nonoverlap-dynamic-cuboid-fom-rom.jl"),
     (68, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-fom.jl"),
@@ -89,7 +89,7 @@ const indexed_test_files = [
     (70, "schwarz-ahead-nonoverlap-dynamic-cuboid-quadratic-rom-fom.jl"),
     (71, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-fom.jl"),
     (72, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-rom.jl"),
-    (73, "stress-recovery-swap-criterion.jl"),
+    (73, "single-static-solid-cube-stress-recovery-swap.jl"),
 ]
 
 # Extract test file names
