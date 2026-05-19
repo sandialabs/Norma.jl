@@ -44,9 +44,23 @@ function initialize_writing(sim::SingleDomainSimulation)
         append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
     end
     if !(sim.model isa RomModel) && !(sim.model.recovery_data isa NoRecovery)
-        num_node_vars += 6
-        append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
-        if size(sim.model.recovered_internal_variables, 1) > 0
+        rec = sim.model.recovery_data
+        if rec isa BothRecovery
+            # Both modes active: qualify each name with the projection method.
+            num_node_vars += 12
+            append!(node_var_names, ["sigma_xx_cons_n", "sigma_yy_cons_n", "sigma_zz_cons_n", "sigma_yz_cons_n", "sigma_xz_cons_n", "sigma_xy_cons_n"])
+            append!(node_var_names, ["sigma_xx_lump_n", "sigma_yy_lump_n", "sigma_zz_lump_n", "sigma_yz_lump_n", "sigma_xz_lump_n", "sigma_xy_lump_n"])
+        else
+            # Single recovery mode: use bare names — no qualifier needed.
+            num_node_vars += 6
+            append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+        end
+        if rec isa BothRecovery && size(sim.model.lumped_recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(sim.model.materials)
+            num_node_vars += 2 * length(iv_names)
+            append!(node_var_names, [name * "_cons_n" for name in iv_names])
+            append!(node_var_names, [name * "_lump_n" for name in iv_names])
+        elseif !(rec isa BothRecovery) && size(sim.model.recovered_internal_variables, 1) > 0
             iv_names = collect_internal_variable_names(sim.model.materials)
             num_node_vars += length(iv_names)
             append!(node_var_names, [name * "_n" for name in iv_names])
@@ -313,19 +327,49 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     end
     if !(model.recovery_data isa NoRecovery)
         recover_stress!(model)
-        nodal_sigma = model.recovered_stress
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_n", nodal_sigma[1, :])
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_n", nodal_sigma[2, :])
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_n", nodal_sigma[3, :])
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
-        Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
-        if size(model.recovered_internal_variables, 1) > 0
-            iv_names = collect_internal_variable_names(model.materials)
-            recover_internal_variables!(model, iv_names)
-            nodal_iv = model.recovered_internal_variables
-            for (k, name) in enumerate(iv_names)
-                Exodus.write_values(output_mesh, NodalVariable, time_index, name * "_n", nodal_iv[k, :])
+        rec = model.recovery_data
+        if rec isa BothRecovery
+            # Write both projected fields under their method-qualified names.
+            nodal_sigma_c = model.consistent_recovered_stress
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_cons_n", nodal_sigma_c[1, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_cons_n", nodal_sigma_c[2, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_cons_n", nodal_sigma_c[3, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_cons_n", nodal_sigma_c[4, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_cons_n", nodal_sigma_c[5, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_cons_n", nodal_sigma_c[6, :])
+            nodal_sigma_l = model.lumped_recovered_stress
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_lump_n", nodal_sigma_l[1, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_lump_n", nodal_sigma_l[2, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_lump_n", nodal_sigma_l[3, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_lump_n", nodal_sigma_l[4, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_lump_n", nodal_sigma_l[5, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_lump_n", nodal_sigma_l[6, :])
+            if size(model.lumped_recovered_internal_variables, 1) > 0
+                iv_names = collect_internal_variable_names(model.materials)
+                recover_internal_variables!(model, iv_names)
+                nodal_iv_c = model.consistent_recovered_internal_variables
+                nodal_iv_l = model.lumped_recovered_internal_variables
+                for (k, name) in enumerate(iv_names)
+                    Exodus.write_values(output_mesh, NodalVariable, time_index, name * "_cons_n", nodal_iv_c[k, :])
+                    Exodus.write_values(output_mesh, NodalVariable, time_index, name * "_lump_n", nodal_iv_l[k, :])
+                end
+            end
+        else
+            # Single recovery mode: write under bare "sigma_*_n" names.
+            nodal_sigma = model.recovered_stress
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_n", nodal_sigma[1, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_n", nodal_sigma[2, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_n", nodal_sigma[3, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
+            if size(model.recovered_internal_variables, 1) > 0
+                iv_names = collect_internal_variable_names(model.materials)
+                recover_internal_variables!(model, iv_names)
+                nodal_iv = model.recovered_internal_variables
+                for (k, name) in enumerate(iv_names)
+                    Exodus.write_values(output_mesh, NodalVariable, time_index, name * "_n", nodal_iv[k, :])
+                end
             end
         end
     end

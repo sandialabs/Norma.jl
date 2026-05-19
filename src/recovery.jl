@@ -41,9 +41,6 @@ function build_recovery_mass_lumped(
     return m
 end
 
-build_recovery_mass_lumped(model::SolidMechanics) =
-    build_recovery_mass_lumped(model.mesh, model.reference, model.num_int_pts)
-
 function build_recovery_mass_consistent(
     input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
 )::SparseMatrixCSC{Float64,Int64}
@@ -103,8 +100,29 @@ function build_recovery_mass_consistent(
     return sparse(rows, cols, vals, n_nodes, n_nodes)
 end
 
-build_recovery_mass_consistent(model::SolidMechanics) =
-    build_recovery_mass_consistent(model.mesh, model.reference, model.num_int_pts)
+# Lumped recovery operator.  Match Carina: invert only positive lumped-mass
+# entries and leave the rest at zero, so orphan nodes (or sign cancellation in
+# higher-order quadrature) yield a zero recovered value there rather than
+# aborting the run.
+function _build_lumped_recovery(
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::LumpedRecovery
+    m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
+    inv_m = zeros(Float64, length(m))
+    @inbounds for i in eachindex(m)
+        m[i] > 0.0 && (inv_m[i] = 1.0 / m[i])
+    end
+    return LumpedRecovery(inv_m)
+end
+
+# Consistent recovery operator: cache a Cholesky factorization of the SPD
+# consistent mass matrix for per-component back-substitution at output time.
+function _build_consistent_recovery(
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+)::ConsistentRecovery
+    M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
+    return ConsistentRecovery(M, cholesky(Symmetric(M)))
+end
 
 function build_recovery_data(
     kind::Symbol, input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
@@ -112,53 +130,72 @@ function build_recovery_data(
     if kind === :none
         return NoRecovery()
     elseif kind === :lumped
-        m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
-        # Match Carina: invert only positive entries; leave the rest at zero so
-        # orphan nodes (or sign cancellation in higher-order quadrature) yield a
-        # zero recovered value at those nodes rather than aborting the run.
-        n = length(m)
-        inv_m = zeros(Float64, n)
-        @inbounds for i in 1:n
-            if m[i] > 0.0
-                inv_m[i] = 1.0 / m[i]
-            end
-        end
-        return LumpedRecovery(inv_m)
+        return _build_lumped_recovery(input_mesh, reference, num_int_pts)
     elseif kind === :consistent
-        M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
-        factor = cholesky(Symmetric(M))
-        return ConsistentRecovery(M, factor)
+        return _build_consistent_recovery(input_mesh, reference, num_int_pts)
+    elseif kind === :both
+        return BothRecovery(
+            _build_lumped_recovery(input_mesh, reference, num_int_pts),
+            _build_consistent_recovery(input_mesh, reference, num_int_pts),
+        )
     else
-        norma_abort("Unknown stress recovery kind: '$kind' (expected :none, :lumped, or :consistent)")
+        norma_abort("Unknown stress recovery kind: '$kind' (expected :none, :lumped, :consistent, or :both)")
     end
 end
 
 # Project per-QP stress (model.stress[b][e][q], length-6 Voigt: xx, yy, zz, yz, xz, xy)
-# onto a nodal field stored in model.recovered_stress (6 × n_nodes).
+# onto nodal fields.  For BothRecovery the L2 RHS is assembled once and then
+# projected with each mass independently:
+#   • model.lumped_recovered_stress    (6 × n_nodes)
+#   • model.consistent_recovered_stress (6 × n_nodes)
+# For single-type recovery the result is stored in model.recovered_stress.
 function recover_stress!(model::SolidMechanics)
     rec = model.recovery_data
     rec isa NoRecovery && return model
-    nodal = model.recovered_stress
-    fill!(nodal, 0.0)
-    _assemble_l2_rhs_stress!(nodal, model)
-    _apply_inverse_mass!(nodal, rec)
+    if rec isa BothRecovery
+        # Assemble the shared L2 RHS into the lumped buffer first.
+        lumped_nodal = model.lumped_recovered_stress
+        fill!(lumped_nodal, 0.0)
+        _assemble_l2_rhs_stress!(lumped_nodal, model)
+        # Copy RHS to the consistent buffer before applying inverse masses.
+        consistent_nodal = model.consistent_recovered_stress
+        consistent_nodal .= lumped_nodal
+        # Apply each mass projection independently.
+        _apply_inverse_mass!(lumped_nodal, rec.lumped)
+        _apply_inverse_mass!(consistent_nodal, rec.consistent)
+    else
+        nodal = model.recovered_stress
+        fill!(nodal, 0.0)
+        _assemble_l2_rhs_stress!(nodal, model)
+        _apply_inverse_mass!(nodal, rec)
+    end
     return model
 end
 
 # Project per-QP internal variables (model.state[b][e][q], block-local indexing
-# into the material's IV name list) onto a nodal field stored in
-# model.recovered_internal_variables (n_iv × n_nodes), where n_iv is the union
-# of IV names across all materials.  Blocks whose material lacks a given IV
-# contribute zero to that component's RHS but still contribute their geometric
-# tributary to the (shared) projection mass.
+# into the material's IV name list) onto nodal fields.  For BothRecovery the
+# L2 RHS is assembled once and projected with each mass independently:
+#   • model.lumped_recovered_internal_variables    (n_iv × n_nodes)
+#   • model.consistent_recovered_internal_variables (n_iv × n_nodes)
+# For single-type recovery the result is stored in model.recovered_internal_variables.
 function recover_internal_variables!(model::SolidMechanics, all_iv_names::Vector{String})
     rec = model.recovery_data
     rec isa NoRecovery && return model
     isempty(all_iv_names) && return model
-    nodal = model.recovered_internal_variables
-    fill!(nodal, 0.0)
-    _assemble_l2_rhs_internal_variables!(nodal, model, all_iv_names)
-    _apply_inverse_mass!(nodal, rec)
+    if rec isa BothRecovery
+        lumped_nodal = model.lumped_recovered_internal_variables
+        fill!(lumped_nodal, 0.0)
+        _assemble_l2_rhs_internal_variables!(lumped_nodal, model, all_iv_names)
+        consistent_nodal = model.consistent_recovered_internal_variables
+        consistent_nodal .= lumped_nodal
+        _apply_inverse_mass!(lumped_nodal, rec.lumped)
+        _apply_inverse_mass!(consistent_nodal, rec.consistent)
+    else
+        nodal = model.recovered_internal_variables
+        fill!(nodal, 0.0)
+        _assemble_l2_rhs_internal_variables!(nodal, model, all_iv_names)
+        _apply_inverse_mass!(nodal, rec)
+    end
     return model
 end
 

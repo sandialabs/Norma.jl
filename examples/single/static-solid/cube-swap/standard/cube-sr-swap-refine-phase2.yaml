@@ -1,11 +1,6 @@
 type: single
-swaps:
-  - replacement: cube-phase2.yaml
-    criterion:
-      type: time
-      t_swap: 0.45
 input mesh file: cube.g
-output mesh file: cube.e
+output mesh file: cube-sr-swap-refine-phase2.e
 CSV output interval: 0
 model:
   type: solid mechanics
@@ -24,10 +19,10 @@ time integrator:
   time step: 0.1
 boundary conditions:
   Dirichlet:
-    - node set: nsx-
+    - node set: nsz-
       component: x
       function: "0.0"
-    - node set: nsy-
+    - node set: nsz-
       component: y
       function: "0.0"
     - node set: nsz-
@@ -35,7 +30,7 @@ boundary conditions:
       function: "0.0"
     - node set: nsz+
       component: z
-      function: "1.0 * t"
+      function: "0.1 * x * t"
 solver:
   type: Hessian minimizer
   step: full Newton

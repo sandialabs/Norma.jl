@@ -89,6 +89,11 @@ mutable struct SolidMechanics <: Model
     recovery_data::AbstractRecoveryData
     recovered_stress::Matrix{Float64}
     recovered_internal_variables::Matrix{Float64}
+    # Populated only when recovery_data isa BothRecovery; otherwise zeros(0,0).
+    lumped_recovered_stress::Matrix{Float64}
+    consistent_recovered_stress::Matrix{Float64}
+    lumped_recovered_internal_variables::Matrix{Float64}
+    consistent_recovered_internal_variables::Matrix{Float64}
     num_int_pts::Vector{Int}
 end
 

@@ -12,21 +12,21 @@
 # Neither YAML enables `stress recovery`, so the swap exercises the
 # auto-build path that constructs a consistent recovery on demand to do the
 # L2 transfer of the kinematic state.
-@testset "Single Static Solid Cube Mid-Run Swap (cross-mesh)" begin
+@testset "Single Static Solid Cube Mid-Run Time Swap (cross-mesh)" begin
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube-hex8.g"; force=true)
     cp("../examples/element-types/tet4/cube/cube.g", "cube-tet4.g"; force=true)
-    cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-hex8.yaml", "cube-hex8.yaml"; force=true)
-    cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-tet4.yaml", "cube-tet4.yaml"; force=true)
-    sim = Norma.run("cube-hex8.yaml")
-    rm("cube-hex8.yaml"; force=true)
-    rm("cube-tet4.yaml"; force=true)
+    cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-hex8-t-swap.yaml", "cube-hex8-t-swap.yaml"; force=true)
+    cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-tet4-t-swap.yaml", "cube-tet4-t-swap.yaml"; force=true)
+    sim = Norma.run("cube-hex8-t-swap.yaml")
+    rm("cube-hex8-t-swap.yaml"; force=true)
+    rm("cube-tet4-t-swap.yaml"; force=true)
     rm("cube-hex8.g"; force=true)
     rm("cube-tet4.g"; force=true)
     rm("cube-hex8.e"; force=true)
     rm("cube-tet4.e"; force=true)
 
     # Replacement was substituted in place; phase-2 has no swaps of its own.
-    @test sim.name == "cube-tet4"
+    @test sim.name == "cube-tet4-t-swap"
     @test isempty(sim.swaps)
     @test sim.failed == false
     @test sim.controller.time ≈ 1.0 rtol = 1.0e-09

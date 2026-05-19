@@ -6,12 +6,19 @@
 
 using Exodus
 
-function _read_recovered_stress(exo_path::String)
+# Read the six Voigt stress components from the last time step of an Exodus
+# file.  `qualifier` selects which projected field to read: "cons" or "lump"
+# for the 'both' recovery mode (names like sigma_xx_cons_n), or the empty
+# string (default) for single-type recovery (names like sigma_xx_n).  The
+# returned dictionary is always keyed by the bare "sigma_*_n" component name.
+function _read_recovered_stress(exo_path::String, qualifier::String = "")
     exo = ExodusDatabase(exo_path, "r")
     last_step = Exodus.read_number_of_time_steps(exo)
     components = Dict{String,Vector{Float64}}()
-    for name in ("sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n")
-        components[name] = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, name))
+    for axes in ("xx", "yy", "zz", "yz", "xz", "xy")
+        key = "sigma_" * axes * "_n"
+        read_name = isempty(qualifier) ? key : "sigma_" * axes * "_" * qualifier * "_n"
+        components[key] = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, read_name))
     end
     Exodus.close(exo)
     return components
@@ -141,6 +148,72 @@ solver:
     end
 end
 
+@testset "Recovery — both (lumped + consistent), linear elastic, uniaxial cube" begin
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
+    open("cube.yaml", "w") do io
+        write(io, """
+type: single
+input mesh file: cube.g
+output mesh file: cube.e
+CSV output interval: 0
+model:
+  type: solid mechanics
+  stress recovery: both
+  material:
+    blocks:
+      cube: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 0.1
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "1.0 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-14
+  absolute tolerance: 1.0e-08
+  linear solver relative tolerance: 1.0e-14
+  linear solver absolute tolerance: 1.0e-08
+""")
+    end
+    Norma.run("cube.yaml")
+    σ_l = _read_recovered_stress("cube.e", "lump")
+    σ_c = _read_recovered_stress("cube.e", "cons")
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
+    # Both projections should recover the uniform uniaxial stress field.
+    @test all(isapprox.(σ_l["sigma_zz_n"], 1.0e9; rtol=1.0e-6))
+    for c in ("sigma_xx_n", "sigma_yy_n", "sigma_xy_n", "sigma_yz_n", "sigma_xz_n")
+        @test maximum(abs.(σ_l[c])) < 1.0e3
+    end
+    @test all(isapprox.(σ_c["sigma_zz_n"], 1.0e9; rtol=1.0e-9))
+    for c in ("sigma_xx_n", "sigma_yy_n", "sigma_xy_n", "sigma_yz_n", "sigma_xz_n")
+        @test maximum(abs.(σ_c[c])) < 1.0e1
+    end
+end
+
 @testset "Recovery — internal variables (J2, eqps)" begin
     cp("../examples/materials/j2/cube.g", "cube.g"; force=true)
     open("cube.yaml", "w") do io
@@ -208,3 +281,4 @@ solver:
     @test all(eqps_n .> 0.0)
     @test maximum(eqps_n) - minimum(eqps_n) < 1.0e-9   # uniform across the cube
 end
+

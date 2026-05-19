@@ -26,3 +26,11 @@ struct ConsistentRecovery{F} <: AbstractRecoveryData
     M::SparseMatrixCSC{Float64,Int64}
     factor::F
 end
+
+# Both lumped and consistent recovery simultaneously.  Assembling the L2 RHS
+# is done once; the RHS is then projected with each mass independently so that
+# both recovered fields are available at output time.
+struct BothRecovery{F} <: AbstractRecoveryData
+    lumped::LumpedRecovery
+    consistent::ConsistentRecovery{F}
+end

@@ -31,6 +31,18 @@ function create_swap_criterion(params::Parameters)
     criterion_type = params["type"]
     if criterion_type == "time"
         return TimeSwapCriterion(Float64(params["t_swap"]))
+    elseif criterion_type == "stress recovery"
+        tolerance = Float64(get(params, "tolerance", 1.0e-2))
+        haskey(params, "direction") || norma_abort(
+            "Stress recovery swap criterion requires 'direction:' — use 'refine' to swap " *
+            "when the relative lumped/consistent stress difference exceeds the tolerance, " *
+            "or 'coarsen' to swap when it falls below the tolerance",
+        )
+        direction = Symbol(params["direction"])
+        direction in (:refine, :coarsen) || norma_abort(
+            "Unknown stress recovery swap direction: '$direction' (expected 'refine' or 'coarsen')",
+        )
+        return StressRecoverySwapCriterion(tolerance, direction)
     else
         norma_abort("Unknown swap criterion type: $criterion_type")
     end
@@ -64,6 +76,87 @@ end
 
 function should_swap(c::TimeSwapCriterion, sim::Simulation)
     return sim.controller.time > c.t_swap
+end
+
+# ---------------------------------------------------------------------------
+# StressRecoverySwapCriterion dispatch
+# ---------------------------------------------------------------------------
+
+# For a single-domain simulation apply the criterion to its one model.
+function should_swap(c::StressRecoverySwapCriterion, sim::SingleDomainSimulation)
+    return _stress_recovery_criterion_met(c, sim.model)
+end
+
+# For a multi-domain simulation return true only when ALL subsim models
+# individually satisfy the criterion.
+function should_swap(c::StressRecoverySwapCriterion, sim::MultiDomainSimulation)
+    return all(_stress_recovery_criterion_met(c, sub.model) for sub in sim.subsims)
+end
+
+# Non-SolidMechanics models have no stress field; never trigger the swap so
+# the criterion degrades gracefully in mixed-model setups.
+_stress_recovery_criterion_met(::StressRecoverySwapCriterion, ::Model) = false
+
+# Core evaluation for SolidMechanics models: compare the lumped and consistent
+# L2-projected nodal stress fields against the tolerance in the chosen
+# direction.
+function _stress_recovery_criterion_met(c::StressRecoverySwapCriterion, model::SolidMechanics)
+    # Fetch this model's lumped and consistent recovery operators, building
+    # them on first use.  If the model already carries a BothRecovery, reuse
+    # its operators rather than rebuilding them.
+    lumped, consistent = get!(c._recovery, model) do
+        rec = model.recovery_data
+        if rec isa BothRecovery
+            return (rec.lumped, rec.consistent)
+        end
+        norma_log(1, :swap, "StressRecoverySwapCriterion: building lumped and consistent recovery data")
+        new_lumped = build_recovery_data(:lumped, model.mesh, model.reference, model.num_int_pts)::LumpedRecovery
+        new_consistent =
+            build_recovery_data(:consistent, model.mesh, model.reference, model.num_int_pts)::ConsistentRecovery
+        return (new_lumped, new_consistent)
+    end
+    difference = _recovered_stress_difference(lumped, consistent, model)
+    fired = c.direction === :refine ? difference > c.tolerance : difference < c.tolerance
+    norma_logf(1, :swap,
+        "StressRecoverySwapCriterion: relative lumped/consistent stress difference %.3e, tolerance %.3e, direction %s → %s",
+        difference, c.tolerance, c.direction, fired ? "swap" : "no swap")
+    return fired
+end
+
+# Function barrier: receiving the concrete LumpedRecovery / ConsistentRecovery
+# types as arguments makes the projection and norm fully type-stable, even
+# though the criterion's IdDict cache stores them with abstract element types.
+function _recovered_stress_difference(
+    lumped::LumpedRecovery, consistent::ConsistentRecovery, model::SolidMechanics
+)
+    # Assemble the shared L2 RHS once, copy it, then project each copy with
+    # its respective mass operator.  The RHS copy is cheap (6 × n_nodes).
+    n_nodes = size(model.reference, 2)
+    σ_lumped = zeros(6, n_nodes)
+    _assemble_l2_rhs_stress!(σ_lumped, model)
+    σ_consistent = copy(σ_lumped)
+    _apply_inverse_mass!(σ_lumped, lumped)
+    _apply_inverse_mass!(σ_consistent, consistent)
+    return _rel_frob_diff(σ_lumped, σ_consistent)
+end
+
+# Relative Frobenius-norm difference between two same-size matrices:
+#   ‖A − B‖_F / max(‖A‖_F, ‖B‖_F)
+# Returns 0.0 when both matrices are essentially zero, so a vanishing stress
+# field is reported as zero difference rather than 0/0.
+function _rel_frob_diff(A::Matrix{Float64}, B::Matrix{Float64})
+    diff_sq = 0.0
+    a_sq    = 0.0
+    b_sq    = 0.0
+    @inbounds for i in eachindex(A)
+        d        = A[i] - B[i]
+        diff_sq += d * d
+        a_sq    += A[i] * A[i]
+        b_sq    += B[i] * B[i]
+    end
+    ref = max(sqrt(a_sq), sqrt(b_sq))
+    ref < eps(Float64) && return 0.0
+    return sqrt(diff_sq) / ref
 end
 
 # ---------------------------------------------------------------------------

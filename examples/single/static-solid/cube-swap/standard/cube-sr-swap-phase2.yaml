@@ -1,11 +1,6 @@
 type: single
-swaps:
-  - replacement: cube-tet4.yaml
-    criterion:
-      type: time
-      t_swap: 0.45
-input mesh file: cube-hex8.g
-output mesh file: cube-hex8.e
+input mesh file: cube.g
+output mesh file: cube-sr-swap-phase2.e
 CSV output interval: 0
 model:
   type: solid mechanics
