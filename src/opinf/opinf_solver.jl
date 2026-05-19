@@ -138,6 +138,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Qu
     residual = RHS - LHS_linear * solver.solution - H * xsqr
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -171,6 +176,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Cu
     residual = RHS - LHS_linear * solver.solution - H * xsqr - G * xcub
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -180,6 +190,11 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     ## Value for accelertaion - assumes bases are orthonormal to avoid solve
     solver.solution[:] =
         model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * integrator.displacement[:]
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -196,6 +211,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Li
     residual = RHS - LHS * solver.solution
     solver.hessian[:, :] = LHS
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -278,5 +298,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
     residual = RHS - LHS * solver.solution
     solver.hessian[:,:] = LHS
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
 end
 
