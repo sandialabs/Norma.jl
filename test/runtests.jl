@@ -89,6 +89,7 @@ const indexed_test_files = [
     (70, "schwarz-ahead-nonoverlap-dynamic-cuboid-quadratic-rom-fom.jl"),
     (71, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-fom.jl"),
     (72, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-rom.jl"),
+    (73, "stress-recovery-swap-criterion.jl"),
 ]
 
 # Extract test file names
