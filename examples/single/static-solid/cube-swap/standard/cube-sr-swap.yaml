@@ -6,7 +6,7 @@ swaps:
   - replacement: cube-sr-swap-phase2.yaml
     criterion:
       type: stress recovery
-      tolerance: 1.0e-6
+      tolerance: 4.0e-15
 model:
   type: solid mechanics
   material:

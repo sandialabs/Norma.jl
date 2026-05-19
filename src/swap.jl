@@ -94,8 +94,7 @@ function _stress_recovery_criterion_met(c::StressRecoverySwapCriterion, model::S
     # time the criterion is evaluated.  Subsequent calls reuse the same
     # inverse-mass vector and Cholesky factorization.
     if c._lumped === nothing
-        norma_log(1, :swap,
-            "StressRecoverySwapCriterion: building lumped and consistent recovery data")
+        norma_log(1, :swap, "StressRecoverySwapCriterion: building lumped and consistent recovery data")
         m_vec = build_recovery_mass_lumped(model)
         n     = length(m_vec)
         inv_m = zeros(Float64, n)
@@ -115,8 +114,10 @@ function _stress_recovery_criterion_met(c::StressRecoverySwapCriterion, model::S
     σ_consistent = copy(σ_lumped)
     _apply_inverse_mass!(σ_lumped,     c._lumped)
     _apply_inverse_mass!(σ_consistent, c._consistent)
-
-    return _rel_frob_diff(σ_lumped, σ_consistent) < c.tolerance
+    if (_rel_frob_diff(σ_lumped, σ_consistent) > c.tolerance)
+        norma_logf(1, :swap, "StressRecoverySwapCriterion: relative difference between lumped and consistent recovered stress = %.3e", _rel_frob_diff(σ_lumped, σ_consistent))
+    end 
+    return _rel_frob_diff(σ_lumped, σ_consistent) > c.tolerance
 end
 
 # Relative Frobenius-norm difference between two same-size matrices:
