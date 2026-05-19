@@ -4,18 +4,18 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Tests for StressRecoverySwapCriterion with direction: coarsen — the swap
-# fires when the relative Frobenius-norm difference between the lumped and
-# consistent L2-projected stress fields falls BELOW the tolerance.
-#
-# For a uniform hex8 cube under uniaxial loading the stress field is
-# elementally constant; both projection methods recover it exactly, so their
-# relative difference is at the level of floating-point rounding (~1e-14),
-# far below the 1 % tolerance.  The coarsen criterion therefore fires on the
-# first evaluation, and the simulation runs to completion as the phase-2
-# (replacement) model.
+# Tests for StressRecoverySwapCriterion in both directions.  The criterion
+# compares the lumped and consistent L2-projected nodal stress fields: their
+# relative Frobenius-norm difference is a surrogate error indicator.
+#   - direction: coarsen swaps when that difference is BELOW the tolerance,
+#   - direction: refine  swaps when it EXCEEDS the tolerance.
 
-@testset "Single Static Solid Cube Mid-Run Stress Recovery-based Swap" begin
+# Coarsen: a uniform hex8 cube under uniaxial loading has an elementally
+# constant stress field; both projection methods recover it exactly, so their
+# relative difference is at the level of floating-point rounding (~1e-14), far
+# below the 1 % tolerance.  The coarsen criterion therefore fires on the first
+# evaluation, and the simulation runs to completion as the phase-2 model.
+@testset "Single Static Solid Cube Mid-Run Stress Recovery-based Swap (coarsen)" begin
     cp("../examples/single/static-solid/cube-swap/standard/cube.g", "cube.g"; force=true)
     cp("../examples/single/static-solid/cube-swap/standard/cube-sr-swap.yaml", "cube-sr-swap.yaml"; force=true)
     cp("../examples/single/static-solid/cube-swap/standard/cube-sr-swap-phase2.yaml", "cube-sr-swap-phase2.yaml"; force=true)
@@ -51,3 +51,30 @@
     @test avg_stress[6] ≈   0.0     atol = 1.0e-06
 end
 
+# Refine: a fully-clamped base with a bending tip load (z displacement linear
+# in x) gives an under-resolved stress field on this coarse mesh — the lumped
+# and consistent recoveries disagree by ~37 %, far above the 5 % tolerance.
+# The refine criterion does not fire at t = 0 (zero stress, zero difference)
+# but fires on the next step, once non-zero stress is present.
+@testset "Single Static Solid Cube Mid-Run Stress Recovery-based Swap (refine)" begin
+    cp("../examples/single/static-solid/cube-swap/standard/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube-swap/standard/cube-sr-swap-refine.yaml", "cube-sr-swap-refine.yaml"; force=true)
+    cp("../examples/single/static-solid/cube-swap/standard/cube-sr-swap-refine-phase2.yaml", "cube-sr-swap-refine-phase2.yaml"; force=true)
+
+    sim = Norma.run("cube-sr-swap-refine.yaml")
+
+    rm("cube-sr-swap-refine.yaml";        force=true)
+    rm("cube-sr-swap-refine-phase2.yaml"; force=true)
+    rm("cube.g";                          force=true)
+    rm("cube-sr-swap-refine.e";           force=true)
+    rm("cube-sr-swap-refine-phase2.e";    force=true)
+
+    # The swap must have fired: name reflects the phase-2 YAML and the
+    # plan list (mirroring the replacement, which has none) is empty.
+    @test sim.name == "cube-sr-swap-refine-phase2"
+    @test isempty(sim.swaps)
+
+    # Simulation ran to completion without failure.
+    @test sim.failed == false
+    @test sim.controller.time ≈ 1.0 rtol = 1.0e-09
+end
