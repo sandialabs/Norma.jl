@@ -113,12 +113,18 @@ function SolidMechanics(params::Parameters)
     recovery_kind = Symbol(get(model_params, "stress recovery", "none"))
     recover_iv = Bool(get(model_params, "recover internal variables", false))
     if recover_iv && recovery_kind === :none
-        norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped' or 'consistent'")
+        norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped', 'consistent', or 'both'")
     end
     recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
     recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
     n_iv = recover_iv ? length(collect_internal_variable_names(materials)) : 0
     recovered_internal_variables = n_iv > 0 ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    # Extra buffers for the "both" recovery mode; empty for all other modes.
+    is_both = recovery_kind === :both
+    lumped_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
+    consistent_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
+    lumped_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    consistent_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
     return SolidMechanics(
         input_mesh,
         materials,
@@ -150,6 +156,10 @@ function SolidMechanics(params::Parameters)
         recovery_data,
         recovered_stress,
         recovered_internal_variables,
+        lumped_recovered_stress,
+        consistent_recovered_stress,
+        lumped_recovered_internal_variables,
+        consistent_recovered_internal_variables,
         num_int_pts,
     )
 end
