@@ -1,6 +1,6 @@
 type: single
 swaps:
-  - replacement: cube-tet4.yaml
+  - replacement: cube-tet4-t-swap.yaml
     criterion:
       type: time
       t_swap: 0.45
