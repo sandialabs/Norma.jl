@@ -43,8 +43,13 @@ function initialize_writing(sim::SingleDomainSimulation)
         num_node_vars += 6
         append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
     end
-    if !(sim.model isa RomModel) && !(sim.model.recovery_data isa NoRecovery)
-        rec = sim.model.recovery_data
+    # For RomModel, stress recovery is performed on the underlying fom_model after
+    # reconstructing the full displacement field.  Use fom_model as the source of
+    # recovery metadata so that the Exodus variable names are registered correctly
+    # regardless of whether the top-level model is a ROM or a FOM.
+    solid_model = sim.model isa RomModel ? sim.model.fom_model : sim.model
+    if !(solid_model.recovery_data isa NoRecovery)
+        rec = solid_model.recovery_data
         if rec isa BothRecovery
             # Both modes active: qualify each name with the projection method.
             num_node_vars += 12
@@ -55,13 +60,13 @@ function initialize_writing(sim::SingleDomainSimulation)
             num_node_vars += 6
             append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
         end
-        if rec isa BothRecovery && size(sim.model.lumped_recovered_internal_variables, 1) > 0
-            iv_names = collect_internal_variable_names(sim.model.materials)
+        if rec isa BothRecovery && size(solid_model.lumped_recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(solid_model.materials)
             num_node_vars += 2 * length(iv_names)
             append!(node_var_names, [name * "_cons_n" for name in iv_names])
             append!(node_var_names, [name * "_lump_n" for name in iv_names])
-        elseif !(rec isa BothRecovery) && size(sim.model.recovered_internal_variables, 1) > 0
-            iv_names = collect_internal_variable_names(sim.model.materials)
+        elseif !(rec isa BothRecovery) && size(solid_model.recovered_internal_variables, 1) > 0
+            iv_names = collect_internal_variable_names(solid_model.materials)
             num_node_vars += length(iv_names)
             append!(node_var_names, [name * "_n" for name in iv_names])
         end
