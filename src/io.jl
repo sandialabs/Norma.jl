@@ -50,10 +50,16 @@ function initialize_writing(sim::SingleDomainSimulation)
             num_node_vars += 12
             append!(node_var_names, ["sigma_xx_cons_n", "sigma_yy_cons_n", "sigma_zz_cons_n", "sigma_yz_cons_n", "sigma_xz_cons_n", "sigma_xy_cons_n"])
             append!(node_var_names, ["sigma_xx_lump_n", "sigma_yy_lump_n", "sigma_zz_lump_n", "sigma_yz_lump_n", "sigma_xz_lump_n", "sigma_xy_lump_n"])
+            # Nodal von Mises derived from the recovered stress tensor (one per method).
+            num_node_vars += 2
+            append!(node_var_names, ["von_mises_cons_n", "von_mises_lump_n"])
         else
             # Single recovery mode: use bare names — no qualifier needed.
             num_node_vars += 6
             append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+            # Nodal von Mises derived from the recovered stress tensor.
+            num_node_vars += 1
+            append!(node_var_names, ["von_mises_n"])
         end
         if rec isa BothRecovery && size(sim.model.lumped_recovered_internal_variables, 1) > 0
             iv_names = collect_internal_variable_names(sim.model.materials)
@@ -344,6 +350,10 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_lump_n", nodal_sigma_l[4, :])
             Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_lump_n", nodal_sigma_l[5, :])
             Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_lump_n", nodal_sigma_l[6, :])
+            # Nodal von Mises derived from the recovered nodal stress tensor.
+            compute_nodal_von_mises!(model)
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_cons_n", model.consistent_recovered_von_mises)
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_lump_n", model.lumped_recovered_von_mises)
             if size(model.lumped_recovered_internal_variables, 1) > 0
                 iv_names = collect_internal_variable_names(model.materials)
                 recover_internal_variables!(model, iv_names)
@@ -363,6 +373,9 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
             Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
             Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
+            # Nodal von Mises derived from the recovered nodal stress tensor.
+            compute_nodal_von_mises!(model)
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_n", model.recovered_von_mises)
             if size(model.recovered_internal_variables, 1) > 0
                 iv_names = collect_internal_variable_names(model.materials)
                 recover_internal_variables!(model, iv_names)

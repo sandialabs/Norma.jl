@@ -125,6 +125,10 @@ function SolidMechanics(params::Parameters)
     consistent_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
     lumped_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
     consistent_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    # Nodal von Mises buffers — derived from recovered stress tensor after recovery.
+    recovered_von_mises = recovery_data isa NoRecovery ? Float64[] : zeros(num_nodes)
+    lumped_recovered_von_mises = is_both ? zeros(num_nodes) : Float64[]
+    consistent_recovered_von_mises = is_both ? zeros(num_nodes) : Float64[]
     return SolidMechanics(
         input_mesh,
         materials,
@@ -160,6 +164,9 @@ function SolidMechanics(params::Parameters)
         consistent_recovered_stress,
         lumped_recovered_internal_variables,
         consistent_recovered_internal_variables,
+        recovered_von_mises,
+        lumped_recovered_von_mises,
+        consistent_recovered_von_mises,
         num_int_pts,
     )
 end
