@@ -37,6 +37,7 @@ const indexed_test_files = [
     (21, "schwarz-contact-dynamic-cubes.jl"),
     (22, "solid-inclined-displacement.jl"),
     (23, "opinf-schwarz-overlap-cuboid-hex8.jl"),
+    (55, "opinf-schwarz-overlap-l2-error-cuboid-hex8.jl"),
     (24, "opinf-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
     (25, "quadratic-opinf-schwarz-overlap-cuboid-hex8.jl"),
     (26, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
