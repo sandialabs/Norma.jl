@@ -5,6 +5,7 @@ CSV output interval: 0
 model:
   type: linear opinf rom
   model-file: opinf-operator-2.npz
+  stress recovery: consistent
   material:
     blocks:
       coarse: hyperelastic
