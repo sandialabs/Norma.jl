@@ -5,6 +5,7 @@ CSV output interval: 0
 model:
   type: quadratic opinf rom
   model-file: qopinf-operator-2.npz
+  stress recovery: consistent
   material:
     blocks:
       coarse: hyperelastic

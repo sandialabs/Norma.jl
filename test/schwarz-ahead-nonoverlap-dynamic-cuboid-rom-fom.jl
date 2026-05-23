@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz AHeaD Non-Overlap Dynamic Cuboid HEX8-HEX8 ROM-FOM" begin
+@testset "Schwarz AHeaD Non-Overlap Dynamic Cuboid HEX8-HEX8 ROM-FOM with Interface Predictor" begin
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-fom/cuboids.yaml", "cuboids.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-fom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-fom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
@@ -48,11 +48,12 @@ using YAML
     @test min_disp_x_cuboid2 ≈ -0.16666666925334647 atol = 1e-4
     @test min_disp_y_cuboid2 ≈ -0.16666669868308254 atol = 1e-4
     @test max_disp_z_cuboid2 ≈ 1.0  atol = 1e-4
+
     @test avg_stress_cuboid1 ≈
-        [-36687.00807527736 -46232.997458797494 6.666400992148324e8 -8419.997248528967 -7164.372738533243 -10261.760554080925] atol =
+        [-36739.54601441479 -46299.67040618098 6.666400456236401e8 -8432.636700154815 -7175.132200054923 -10277.009381932328] atol =
         1.0e1
     @test avg_stress_cuboid2 ≈
-        [-6176.934934013523 -8107.854416613001 6.666715762204559e8 185.6016556180562 -142.60953492579762 -897.6286004353053] atol =
+        [-6187.346160379238 -8120.747153351782 6.666716001054254e8 182.88843038098796 -145.74516972091425 -898.7271858482828] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16] atol = 0
 end

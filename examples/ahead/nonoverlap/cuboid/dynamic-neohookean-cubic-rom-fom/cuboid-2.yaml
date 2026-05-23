@@ -4,6 +4,7 @@ output mesh file: cuboid-2.e
 CSV output interval: 0
 model:
   type: solid mechanics
+  stress recovery: consistent
   material:
     blocks:
       coarse: hyperelastic

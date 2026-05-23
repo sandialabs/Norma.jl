@@ -6,7 +6,7 @@
 
 using YAML
 
-@testset "Schwarz AHeaD Non-Overlap Dynamic Cuboid HEX8-HEX8 ROM-ROM" begin
+@testset "Schwarz AHeaD Non-Overlap Dynamic Cuboid HEX8-HEX8 ROM-ROM with Interface Predictor" begin
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/cuboids.yaml", "cuboids.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)

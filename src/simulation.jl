@@ -1049,6 +1049,33 @@ function detect_contact(sim::MultiDomainSimulation)
     return nothing
 end
 
+"""
+    get_phys_state_for_predictor(state, subsim) -> Vector{Float64}
+
+For a FOM subdomain, returns `state` unchanged (already a physical DOF vector indexed
+as [3*(node-1)+d] for node index `node` and component d ∈ {1,2,3}).
+
+For a ROM subdomain, `state` holds ROM latent coordinates (length = num_modes).
+This function reconstructs the full physical DOF vector by applying the model basis:
+
+    u_phys[3*(j-1)+d] = basis[d, j, :] ⋅ state    for each node j, component d
+
+Only free DOFs are set; constrained DOFs default to zero. This is safe because
+`extract_interface_state` only ever reads interface nodes, which are always free DOFs.
+"""
+function get_phys_state_for_predictor(state::Vector{Float64}, subsim::Simulation)
+    model = subsim.model
+    model isa RomModel || return state
+    num_nodes = size(model.basis, 2)
+    phys = zeros(3 * num_nodes)
+    @inbounds for j in 1:num_nodes
+        for d in 1:3
+            phys[3 * (j - 1) + d] = model.basis[d, j, :]' * state
+        end
+    end
+    return phys
+end
+
 function extract_interface_state(global_state::Vector{Float64}, bc::SolidMechanicsSchwarzBoundaryCondition)
     n_local = length(bc.global_from_local_map)
     local_mat = Matrix{Float64}(undef, 3, n_local)
@@ -1103,10 +1130,10 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 isempty(controller.prev_stop_disp[dom_k]) && continue
                 isempty(controller.prev_stop_disp[dom_j]) && continue
 
-                u_k = extract_interface_state(controller.stop_disp[dom_k], bc_k)
-                u_k_prev = extract_interface_state(controller.prev_stop_disp[dom_k], bc_k)
-                u_j = extract_interface_state(controller.stop_disp[dom_j], bc_j)
-                u_j_prev = extract_interface_state(controller.prev_stop_disp[dom_j], bc_j)
+                u_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_k], subsim_k), bc_k)
+                u_k_prev = extract_interface_state(get_phys_state_for_predictor(controller.prev_stop_disp[dom_k], subsim_k), bc_k)
+                u_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_j], subsim_j), bc_j)
+                u_j_prev = extract_interface_state(get_phys_state_for_predictor(controller.prev_stop_disp[dom_j], subsim_j), bc_j)
 
                 # Each domain extrapolates its own interface displacement independently.
                 # This correctly handles non-conforming meshes: domain k predicts its own
@@ -1114,8 +1141,11 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 u_k_pred = @. 2 * u_k - u_k_prev
                 u_j_pred = @. 2 * u_j - u_j_prev
 
-                write_interface_state!(pred_disp_k, u_k_pred, bc_k)
-                write_interface_state!(pred_disp_j, u_j_pred, bc_j)
+                # For ROM subdomains, pred_disp is the ROM latent state (not a physical
+                # DOF vector), so write_interface_state! must not be called on it.
+                # The t_n latent state is already a safe predictor for ROM domains.
+                subsim_k.model isa RomModel || write_interface_state!(pred_disp_k, u_k_pred, bc_k)
+                subsim_j.model isa RomModel || write_interface_state!(pred_disp_j, u_j_pred, bc_j)
             else
                 # Dynamic: velocity predictor via perfectly inelastic collision using
                 # the interface mass matrices W (row-sum lumping).
@@ -1128,9 +1158,11 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 m_k = vec(sum(W_k; dims=2))    # (n_k,)
                 m_j = vec(sum(W_j; dims=2))    # (n_j,)
 
-                # Interface velocities at t_n from stop state
-                v_k = extract_interface_state(controller.stop_velo[dom_k], bc_k)  # (3, n_k)
-                v_j = extract_interface_state(controller.stop_velo[dom_j], bc_j)  # (3, n_j)
+                # Interface velocities at t_n from stop state.
+                # For ROM subdomains stop_velo holds latent coordinates; reconstruct
+                # the physical DOF vector first so extract_interface_state can index it.
+                v_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_velo[dom_k], subsim_k), bc_k)
+                v_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_velo[dom_j], subsim_j), bc_j)
 
                 # Project domain j's mass and velocity into domain k's interface space
                 m_j_in_k = P_kj * m_j    # (n_k,)
@@ -1155,8 +1187,8 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 # Displacement predictor: velocity-consistent linear extrapolation
                 # u_pred = u_n + Δt * v_pred  (each domain uses its own u_n as baseline)
                 Δt = controller.time_step
-                u_k = extract_interface_state(controller.stop_disp[dom_k], bc_k)
-                u_j = extract_interface_state(controller.stop_disp[dom_j], bc_j)
+                u_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_k], subsim_k), bc_k)
+                u_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_j], subsim_j), bc_j)
                 u_pred_k = @. u_k + Δt * v_pred_k
                 u_pred_j = @. u_j + Δt * v_pred_j
 
@@ -1164,10 +1196,20 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 # pred_acce_k and pred_acce_j already contain zero-valued stop_acce (from t_n
                 # corrected acceleration); no modification needed here.
 
-                write_interface_state!(pred_disp_k, u_pred_k, bc_k)
-                write_interface_state!(pred_velo_k, v_pred_k, bc_k)
-                write_interface_state!(pred_disp_j, u_pred_j, bc_j)
-                write_interface_state!(pred_velo_j, v_pred_j, bc_j)
+                # For ROM subdomains, pred_disp/pred_velo hold ROM latent coordinates.
+                # Calling write_interface_state! on them with a physical-space matrix
+                # would use FOM node indices that are out of bounds for the latent vector.
+                # Instead, leave ROM predictors as the t_n latent state (a safe fallback):
+                # schwarz.jl copies predictor_disp into coupled_integrator.displacement
+                # and then calls reconstruct_fom_fields!, so latent coordinates are correct.
+                if !(subsim_k.model isa RomModel)
+                    write_interface_state!(pred_disp_k, u_pred_k, bc_k)
+                    write_interface_state!(pred_velo_k, v_pred_k, bc_k)
+                end
+                if !(subsim_j.model isa RomModel)
+                    write_interface_state!(pred_disp_j, u_pred_j, bc_j)
+                    write_interface_state!(pred_velo_j, v_pred_j, bc_j)
+                end
             end
 
             # Force predictor: linear temporal extrapolation f_pred = 2*f_n - f_{n-1}.
