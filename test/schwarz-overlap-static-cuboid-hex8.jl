@@ -210,7 +210,7 @@ end
     rm("cuboid-2.e")
 
     cuboids_text = read("cuboids.yaml", String)
-    write("cuboids.yaml", replace(cuboids_text, "CSV output interval: 0" => "CSV output interval: 1"))
+    write("cuboids.yaml", replace(cuboids_text, "CSV output interval: 0" => "CSV output interval: 1.0"))
     cuboid_1_text = read("cuboid-1.yaml", String)
     write(
         "cuboid-1.yaml",

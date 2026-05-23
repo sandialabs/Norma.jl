@@ -52,7 +52,7 @@ end
     Exodus.close(sim_default.subsims[2].params["output_mesh"])
 
     cuboids_text = read("cuboids.yaml", String)
-    write("cuboids.yaml", replace(cuboids_text, "absolute tolerance: 1.0e-08" => "absolute tolerance: 1.0e-08\nCSV output interval: 1"))
+    write("cuboids.yaml", replace(cuboids_text, "absolute tolerance: 1.0e-08" => "absolute tolerance: 1.0e-08\nCSV output interval: 0.001"))
     cuboid_2_text = read("cuboid-2.yaml", String)
     write(
         "cuboid-2.yaml",
@@ -68,7 +68,7 @@ end
     ])
     @test bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     @test bc.fom_bc.compute_overlap_l2_error == true
-    @test length(bc.fom_bc.overlap_node_indices) > length(unique(bc.fom_bc.side_set_node_indices))
+    @test length(bc.fom_bc.overlap_node_indices) == length(unique(bc.fom_bc.side_set_node_indices))
     @test isfinite(bc.fom_bc.overlap_l2_error)
     @test bc.fom_bc.overlap_l2_error >= 0.0
     @test Norma.get_overlap_l2_error(bc) == bc.fom_bc.overlap_l2_error
