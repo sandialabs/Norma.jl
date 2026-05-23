@@ -73,9 +73,10 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     bc_params::Parameters,
 )
+    compute_overlap_l2_error = get(bc_params, "compute overlap L2 error", false)
     fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(
         coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
-        num_nodes_sides, coupled_subsim, subsim, false
+        num_nodes_sides, coupled_subsim, subsim, false, compute_overlap_l2_error
     )
     opinf_model_directory = bc_params["model-directory"]
     py"""
@@ -106,6 +107,18 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
         subsim.handle,
         coupled_subsim.handle,
     )
+end
+
+function compute_overlap_l2_error!(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+    return compute_overlap_l2_error!(bc.fom_bc)
+end
+
+function stores_overlap_l2_error(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+    return bc.fom_bc.compute_overlap_l2_error
+end
+
+function get_overlap_l2_error(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+    return bc.fom_bc.overlap_l2_error
 end
 
 function SMOpInfCouplingSchwarzBC(

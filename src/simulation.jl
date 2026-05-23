@@ -679,6 +679,7 @@ function schwarz(sim::MultiDomainSimulation)
                 plural = iteration_number == 1 ? "" : "s"
                 norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
                 sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
+                report_overlap_l2_errors(sim)
                 break
             end
         end
@@ -686,6 +687,35 @@ function schwarz(sim::MultiDomainSimulation)
         save_schwarz_state(sim)
         restore_stop_state(sim)
     end
+end
+
+function report_overlap_l2_errors(sim::MultiDomainSimulation)
+    overlap_rows = Vector{Vector{Any}}()
+    for subsim in sim.subsims
+        for bc in subsim.model.boundary_conditions
+            if !stores_overlap_l2_error(bc)
+                continue
+            end
+            overlap_l2_error = compute_overlap_l2_error!(bc)
+            write_overlap_l2_error_screen(subsim.name, bc.name, overlap_l2_error)
+            push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error])
+        end
+    end
+    write_overlap_l2_error_csv(sim, overlap_rows)
+    return nothing
+end
+
+function write_overlap_l2_error_screen(domain_name::String, side_set_name::String, overlap_l2_error::Float64)
+    norma_logf(
+        0,
+        :summary,
+        "Overlap L2 error [%s:%s] = %.6e",
+        domain_name,
+        side_set_name,
+        overlap_l2_error,
+    )
+    flush(stdout)
+    return nothing
 end
 
 
@@ -1252,4 +1282,24 @@ function write_schwarz_params_csv(sim::MultiDomainSimulation)
         iters_filename = "iterations" * index_string * ".csv"
         writedlm(iters_filename, sim.controller.iteration_number, '\n')
     end
+end
+
+function write_overlap_l2_error_csv(sim::MultiDomainSimulation, overlap_rows::Vector{Vector{Any}})
+    isempty(overlap_rows) && return nothing
+    time         = sim.controller.time
+    initial_time = sim.controller.initial_time
+    csv_interval = Float64(get(sim.params, "CSV output interval", 0.0))
+    if !_is_output_time(time, initial_time, csv_interval)
+        return nothing
+    end
+    stop = sim.controller.stop
+    index_string = "-" * string(stop; pad=4)
+    filename = "overlap-l2-errors" * index_string * ".csv"
+    open(filename, "w") do io
+        write(io, "domain,side_set,overlap_l2_error\n")
+        for row in overlap_rows
+            @printf(io, "%s,%s,%.16e\n", row[1], row[2], row[3])
+        end
+    end
+    return nothing
 end

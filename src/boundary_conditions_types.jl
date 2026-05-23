@@ -81,6 +81,11 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     global_from_local_map::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
+    compute_overlap_l2_error::Bool
+    overlap_node_indices::Vector{Int64}
+    overlap_coupled_nodes_indices::Vector{Vector{Int64}}
+    overlap_interpolation_function_values::Vector{Vector{Float64}}
+    overlap_l2_error::Float64
     coupled_block_name::String
     search_tolerance::Float64
     dirichlet_projector::Matrix{Float64}
@@ -170,5 +175,6 @@ mutable struct SolidMechanicsImpedanceSchwarzBoundaryCondition <: SolidMechanics
     self_handle::DomainHandle
     coupled_handle::DomainHandle
 end
+
 
 include("opinf/opinf_ics_bcs_types.jl")
