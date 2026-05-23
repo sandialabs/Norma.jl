@@ -29,7 +29,7 @@ boundary conditions:
       source: cuboid-2
       source block: coarse
       source side set: ssz-
-solver:
+      default BC type: Dirichlet
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1

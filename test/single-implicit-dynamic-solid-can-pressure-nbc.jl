@@ -9,18 +9,18 @@
     simulation = Norma.run("can.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("can.yaml")
-    rm("can.g")
-    rm("can.e")
+    rm("can.yaml"; force=true)
+    rm("can.g"; force=true)
+    rm("can.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ 9.042916992588757e-6 rtol = 1.0e-06
     @test avg_disp[2] ≈ 1.1433688342508286e-5 rtol = 1.0e-06
     @test avg_disp[3] ≈ -7.136350840569688e-7 rtol = 1.0e-06
-    @test avg_stress[1] ≈ 3.6281556858938783e8 rtol = 1.0e-06
-    @test avg_stress[2] ≈ 3.745392952723529e8 rtol = 1.0e-06
-    @test avg_stress[3] ≈ 1.474209981070922e8 rtol = 1.0e-06
-    @test avg_stress[4] ≈ -134646.4674700197 rtol = 1.0e-06
-    @test avg_stress[5] ≈ 356235.66342965094 rtol = 1.0e-06
-    @test avg_stress[6] ≈ 1.060198839489482e6 rtol = 1.0e-06
+    @test avg_stress[1] ≈ 3.630589420887601e8 rtol = 1.0e-06
+    @test avg_stress[2] ≈ 3.747781411025189e8 rtol = 1.0e-06
+    @test avg_stress[3] ≈ 1.4693877877755922e8 rtol = 1.0e-06
+    @test avg_stress[4] ≈ -146272.58880190144 rtol = 1.0e-06
+    @test avg_stress[5] ≈ 366103.93697419297 rtol = 1.0e-06
+    @test avg_stress[6] ≈ 1.0667487852609965e6 rtol = 1.0e-06
 end

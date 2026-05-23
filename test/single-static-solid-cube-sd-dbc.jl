@@ -9,9 +9,9 @@
     simulation = Norma.run("cube-sd-dbc.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube-sd-dbc.yaml")
-    rm("cube.g")
-    rm("cube-sd-dbc.e")
+    rm("cube-sd-dbc.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube-sd-dbc.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ 0.0 atol = 1.0e-06

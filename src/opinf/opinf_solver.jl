@@ -86,29 +86,29 @@ function create_solver(params::Parameters, model::RomModel)
     end
 end
 
-function copy_solution_source_to_targets(integrator::DynamicTimeIntegrator, solver::Solver, model::RomModel)
+function reconstruct_fom_fields!(integrator::DynamicTimeIntegrator, solver::Solver, model::RomModel)
     displacement = integrator.displacement
     velocity = integrator.velocity
     acceleration = integrator.acceleration
     # Clean this up; maybe make a free dofs 2d array or move to a basis in matrix format
-    for i in 1:size(model.fom_model.current)[2]
+    for i in 1:size(model.fom_model.displacement)[2]
         x_dof_index = 3 * (i - 1) + 1
         y_dof_index = 3 * (i - 1) + 2
         z_dof_index = 3 * (i - 1) + 3
         if model.fom_model.free_dofs[x_dof_index]
-            model.fom_model.current[1, i] = model.basis[1, i, :]'displacement + model.fom_model.reference[1, i]
+            model.fom_model.displacement[1, i] = model.basis[1, i, :]'displacement
             model.fom_model.velocity[1, i] = model.basis[1, i, :]'velocity
             model.fom_model.acceleration[1, i] = model.basis[1, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[y_dof_index]
-            model.fom_model.current[2, i] = model.basis[2, i, :]'displacement + model.fom_model.reference[2, i]
+            model.fom_model.displacement[2, i] = model.basis[2, i, :]'displacement
             model.fom_model.velocity[2, i] = model.basis[2, i, :]'velocity
             model.fom_model.acceleration[2, i] = model.basis[2, i, :]'acceleration
         end
 
         if model.fom_model.free_dofs[z_dof_index]
-            model.fom_model.current[3, i] = model.basis[3, i, :]'displacement + model.fom_model.reference[3, i]
+            model.fom_model.displacement[3, i] = model.basis[3, i, :]'displacement
             model.fom_model.velocity[3, i] = model.basis[3, i, :]'velocity
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
@@ -138,6 +138,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Qu
     residual = RHS - LHS_linear * solver.solution - H * xsqr
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -171,6 +176,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Cu
     residual = RHS - LHS_linear * solver.solution - H * xsqr - G * xcub
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -180,6 +190,11 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     ## Value for accelertaion - assumes bases are orthonormal to avoid solve
     solver.solution[:] =
         model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * integrator.displacement[:]
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -196,6 +211,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Li
     residual = RHS - LHS * solver.solution
     solver.hessian[:, :] = LHS
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -258,7 +278,7 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
         xi[0] = x
         inputs = torch.tensor(xi)
         return inputs
-    """ 
+    """
     ensemble_size = size(model.nn_model)[1]
     stiffness = zeros( num_dof,num_dof )
     #Kx,K = model.nn_model[1].forward(model_inputs,return_stiffness=true)
@@ -269,14 +289,20 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
       #Kx += Kxt
       Kt = Kt.detach().numpy()[1,:,:]
       stiffness += Kt
-    
+
     end
     stiffness = stiffness./ensemble_size
     LHS = I / (dt*dt*beta) - stiffness
     RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
-    
+
     residual = RHS - LHS * solver.solution
     solver.hessian[:,:] = LHS
     solver.gradient[:] = -residual
-end 
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
+end
 

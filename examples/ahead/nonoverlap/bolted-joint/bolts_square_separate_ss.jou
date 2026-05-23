@@ -44,7 +44,7 @@ unite volume 8 9
 brick x {cut_cube_side} y {3} z {cut_cube_side}
 move volume 10 location 1.25 {(0.75 + offset)/2.0} 1.25 include_merged
 webcut volume 1 2 tool volume 10
-delete volume 1 2 3 10 
+delete volume 1 2 3 10
 
 
 imprint volume 8 11
@@ -103,12 +103,12 @@ block all element type tetra4
 
 # assign sideset for schwarz
 #sideset 1 surface 126 127 128 129 120 121 122 123 82 83 84 85 70 71 72 73 107 108 109 110 101 102 103 104 145 146 147 148 139 140 141 142
-sideset 1 surface 120 126 82 70 145 139 107 101 
+sideset 1 surface 120 126 82 70 145 139 107 101
 sideset 1 name "schwarz_ss_bolts_ss1"
 sideset 2 surface 148 142 129 123 110 104 85 73
 sideset 2 name "schwarz_ss_bolts_ss2"
 sideset 3 surface 109 103 147 141 128 122 84 72
-sideset 3 name "schwarz_ss_bolts_ss3" 
+sideset 3 name "schwarz_ss_bolts_ss3"
 sideset 4 surface 83 71 127 121 108 102 146 140
 sideset 4 name "schwarz_ss_bolts_ss4"
 

@@ -23,20 +23,20 @@ using YAML
     model_bracket1 = subsims[1].model
     model_bracket2 = subsims[2].model
 
-    rm("bracket.yaml")
-    rm("bracket-1.yaml")
-    rm("bracket-2.yaml")
-    rm("../bracket-1.g")
-    rm("../bracket-2.g")
-    rm("bracket-1.e")
-    rm("bracket-2.e")
+    rm("bracket.yaml"; force=true)
+    rm("bracket-1.yaml"; force=true)
+    rm("bracket-2.yaml"; force=true)
+    rm("../bracket-1.g"; force=true)
+    rm("../bracket-2.g"; force=true)
+    rm("bracket-1.e"; force=true)
+    rm("bracket-2.e"; force=true)
 
-    min_disp_x_bracket1 = minimum(model_bracket1.current[1, :] - model_bracket1.reference[1, :])
-    min_disp_y_bracket1 = minimum(model_bracket1.current[2, :] - model_bracket1.reference[2, :])
-    max_disp_z_bracket1 = maximum(model_bracket1.current[3, :] - model_bracket1.reference[3, :])
-    min_disp_x_bracket2 = minimum(model_bracket2.current[1, :] - model_bracket2.reference[1, :])
-    min_disp_y_bracket2 = minimum(model_bracket2.current[2, :] - model_bracket2.reference[2, :])
-    max_disp_z_bracket2 = maximum(model_bracket2.current[3, :] - model_bracket2.reference[3, :])
+    min_disp_x_bracket1 = minimum(model_bracket1.displacement[1, :])
+    min_disp_y_bracket1 = minimum(model_bracket1.displacement[2, :])
+    max_disp_z_bracket1 = maximum(model_bracket1.displacement[3, :])
+    min_disp_x_bracket2 = minimum(model_bracket2.displacement[1, :])
+    min_disp_y_bracket2 = minimum(model_bracket2.displacement[2, :])
+    max_disp_z_bracket2 = maximum(model_bracket2.displacement[3, :])
     avg_stress_bracket1 = average_components(model_bracket1.stress)
     avg_stress_bracket2 = average_components(model_bracket2.stress)
 
@@ -47,62 +47,62 @@ using YAML
     @test min_disp_y_bracket2 ≈ -5.188214899938537e-5 atol = 1e-12
     @test max_disp_z_bracket2 ≈ 0.007592937380626189 atol = 1e-12
     @test avg_stress_bracket1 ≈
-        [-443291.51669701113 19019.88910771844 25134.91272134775 39068.427259961936 1.0434914230313826e7 1.5174866682280425e6] atol =
+        [-510160.2985190721 13618.32596222584 97405.25762366697 44143.889064639196 1.0434950811102245e7 1.516827315829358e6] atol =
         1.0e1
     @test avg_stress_bracket2 ≈
-        [-4.213214851786042e6 89029.68204894006 2.680554292983087e6 -774307.7048034652 1.735630636595213e7 416093.38218943775] atol =
+        [-5.102052720843673e6 -63490.06767812974 3.721911911481932e6 -747550.2645947285 1.7087825185346685e7 434117.5061109137] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [
-        3,
-        6,
-        8,
+        2,
+        5,
+        7,
+        9,
         10,
-        11,
-        11,
         10,
-        12,
-        12,
-        14,
-        15,
-        15,
+        9,
         11,
+        11,
+        13,
         14,
-        15,
-        16,
+        14,
+        10,
+        13,
+        14,
         15,
         14,
         13,
+        12,
+        9,
+        9,
         10,
         10,
-        11,
-        11,
+        9,
+        8,
+        7,
+        5,
+        7,
+        8,
+        9,
+        9,
         10,
+        10,
+        9,
         9,
         8,
         6,
         8,
-        9,
         10,
         10,
         11,
         11,
         10,
+        8,
+        8,
         10,
-        9,
-        7,
-        9,
         11,
         11,
-        12,
-        12,
         11,
-        9,
-        9,
-        11,
-        12,
-        12,
-        12,
-        11,
+        10,
     ] atol = 0
 end
 
@@ -123,20 +123,20 @@ end
     model_bracket1 = subsims[1].model
     model_bracket2 = subsims[2].model
 
-    rm("bracket.yaml")
-    rm("bracket-1.yaml")
-    rm("bracket-2.yaml")
-    rm("../bracket-1.g")
-    rm("../bracket-2.g")
-    rm("bracket-1.e")
-    rm("bracket-2.e")
+    rm("bracket.yaml"; force=true)
+    rm("bracket-1.yaml"; force=true)
+    rm("bracket-2.yaml"; force=true)
+    rm("../bracket-1.g"; force=true)
+    rm("../bracket-2.g"; force=true)
+    rm("bracket-1.e"; force=true)
+    rm("bracket-2.e"; force=true)
 
-    min_disp_x_bracket1 = minimum(model_bracket1.current[1, :] - model_bracket1.reference[1, :])
-    min_disp_y_bracket1 = minimum(model_bracket1.current[2, :] - model_bracket1.reference[2, :])
-    max_disp_z_bracket1 = maximum(model_bracket1.current[3, :] - model_bracket1.reference[3, :])
-    min_disp_x_bracket2 = minimum(model_bracket2.current[1, :] - model_bracket2.reference[1, :])
-    min_disp_y_bracket2 = minimum(model_bracket2.current[2, :] - model_bracket2.reference[2, :])
-    max_disp_z_bracket2 = maximum(model_bracket2.current[3, :] - model_bracket2.reference[3, :])
+    min_disp_x_bracket1 = minimum(model_bracket1.displacement[1, :])
+    min_disp_y_bracket1 = minimum(model_bracket1.displacement[2, :])
+    max_disp_z_bracket1 = maximum(model_bracket1.displacement[3, :])
+    min_disp_x_bracket2 = minimum(model_bracket2.displacement[1, :])
+    min_disp_y_bracket2 = minimum(model_bracket2.displacement[2, :])
+    max_disp_z_bracket2 = maximum(model_bracket2.displacement[3, :])
     avg_stress_bracket1 = average_components(model_bracket1.stress)
     avg_stress_bracket2 = average_components(model_bracket2.stress)
 
@@ -147,61 +147,61 @@ end
     @test min_disp_y_bracket2 ≈ -7.039442537440377e-5 atol = 1e-12
     @test max_disp_z_bracket2 ≈ 0.0037945898323606952 atol = 1e-12
     @test avg_stress_bracket1 ≈
-        [928393.0804969968 484726.67620943306 -86368.14791471219 39681.35369128554 2.8561263044046783e6 -84999.59564231828] atol =
+        [891484.3827023633 475950.11641397886 -40682.88983479411 38071.02301581592 2.8594511190481563e6 -85643.29050974561] atol =
         1.0e1
     @test avg_stress_bracket2 ≈
-        [-498781.1969274577 380458.68521612795 342043.85822372086 18008.589711749457 1.654179334345221e6 -231776.00506447483] atol =
+        [-587643.9418079571 315211.6345669816 496153.6551374258 9562.532715049952 1.6393813991316264e6 -228194.52047169508] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [
+        2,
+        2,
         3,
         3,
-        4,
-        4,
-        4,
         3,
-        3,
-        4,
-        4,
-        4,
-        4,
-        4,
-        4,
+        2,
+        2,
         3,
         3,
         3,
         3,
         3,
         3,
-        3,
-        4,
-        4,
-        4,
-        4,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        4,
-        4,
-        4,
-        4,
-        4,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
         3,
         3,
         3,
         3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
         3,
-        4,
-        4,
-        4,
-        4,
-        4,
-        4,
-        4,
         3,
         3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        2,
+        2,
     ] atol = 0
 end

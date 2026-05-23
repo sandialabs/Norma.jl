@@ -1,6 +1,5 @@
 type: multi
 domains: ["holder-0.yaml", "gauge.yaml", "holder-1.yaml"]
-Exodus output interval: 1
 initial time: 0.0
 final time: 0.1
 time step: 0.0001

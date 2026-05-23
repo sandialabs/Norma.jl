@@ -3,7 +3,7 @@ input mesh file: ../torsion-2.g
 output mesh file: torsion-2.e
 model:
   type: cubic opinf rom
-  model-file: cubic-opinf-operator.npz 
+  model-file: cubic-opinf-operator.npz
   material:
     blocks:
       top: hyperelastic

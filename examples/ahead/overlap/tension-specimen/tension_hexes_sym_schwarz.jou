@@ -95,12 +95,12 @@ nodeset 7 name "schwarz_lower"
 nodeset 8 surface 83
 nodeset 8 name "schwarz_upper"
 
-#sidesets 
+#sidesets
 sideset 1 surface 75
-sideset 1 name "schwarz_lower_ss" 
+sideset 1 name "schwarz_lower_ss"
 
 sideset 2 surface 83
-sideset 2 name "schwarz_upper_ss" 
+sideset 2 name "schwarz_upper_ss"
 
 # mesh gauge
 volume 1 size {gauge_mesh}

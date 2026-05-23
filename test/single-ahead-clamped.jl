@@ -20,14 +20,14 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("clamped.yaml")
-    rm("../clamped.g")
-    rm("clamped.e")
+    rm("clamped.yaml"; force=true)
+    rm("../clamped.g"; force=true)
+    rm("clamped.e"; force=true)
 
     z = model.reference[3, :]
-    disp_x = model.current[1, :] - model.reference[1, :]
-    disp_y = model.current[2, :] - model.reference[2, :]
-    disp_z = model.current[3, :] - model.reference[3, :]
+    disp_x = model.displacement[1, :]
+    disp_y = model.displacement[2, :]
+    disp_z = model.displacement[3, :]
     velo_x = model.velocity[1, :]
     velo_y = model.velocity[2, :]
     velo_z = model.velocity[3, :]
@@ -41,7 +41,7 @@ using YAML
     s = 0.02
     T = 1.0e-3
 
-    #Create and populate exact solution vectors 
+    #Create and populate exact solution vectors
     n = size(z)[1]
     disp_z_exact = zeros(Float64, n)
     velo_z_exact = zeros(Float64, n)

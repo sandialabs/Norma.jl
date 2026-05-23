@@ -1,7 +1,6 @@
 type: single
 input mesh file: ../beam.g
 output mesh file: beam.e
-Exodus output interval: 1
 CSV output interval: 0
 model:
   type: solid mechanics
@@ -26,7 +25,7 @@ time integrator:
   #decrease factor: 0.5
 boundary conditions:
   Dirichlet:
-    #Left side of beam is fixed 
+    #Left side of beam is fixed
     - node set: nsx-
       component: x
       function: "0.0"

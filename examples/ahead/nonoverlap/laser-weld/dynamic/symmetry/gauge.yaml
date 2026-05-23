@@ -3,6 +3,7 @@ input mesh file: ../../gauge.g
 output mesh file: gauge.e
 model:
   type: solid mechanics
+  stress recovery: consistent
   material:
     blocks:
       bead_weld: hyperelastic
@@ -34,10 +35,12 @@ boundary conditions:
       source: holder-0
       source block: holder_0
       source side set: sideset_positive_y
+      default BC type: Neumann
     - side set: sideset_positive_y
       source: holder-1
       source block: holder_1
       source side set: sideset_negative_y
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

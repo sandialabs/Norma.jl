@@ -149,10 +149,10 @@ output_mesh_file = "tet_smoothing.e"
         )
 
         if isfile(input_mesh_file)
-            rm(input_mesh_file)
+            rm(input_mesh_file; force=true)
         end
         if isfile(output_mesh_file)
-            rm(output_mesh_file)
+            rm(output_mesh_file; force=true)
         end
 
         tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
@@ -191,10 +191,10 @@ output_mesh_file = "tet_smoothing.e"
         @test sim.integrator.displacement ≈ vec(reg_tet_coords - tet_coords) atol = a*1.0e-6
     finally
         if isfile(input_mesh_file)
-            rm(input_mesh_file)
+            rm(input_mesh_file; force=true)
         end
         if isfile(output_mesh_file)
-            rm(output_mesh_file)
+            rm(output_mesh_file; force=true)
         end
     end
 
@@ -230,10 +230,10 @@ output_mesh_file = "tet_smoothing.e"
         )
 
         if isfile(input_mesh_file)
-            rm(input_mesh_file)
+            rm(input_mesh_file; force=true)
         end
         if isfile(output_mesh_file)
-            rm(output_mesh_file)
+            rm(output_mesh_file; force=true)
         end
 
         tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
@@ -273,10 +273,10 @@ output_mesh_file = "tet_smoothing.e"
             a*1.0e-6
     finally
         if isfile(input_mesh_file)
-            rm(input_mesh_file)
+            rm(input_mesh_file; force=true)
         end
         if isfile(output_mesh_file)
-            rm(output_mesh_file)
+            rm(output_mesh_file; force=true)
         end
     end
 
@@ -320,10 +320,10 @@ output_mesh_file = "tet_smoothing.e"
         )
 
         if isfile(input_mesh_file)
-            rm(input_mesh_file)
+            rm(input_mesh_file; force=true)
         end
         if isfile(output_mesh_file)
-            rm(output_mesh_file)
+            rm(output_mesh_file; force=true)
         end
 
         tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
@@ -362,10 +362,10 @@ output_mesh_file = "tet_smoothing.e"
         @test sim.integrator.displacement ≈ vec(reg_tet_coords - tet_coords) atol = a*1.0e-6
     finally
         if isfile(input_mesh_file)
-            rm(input_mesh_file)
+            rm(input_mesh_file; force=true)
         end
         if isfile(output_mesh_file)
-            rm(output_mesh_file)
+            rm(output_mesh_file; force=true)
         end
     end
 end

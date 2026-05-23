@@ -75,6 +75,7 @@ end
 
 function create_displacement(expression::String, mesh::ExodusDatabase, side_set_id::Int64, time::Float64)
     disp_num = eval(Meta.parse(expression))
+    disp_fun = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
     coords = read_coordinates(mesh)
     num_nodes = size(coords)[2]
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
@@ -85,10 +86,8 @@ function create_displacement(expression::String, mesh::ExodusDatabase, side_set_
     for side in num_nodes_sides
         side_nodes = side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         for side_node in side_nodes
-            node_coordinates = coords[:, side_node]
-            values = Dict(t => time, x => node_coordinates[1], y => node_coordinates[2], z => node_coordinates[3])
-            disp_sym = substitute(disp_num, values)
-            disp_val = Norma.extract_value(disp_sym)
+            nc = coords[:, side_node]
+            disp_val = Float64(disp_fun((time, nc[1], nc[2], nc[3])))
             local_index = get.(Ref(local_from_global_map), side_node, 0)
             displacements[local_index] = disp_val
         end

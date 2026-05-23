@@ -16,7 +16,7 @@ time integrator; the right bar uses tetrahedral elements with an
 explicit time integrator. Each subdomain advances independently with
 its own time step. (~100,000 elements)*
 
-![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)  
+![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)
 *Dynamic torsion of a solid cylinder undergoing large deformations. (~160,000 elements)*
 
 ![Norma Sphere Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/sphere.gif)
@@ -29,12 +29,19 @@ time. (~300,000 elements)*
 ## Quick Start
 
 ```bash
-julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
+# Self-activating CLI wrapper (recommended)
+bin/norma input.yaml
+
+# Multi-threaded
+bin/norma input.yaml --threads 8
+
+# Or directly with julia
+julia --project=. src/Norma.jl input.yaml
 ```
 
-Or run it interactively:
+Interactive:
 ```julia
-using Pkg; Pkg.activate("/path/to/Norma.jl")
+using Pkg; Pkg.activate(".")
 using Norma
 Norma.run("input.yaml")
 ```
@@ -129,7 +136,7 @@ Norma.run("bars.yaml")
 
 **Note**: If you make changes to the Norma code, you need to reload the Norma module (`using Norma`) for those changes to take effect.
 
-### Running the Code with Operator Inference (OpInf) Reduced Order Models (ROMs) 
+### Running the Code with Operator Inference (OpInf) Reduced Order Models (ROMs)
 
 Running Norma with OpInf ROMs is a process consisting of three steps.  More details can be found in the README file found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/overlap/cuboid/dynamic-opinf-fom/README.md).
 
@@ -139,12 +146,12 @@ Run the main program in FOM mode, assuming Julia is in your executable path:
 ```bash
 julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
-after modifying ```input.yaml``` to enable ```CSV output``` and ```CSV write sidesets```, e.g., 
+after modifying ```input.yaml``` to enable ```CSV output``` and ```CSV write sidesets```, e.g.,
 ```
 CSV output interval: 1
 CSV write sidesets: true
 ```
-An example input file can be found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/single/cuboid/dynamic-opinf-fom/cuboid.yaml).  
+An example input file can be found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/single/cuboid/dynamic-opinf-fom/cuboid.yaml).
 
 #### Step 2: Run Norma-OpInf to Build ROM from Snapshot Data Generated in Step 1
 
@@ -156,7 +163,7 @@ Run the main program in ROM mode, assuming Julia is in your executable path:
 ```bash
 julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input_rom.yaml
 ```
-after modifying ```input_rom.yaml``` to utilize a ROM model type and read in the ```.npz``` file produced in Step 2, e.g., 
+after modifying ```input_rom.yaml``` to utilize a ROM model type and read in the ```.npz``` file produced in Step 2, e.g.,
 ```
 model:
   type: linear opinf rom
@@ -166,15 +173,13 @@ An example ROM input file can be found [here](https://github.com/sandialabs/Norm
 
 ### Running with Multiple Threads
 
-To run Norma.jl using multiple threads, set the `JULIA_NUM_THREADS` environment variable before launching Julia. For example, to use 4 threads:
-
 ```bash
-JULIA_NUM_THREADS=4 julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
+bin/norma input.yaml --threads 8
 ```
 
-Or for interactive usage:
+Or via the environment variable:
 ```bash
-JULIA_NUM_THREADS=4 julia
+JULIA_NUM_THREADS=8 julia --project=. src/Norma.jl input.yaml
 ```
 
 Inside Julia:

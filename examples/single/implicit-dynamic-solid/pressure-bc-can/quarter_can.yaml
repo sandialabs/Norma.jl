@@ -1,7 +1,6 @@
 type: single
 input mesh file: quarter_can.g
 output mesh file: quarter_can.e
-Exodus output interval: 1
 CSV output interval: 0
 model:
   type: solid mechanics

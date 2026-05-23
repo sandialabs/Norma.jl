@@ -1,7 +1,6 @@
 type: single
-input mesh file: ../../../../../lower.g 
-output mesh file: tension-specimen-1.e 
-CSV output interval: 1
+input mesh file: ../../../../../lower.g
+output mesh file: tension-specimen-1.e
 CSV write sidesets: true
 model:
   type: solid mechanics
@@ -34,6 +33,7 @@ boundary conditions:
       source block: upper
       source side set: schwarz_upper_ss
       search tolerance: 5.0e-02
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

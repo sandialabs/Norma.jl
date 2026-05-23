@@ -8,9 +8,9 @@
     cp("../examples/single/explicit-dynamic-solid/clamped/clamped.g", "clamped.g"; force=true)
     simulation = Norma.run("clamped.yaml")
     integrator = simulation.integrator
-    rm("clamped.yaml")
-    rm("clamped.g")
-    rm("clamped.e")
+    rm("clamped.yaml"; force=true)
+    rm("clamped.g"; force=true)
+    rm("clamped.e"; force=true)
     max_disp = maximum_components(integrator.displacement)
     max_velo = maximum_components(integrator.velocity)
     max_acce = maximum_components(integrator.acceleration)

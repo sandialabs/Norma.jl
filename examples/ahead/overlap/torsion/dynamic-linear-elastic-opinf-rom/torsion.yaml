@@ -1,6 +1,6 @@
 type: multi
 domains: ["torsion-1.yaml", "torsion-2.yaml"]
-Exodus output interval: 10
+Exodus output interval: 1.0e-05
 initial time: 0.0
 final time: 2.0e-3
 time step: 1.0e-6

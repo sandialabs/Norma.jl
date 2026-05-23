@@ -17,7 +17,7 @@ time integrator:
   γ: 0.9
 boundary conditions:
   Dirichlet:
-    #Left side of plate is fixed 
+    #Left side of plate is fixed
     - node set: nsx-
       component: x
       function: "0.0"
@@ -39,6 +39,7 @@ boundary conditions:
       source: beam-2
       source block: coarse
       source side set: ssx-
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

@@ -31,20 +31,20 @@ using YAML
     model_1 = subsims[1].model
     model_2 = subsims[2].model
 
-    rm("notched-cylinder.yaml")
-    rm("notched-cylinder-1.yaml")
-    rm("notched-cylinder-2.yaml")
-    rm("../notched-cylinder-1.g")
-    rm("../notched-cylinder-2.g")
-    rm("notched-cylinder-1.e")
-    rm("notched-cylinder-2.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-1.yaml"; force=true)
+    rm("notched-cylinder-2.yaml"; force=true)
+    rm("../notched-cylinder-1.g"; force=true)
+    rm("../notched-cylinder-2.g"; force=true)
+    rm("notched-cylinder-1.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
-    min_disp_x_1 = minimum(model_1.current[1, :] - model_1.reference[1, :])
-    min_disp_y_1 = minimum(model_1.current[2, :] - model_1.reference[2, :])
-    max_disp_z_1 = maximum(model_1.current[3, :] - model_1.reference[3, :])
-    min_disp_x_2 = minimum(model_2.current[1, :] - model_2.reference[1, :])
-    min_disp_y_2 = minimum(model_2.current[2, :] - model_2.reference[2, :])
-    min_disp_z_2 = minimum(model_2.current[3, :] - model_2.reference[3, :])
+    min_disp_x_1 = minimum(model_1.displacement[1, :])
+    min_disp_y_1 = minimum(model_1.displacement[2, :])
+    max_disp_z_1 = maximum(model_1.displacement[3, :])
+    min_disp_x_2 = minimum(model_2.displacement[1, :])
+    min_disp_y_2 = minimum(model_2.displacement[2, :])
+    min_disp_z_2 = minimum(model_2.displacement[3, :])
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 
@@ -55,12 +55,12 @@ using YAML
     @test min_disp_y_2 ≈ -1.618628933883204e-5 atol = 1e-6
     @test min_disp_z_2 ≈ 5.1726659805836905e-5 atol = 1e-6
     @test avg_stress_1 ≈
-        [119658.24151708037 119759.96550264646 2.105505961105632e6 280369.0355588143 281504.50820556487 57168.0765508701] atol =
+        [119098.66905646767 119201.64540623137 2.1066238536625747e6 279333.00110998185 280460.3455847958 56808.524330534376] atol =
         1.0e1
     @test avg_stress_2 ≈
-        [-101340.89672529901 -101446.28712096746 1.5977255795638144e6 121800.33493609141 122483.30918545111 37064.478126464295] atol =
+        [-101423.59028091333 -101528.52409858494 1.5978905100970943e6 121611.29785378547 122292.56850566593 37011.15803770428] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 4, 4, 4, 4, 5, 5] atol = 0
+    @test sim.controller.schwarz_iters ≈ [0, 0, 0, 0, 3, 3, 3, 3, 4, 4] atol = 0
 end
 
 @testset "Schwarz AHeaD Overlap Dynamic Notched Cylinder TET10-HEX8" begin
@@ -88,20 +88,20 @@ end
     model_1 = subsims[1].model
     model_2 = subsims[2].model
 
-    rm("notched-cylinder.yaml")
-    rm("notched-cylinder-1.yaml")
-    rm("notched-cylinder-2.yaml")
-    rm("../notched-cylinder-1.g")
-    rm("../notched-cylinder-2.g")
-    rm("notched-cylinder-1.e")
-    rm("notched-cylinder-2.e")
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-1.yaml"; force=true)
+    rm("notched-cylinder-2.yaml"; force=true)
+    rm("../notched-cylinder-1.g"; force=true)
+    rm("../notched-cylinder-2.g"; force=true)
+    rm("notched-cylinder-1.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
-    min_disp_x_1 = minimum(model_1.current[1, :] - model_1.reference[1, :])
-    min_disp_y_1 = minimum(model_1.current[2, :] - model_1.reference[2, :])
-    max_disp_z_1 = maximum(model_1.current[3, :] - model_1.reference[3, :])
-    min_disp_x_2 = minimum(model_2.current[1, :] - model_2.reference[1, :])
-    min_disp_y_2 = minimum(model_2.current[2, :] - model_2.reference[2, :])
-    min_disp_z_2 = minimum(model_2.current[3, :] - model_2.reference[3, :])
+    min_disp_x_1 = minimum(model_1.displacement[1, :])
+    min_disp_y_1 = minimum(model_1.displacement[2, :])
+    max_disp_z_1 = maximum(model_1.displacement[3, :])
+    min_disp_x_2 = minimum(model_2.displacement[1, :])
+    min_disp_y_2 = minimum(model_2.displacement[2, :])
+    min_disp_z_2 = minimum(model_2.displacement[3, :])
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 
@@ -112,10 +112,10 @@ end
     @test min_disp_y_2 ≈ -1.643006006920439e-5 atol = 1e-12
     @test min_disp_z_2 ≈ 4.895828234158239e-5 atol = 1e-12
     @test avg_stress_1 ≈
-        [74920.96247178296 72298.92321097263 1.678913240195309e6 259770.47737702358 271427.7166969666 76184.88555466678] atol =
+        [74255.45497241359 71739.39938200016 1.680138271523533e6 258948.1851516863 270573.5517476705 75797.27494781958] atol =
         1.0e1
     @test avg_stress_2 ≈
-        [-89472.31510791164 -89526.66568169543 1.6857645398230806e6 114694.99228486177 114706.49638144106 34816.156918097106] atol =
+        [-89548.343641492 -89603.24718234365 1.6859171498567525e6 114497.79715981241 114510.3753457256 34767.594667242905] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 1, 3, 3, 3, 3, 3] atol = 0
+    @test sim.controller.schwarz_iters ≈ [0, 0, 0, 0, 0, 2, 2, 2, 2, 2] atol = 0
 end

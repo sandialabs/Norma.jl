@@ -1,6 +1,7 @@
 type: single
 input mesh file: ../torsion-1.g
 output mesh file: torsion-1.e
+CSV output interval: 1.0e-6
 CSV write sidesets: true
 model:
   type: solid mechanics

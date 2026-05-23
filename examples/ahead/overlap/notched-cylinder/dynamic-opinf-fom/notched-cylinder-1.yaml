@@ -1,7 +1,7 @@
 type: single
 input mesh file: ../notched-cylinder-1.g
 output mesh file: notched-cylinder-1.e
-CSV output interval: 1
+CSV output interval: 0.005
 CSV write sidesets: true
 model:
   type: solid mechanics

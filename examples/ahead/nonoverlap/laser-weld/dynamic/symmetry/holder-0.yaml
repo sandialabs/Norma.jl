@@ -3,6 +3,7 @@ input mesh file: ../../holder-0.g
 output mesh file: holder-0.e
 model:
   type: solid mechanics
+  stress recovery: consistent
   material:
     blocks:
       holder_0: hyperelastic
@@ -35,6 +36,7 @@ boundary conditions:
       source: gauge
       source block: region_weld_0
       source side set: sideset_negative_y
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

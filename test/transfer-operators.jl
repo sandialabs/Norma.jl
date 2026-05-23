@@ -17,9 +17,9 @@
     dst_model = dst_sim.model
     src_mesh = src_model.mesh
     dst_mesh = dst_model.mesh
-    rm("transfer.yaml")
-    rm("src.yaml")
-    rm("dst.yaml")
+    rm("transfer.yaml"; force=true)
+    rm("src.yaml"; force=true)
+    rm("dst.yaml"; force=true)
     src_bc_index = 4
     dst_bc_index = 4
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -53,8 +53,8 @@
     Exodus.close(src_sim.params["output_mesh"])
     Exodus.close(dst_sim.params["input_mesh"])
     Exodus.close(dst_sim.params["output_mesh"])
-    rm("src.g")
-    rm("dst.g")
-    rm("src.e")
-    rm("dst.e")
+    rm("src.g"; force=true)
+    rm("dst.g"; force=true)
+    rm("src.e"; force=true)
+    rm("dst.e"; force=true)
 end

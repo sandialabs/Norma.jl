@@ -1,0 +1,36 @@
+type: single
+input mesh file: cantilever-free.g
+output mesh file: cantilever-free.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cantilever_free: hyperelastic
+    hyperelastic:
+      model: linear elastic
+      elastic modulus: 6.895e+09
+      Poisson's ratio: 0.25
+      density: 2768.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: y
+      function: "0.393701 * x * x"
+boundary conditions:
+  Schwarz overlap:
+    - side set: ssx-
+      source: cantilever-clamped
+      source block: cantilever_clamped
+      source side set: ssx+
+      weak: true
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 2.54e-08

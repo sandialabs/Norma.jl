@@ -1,7 +1,7 @@
 type: single
 input mesh file: ../torsion.g
 output mesh file: torsion.e
-Exodus output interval: 10
+Exodus output interval: 1.0e-05
 CSV output interval: 0
 model:
   type: solid mechanics

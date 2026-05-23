@@ -7,13 +7,6 @@
 using Printf
 using YAML
 
-include("interpolation_types.jl")
-include("simulation_types.jl")
-include("minitensor.jl")
-include("model.jl")
-include("time_integrator.jl")
-include("solver.jl")
-include("io.jl")
 
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
@@ -28,33 +21,123 @@ function create_simulation(params::Parameters)
     if sim_type == "single"
         sim = SingleDomainSimulation(params)
         create_bcs(sim)
+        initialize_storage(sim)
         return sim
     elseif sim_type == "multi"
         sim = MultiDomainSimulation(params)
         create_bcs(sim)
+        initialize_storage(sim)
         return sim
     else
         norma_abort("Unknown type of simulation: $sim_type")
     end
 end
 
+function initialize_storage(sim::SingleDomainSimulation)
+    model = sim.model
+    integrator = sim.integrator
+    solver = sim.solver
+    model isa SolidMechanics || return nothing
+    num_dof = length(model.free_dofs)
+    integrator.displacement = unsafe_wrap(Vector{Float64}, pointer(model.displacement), num_dof)
+    integrator.velocity = unsafe_wrap(Vector{Float64}, pointer(model.velocity), num_dof)
+    integrator.acceleration = unsafe_wrap(Vector{Float64}, pointer(model.acceleration), num_dof)
+    if solver isa ExplicitSolver
+        solver.solution = unsafe_wrap(Vector{Float64}, pointer(model.acceleration), num_dof)
+    else
+        solver.solution = unsafe_wrap(Vector{Float64}, pointer(model.displacement), num_dof)
+    end
+    return nothing
+end
+
+function initialize_storage(sim::MultiDomainSimulation)
+    for subsim in sim.subsims
+        initialize_storage(subsim)
+    end
+    return nothing
+end
+
 function SingleDomainSimulation(params::Parameters)
+    t_setup = time()
     basename = params["name"]
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
+    norma_log(0, :setup, "Input:  $input_mesh_file")
+    norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
     input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
     Exodus.copy(input_mesh, output_mesh_file)
     output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
+    n_nodes = Exodus.num_nodes(input_mesh.init)
+    n_elems = Exodus.num_elements(input_mesh.init)
+    norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
     controller = create_controller(params)
+    norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
+               controller.initial_time, controller.final_time,
+               controller.time_step, controller.num_stops - 1)
     model = create_model(params)
+    _log_materials(model, input_mesh)
     integrator = create_time_integrator(params, model)
     solver = create_solver(params, model)
+    norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+    norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
     failed = false
-    return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed)
+    swaps = parse_swap_plans(params)
+    sim = SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps)
+    validate_swap_plans(sim)
+    return sim
 end
+
+# True when this subsim belongs to a MultiDomainSimulation (i.e., is coupled).
+is_coupled(sim::SingleDomainSimulation) = sim.parent !== nothing
+
+# Resolve a domain name to its stable handle within a MultiDomainSimulation.
+handle(sim::MultiDomainSimulation, name::String) = sim.handle_by_name[name]
+
+_integrator_name(::QuasiStatic) = "Quasi-static"
+_integrator_name(::Newmark) = "Newmark"
+_integrator_name(::CentralDifference) = "Central difference"
+_integrator_name(ig) = replace(string(typeof(ig)), r"^.*\." => "")
+
+_solver_name(::HessianMinimizer) = "Newton (Hessian minimizer)"
+_solver_name(::SteepestDescent) = "Steepest descent"
+_solver_name(::ExplicitSolver) = "Explicit"
+_solver_name(s) = replace(string(typeof(s)), r"^.*\." => "")
+
+function log_dof_counts(model::SolidMechanics)
+    n_dofs = length(model.free_dofs)
+    n_free = count(model.free_dofs)
+    norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained",
+               n_dofs, n_free, n_dofs - n_free)
+end
+
+log_dof_counts(::Model) = nothing
+
+_material_name(m) = replace(string(typeof(m)), r"^.*\." => "")
+
+# Format a single material struct field as "name = value".  Floats get
+# scientific notation for readability; integers (e.g. SethHill's m, n)
+# print as-is.
+function _format_material_field(name::Symbol, value)
+    if value isa AbstractFloat
+        return @sprintf("%s = %.3e", String(name), value)
+    else
+        return string(name) * " = " * string(value)
+    end
+end
+
+function _log_materials(model::SolidMechanics, input_mesh)
+    block_names = Exodus.read_names(input_mesh, Block)
+    for (block_name, material) in zip(block_names, model.materials)
+        props = join((_format_material_field(f, getfield(material, f))
+                      for f in fieldnames(typeof(material))), ", ")
+        norma_log(0, :setup, "Block \"$block_name\": $(_material_name(material)) : $props")
+    end
+end
+
+_log_materials(::Model, _) = nothing
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
@@ -63,10 +146,11 @@ function MultiDomainSimulation(params::Parameters)
     controller = create_controller(params)
     initial_time = controller.initial_time
     final_time = controller.final_time
-    time_step = controller.time_step
-    exodus_interval = get(params, "Exodus output interval", 1)
-    csv_interval = get(params, "CSV output interval", 0)
-    subsim_name_index_map = Dict{String,Int64}()
+    integrator_dt = params["time step"]
+    exodus_interval = Float64(get(params, "Exodus output interval", integrator_dt))
+    csv_interval = Float64(get(params, "CSV output interval", 0.0))
+    handle_by_name = Dict{String,DomainHandle}()
+    name_by_handle = String[]
     subsim_index = 1
     for domain_path in domain_paths
         domain_name = stripped_name(domain_path)
@@ -74,8 +158,8 @@ function MultiDomainSimulation(params::Parameters)
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
         subparams["name"] = domain_name
         integrator_params = subparams["time integrator"]
-        subsim_time_step = get(integrator_params, "time step", time_step)
-        subsim_time_step = min(subsim_time_step, time_step)
+        subsim_time_step = get(integrator_params, "time step", integrator_dt)
+        subsim_time_step = min(subsim_time_step, integrator_dt)
         integrator_params["initial time"] = initial_time
         integrator_params["final time"] = final_time
         integrator_params["time step"] = subsim_time_step
@@ -84,15 +168,22 @@ function MultiDomainSimulation(params::Parameters)
         subsim = SingleDomainSimulation(subparams)
         params[domain_name] = subsim.params
         push!(subsims, subsim)
-        subsim_name_index_map[domain_name] = subsim_index
+        handle_by_name[domain_name] = DomainHandle(subsim_index)
+        push!(name_by_handle, domain_name)
         subsim_index += 1
     end
     num_domains = length(subsims)
+    swaps = parse_swap_plans(params)
     failed = false
-    sim = MultiDomainSimulation(basename, params, controller, num_domains, subsims, subsim_name_index_map, failed)
-    for subsim in sim.subsims
-        subsim.params["parent_simulation"] = sim
+    sim = MultiDomainSimulation(
+        basename, params, controller, num_domains, subsims,
+        handle_by_name, name_by_handle, swaps, failed,
+    )
+    for (i, subsim) in enumerate(sim.subsims)
+        subsim.parent = sim
+        subsim.handle = DomainHandle(i)
     end
+    validate_swap_plans(sim)
     return sim
 end
 
@@ -105,6 +196,8 @@ function SolidMultiDomainTimeController(params::Parameters)
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
+    # Multi-domain: control step = integrator dt (Schwarz coupling each step).
+    # Output timing is handled by _is_output_time in write_stop.
     num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
@@ -123,11 +216,33 @@ function SolidMultiDomainTimeController(params::Parameters)
     velo_hist = [Vector{Float64}[] for _ in 1:num_domains]
     acce_hist = [Vector{Float64}[] for _ in 1:num_domains]
     ∂Ω_f_hist = [Vector{Float64}[] for _ in 1:num_domains]
-    relaxation_parameter = get(params, "relaxation parameter", 1.0)
+    has_relaxation_key = haskey(params, "relaxation")
+    has_relaxation_parameter = haskey(params, "relaxation parameter")
+    if has_relaxation_key && has_relaxation_parameter
+        norma_abort(
+            "Schwarz controller: specify either `relaxation: aitken` or `relaxation parameter: <float>`, not both.",
+        )
+    end
+    relaxation_method = :fixed
+    relaxation_parameter = 1.0
+    if has_relaxation_key
+        relaxation_value = params["relaxation"]
+        if relaxation_value isa AbstractString && lowercase(relaxation_value) == "aitken"
+            relaxation_method = :aitken
+        else
+            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken` is recognized).")
+        end
+    elseif has_relaxation_parameter
+        relaxation_parameter = Float64(params["relaxation parameter"])
+    end
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_acce = [Vector{Float64}[] for _ in 1:num_domains]
+    aitken_prev_residual_disp = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_prev_residual_velo = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_prev_residual_acce = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_theta_disp = ones(Float64, num_domains)
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
@@ -170,10 +285,15 @@ function SolidMultiDomainTimeController(params::Parameters)
         acce_hist,
         ∂Ω_f_hist,
         relaxation_parameter,
+        relaxation_method,
         naive_stabilized,
         lambda_disp,
         lambda_velo,
         lambda_acce,
+        aitken_prev_residual_disp,
+        aitken_prev_residual_velo,
+        aitken_prev_residual_acce,
+        aitken_theta_disp,
         is_schwarz,
         schwarz_contact,
         active_contact,
@@ -194,6 +314,8 @@ function SolidSingleDomainTimeController(params::Parameters)
     initial_time = integrator_params["initial time"]
     final_time = integrator_params["final time"]
     time_step = integrator_params["time step"]
+    # Control step = integrator dt always. Output timing is handled
+    # by _is_output_time in write_stop, not by controller stops.
     num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
     time = prev_time = initial_time
     stop = 0
@@ -212,14 +334,7 @@ function create_controller(params::Parameters)
 end
 
 function create_bcs(sim::SingleDomainSimulation)
-    boundary_conditions = create_bcs(sim.params)
-    for bc in boundary_conditions
-        if bc isa SolidMechanicsInclinedDirichletBoundaryCondition ||
-            bc isa SolidMechanicsContactSchwarzBoundaryCondition
-            sim.model.inclined_support = true
-            break
-        end
-    end
+    boundary_conditions = _create_bcs(sim)
     return sim.model.boundary_conditions = boundary_conditions
 end
 
@@ -236,11 +351,14 @@ function evolve(sim::Simulation)
     initialize(sim)
     initialize_writing(sim)
     write_stop(sim)
+    t_batch = time()
     while true
         advance_control_time(sim)
+        maybe_apply_swaps!(sim)
         sync_control_time(sim)
         advance_control(sim)
-        write_stop(sim)
+        write_stop(sim; wall_time=time() - t_batch)
+        t_batch = time()
         if stop_evolve(sim) == true
             break
         end
@@ -269,7 +387,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     decrease_factor = sim.integrator.decrease_factor
     if decrease_factor == 1.0
         norma_abortf(
-            "Cannot adapt time step %.4e because decrease factor is %.4e. Enable adaptive time stepping.",
+            "Cannot adapt time step %.2e because decrease factor is %.2e. Enable adaptive time stepping.",
             time_step,
             decrease_factor,
         )
@@ -277,7 +395,7 @@ function decrease_time_step(sim::SingleDomainSimulation)
     new_time_step = decrease_factor * time_step
     minimum_time_step = sim.integrator.minimum_time_step
     if new_time_step < minimum_time_step
-        norma_abortf("Cannot adapt time step to %.4e because minimum is %.4e.", new_time_step, minimum_time_step)
+        norma_abortf("Cannot adapt time step to %.2e because minimum is %.2e.", new_time_step, minimum_time_step)
     end
     sim.integrator.time_step = new_time_step
     return nothing
@@ -297,13 +415,27 @@ function increase_time_step(sim::SingleDomainSimulation)
 end
 
 function advance_one_step(sim::SingleDomainSimulation)
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
     while true
         prev_time = sim.integrator.prev_time
         time = sim.integrator.time
         time_step = sim.integrator.time_step
-        norma_logf(4, :advance, "Time = [%.4e, %.4e] : Δt = %.4e", prev_time, time, time_step)
+        # For implicit, print each step's time interval (Newton iters follow).
+        # For explicit, suppress — only output stops are printed.
+        if !is_explicit
+            norma_logf(4, :advance, "Time = [%.2e, %.2e] : Δt = %.2e", prev_time, time, time_step)
+        end
         apply_bcs(sim)
-        solve(sim)
+        # Defense-in-depth: constitutive model evaluate() catches math errors
+        # and sets model.failed.  This outer catch handles the same errors if
+        # they escape from any other point in the solve path.
+        try
+            solve(sim)
+        catch e
+            e isa _MATH_ERRORS || rethrow()
+            norma_logf(4, :solve, "Caught %s during solve — treating as step failure", typeof(e))
+            sim.failed = sim.model.failed = sim.solver.failed = true
+        end
         if sim.failed == false
             increase_time_step(sim)
             save_curr_state(sim)
@@ -368,6 +500,7 @@ end
 function initialize(sim::SingleDomainSimulation)
     apply_ics(sim)
     apply_bcs(sim)
+    log_dof_counts(sim.model)
     initialize(sim.integrator, sim.solver, sim.model)
     save_curr_state(sim)
     return nothing
@@ -376,8 +509,14 @@ end
 function initialize(sim::MultiDomainSimulation)
     initialize_bc_projectors(sim)
     apply_ics(sim)
+    for (subsim_index, subsim) in enumerate(sim.subsims)
+        if subsim.model isa SolidMechanics
+            save_history_snapshot(sim.controller, subsim, subsim_index)
+        end
+    end
     apply_bcs(sim)
     for subsim in sim.subsims
+        log_dof_counts(subsim.model)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
     end
@@ -443,17 +582,11 @@ function set_initial_subcycle_time(sim::MultiDomainSimulation)
     return nothing
 end
 
-function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64, eps::Float64=0.01)::Float64
-    t_next = t + dt
+function get_adjusted_timestep(t::Float64, dt::Float64, t_stop::Float64)::Float64
     gap = t_stop - t
-    tol = eps * dt
-    return if isapprox(t_next, t_stop; rtol=1e-6, atol=1e-12) || t_next > t_stop
-        gap
-    elseif t_next ≥ t_stop - tol
-        gap / 2
-    else
-        dt
-    end
+    gap <= 0.0 && return 0.0
+    t_next = t + dt
+    return t_stop - t_next <= 0.5 * dt ? gap : dt
 end
 
 function advance_time(sim::SingleDomainSimulation)
@@ -491,12 +624,13 @@ function advance_independent(sim::MultiDomainSimulation)
 end
 
 function schwarz(sim::MultiDomainSimulation)
-    iteration_number = 1
+    iteration_number = 0
     sim.controller.is_schwarz = true
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
     swap_swappable_bcs(sim)
+
     if sim.controller.use_interface_predictor
         compute_interface_predictor!(sim)
     end
@@ -507,27 +641,49 @@ function schwarz(sim::MultiDomainSimulation)
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
-        raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
-        status = colored_status(raw_status)
-        norma_logf(
-            0,
-            :schwarz,
-            "Criterion [%d] %s = %.3e : %s = %.3e : %s",
-            iteration_number,
-            "|ΔU|",
-            ΔU,
-            "|ΔU|/|U|",
-            Δu,
-            status,
-        )
-        if stop_schwarz(sim, iteration_number + 1) == true
-            plural = iteration_number == 1 ? "" : "s"
-            norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
-            sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
-            if sim.controller.converged
-                report_overlap_l2_errors(sim)
+        if iteration_number == 0
+            # Initial Schwarz pass: there is no prior iterate to compare against,
+            # so the relative criterion is not yet a Schwarz convergence measure.
+            # Report the absolute update for reference and skip the relative test.
+            sim.controller.converged = false
+            norma_logf(
+                0,
+                :schwarz,
+                "Criterion [%d] |ΔU| = %.2e : |ΔU|/|U| = %8s : %s",
+                iteration_number,
+                ΔU,
+                "—",
+                colored_status("[INITIAL]"),
+            )
+            # Early exit: if the initial absolute update already meets the absolute
+            # tolerance, no further Schwarz iterations are needed. The relative test
+            # still cannot be applied on iteration 0 (no prior iterate).
+            if ΔU ≤ sim.controller.absolute_tolerance
+                norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
+                sim.controller.schwarz_iters[sim.controller.stop] = 0
+                break
             end
-            break
+        else
+            raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
+            status = colored_status(raw_status)
+            norma_logf(
+                0,
+                :schwarz,
+                "Criterion [%d] |ΔU| = %.2e : |ΔU|/|U| = %.2e : %s",
+                iteration_number,
+                ΔU,
+                Δu,
+                status,
+            )
+            if stop_schwarz(sim, iteration_number + 1) == true
+                plural = iteration_number == 1 ? "" : "s"
+                norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
+                sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
+                if sim.controller.converged
+                    report_overlap_l2_errors(sim)
+                end
+                break
+            end
         end
         iteration_number += 1
         save_schwarz_state(sim)
@@ -567,34 +723,19 @@ end
 
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
-    if sim.model.inclined_support == true
-        global_transform_T = sim.model.global_transform'
-        integrator.prev_disp = global_transform_T * integrator.displacement
-        integrator.prev_velo = global_transform_T * integrator.velocity
-        integrator.prev_acce = global_transform_T * integrator.acceleration
-    else
-        integrator.prev_disp = copy(integrator.displacement)
-        integrator.prev_velo = copy(integrator.velocity)
-        integrator.prev_acce = copy(integrator.acceleration)
-    end
-    return integrator.prev_∂Ω_f = copy(sim.model.internal_force)
+    integrator.prev_disp = copy(integrator.displacement)
+    integrator.prev_velo = copy(integrator.velocity)
+    integrator.prev_acce = copy(integrator.acceleration)
+    return integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
 end
 
 function restore_prev_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
     integrator.time = integrator.prev_time
-    if sim.model.inclined_support == true
-        global_transform = sim.model.global_transform
-        integrator.displacement = global_transform * integrator.prev_disp
-        integrator.velocity = global_transform * integrator.prev_velo
-        integrator.acceleration = global_transform * integrator.prev_acce
-    else
-        integrator.displacement = copy(integrator.prev_disp)
-        integrator.velocity = copy(integrator.prev_velo)
-        integrator.acceleration = copy(integrator.prev_acce)
-    end
-    sim.model.internal_force = copy(integrator.prev_∂Ω_f)
-    copy_solution_source_to_targets(sim.integrator, sim.solver, sim.model)
+    integrator.displacement .= integrator.prev_disp
+    integrator.velocity .= integrator.prev_velo
+    integrator.acceleration .= integrator.prev_acce
+    set_internal_force!(sim.model, copy(integrator.prev_∂Ω_f))
     return nothing
 end
 
@@ -614,18 +755,10 @@ function save_stop_state(sim::MultiDomainSimulation)
     end
     for i in 1:num_domains
         subsim = subsims[i]
-        # If this model has inclined support on, we need to rotate the integrator values
-        if subsim.model.inclined_support == true
-            global_transform_T = subsim.model.global_transform'
-            controller.stop_disp[i] = global_transform_T * subsim.integrator.displacement
-            controller.stop_velo[i] = global_transform_T * subsim.integrator.velocity
-            controller.stop_acce[i] = global_transform_T * subsim.integrator.acceleration
-        else
-            controller.stop_disp[i] = copy(subsim.integrator.displacement)
-            controller.stop_velo[i] = copy(subsim.integrator.velocity)
-            controller.stop_acce[i] = copy(subsim.integrator.acceleration)
-        end
-        controller.stop_∂Ω_f[i] = copy(subsim.model.internal_force)
+        controller.stop_disp[i] = copy(subsim.integrator.displacement)
+        controller.stop_velo[i] = copy(subsim.integrator.velocity)
+        controller.stop_acce[i] = copy(subsim.integrator.acceleration)
+        controller.stop_∂Ω_f[i] = copy(get_internal_force(subsim.model))
     end
 end
 
@@ -636,19 +769,13 @@ function restore_stop_state(sim::MultiDomainSimulation)
     for i in 1:num_domains
         subsim = subsims[i]
         subsim.integrator.time = controller.prev_time
-        # If this model has inclined support on, we need to rotate the integrator values
-        if subsim.model.inclined_support == true
-            global_transform = subsim.model.global_transform
-            subsim.integrator.displacement = global_transform * controller.stop_disp[i]
-            subsim.integrator.velocity = global_transform * controller.stop_velo[i]
-            subsim.integrator.acceleration = global_transform * controller.stop_acce[i]
-        else
-            subsim.integrator.displacement = copy(controller.stop_disp[i])
-            subsim.integrator.velocity = copy(controller.stop_velo[i])
-            subsim.integrator.acceleration = copy(controller.stop_acce[i])
+        subsim.integrator.displacement .= controller.stop_disp[i]
+        subsim.integrator.velocity .= controller.stop_velo[i]
+        subsim.integrator.acceleration .= controller.stop_acce[i]
+        set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
+        if subsim.model isa RomModel
+            reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)
         end
-        subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
-        copy_solution_source_to_targets(subsim.integrator, subsim.solver, subsim.model)
     end
 end
 
@@ -668,6 +795,16 @@ function save_schwarz_state(sim::MultiDomainSimulation)
 end
 
 function swap_swappable_bcs(sim::MultiDomainSimulation)
+    has_rom = any(subsim -> subsim.model isa RomModel, sim.subsims)
+    if has_rom
+        for subsim in sim.subsims
+            for bc in subsim.model.boundary_conditions
+                if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.swap_bcs == true
+                    norma_abort("swap BC types not supported with RomModel nonoverlapping Schwarz")
+                end
+            end
+        end
+    end
     for subsim in sim.subsims
         swap_swappable_bcs(subsim)
     end
@@ -707,9 +844,16 @@ function subcycle(sim::MultiDomainSimulation)
 end
 
 function subcycle(sim::SingleDomainSimulation)
+    is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
+    t_last_log = time()
     while true
         advance_time(sim)
         advance_one_step(sim)
+        if is_explicit && time() - t_last_log >= 1.0
+            norma_logf(4, :progress, "Time = %.2e : Δt = %.2e",
+                       sim.integrator.time, sim.integrator.time_step)
+            t_last_log = time()
+        end
         if stop_subcyle(sim) == true
             break
         end
@@ -753,7 +897,7 @@ function save_history_snapshot(controller::MultiDomainTimeController, sim::Singl
     push!(controller.disp_hist[subsim_index], copy(sim.integrator.displacement))
     push!(controller.velo_hist[subsim_index], copy(sim.integrator.velocity))
     push!(controller.acce_hist[subsim_index], copy(sim.integrator.acceleration))
-    push!(controller.∂Ω_f_hist[subsim_index], copy(sim.model.internal_force))
+    push!(controller.∂Ω_f_hist[subsim_index], copy(get_internal_force(sim.model)))
     return nothing
 end
 
@@ -761,19 +905,24 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     controller = sim.controller
     subsims = sim.subsims
     num_domains = sim.num_domains
-    norms_disp = zeros(num_domains)
+    norms_pos = zeros(num_domains)
     norms_diff = zeros(num_domains)
     for i in 1:num_domains
         Δt = controller.time_step
-        x_prev = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
-        x_curr = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
-        norms_disp[i] = norm(x_curr)
-        norms_diff[i] = norm(x_curr - x_prev)
+        u_prev = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
+        u_curr = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
+        if subsims[i].model isa SolidMechanics
+            X = vec(subsims[i].model.reference)
+            norms_pos[i] = norm(X + u_curr)
+        else
+            norms_pos[i] = norm(u_curr)
+        end
+        norms_diff[i] = norm(u_curr - u_prev)
     end
-    norm_disp = norm(norms_disp)
+    norm_pos = norm(norms_pos)
     norm_diff = norm(norms_diff)
     controller.absolute_error = norm_diff
-    controller.relative_error = norm_disp > 0.0 ? norm_diff / norm_disp : norm_diff
+    controller.relative_error = norm_pos > 0.0 ? norm_diff / norm_pos : norm_diff
     conv_abs = controller.absolute_error ≤ controller.absolute_tolerance
     conv_rel = controller.relative_error ≤ controller.relative_tolerance
     controller.converged = conv_abs || conv_rel
@@ -800,14 +949,14 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     parametric_tol = 1.0e-06
     overlap = false
     unique_node_indices = unique(bc.side_set_node_indices)
-    coupled_model = bc.coupled_subsim.model
+    coupled_model = coupled_subsim_of(bc).model
     coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
     coupled_side_set_id = coupled_bc.side_set_id
 
     # Tolerance value to calculate closest point projection, to avoid projection failure
     # Set to 10 times the minimum characteristic edge length of the side set nodes
     # TODO (BRP): perhaps calculate this "characteristic size" a priori, and only recalculate for finite kinematics
-    nodal_points = model.current[:, unique_node_indices]
+    nodal_points = model.reference[:, unique_node_indices] + model.displacement[:, unique_node_indices]
     # Compute minimum distances between the nodes in the side set
     max_distance_tolerance =
         10 * minimum([
@@ -816,7 +965,7 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
         ])
 
     for node_index in unique_node_indices
-        point = model.current[:, node_index]
+        point = model.reference[:, node_index] + model.displacement[:, node_index]
         # Precompute the face node distance
         face_nodes, face_node_indices, min_distance = closest_face_to_point(point, coupled_model, coupled_side_set_id)
         if min_distance > max_distance_tolerance
@@ -864,12 +1013,25 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
         for bc in bcs
             if bc isa SolidMechanicsRobinSchwarzBoundaryCondition
                 compute_robin_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+                compute_impedance_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+                compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
+            elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
+                coupled_model = get_fom_model(coupled_subsim_of(bc))
+                fom_model = get_fom_model(subsim)
+                W = get_square_projection_matrix(fom_model, bc)
+                L = get_overlap_rectangular_projection_matrix(
+                    fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
+                )
+                bc.dirichlet_projector = (W \ I) * L
             elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
                    bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 compute_dirichlet_projector(subsim.model, bc)
                 compute_neumann_projector(subsim.model, bc)
                 if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-                    bc.square_projector = get_square_projection_matrix(subsim.model, bc)
+                    fom_model = get_fom_model(subsim)
+                    bc.square_projector = get_square_projection_matrix(fom_model, bc)
                 end
             end
         end
@@ -944,13 +1106,13 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
             bc_k isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
             bc_k isa SolidMechanicsRobinSchwarzBoundaryCondition || continue
 
-            dom_j = sim.subsim_name_index_map[bc_k.coupled_subsim.name]
+            dom_j = bc_k.coupled_handle.id
             pair = minmax(dom_k, dom_j)
             pair ∈ processed && continue
             push!(processed, pair)
 
             subsim_j = sim.subsims[dom_j]
-            bc_j = bc_k.coupled_subsim.model.boundary_conditions[bc_k.coupled_bc_index]
+            bc_j = subsim_j.model.boundary_conditions[bc_k.coupled_bc_index]
 
             # Projectors: P_kj maps from domain j's interface space to domain k's
             #             P_jk maps from domain k's interface space to domain j's

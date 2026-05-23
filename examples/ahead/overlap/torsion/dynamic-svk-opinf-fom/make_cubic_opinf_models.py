@@ -14,8 +14,8 @@ if __name__ == '__main__':
   settings['training-skip-steps'] = 1
   settings['forcing'] =  False
   settings['truncation-type'] = 'size'
-  settings['truncation-value'] = 30 
-  settings['boundary-truncation-value'] = 4 
+  settings['truncation-value'] = 30
+  settings['boundary-truncation-value'] = 4
   settings['boundary-truncation-type'] =  'size'
   settings['regularization-parameter'] =  5.e-3
   settings['trial-space-splitting-type'] = 'split'

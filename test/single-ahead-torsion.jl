@@ -18,19 +18,19 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("torsion.yaml")
-    rm("../torsion.g")
-    rm("torsion.e")
+    rm("torsion.yaml"; force=true)
+    rm("../torsion.g"; force=true)
+    rm("torsion.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     @test min_disp_x ≈ -0.044380857564717574 atol = 1e-12
     @test min_disp_y ≈ -0.04438085756471812 atol = 1e-12
     @test max_disp_z ≈ 8.033797118034425e-5 atol = 1e-12
     @test avg_stress ≈
-        [-1.3396757511504798e6 -1.33967575115108e6 457701.97380569484 1.0842104529729113e-7 3.0323481041705237e-7 1.7932685807409144e-7] atol =
+        [-569805.695585395 -569805.6955840682 -1.0820381373333016e6 -5.802448868053034e-8 -5.752426659455523e-8 -8.791887495362972e-7] atol =
         1.0e1
 end

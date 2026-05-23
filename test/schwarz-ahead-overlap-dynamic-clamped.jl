@@ -25,18 +25,18 @@ using YAML
     model_clamped0 = subsims[1].model
     model_clamped1 = subsims[2].model
 
-    rm("clamped.yaml")
-    rm("clamped-1.yaml")
-    rm("clamped-2.yaml")
-    rm("../clamped-1.g")
-    rm("../clamped-2.g")
-    rm("clamped-1.e")
-    rm("clamped-2.e")
+    rm("clamped.yaml"; force=true)
+    rm("clamped-1.yaml"; force=true)
+    rm("clamped-2.yaml"; force=true)
+    rm("../clamped-1.g"; force=true)
+    rm("../clamped-2.g"; force=true)
+    rm("clamped-1.e"; force=true)
+    rm("clamped-2.e"; force=true)
 
     z0 = model_clamped0.reference[3, :]
-    disp0_x = model_clamped0.current[1, :] - model_clamped0.reference[1, :]
-    disp0_y = model_clamped0.current[2, :] - model_clamped0.reference[2, :]
-    disp0_z = model_clamped0.current[3, :] - model_clamped0.reference[3, :]
+    disp0_x = model_clamped0.displacement[1, :]
+    disp0_y = model_clamped0.displacement[2, :]
+    disp0_z = model_clamped0.displacement[3, :]
     velo0_x = model_clamped0.velocity[1, :]
     velo0_y = model_clamped0.velocity[2, :]
     velo0_z = model_clamped0.velocity[3, :]
@@ -45,9 +45,9 @@ using YAML
     acce0_z = model_clamped0.acceleration[3, :]
 
     z1 = model_clamped1.reference[3, :]
-    disp1_x = model_clamped1.current[1, :] - model_clamped1.reference[1, :]
-    disp1_y = model_clamped1.current[2, :] - model_clamped1.reference[2, :]
-    disp1_z = model_clamped1.current[3, :] - model_clamped1.reference[3, :]
+    disp1_x = model_clamped1.displacement[1, :]
+    disp1_y = model_clamped1.displacement[2, :]
+    disp1_z = model_clamped1.displacement[3, :]
     velo1_x = model_clamped1.velocity[1, :]
     velo1_y = model_clamped1.velocity[2, :]
     velo1_z = model_clamped1.velocity[3, :]
@@ -61,7 +61,7 @@ using YAML
     s = 0.02
     T = 1.0e-3
 
-    #Create and populate exact solution vectors  
+    #Create and populate exact solution vectors
     n0 = size(z0)[1]
     disp0_z_exact = zeros(Float64, n0)
     velo0_z_exact = zeros(Float64, n0)
@@ -117,7 +117,7 @@ using YAML
     @test norm(acce0_x) ≈ 0.0 atol = 0.0
     @test norm(acce0_y) ≈ 0.0 atol = 0.0
 
-    #Create and populate exact solution vectors  
+    #Create and populate exact solution vectors
     n1 = size(z1)[1]
     disp1_z_exact = zeros(Float64, n1)
     velo1_z_exact = zeros(Float64, n1)
@@ -174,105 +174,105 @@ using YAML
     @test norm(acce1_y) ≈ 0.0 atol = 0.0
 
     @test sim.controller.schwarz_iters ≈ [
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
     ] atol = 0
 end

@@ -23,20 +23,20 @@ using YAML
     model_torsion1 = subsims[1].model
     model_torsion2 = subsims[2].model
 
-    rm("torsion.yaml")
-    rm("torsion-1.yaml")
-    rm("torsion-2.yaml")
-    rm("../torsion-1.g")
-    rm("../torsion-2.g")
-    rm("torsion-1.e")
-    rm("torsion-2.e")
+    rm("torsion.yaml"; force=true)
+    rm("torsion-1.yaml"; force=true)
+    rm("torsion-2.yaml"; force=true)
+    rm("../torsion-1.g"; force=true)
+    rm("../torsion-2.g"; force=true)
+    rm("torsion-1.e"; force=true)
+    rm("torsion-2.e"; force=true)
 
-    min_disp_x_torsion1 = minimum(model_torsion1.current[1, :] - model_torsion1.reference[1, :])
-    min_disp_y_torsion1 = minimum(model_torsion1.current[2, :] - model_torsion1.reference[2, :])
-    max_disp_z_torsion1 = maximum(model_torsion1.current[3, :] - model_torsion1.reference[3, :])
-    min_disp_x_torsion2 = minimum(model_torsion2.current[1, :] - model_torsion2.reference[1, :])
-    min_disp_y_torsion2 = minimum(model_torsion2.current[2, :] - model_torsion2.reference[2, :])
-    max_disp_z_torsion2 = maximum(model_torsion2.current[3, :] - model_torsion2.reference[3, :])
+    min_disp_x_torsion1 = minimum(model_torsion1.displacement[1, :])
+    min_disp_y_torsion1 = minimum(model_torsion1.displacement[2, :])
+    max_disp_z_torsion1 = maximum(model_torsion1.displacement[3, :])
+    min_disp_x_torsion2 = minimum(model_torsion2.displacement[1, :])
+    min_disp_y_torsion2 = minimum(model_torsion2.displacement[2, :])
+    max_disp_z_torsion2 = maximum(model_torsion2.displacement[3, :])
     avg_stress_torsion1 = average_components(model_torsion1.stress)
     avg_stress_torsion2 = average_components(model_torsion2.stress)
 
@@ -47,61 +47,61 @@ using YAML
     @test min_disp_y_torsion2 ≈ -0.005191500055775792 atol = 1e-12
     @test max_disp_z_torsion2 ≈ 2.2341085628874158e-5 atol = 1e-12
     @test avg_stress_torsion1 ≈
-        [1.3260219514935364e6 1.3260219514935361e6 576316.5244135461 -3.2615768456404716e-8 -5.842014161316911e-8 1.2785433985603353e-8] atol =
+        [1.3377751779264614e6 1.3377751779264421e6 552810.0715478114 -6.877977890932622e-9 -2.124877482856391e-8 -3.966154811981444e-9] atol =
         1.0e1
     @test avg_stress_torsion2 ≈
-        [1.0718954459446592e6 1.071895445944704e6 438030.2044997991 2.0449806470423936e-8 2.283971601476272e-8 5.4674490002071255e-8] atol =
+        [1.0847559326739465e6 1.084755932673925e6 412309.2310429813 2.590434936185678e-8 2.361339284107089e-8 3.6043920440912796e-10] atol =
         1.0e1
     @test sim.controller.schwarz_iters ≈ [
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
     ] atol = 0
 end

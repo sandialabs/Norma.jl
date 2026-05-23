@@ -9,9 +9,9 @@
     simulation = Norma.run("cube.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06
@@ -31,9 +31,9 @@ end
     simulation = Norma.run("cube-line-search.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube-line-search.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube-line-search.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06
@@ -53,9 +53,9 @@ end
     simulation = Norma.run("cube-steepest-descent.yaml")
     integrator = simulation.integrator
     model = simulation.model
-    rm("cube-steepest-descent.yaml")
-    rm("cube.g")
-    rm("cube.e")
+    rm("cube-steepest-descent.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
     avg_disp = average_components(integrator.displacement)
     avg_stress = average_components(model.stress)
     @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06

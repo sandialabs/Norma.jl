@@ -31,6 +31,7 @@ boundary conditions:
       source: plate-2
       source block: coarse
       source side set: ssx-
+      default BC type: Dirichlet
 solver:
   type: Hessian minimizer
   step: full Newton

@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 
 include("opinf/opinf_solver.jl")
+include("kroms/krom_solver.jl")
 using IterativeSolvers
 using LinearAlgebra
 using Printf
@@ -168,193 +169,6 @@ function create_step(solver_params::Parameters)
     end
 end
 
-function copy_solution_source_to_targets(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
-    displacement_local = integrator.displacement
-    solver.solution = displacement_local
-    if model.inclined_support == true
-        displacement = model.global_transform' * displacement_local
-    else
-        displacement = displacement_local
-    end
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-    end
-    return nothing
-end
-
-function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::QuasiStatic)
-    displacement_local = solver.solution
-    integrator.displacement = displacement_local
-    if model.inclined_support == true
-        displacement = model.global_transform' * displacement_local
-    else
-        displacement = displacement_local
-    end
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-    end
-    return nothing
-end
-
-function copy_solution_source_to_targets(model::SolidMechanics, integrator::QuasiStatic, solver::Solver)
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = model.current[:, node] - model.reference[:, node]
-        integrator.displacement[(3 * node - 2):(3 * node)] = nodal_displacement
-    end
-    if model.inclined_support == true
-        integrator.displacement = model.global_transform * integrator.displacement
-    end
-    solver.solution = integrator.displacement
-    return nothing
-end
-
-function copy_solution_source_to_targets(integrator::Newmark, solver::Solver, model::SolidMechanics)
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-    solver.solution = displacement
-
-    if model.inclined_support == true
-        displacement = model.global_transform' * displacement
-        velocity = model.global_transform' * velocity
-        acceleration = model.global_transform' * integrator.acceleration
-    end
-
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
-        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-        model.velocity[:, node] = nodal_velocity
-        model.acceleration[:, node] = nodal_acceleration
-    end
-    return nothing
-end
-
-function copy_solution_source_to_targets(solver::Solver, model::SolidMechanics, integrator::Newmark)
-    displacement = solver.solution
-    integrator.displacement = displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-
-    if model.inclined_support == true
-        displacement = model.global_transform' * displacement
-        velocity = model.global_transform' * velocity
-        acceleration = model.global_transform' * acceleration
-    end
-
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
-        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-        model.velocity[:, node] = nodal_velocity
-        model.acceleration[:, node] = nodal_acceleration
-    end
-    return nothing
-end
-
-function copy_solution_source_to_targets(model::SolidMechanics, integrator::Newmark, solver::Solver)
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = model.current[:, node] - model.reference[:, node]
-        nodal_velocity = model.velocity[:, node]
-        nodal_acceleration = model.acceleration[:, node]
-
-        if model.inclined_support == true
-            base = 3 * (node - 1) # Block index in global stiffness
-            local_transform = model.global_transform[(base + 1):(base + 3), (base + 1):(base + 3)]
-            nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity = local_transform * nodal_velocity
-            nodal_acceleration = local_transform * nodal_acceleration
-        end
-        integrator.displacement[(3 * node - 2):(3 * node)] = nodal_displacement
-        integrator.velocity[(3 * node - 2):(3 * node)] = nodal_velocity
-        integrator.acceleration[(3 * node - 2):(3 * node)] = nodal_acceleration
-    end
-    solver.solution = integrator.displacement
-    return nothing
-end
-
-function copy_solution_source_to_targets(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = integrator.acceleration
-    solver.solution = acceleration
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
-        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
-        if model.inclined_support == true
-            base = 3 * (node - 1) # Block index in global stiffness
-            # Local (integrator) to global (model), use transpose
-            local_transform = model.global_transform[(base + 1):(base + 3), (base + 1):(base + 3)]'
-            nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity = local_transform * nodal_velocity
-            nodal_acceleration = local_transform * nodal_acceleration
-        end
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-        model.velocity[:, node] = nodal_velocity
-        model.acceleration[:, node] = nodal_acceleration
-    end
-    return nothing
-end
-
-function copy_solution_source_to_targets(solver::ExplicitSolver, model::SolidMechanics, integrator::CentralDifference)
-    displacement = integrator.displacement
-    velocity = integrator.velocity
-    acceleration = solver.solution
-    integrator.acceleration = acceleration
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = displacement[(3 * node - 2):(3 * node)]
-        nodal_velocity = velocity[(3 * node - 2):(3 * node)]
-        nodal_acceleration = acceleration[(3 * node - 2):(3 * node)]
-        if model.inclined_support == true
-            base = 3 * (node - 1) # Block index in global stiffness
-            # Local (integrator) to global (model), use transpose
-            local_transform = model.global_transform[(base + 1):(base + 3), (base + 1):(base + 3)]'
-            nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity = local_transform * nodal_velocity
-            nodal_acceleration = local_transform * nodal_acceleration
-        end
-        model.current[:, node] = model.reference[:, node] + nodal_displacement
-        model.velocity[:, node] = nodal_velocity
-        model.acceleration[:, node] = nodal_acceleration
-    end
-    return nothing
-end
-
-function copy_solution_source_to_targets(model::SolidMechanics, integrator::CentralDifference, solver::ExplicitSolver)
-    num_nodes = size(model.reference, 2)
-    for node in 1:num_nodes
-        nodal_displacement = model.current[:, node] - model.reference[:, node]
-        nodal_velocity = model.velocity[:, node]
-        nodal_acceleration = model.acceleration[:, node]
-        if model.inclined_support == true
-            base = 3 * (node - 1) # Block index in global stiffness
-            # Global (model) to local (integrator)
-            local_transform = model.global_transform[(base + 1):(base + 3), (base + 1):(base + 3)]
-            nodal_displacement = local_transform * nodal_displacement
-            nodal_velocity = local_transform * nodal_velocity
-            nodal_acceleration = local_transform * nodal_acceleration
-        end
-        integrator.displacement[(3 * node - 2):(3 * node)] = nodal_displacement
-        integrator.velocity[(3 * node - 2):(3 * node)] = nodal_velocity
-        integrator.acceleration[(3 * node - 2):(3 * node)] = nodal_acceleration
-    end
-    solver.solution = integrator.acceleration
-    return nothing
-end
-
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
     evaluate(model, integrator, solver)
     if model.failed == true
@@ -366,18 +180,17 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
     K_rs = build_robin_schwarz_stiffness(model)
+    K_is = build_impedance_schwarz_stiffness(model, integrator)
+    K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
     K_total = model.stiffness
     K_total = nnz(K_robin) > 0 ? K_total + K_robin : K_total
     K_total = nnz(K_rs) > 0 ? K_total + K_rs : K_total
+    K_total = nnz(K_is) > 0 ? K_total + K_is : K_total
+    K_total = nnz(K_io) > 0 ? K_total + K_io : K_total
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
-    if model.inclined_support == true
-        T = model.global_transform
-        solver.gradient = T * (model.internal_force + rs_internal_force - external_force)
-        solver.hessian = T * K_total * T'
-    else
-        solver.gradient = model.internal_force + rs_internal_force - external_force
-        solver.hessian = K_total
-    end
+    is_internal_force = build_impedance_schwarz_force(model)
+    solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
+    solver.hessian = K_total
     return nothing
 end
 
@@ -392,11 +205,8 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     external_force = model.body_force + model.boundary_force
     K_rs = build_robin_schwarz_stiffness(model)
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
-    if model.inclined_support == true
-        solver.gradient = model.global_transform * (model.internal_force + rs_internal_force - external_force)
-    else
-        solver.gradient = model.internal_force + rs_internal_force - external_force
-    end
+    is_internal_force = build_impedance_schwarz_force(model)
+    solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
     return nothing
 end
 
@@ -416,17 +226,16 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
     K_rs = build_robin_schwarz_stiffness(model)
+    K_is = build_impedance_schwarz_stiffness(model, integrator)
+    K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
     stiffness = model.stiffness
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
     stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
+    stiffness = nnz(K_is) > 0 ? stiffness + K_is : stiffness
+    stiffness = nnz(K_io) > 0 ? stiffness + K_io : stiffness
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
-    internal_force = internal_force + rs_internal_force
-    if model.inclined_support == true
-        global_transform = model.global_transform
-        internal_force = global_transform * internal_force
-        external_force = global_transform * external_force
-        stiffness = global_transform * stiffness * global_transform'
-    end
+    is_internal_force = build_impedance_schwarz_force(model)
+    internal_force = internal_force + rs_internal_force + is_internal_force
     solver.hessian = stiffness + model.mass / β / Δt / Δt
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
@@ -450,12 +259,8 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     external_force = model.body_force + model.boundary_force
     K_rs = build_robin_schwarz_stiffness(model)
     rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
-    internal_force = internal_force + rs_internal_force
-    if model.inclined_support == true
-        external_force = model.global_transform * external_force
-        internal_force = model.global_transform * internal_force
-    end
-    # External and internal force in local
+    is_internal_force = build_impedance_schwarz_force(model)
+    internal_force = internal_force + rs_internal_force + is_internal_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     # Gradient -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
@@ -482,10 +287,9 @@ function backtrack_line_search(
     model.compute_mass = false
     model.compute_lumped_mass = false
     for iter in 1:max_iters
-        norma_logf(8, :linesearch, "Line Search [%d] |ΔX| = %.3e", iter, step_length)
+        norma_logf(8, :linesearch, "Line Search [%d] |ΔX| = %.2e", iter, step_length)
         step = step_length * direction
         solver.solution[free] = initial_solution[free] + step
-        copy_solution_source_to_targets(solver, model, integrator)
         evaluate(integrator, solver, model)
         if model.failed == true
             step_length *= backtrack_factor
@@ -498,8 +302,7 @@ function backtrack_line_search(
         end
         step_length *= backtrack_factor
     end
-    solver.solution = initial_solution
-    copy_solution_source_to_targets(solver, model, integrator)
+    solver.solution .= initial_solution
     model.compute_stiffness = compute_stiffness
     model.compute_mass = compute_mass
     model.compute_lumped_mass = compute_lumped_mass
@@ -609,7 +412,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     if is_explicit_dynamic == false
         raw_status = "[WAIT]"
         status = colored_status(raw_status)
-        norma_logf(8, :solve, "Iteration [%d] %s = %.3e : %s = %.3e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
+        norma_logf(8, :solve, "Iteration [%d] %s = %.2e : %s = %.2e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -632,7 +435,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             norma_logf(
                 8,
                 :solve,
-                "Iteration [%d] %s = %.3e : %s = %.3e : %s",
+                "Iteration [%d] %s = %.2e : %s = %.2e : %s",
                 iteration_number,
                 "|R|",
                 solver.absolute_error,
@@ -649,8 +452,25 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             break
         end
     end
-    if model.inclined_support == true
-        solver.gradient = model.global_transform' * solver.gradient
+    # Recompute FOM internal force after ROM converges so it is current for
+    # any subsequent BC or history queries (e.g. Schwarz Neumann transfer).
+    # Only needed when this subdomain sends Neumann data (i.e., applies Dirichlet).
+    if is_rom_model
+        needs_force = any(
+            bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.is_dirichlet,
+            model.boundary_conditions,
+        )
+        if needs_force
+            model.fom_model.time = model.time
+            reconstruct_fom_fields!(integrator, solver, model)
+            # `evaluate` updates `model.fom_model.internal_force`
+            evaluate(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+            # Propagate any FOM failure (non-positive Jacobian, NaN) back to the ROM model
+            # so that advance_one_step sees the failure and can abort or recover.
+            if model.fom_model.failed
+                model.failed = true
+            end
+        end
     end
     return nothing
 end

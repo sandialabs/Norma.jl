@@ -14,19 +14,19 @@
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml")
-    rm("cuboid-1.yaml")
-    rm("cuboid-2.yaml")
-    rm("cuboid-1.g")
-    rm("cuboid-2.g")
-    rm("cuboid-1.e")
-    rm("cuboid-2.e")
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
     # Remove all files and subdirectories in the directory
     for file in readdir("ml-models")
         rm(joinpath("ml-models", file); force=true)
     end
     # Now remove the empty directory
-    rm("ml-models")
+    rm("ml-models"; force=true)
     @test model_coarse.reduced_state[1] ≈  -0.003507375025622216  rtol = 1.0e-06
     @test model_coarse.reduced_state[2] ≈ -0.002114866440831956 rtol = 1.0e-06
     @test model_coarse.reduced_state[3] ≈ 0.009165290330522333 rtol = 1.0e-06

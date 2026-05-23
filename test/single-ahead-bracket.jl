@@ -18,13 +18,13 @@ using YAML
     sim = Norma.run(params)
     model = sim.model
 
-    rm("bracket.yaml")
-    rm("../bracket.g")
-    rm("bracket.e")
+    rm("bracket.yaml"; force=true)
+    rm("../bracket.g"; force=true)
+    rm("bracket.e"; force=true)
 
-    min_disp_x = minimum(model.current[1, :] - model.reference[1, :])
-    min_disp_y = minimum(model.current[2, :] - model.reference[2, :])
-    max_disp_z = maximum(model.current[3, :] - model.reference[3, :])
+    min_disp_x = minimum(model.displacement[1, :])
+    min_disp_y = minimum(model.displacement[2, :])
+    max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
     println(avg_stress)
@@ -33,6 +33,6 @@ using YAML
     @test min_disp_y ≈ -0.0001655247963407644 atol = 1e-12
     @test max_disp_z ≈ 0.0101486664023163 atol = 1e-12
     @test avg_stress ≈
-        [-8.971263149258394e6 6.383924802446201e6 -476409.7156016053 304437.4306066531 3.0513844880209036e7 -4.0955010966046983e6] atol =
+        [-1.3069569134033617e7 6.19466287887055e6 3.811158192718337e6 -74052.105767898 2.9738669739486277e7 -4.072007814346489e6] atol =
         1.0e1
 end
