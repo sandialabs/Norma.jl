@@ -679,9 +679,7 @@ function schwarz(sim::MultiDomainSimulation)
                 plural = iteration_number == 1 ? "" : "s"
                 norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
                 sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
-                if sim.controller.converged
-                    report_overlap_l2_errors(sim)
-                end
+                report_overlap_l2_errors(sim)
                 break
             end
         end
