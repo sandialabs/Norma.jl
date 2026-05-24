@@ -305,3 +305,45 @@ function _apply_inverse_mass!(nodal::Matrix{Float64}, rec::ConsistentRecovery)
     end
     return nothing
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Nodal von Mises stress
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Derive nodal von Mises stress from the already-recovered nodal stress tensor.
+# Must be called AFTER recover_stress! so that the nodal stress matrices are
+# populated.  Results are written into model.recovered_von_mises (single-mode)
+# or model.{lumped,consistent}_recovered_von_mises (BothRecovery).
+function compute_nodal_von_mises!(model::SolidMechanics)
+    rec = model.recovery_data
+    rec isa NoRecovery && return model
+    if rec isa BothRecovery
+        _von_mises_from_nodal!(model.lumped_recovered_von_mises, model.lumped_recovered_stress)
+        _von_mises_from_nodal!(model.consistent_recovered_von_mises, model.consistent_recovered_stress)
+    else
+        _von_mises_from_nodal!(model.recovered_von_mises, model.recovered_stress)
+    end
+    return model
+end
+
+# Compute von Mises at every node from the 6-component Voigt nodal stress matrix
+# (rows: [xx, yy, zz, yz, xz, xy], columns: nodes).
+#
+# σ_vm = √( ½[(σ_xx−σ_yy)² + (σ_yy−σ_zz)² + (σ_zz−σ_xx)²]
+#           + 3(σ_yz² + σ_xz² + σ_xy²) )
+function _von_mises_from_nodal!(vm::Vector{Float64}, sigma::Matrix{Float64})
+    n_nodes = size(sigma, 2)
+    @inbounds for n in 1:n_nodes
+        sxx = sigma[1, n]
+        syy = sigma[2, n]
+        szz = sigma[3, n]
+        syz = sigma[4, n]
+        sxz = sigma[5, n]
+        sxy = sigma[6, n]
+        vm[n] = sqrt(
+            0.5 * ((sxx - syy)^2 + (syy - szz)^2 + (szz - sxx)^2) +
+            3.0 * (syz^2 + sxz^2 + sxy^2),
+        )
+    end
+    return nothing
+end
