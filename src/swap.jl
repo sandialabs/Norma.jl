@@ -417,6 +417,7 @@ function _ensure_recovery_for_swap!(model::SolidMechanics)
             :consistent, model.mesh, model.reference, model.num_int_pts,
         )
         model.recovered_stress = zeros(6, size(model.reference, 2))
+        model.recovered_von_mises = zeros(size(model.reference, 2))
     end
     return nothing
 end
