@@ -1,0 +1,36 @@
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
+
+# Overlap L2 error swap — refine direction.
+#
+# At the first time step the displacement is zero, so the overlap L2 error is
+# exactly 0.0 and the refine criterion does NOT fire (0 is not > 1e-15).
+# After the first Schwarz solve the displacements are non-zero and the overlap
+# L2 error — evaluated at the start of the second step from the converged
+# step-1 fields — is a small positive number (on the order of the Schwarz
+# residual, far above 1e-15).  The refine criterion fires on step 2 and
+# cuboid-1 is replaced by cuboid-1-phase2 before that step's Schwarz runs.
+#
+# Two time steps are required so there is a non-zero displacement state for
+# the criterion to see on the second evaluation.
+
+type: multi
+domains: ["cuboid-1.yaml", "cuboid-2.yaml"]
+swaps:
+  - subsim: cuboid-1
+    replacement: cuboid-1-phase2.yaml
+    criterion:
+      type: overlap l2 error
+      tolerance: 1.0e-15   # any finite coupling mismatch exceeds this
+      direction: refine
+CSV output interval: 0
+initial time: 0.0
+final time: 2.0
+time step: 1.0
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

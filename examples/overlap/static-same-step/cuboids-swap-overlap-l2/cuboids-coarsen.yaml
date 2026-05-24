@@ -1,0 +1,32 @@
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
+
+# Overlap L2 error swap — coarsen direction.
+#
+# At the first time step the displacement field is zero everywhere, so the
+# overlap L2 error is exactly 0.0 — well below the 1.0 tolerance.  The
+# coarsen criterion therefore fires immediately and cuboid-1 is replaced by
+# cuboid-1-phase2 before any Schwarz iteration runs.  The replacement carries
+# the same material and mesh, so the final stress field matches the vanilla
+# reference (σ_zz ≈ 5e8 Pa at t = 1).
+
+type: multi
+domains: ["cuboid-1.yaml", "cuboid-2.yaml"]
+swaps:
+  - subsim: cuboid-1
+    replacement: cuboid-1-phase2.yaml
+    criterion:
+      type: overlap l2 error
+      tolerance: 1.0       # zero error at t = 0 is well below this
+      direction: coarsen
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 1.0
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08

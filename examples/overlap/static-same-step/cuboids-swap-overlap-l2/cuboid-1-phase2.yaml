@@ -1,0 +1,49 @@
+# Norma: Copyright 2025 National Technology & Engineering Solutions of
+# Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
+# the U.S. Government retains certain rights in this software. This software
+# is released under the BSD license detailed in the file license.txt in the
+# top-level Norma.jl directory.
+
+# Replacement for cuboid-1 loaded after the overlap L2 error swap criterion
+# fires.  Same material and mesh as the original so the solution remains
+# correct; the different output file name lets tests verify the swap occurred.
+
+type: single
+input mesh file: cuboid-1.g
+output mesh file: cuboid-1-phase2.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      fine: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+  Schwarz overlap:
+    - side set: ssz+
+      source: cuboid-2
+      source block: coarse
+      source side set: ssz-
+      compute overlap L2 error: true
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06
