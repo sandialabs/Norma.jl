@@ -61,6 +61,19 @@ function create_swap_criterion(params::Parameters)
 end
 
 function validate_swap_plans(sim::MultiDomainSimulation)
+    isempty(sim.swaps) && return nothing
+    # Swapping is not supported when any subsim runs an OpInf or NNOpInf ROM.
+    # ROM state spaces differ from FOM state spaces, so the state-transfer step
+    # that occurs at swap time is not well-defined in that context.
+    for subsim in sim.subsims
+        if subsim.model isa RomModel
+            norma_abort(
+                "Swap criteria cannot be used when any subsim is an OpInf or NNOpInf ROM. " *
+                "Subsim '$(subsim.name)' uses a ROM model.  Swapping is only supported for " *
+                "full-order model (FOM) subsims.",
+            )
+        end
+    end
     for plan in sim.swaps
         plan.subsim_name === nothing &&
             norma_abort("Multi-domain swap plan must specify `subsim:` to select the subsim to replace")
@@ -73,6 +86,14 @@ function validate_swap_plans(sim::MultiDomainSimulation)
 end
 
 function validate_swap_plans(sim::SingleDomainSimulation)
+    isempty(sim.swaps) && return nothing
+    # Swapping is not supported for OpInf or NNOpInf ROM simulations.
+    if sim.model isa RomModel
+        norma_abort(
+            "Swap criteria cannot be used with an OpInf or NNOpInf ROM simulation.  " *
+            "Swapping is only supported for full-order model (FOM) simulations.",
+        )
+    end
     for plan in sim.swaps
         plan.subsim_name === nothing ||
             norma_abort("Single-domain swap plan must not specify `subsim:` (there is no choice of target)")
