@@ -43,12 +43,37 @@ function create_swap_criterion(params::Parameters)
             "Unknown stress recovery swap direction: '$direction' (expected 'refine' or 'coarsen')",
         )
         return StressRecoverySwapCriterion(tolerance, direction)
+    elseif criterion_type == "overlap l2 error"
+        tolerance = Float64(get(params, "tolerance", 1.0e-6))
+        haskey(params, "direction") || norma_abort(
+            "Overlap L2 error swap criterion requires 'direction:' — use 'refine' to swap " *
+            "when the overlap L2 displacement error exceeds the tolerance, " *
+            "or 'coarsen' to swap when it falls below the tolerance",
+        )
+        direction = Symbol(params["direction"])
+        direction in (:refine, :coarsen) || norma_abort(
+            "Unknown overlap L2 error swap direction: '$direction' (expected 'refine' or 'coarsen')",
+        )
+        return SchwarzOverlapL2SwapCriterion(tolerance, direction)
     else
         norma_abort("Unknown swap criterion type: $criterion_type")
     end
 end
 
 function validate_swap_plans(sim::MultiDomainSimulation)
+    isempty(sim.swaps) && return nothing
+    # Swapping is not supported when any subsim runs an OpInf or NNOpInf ROM.
+    # ROM state spaces differ from FOM state spaces, so the state-transfer step
+    # that occurs at swap time is not well-defined in that context.
+    for subsim in sim.subsims
+        if subsim.model isa RomModel
+            norma_abort(
+                "Swap criteria cannot be used when any subsim is an OpInf or NNOpInf ROM. " *
+                "Subsim '$(subsim.name)' uses a ROM model.  Swapping is only supported for " *
+                "full-order model (FOM) subsims.",
+            )
+        end
+    end
     for plan in sim.swaps
         plan.subsim_name === nothing &&
             norma_abort("Multi-domain swap plan must specify `subsim:` to select the subsim to replace")
@@ -61,11 +86,90 @@ function validate_swap_plans(sim::MultiDomainSimulation)
 end
 
 function validate_swap_plans(sim::SingleDomainSimulation)
+    isempty(sim.swaps) && return nothing
+    # Swapping is not supported for OpInf or NNOpInf ROM simulations.
+    if sim.model isa RomModel
+        norma_abort(
+            "Swap criteria cannot be used with an OpInf or NNOpInf ROM simulation.  " *
+            "Swapping is only supported for full-order model (FOM) simulations.",
+        )
+    end
     for plan in sim.swaps
         plan.subsim_name === nothing ||
             norma_abort("Single-domain swap plan must not specify `subsim:` (there is no choice of target)")
         isfile(plan.replacement_file) ||
             norma_abort("Swap replacement file not found: $(plan.replacement_file)")
+        validate_swap_criterion(plan.criterion, sim)
+    end
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+# Per-criterion validation
+# ---------------------------------------------------------------------------
+
+# Default: no additional checks required.
+validate_swap_criterion(::SwapCriterion, ::Simulation) = nothing
+
+# SchwarzOverlapL2SwapCriterion is only meaningful for a MultiDomainSimulation
+# with overlapping Schwarz coupling.  Single-domain simulations have no
+# Schwarz interface at all, so the criterion can never produce a meaningful
+# value there.
+function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, ::SingleDomainSimulation)
+    norma_abort(
+        "SchwarzOverlapL2SwapCriterion is only valid for overlapping Schwarz multi-domain " *
+        "simulations.  It cannot be used with a monolithic (single-domain) formulation, " *
+        "non-overlapping Schwarz, or Schwarz contact.",
+    )
+end
+
+# For a multi-domain simulation verify two things:
+#   1. At least one subsim has a SolidMechanicsOverlapSchwarzBoundaryCondition
+#      (ruling out non-overlapping Schwarz and contact-only setups).
+#   2. At least one of those BCs has 'compute overlap L2 error: true'
+#      (the criterion cannot evaluate without this flag).
+#
+# NOTE: this is called from validate_swap_criteria (below), NOT from
+# validate_swap_plans, because boundary_conditions is populated by create_bcs
+# which runs after the MultiDomainSimulation constructor returns.
+function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, sim::MultiDomainSimulation)
+    has_overlap_bc = any(
+        any(bc isa SolidMechanicsOverlapSchwarzBoundaryCondition
+            for bc in sub.model.boundary_conditions)
+        for sub in sim.subsims
+    )
+    if !has_overlap_bc
+        norma_abort(
+            "SchwarzOverlapL2SwapCriterion requires overlapping Schwarz boundary conditions " *
+            "(SolidMechanicsOverlapSchwarzBoundaryCondition) but none were found in any " *
+            "subsim.  This criterion cannot be used with non-overlapping Schwarz or " *
+            "Schwarz contact formulations.",
+        )
+    end
+    has_l2_flag = any(
+        any(stores_overlap_l2_error(bc) for bc in sub.model.boundary_conditions)
+        for sub in sim.subsims
+    )
+    if !has_l2_flag
+        norma_abort(
+            "SchwarzOverlapL2SwapCriterion requires 'compute overlap L2 error: true' on at " *
+            "least one Schwarz overlap boundary condition, but no such BC was found.  Add " *
+            "'compute overlap L2 error: true' to the relevant 'Schwarz overlap:' entry in " *
+            "the subsim input file.",
+        )
+    end
+end
+
+# Called from create_simulation after create_bcs, so that boundary_conditions
+# is fully populated when BC-dependent criterion checks run.
+# Single-domain criteria that need BC checks are handled in validate_swap_plans
+# (called earlier, inside SingleDomainSimulation()), so the single-domain
+# overload here is a no-op.
+validate_swap_criteria(::SingleDomainSimulation) = nothing
+
+function validate_swap_criteria(sim::MultiDomainSimulation)
+    for plan in sim.swaps
+        validate_swap_criterion(plan.criterion, sim)
     end
     return nothing
 end
@@ -157,6 +261,56 @@ function _rel_frob_diff(A::Matrix{Float64}, B::Matrix{Float64})
     ref = max(sqrt(a_sq), sqrt(b_sq))
     ref < eps(Float64) && return 0.0
     return sqrt(diff_sq) / ref
+end
+
+# ---------------------------------------------------------------------------
+# SchwarzOverlapL2SwapCriterion dispatch
+# ---------------------------------------------------------------------------
+
+# For a single-domain simulation scan the model's boundary conditions.
+function should_swap(c::SchwarzOverlapL2SwapCriterion, sim::SingleDomainSimulation)
+    return _overlap_l2_criterion_met(c, sim.model.boundary_conditions)
+end
+
+# For a multi-domain simulation aggregate over all BCs in all subsims.
+function should_swap(c::SchwarzOverlapL2SwapCriterion, sim::MultiDomainSimulation)
+    all_bcs = Iterators.flatten(sub.model.boundary_conditions for sub in sim.subsims)
+    return _overlap_l2_criterion_met(c, all_bcs)
+end
+
+# Core logic: iterate over boundary conditions, call compute_overlap_l2_error!
+# on each BC that has the computation enabled, take the maximum, and compare
+# against the tolerance in the chosen direction.
+#
+# Returns false (never fires) when no BCs have the error computation enabled,
+# so that a misconfigured input degrades gracefully.  A warning is logged in
+# that case so the user can diagnose the issue.
+function _overlap_l2_criterion_met(c::SchwarzOverlapL2SwapCriterion, boundary_conditions)
+    max_error = -Inf
+    found_any = false
+    for bc in boundary_conditions
+        stores_overlap_l2_error(bc) || continue
+        err = compute_overlap_l2_error!(bc)
+        isnan(err) && continue
+        max_error = max(max_error, err)
+        found_any = true
+    end
+    if !found_any
+        norma_log(
+            1, :swap,
+            "SchwarzOverlapL2SwapCriterion: no boundary conditions with 'compute overlap L2 error: true' " *
+            "found; criterion will not fire — add 'compute overlap L2 error: true' to the " *
+            "relevant Schwarz overlap boundary condition",
+        )
+        return false
+    end
+    fired = c.direction === :refine ? max_error > c.tolerance : max_error < c.tolerance
+    norma_logf(
+        1, :swap,
+        "SchwarzOverlapL2SwapCriterion: max overlap L2 error %.6e, tolerance %.6e, direction %s → %s",
+        max_error, c.tolerance, c.direction, fired ? "swap" : "no swap",
+    )
+    return fired
 end
 
 # ---------------------------------------------------------------------------

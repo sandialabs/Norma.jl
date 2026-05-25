@@ -26,6 +26,7 @@ function create_simulation(params::Parameters)
     elseif sim_type == "multi"
         sim = MultiDomainSimulation(params)
         create_bcs(sim)
+        validate_swap_criteria(sim)
         initialize_storage(sim)
         return sim
     else
