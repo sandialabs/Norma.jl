@@ -119,6 +119,29 @@ function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{4})
     return ξ, w
 end
 
+# Dunavant degree-5 rule for triangles: 7 points, all positive weights.
+# Exact for polynomials up to degree 5 (needed for TRI6 mass matrix, which
+# requires degree 4 accuracy for N_i * N_j).  With 7 > 6 nodes this rule
+# also ensures the per-element mass matrix Σ_p w_p N_p N_p^T |J_p| is
+# positive definite and hence non-singular — unlike the 4-point rule above
+# which yields a rank-deficient (rank ≤ 4) 6×6 element matrix.
+# Source: D.A. Dunavant, IJNME 21:1129-1148, 1985.
+function barycentric_quadrature(::Val{2}, ::Val{6}, ::Val{7})
+    a1 = (6 - sqrt(15)) / 21      # ≈ 0.10128650732345633
+    b1 = 1 - 2 * a1               # ≈ 0.79742698535308734
+    a2 = (6 + sqrt(15)) / 21      # ≈ 0.47014206410511508
+    b2 = 1 - 2 * a2               # ≈ 0.05971587178976984
+    w0 = 9 / 80                   # centroid weight
+    w1 = (155 - sqrt(15)) / 2400  # ≈ 0.06296959027241357
+    w2 = (155 + sqrt(15)) / 2400  # ≈ 0.06619707767059810
+    ξ = @SMatrix [
+        1/3 a1 b1 a1 a2 b2 a2
+        1/3 a1 a1 b1 a2 a2 b2
+    ]
+    w = @SVector [w0, w1, w1, w1, w2, w2, w2]
+    return ξ, w
+end
+
 function barycentric_quadrature(::Val{3}, ::Val{4}, ::Val{1})
     ξ = @SMatrix [1 / 4; 1 / 4; 1 / 4]
     w = @SVector [1 / 6]
@@ -342,7 +365,12 @@ end
 
 default_num_int_pts(::Val{BAR2}) = 1
 default_num_int_pts(::Val{TRI3}) = 3
-default_num_int_pts(::Val{TRI6}) = 4
+# 7-point Dunavant degree-5 rule: all positive weights and 7 > 6 nodes so
+# the element mass matrix Σ_p w_p N_p N_p^T is guaranteed full-rank for
+# TRI6.  The former default of 4 produced a rank-deficient (rank ≤ 4) 6×6
+# element mass matrix, causing a SingularException when the non-overlapping
+# Schwarz Neumann projector H = ∫ N N^T dA was inverted with H \ I.
+default_num_int_pts(::Val{TRI6}) = 7
 default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
 default_num_int_pts(::Val{TETRA10}) = 5

@@ -73,6 +73,57 @@ end
         @test size(ξ) == (2, 3)
     end
 
+    @testset "Tri6 3 Point (degree-2)" begin
+        N, dN, w, ξ = Norma.barycentric(Val(2), Val(6), Val(3))
+        @test size(N) == (6, 3)
+        @test size(dN) == (2, 6, 3)
+        @test length(w) == 3
+        @test size(ξ) == (2, 3)
+        # All weights positive and uniform
+        @test all(w .> 0)
+        @test all(w .≈ 1 / 6)
+        # Weights sum to 1/2 (area of reference right triangle)
+        @test sum(w) ≈ 0.5 atol = 1.0e-14
+        # Note: with only 3 points for 6 nodes, the element mass matrix has
+        # rank ≤ 3 < 6, so this rule is suitable for force integration (no
+        # inversion) but NOT for projection matrices (which require H \ I).
+        nodes = Float64[0.0 1.0 0.0 0.5 0.5 0.0; 0.0 0.0 1.0 0.0 0.5 0.5; 0.0 0.0 0.0 0.0 0.0 0.0]
+        M = zeros(6, 6)
+        for p in 1:3
+            Np = N[:, p]
+            dNp = dN[:, :, p]
+            dXdξp = dNp * nodes'
+            jp = norm(cross(dXdξp[1, :], dXdξp[2, :]))
+            M += Np * Np' * jp * w[p]
+        end
+        @test rank(M) == 3
+    end
+
+    @testset "Tri6 7 Point (Dunavant degree-5)" begin
+        N, dN, w, ξ = Norma.barycentric(Val(2), Val(6), Val(7))
+        @test size(N) == (6, 7)
+        @test size(dN) == (2, 6, 7)
+        @test length(w) == 7
+        @test size(ξ) == (2, 7)
+        # All weights must be positive (no negative weights like the 4-pt rule)
+        @test all(w .> 0)
+        # Weights must sum to 1/2 (area of reference right triangle)
+        @test sum(w) ≈ 0.5 atol = 1.0e-14
+        # With 7 > 6 nodes and all-positive weights, the element mass matrix
+        # must be positive definite (rank = 6), unlike the old 4-pt rule
+        # which gave a rank-4 element mass matrix causing SingularException.
+        nodes = Float64[0.0 1.0 0.0 0.5 0.5 0.0; 0.0 0.0 1.0 0.0 0.5 0.5; 0.0 0.0 0.0 0.0 0.0 0.0]
+        M = zeros(6, 6)
+        for p in 1:7
+            Np = N[:, p]
+            dNp = dN[:, :, p]
+            dXdξp = dNp * nodes'
+            jp = norm(cross(dXdξp[1, :], dXdξp[2, :]))
+            M += Np * Np' * jp * w[p]
+        end
+        @test all(eigvals(M) .> 0)
+    end
+
     @testset "Tetra10 5 Point" begin
         N, dN, w, ξ = Norma.barycentric(Val(3), Val(10), Val(5))
         @test size(N) == (10, 5)
