@@ -198,6 +198,46 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     return nothing
 end
 
+function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, model::QuadraticOpInfRom)
+    ## Explicit central difference evaluation for Quadratic OpInf ROM.
+    ## solver.solution holds the reduced acceleration.
+    ## Assumes orthonormal bases so the reduced mass matrix is the identity.
+    ## Equation of motion: ẍ = f + f_bc - K*x - H*(x⊗x)
+    x = integrator.displacement
+    H = model.opinf_rom["H"]
+    xsqr = kron(x, x)
+    solver.solution[:] =
+        model.opinf_rom["f"] + model.reduced_boundary_forcing -
+        model.opinf_rom["K"] * x - H * xsqr
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
+end
+
+function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, model::CubicOpInfRom)
+    ## Explicit central difference evaluation for Cubic OpInf ROM.
+    ## solver.solution holds the reduced acceleration.
+    ## Assumes orthonormal bases so the reduced mass matrix is the identity.
+    ## Equation of motion: ẍ = f + f_bc - K*x - H*(x⊗x) - G*(x⊗x⊗x)
+    x = integrator.displacement
+    H = model.opinf_rom["H"]
+    xsqr = kron(x, x)
+    G = model.opinf_rom["G"]
+    xcub = kron(x, x, x)
+    solver.solution[:] =
+        model.opinf_rom["f"] + model.reduced_boundary_forcing -
+        model.opinf_rom["K"] * x - H * xsqr - G * xcub
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
+end
+
 function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::LinearOpInfRom)
     beta = integrator.β
     gamma = integrator.γ
