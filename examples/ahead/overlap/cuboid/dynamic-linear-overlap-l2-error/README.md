@@ -1,7 +1,7 @@
 # Dynamic Linear OpInf Overlap L2 Error Example
 
 This example mirrors the existing overlap cuboid linear OpInf setup and enables
-`compute overlap L2 error: true` on both overlap Schwarz boundary conditions.
+`compute overlap L2 relative error: true` on both overlap Schwarz boundary conditions.
 
 Run it with:
 
@@ -13,5 +13,5 @@ Outputs:
 
 - Standard Exodus results for both subdomains
 - `iterations-####.csv` with the Schwarz iteration count per stop
-- `overlap-l2-errors-####.csv` with one row per enabled overlap BC:
+- `overlap-l2-rel-errors-####.csv` with one row per enabled overlap BC:
   `domain,side_set,overlap_l2_error`

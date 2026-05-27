@@ -2,7 +2,7 @@
 
 ## What changed
 
-- Added an optional `compute overlap L2 error` flag for `Schwarz overlap` and `OpInf Schwarz overlap` boundary conditions.
+- Added an optional `compute overlap L2 relative error` flag for `Schwarz overlap` and `OpInf Schwarz overlap` boundary conditions.
 - Built and cached a full overlap-region interpolation map on the wrapped FOM overlap BC, separate from the interface side-set map used for coupling.
 - Added a post-convergence diagnostic that computes the displacement mismatch
   `sqrt(sum_i ||u_dst(x_i) - u_src(x_i)||^2)` over mapped destination overlap nodes.
@@ -11,7 +11,7 @@
 ## Reporting
 
 - Logged the overlap-region L2 error once per enabled overlap BC after a converged Schwarz stop.
-- Added a dedicated per-stop CSV file, `overlap-l2-errors-####.csv`, instead of overloading `iterations-####.csv`.
+- Added a dedicated per-stop CSV file, `overlap-l2-rel-errors-####.csv`, instead of overloading `iterations-####.csv`.
 - Reused the wrapped FOM overlap BC for `OpInf Schwarz overlap`, so the OpInf wrapper exposes the same diagnostic value without duplicating overlap-region maps or state.
 
 ## Coverage

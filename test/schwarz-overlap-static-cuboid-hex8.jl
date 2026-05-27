@@ -205,7 +205,7 @@ end
     Exodus.close(sim_default.subsims[2].params["output_mesh"])
 
     sim_default = Norma.run("cuboids.yaml")
-    @test !isfile("overlap-l2-errors-0001.csv")
+    @test !isfile("overlap-l2-rel-errors-0001.csv")
     rm("cuboid-1.e")
     rm("cuboid-2.e")
 
@@ -216,7 +216,7 @@ end
         "cuboid-1.yaml",
         replace(
             cuboid_1_text,
-            "source side set: ssz-" => "source side set: ssz-\n      compute overlap L2 error: true",
+            "source side set: ssz-" => "source side set: ssz-\n      compute overlap L2 relative error: true",
         ),
     )
     cuboid_2_text = read("cuboid-2.yaml", String)
@@ -224,7 +224,7 @@ end
         "cuboid-2.yaml",
         replace(
             cuboid_2_text,
-            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 error: true",
+            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 relative error: true",
         ),
     )
 
@@ -266,8 +266,8 @@ end
     @test isfinite(bc_enabled_2.overlap_l2_error)
     @test bc_enabled_1.overlap_l2_error >= 0.0
     @test bc_enabled_2.overlap_l2_error >= 0.0
-    @test isfile("overlap-l2-errors-0001.csv")
-    overlap_csv = read("overlap-l2-errors-0001.csv", String)
+    @test isfile("overlap-l2-rel-errors-0001.csv")
+    overlap_csv = read("overlap-l2-rel-errors-0001.csv", String)
     @test occursin("domain,side_set,overlap_l2_error", overlap_csv)
     @test occursin("cuboid-1,ssz+", overlap_csv)
     @test occursin("cuboid-2,ssz-", overlap_csv)
@@ -282,7 +282,7 @@ end
     rm("cuboid-1.e")
     rm("cuboid-2.e")
     for file in readdir()
-        if startswith(file, "iterations-") || startswith(file, "overlap-l2-errors-")
+        if startswith(file, "iterations-") || startswith(file, "overlap-l2-rel-errors-")
             rm(file)
         end
     end

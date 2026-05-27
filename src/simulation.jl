@@ -1295,7 +1295,7 @@ function write_overlap_l2_error_csv(sim::MultiDomainSimulation, overlap_rows::Ve
     end
     stop = sim.controller.stop
     index_string = "-" * string(stop; pad=4)
-    filename = "overlap-l2-errors" * index_string * ".csv"
+    filename = "overlap-l2-rel-errors" * index_string * ".csv"
     open(filename, "w") do io
         write(io, "domain,side_set,overlap_l2_error\n")
         for row in overlap_rows

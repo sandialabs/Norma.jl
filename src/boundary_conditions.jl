@@ -413,7 +413,7 @@ function SMCouplingSchwarzBC(
     side_set_node_indices = Int64.(side_set_node_indices)
     if bc_type == "Schwarz overlap"
         use_weak = get(bc_params, "weak", false)
-        compute_overlap_l2_error = get(bc_params, "compute overlap L2 error", false)
+        compute_overlap_l2_error = get(bc_params, "compute overlap L2 relative error", false)
         SolidMechanicsOverlapSchwarzBoundaryCondition(
             coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
             num_nodes_sides, coupled_subsim, subsim, use_weak, compute_overlap_l2_error

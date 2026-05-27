@@ -73,7 +73,7 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     bc_params::Parameters,
 )
-    compute_overlap_l2_error = get(bc_params, "compute overlap L2 error", false)
+    compute_overlap_l2_error = get(bc_params, "compute overlap L2 relative error", false)
     fom_bc = SolidMechanicsOverlapSchwarzBoundaryCondition(
         coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
         num_nodes_sides, coupled_subsim, subsim, false, compute_overlap_l2_error

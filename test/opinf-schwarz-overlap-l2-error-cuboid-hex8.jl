@@ -52,9 +52,9 @@
         @test isfinite(bc_coarse.overlap_l2_error)
         @test bc_fine.overlap_l2_error >= 0.0
         @test bc_coarse.overlap_l2_error >= 0.0
-        @test isfile("overlap-l2-errors-0001.csv")
+        @test isfile("overlap-l2-rel-errors-0001.csv")
 
-        overlap_csv = read("overlap-l2-errors-0001.csv", String)
+        overlap_csv = read("overlap-l2-rel-errors-0001.csv", String)
         @test occursin("domain,side_set,overlap_l2_error", overlap_csv)
         @test occursin("cuboid-1,ssz+", overlap_csv)
         @test occursin("cuboid-2,ssz-", overlap_csv)
@@ -65,7 +65,7 @@
         rm("cuboid-1.e"; force=true)
         rm("cuboid-2.e"; force=true)
         for file in readdir()
-            if startswith(file, "iterations-") || startswith(file, "overlap-l2-errors-")
+            if startswith(file, "iterations-") || startswith(file, "overlap-l2-rel-errors-")
                 rm(file; force=true)
             end
         end

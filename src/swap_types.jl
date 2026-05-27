@@ -57,7 +57,7 @@ StressRecoverySwapCriterion(tolerance::Float64, direction::Symbol) =
 #     Using it with non-overlapping Schwarz, Schwarz contact, or a monolithic
 #     (single-domain) formulation is a configuration error.
 #   • At least one SolidMechanicsOverlapSchwarzBoundaryCondition must carry
-#     `compute overlap L2 error: true`.  Without that flag the error is never
+#     `compute overlap L2 relative error: true`.  Without that flag the error is never
 #     computed and the criterion cannot function.
 #
 # `direction` selects which way the swap fires:
