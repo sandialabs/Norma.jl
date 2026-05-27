@@ -694,16 +694,18 @@ function compute_overlap_l2_error!(bc::SolidMechanicsOverlapSchwarzBoundaryCondi
 
     src_model = get_fom_model(coupled_subsim_of(bc))
     dst_model = get_fom_model(self_subsim_of(bc))
-    overlap_l2_error_sq = 0.0
+    diff_sq = 0.0
+    norm_sq = 0.0
     for i in eachindex(bc.overlap_node_indices)
         node_index = bc.overlap_node_indices[i]
         coupled_node_indices = bc.overlap_coupled_nodes_indices[i]
         N = bc.overlap_interpolation_function_values[i]
         dst_disp = dst_model.displacement[:, node_index]
         src_disp = src_model.displacement[:, coupled_node_indices] * N
-        overlap_l2_error_sq += sum(abs2, dst_disp - src_disp)
+        diff_sq += sum(abs2, dst_disp - src_disp)
+        norm_sq += sum(abs2, dst_disp) 
     end
-    bc.overlap_l2_error = sqrt(overlap_l2_error_sq)
+    bc.overlap_l2_error = norm_sq > 0.0 ? sqrt(diff_sq / norm_sq) : sqrt(diff_sq)
     return bc.overlap_l2_error
 end
 

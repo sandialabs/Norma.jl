@@ -20,7 +20,7 @@ swaps:
     replacement: cuboid-1-phase2.yaml
     criterion:
       type: overlap l2 error
-      tolerance: 1.0       # zero error at t = 0 is well below this
+      tolerance: 100.0       # zero error at t = 0 is well below this
       direction: coarsen
 CSV output interval: 0
 initial time: 0.0
