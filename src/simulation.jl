@@ -698,19 +698,21 @@ function report_overlap_l2_errors(sim::MultiDomainSimulation)
                 continue
             end
             overlap_l2_error = compute_overlap_l2_error!(bc)
-            write_overlap_l2_error_screen(subsim.name, bc.name, overlap_l2_error)
-            push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error])
+            write_overlap_l2_error_screen(subsim.name, bc.name, bc.compute_overlap_l2_error, overlap_l2_error)
+            push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error, bc.compute_overlap_l2_error])
         end
     end
     write_overlap_l2_error_csv(sim, overlap_rows)
     return nothing
 end
 
-function write_overlap_l2_error_screen(domain_name::String, side_set_name::String, overlap_l2_error::Float64)
+function write_overlap_l2_error_screen(domain_name::String, side_set_name::String, field::String, overlap_l2_error::Float64)
+    field_label = field == "disp" ? "displacement" : field == "velo" ? "velocity" : "acceleration"
     norma_logf(
         0,
         :summary,
-        "Overlap L2 error [%s:%s] = %.6e",
+        "Overlap L2 %s error [%s:%s] = %.6e",
+        field_label,
         domain_name,
         side_set_name,
         overlap_l2_error,
@@ -1295,11 +1297,20 @@ function write_overlap_l2_error_csv(sim::MultiDomainSimulation, overlap_rows::Ve
     end
     stop = sim.controller.stop
     index_string = "-" * string(stop; pad=4)
-    filename = "overlap-l2-rel-errors" * index_string * ".csv"
-    open(filename, "w") do io
-        write(io, "domain,side_set,overlap_l2_error\n")
-        for row in overlap_rows
-            @printf(io, "%s,%s,%.16e\n", row[1], row[2], row[3])
+    # Group rows by field type ("disp", "velo", "acce") and write a separate CSV for each.
+    field_label_map = Dict("disp" => "disp", "velo" => "velo", "acce" => "acce")
+    rows_by_field = Dict{String,Vector{Vector{Any}}}()
+    for row in overlap_rows
+        field = row[4]::String
+        push!(get!(rows_by_field, field, Vector{Vector{Any}}()), row)
+    end
+    for (field, rows) in rows_by_field
+        filename = "overlap-l2-" * field_label_map[field] * "-rel-errors" * index_string * ".csv"
+        open(filename, "w") do io
+            write(io, "domain,side_set,overlap_l2_error\n")
+            for row in rows
+                @printf(io, "%s,%s,%.16e\n", row[1], row[2], row[3])
+            end
         end
     end
     return nothing

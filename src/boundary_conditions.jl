@@ -108,7 +108,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     subsim::Simulation,
     use_weak::Bool,
-    compute_overlap_l2_error::Bool=false,
+    compute_overlap_l2_error::String="",
 )
     mesh = get_fom_model(subsim).mesh
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
@@ -140,7 +140,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     overlap_node_indices = Vector{Int64}(undef, 0)
     overlap_coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
     overlap_interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
-    if compute_overlap_l2_error
+    if !isempty(compute_overlap_l2_error)
         overlap_node_indices,
         overlap_coupled_nodes_indices,
         overlap_interpolation_function_values = build_overlap_l2_error_map(
@@ -413,7 +413,10 @@ function SMCouplingSchwarzBC(
     side_set_node_indices = Int64.(side_set_node_indices)
     if bc_type == "Schwarz overlap"
         use_weak = get(bc_params, "weak", false)
-        compute_overlap_l2_error = get(bc_params, "compute overlap L2 relative error", false)
+        compute_overlap_l2_error = get(bc_params, "compute overlap L2 relative error", "")
+        if !isempty(compute_overlap_l2_error) && compute_overlap_l2_error ∉ ("disp", "velo", "acce")
+            norma_abort("Invalid value for 'compute overlap L2 relative error': \"$(compute_overlap_l2_error)\". Valid options are \"disp\", \"velo\", and \"acce\".")
+        end
         SolidMechanicsOverlapSchwarzBoundaryCondition(
             coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
             num_nodes_sides, coupled_subsim, subsim, use_weak, compute_overlap_l2_error
@@ -687,23 +690,37 @@ function build_overlap_l2_error_map(
 end
 
 function compute_overlap_l2_error!(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    if !bc.compute_overlap_l2_error
+    if isempty(bc.compute_overlap_l2_error)
         bc.overlap_l2_error = NaN
         return bc.overlap_l2_error
     end
 
     src_model = get_fom_model(coupled_subsim_of(bc))
     dst_model = get_fom_model(self_subsim_of(bc))
+
+    if bc.compute_overlap_l2_error == "disp"
+        dst_field = dst_model.displacement
+        src_field = src_model.displacement
+    elseif bc.compute_overlap_l2_error == "velo"
+        dst_field = dst_model.velocity
+        src_field = src_model.velocity
+    elseif bc.compute_overlap_l2_error == "acce"
+        dst_field = dst_model.acceleration
+        src_field = src_model.acceleration
+    else
+        error("Invalid value for compute_overlap_l2_error: \"$(bc.compute_overlap_l2_error)\". Valid options are \"disp\", \"velo\", and \"acce\".")
+    end
+
     diff_sq = 0.0
     norm_sq = 0.0
     for i in eachindex(bc.overlap_node_indices)
         node_index = bc.overlap_node_indices[i]
         coupled_node_indices = bc.overlap_coupled_nodes_indices[i]
         N = bc.overlap_interpolation_function_values[i]
-        dst_disp = dst_model.displacement[:, node_index]
-        src_disp = src_model.displacement[:, coupled_node_indices] * N
-        diff_sq += sum(abs2, dst_disp - src_disp)
-        norm_sq += sum(abs2, dst_disp) 
+        dst_val = dst_field[:, node_index]
+        src_val = src_field[:, coupled_node_indices] * N
+        diff_sq += sum(abs2, dst_val - src_val)
+        norm_sq += sum(abs2, dst_val)
     end
     bc.overlap_l2_error = norm_sq > 0.0 ? sqrt(diff_sq / norm_sq) : sqrt(diff_sq)
     return bc.overlap_l2_error
@@ -714,7 +731,7 @@ function compute_overlap_l2_error!(_)
 end
 
 function stores_overlap_l2_error(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
-    return bc.compute_overlap_l2_error
+    return !isempty(bc.compute_overlap_l2_error)
 end
 
 function stores_overlap_l2_error(_)

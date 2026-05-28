@@ -45,7 +45,7 @@ end
         bc for bc in sim_default.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     ])
     @test bc_default isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
-    @test bc_default.fom_bc.compute_overlap_l2_error == false
+    @test bc_default.fom_bc.compute_overlap_l2_error == ""
     Exodus.close(sim_default.subsims[1].params["input_mesh"])
     Exodus.close(sim_default.subsims[1].params["output_mesh"])
     Exodus.close(sim_default.subsims[2].params["input_mesh"])
@@ -58,7 +58,7 @@ end
         "cuboid-2.yaml",
         replace(
             cuboid_2_text,
-            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 relative error: true",
+            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 relative error: disp",
         ),
     )
 
@@ -67,12 +67,12 @@ end
         bc for bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     ])
     @test bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
-    @test bc.fom_bc.compute_overlap_l2_error == true
+    @test bc.fom_bc.compute_overlap_l2_error == "disp"
     @test length(bc.fom_bc.overlap_node_indices) == length(unique(bc.fom_bc.side_set_node_indices))
     @test isfinite(bc.fom_bc.overlap_l2_error)
     @test bc.fom_bc.overlap_l2_error >= 0.0
     @test Norma.get_overlap_l2_error(bc) == bc.fom_bc.overlap_l2_error
-    @test isfile("overlap-l2-rel-errors-0001.csv")
+    @test isfile("overlap-l2-disp-rel-errors-0001.csv")
 
     rm("cuboids.yaml")
     rm("cuboid-1.yaml")
@@ -82,7 +82,7 @@ end
     rm("cuboid-1.e")
     rm("cuboid-2.e")
     for file in readdir()
-        if startswith(file, "iterations-") || startswith(file, "overlap-l2-rel-errors-")
+        if startswith(file, "iterations-") || startswith(file, "overlap-l2-")
             rm(file)
         end
     end

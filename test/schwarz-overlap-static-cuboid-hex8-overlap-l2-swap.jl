@@ -7,7 +7,7 @@
 # Tests for SchwarzOverlapL2SwapCriterion in both directions.
 #
 # The criterion monitors the L2 norm of the displacement mismatch at the
-# overlap interface between two subdomains.  `compute overlap L2 relative error: true`
+# overlap interface between two subdomains.  `compute overlap L2 relative error: disp`
 # must be set on the relevant Schwarz overlap BC; the criterion then fires
 # when the *maximum* overlap L2 error over all such BCs satisfies the
 # direction condition:
