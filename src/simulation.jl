@@ -220,13 +220,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     has_relaxation_key = haskey(params, "relaxation")
     has_relaxation_parameter = haskey(params, "relaxation parameter")
     has_aitken_N0_parameter = haskey(params, "aitken N0 parameter")
-    #IKT, 4/28/2026: I removed this logic b/c I want to be able to specify initial relaxation parameter with 
-    #Aitken acceleration, which is read in as just 'acceleration parameter' to leverage current infrastructure.
-    #if has_relaxation_key && has_relaxation_parameter
-    #    norma_abort(
-    #        "Schwarz controller: specify either `relaxation: aitken` or `relaxation parameter: <float>`, not both.",
-    #    )
-    #end
     relaxation_method = :fixed
     relaxation_parameter = 1.0
     aitken_N0 = 1
