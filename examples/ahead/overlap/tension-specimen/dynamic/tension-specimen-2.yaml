@@ -1,6 +1,6 @@
 type: single
-input mesh file: ../upper.g 
-output mesh file: tension-specimen-2.e 
+input mesh file: ../upper.g
+output mesh file: tension-specimen-2.e
 CSV write sidesets: true
 model:
   type: solid mechanics
@@ -30,7 +30,7 @@ boundary conditions:
   Schwarz overlap:
     - side set: schwarz_upper_ss
       source: tension-specimen-1
-      source side set: schwarz_lower_ss 
+      source side set: schwarz_lower_ss
       source block: lower
       search tolerance: 5.0e-02
 solver:

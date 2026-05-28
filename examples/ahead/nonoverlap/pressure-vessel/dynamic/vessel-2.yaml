@@ -32,6 +32,7 @@ boundary conditions:
       source: vessel-1
       source side set: schwarz_ss_bottom
       source block: vessel-bottom
+      default BC type: Neumann
   Neumann pressure:
     - side set: interior_ss_top
       #function: "-937.5e3 * t"

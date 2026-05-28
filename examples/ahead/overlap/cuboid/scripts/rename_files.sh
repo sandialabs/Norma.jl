@@ -2,40 +2,40 @@
 for i in {0..9}; do
   name_old=cuboid-1-disp-000$i.csv
   name_new=01-disp-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-disp-000$i.csv
   name_new=02-disp-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-velo-000$i.csv
   name_new=01-velo-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-velo-000$i.csv
   name_new=02-velo-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-acce-000$i.csv
   name_new=01-acce-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-acce-000$i.csv
   name_new=02-acce-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-time-000$i.csv
   name_new=01-time-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-time-000$i.csv
   name_new=02-time-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-free_dofs-000$i.csv
   name_new=01-free_dofs-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-free_dofs-000$i.csv
   name_new=02-free_dofs-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-velo-000$i.csv
   name_new=01-nsx--x-velo-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-disp-000$i.csv
   name_new=01-nsx--x-disp-000$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-acce-000$i.csv
   name_new=01-nsx--x-acce-000$i.csv
   mv $name_old $name_new
@@ -124,40 +124,40 @@ done
 for i in {10..99}; do
   name_old=cuboid-1-disp-00$i.csv
   name_new=01-disp-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-disp-00$i.csv
   name_new=02-disp-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-velo-00$i.csv
   name_new=01-velo-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-velo-00$i.csv
   name_new=02-velo-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-acce-00$i.csv
   name_new=01-acce-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-acce-00$i.csv
   name_new=02-acce-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-time-00$i.csv
   name_new=01-time-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-time-00$i.csv
   name_new=02-time-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-free_dofs-00$i.csv
   name_new=01-free_dofs-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-free_dofs-00$i.csv
   name_new=02-free_dofs-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-velo-00$i.csv
   name_new=01-nsx--x-velo-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-disp-00$i.csv
   name_new=01-nsx--x-disp-00$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-acce-00$i.csv
   name_new=01-nsx--x-acce-00$i.csv
   mv $name_old $name_new
@@ -246,40 +246,40 @@ done
 for i in {100..999}; do
   name_old=cuboid-1-disp-0$i.csv
   name_new=01-disp-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-disp-0$i.csv
   name_new=02-disp-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-velo-0$i.csv
   name_new=01-velo-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-velo-0$i.csv
   name_new=02-velo-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-acce-0$i.csv
   name_new=01-acce-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-acce-0$i.csv
   name_new=02-acce-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-time-0$i.csv
   name_new=01-time-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-time-0$i.csv
   name_new=02-time-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-free_dofs-0$i.csv
   name_new=01-free_dofs-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-2-free_dofs-0$i.csv
   name_new=02-free_dofs-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-velo-0$i.csv
   name_new=01-nsx--x-velo-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-disp-0$i.csv
   name_new=01-nsx--x-disp-0$i.csv
-  mv $name_old $name_new 
+  mv $name_old $name_new
   name_old=cuboid-1-nsx--x-acce-0$i.csv
   name_new=01-nsx--x-acce-0$i.csv
   mv $name_old $name_new

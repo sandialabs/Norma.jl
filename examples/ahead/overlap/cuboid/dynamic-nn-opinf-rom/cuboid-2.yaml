@@ -4,7 +4,7 @@ output mesh file: cuboid-2.e
 model:
   type: neural network opinf rom
   model-directory: ml-models
-  ensemble-size: 1 
+  ensemble-size: 1
   material:
     blocks:
       coarse: hyperelastic

@@ -138,6 +138,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Qu
     residual = RHS - LHS_linear * solver.solution - H * xsqr
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -171,6 +176,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Cu
     residual = RHS - LHS_linear * solver.solution - H * xsqr - G * xcub
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -180,6 +190,51 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     ## Value for accelertaion - assumes bases are orthonormal to avoid solve
     solver.solution[:] =
         model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * integrator.displacement[:]
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
+end
+
+function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, model::QuadraticOpInfRom)
+    ## Explicit central difference evaluation for Quadratic OpInf ROM.
+    ## solver.solution holds the reduced acceleration.
+    ## Assumes orthonormal bases so the reduced mass matrix is the identity.
+    ## Equation of motion: ẍ = f + f_bc - K*x - H*(x⊗x)
+    x = integrator.displacement
+    H = model.opinf_rom["H"]
+    xsqr = kron(x, x)
+    solver.solution[:] =
+        model.opinf_rom["f"] + model.reduced_boundary_forcing -
+        model.opinf_rom["K"] * x - H * xsqr
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
+end
+
+function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, model::CubicOpInfRom)
+    ## Explicit central difference evaluation for Cubic OpInf ROM.
+    ## solver.solution holds the reduced acceleration.
+    ## Assumes orthonormal bases so the reduced mass matrix is the identity.
+    ## Equation of motion: ẍ = f + f_bc - K*x - H*(x⊗x) - G*(x⊗x⊗x)
+    x = integrator.displacement
+    H = model.opinf_rom["H"]
+    xsqr = kron(x, x)
+    G = model.opinf_rom["G"]
+    xcub = kron(x, x, x)
+    solver.solution[:] =
+        model.opinf_rom["f"] + model.reduced_boundary_forcing -
+        model.opinf_rom["K"] * x - H * xsqr - G * xcub
+    if any(!isfinite, solver.solution)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -196,6 +251,11 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Li
     residual = RHS - LHS * solver.solution
     solver.hessian[:, :] = LHS
     solver.gradient[:] = -residual
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
     return nothing
 end
 
@@ -258,7 +318,7 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
         xi[0] = x
         inputs = torch.tensor(xi)
         return inputs
-    """ 
+    """
     ensemble_size = size(model.nn_model)[1]
     stiffness = zeros( num_dof,num_dof )
     #Kx,K = model.nn_model[1].forward(model_inputs,return_stiffness=true)
@@ -269,14 +329,20 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
       #Kx += Kxt
       Kt = Kt.detach().numpy()[1,:,:]
       stiffness += Kt
-    
+
     end
     stiffness = stiffness./ensemble_size
     LHS = I / (dt*dt*beta) - stiffness
     RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
-    
+
     residual = RHS - LHS * solver.solution
     solver.hessian[:,:] = LHS
     solver.gradient[:] = -residual
-end 
+    if any(!isfinite, solver.gradient)
+        model.failed = true
+        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
+        return nothing
+    end
+    return nothing
+end
 

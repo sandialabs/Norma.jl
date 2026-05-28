@@ -92,12 +92,12 @@ block 1 name "tension"
 #nodeset 8 surface 83
 #nodeset 8 name "schwarz_upper"
 
-#sidesets 
+#sidesets
 #sideset 1 surface 75
-#sideset 1 name "schwarz_lower_ss" 
+#sideset 1 name "schwarz_lower_ss"
 
 #sideset 2 surface 83
-#sideset 2 name "schwarz_upper_ss" 
+#sideset 2 name "schwarz_upper_ss"
 
 # mesh gauge
 volume 1 size {gauge_mesh}
@@ -120,14 +120,14 @@ set exodus netcdf4 off
 set large exodus file on
 
 nodeset 1 surface 81 71 61 51
-nodeset 1 name "sym_x" 
+nodeset 1 name "sym_x"
 nodeset 2 surface 84 74 64 54
-nodeset 2 name "sym_z" 
-nodeset 3 surface 53 
-nodeset 3 name "sym_y" 
-nodeset 4 surface 85 
-nodeset 4 name "top_y" 
-nodeset 1 name "sym_x" 
+nodeset 2 name "sym_z"
+nodeset 3 surface 53
+nodeset 3 name "sym_y"
+nodeset 4 surface 85
+nodeset 4 name "top_y"
+nodeset 1 name "sym_x"
 
 
 export mesh "tension-specimen.g" block all overwrite

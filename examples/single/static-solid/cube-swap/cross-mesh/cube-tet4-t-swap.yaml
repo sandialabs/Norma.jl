@@ -1,12 +1,6 @@
 type: single
-swaps:
-  - subsim: cuboid-1
-    replacement: cuboid-1-phase2.yaml
-    criterion:
-      type: time
-      t_swap: 0.45
-input mesh file: cube.g
-output mesh file: cube.e
+input mesh file: cube-tet4.g
+output mesh file: cube-tet4.e
 CSV output interval: 0
 model:
   type: solid mechanics

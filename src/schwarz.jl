@@ -432,13 +432,13 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
       if (iter == 0)
         n = length(model.boundary_force)
         g = zeros(n)
-      else  
+      else
         #this plays role of g_1.  hijack lambda_disp to store it.
         #In particular, we set g to past lambda_disp
-        g = controller.lambda_disp[coupled_index]  
+        g = controller.lambda_disp[coupled_index]
       end
-      #println("IKT g norm = ", norm(g)) 
-      #initialize lambda_disp  = model.boundary_force 
+      #println("IKT g norm = ", norm(g))
+      #initialize lambda_disp  = model.boundary_force
       controller.lambda_disp[coupled_index] = copy(model.boundary_force)
       for comp in 1:3
           alpha_W_u = α * (W * dst_disp[comp, :])
@@ -557,20 +557,23 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         return nothing
     end
 
-    coupled_subsim = coupled_subsim_of(bc)
-    integrator = coupled_subsim.integrator
-    coupled_model = coupled_subsim.model
+    coupled_subsim     = coupled_subsim_of(bc)
+    coupled_integrator = coupled_subsim.integrator
+    coupled_model      = coupled_subsim.model
 
     # Save current state (copy data, not reference — aliased integrators share memory with model)
-    saved_disp = copy(integrator.displacement)
-    saved_velo = copy(integrator.velocity)
-    saved_acce = copy(integrator.acceleration)
+    # For coupled RomModel, these are reduced states
+    saved_disp = copy(coupled_integrator.displacement)
+    saved_velo = copy(coupled_integrator.velocity)
+    saved_acce = copy(coupled_integrator.acceleration)
+
+    # Even for RomModel, this is full-dimensional
     saved_∂Ω_f = get_internal_force(coupled_model)
 
     # Fetch interpolation inputs
     time = model.time
     coupled_index = bc.coupled_handle.id
-    num_dofs = length(coupled_subsim.model.free_dofs)
+    coupled_num_dofs = length(coupled_model.free_dofs)
 
     time_hist = controller.time_hist[coupled_index]
     disp_hist = controller.disp_hist[coupled_index]
@@ -603,10 +606,10 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_acce = controller.stop_acce[coupled_index]
         interp_∂Ω_f = controller.stop_∂Ω_f[coupled_index]
     else
-        interp_disp = zeros(num_dofs)
-        interp_velo = zeros(num_dofs)
-        interp_acce = zeros(num_dofs)
-        interp_∂Ω_f = zeros(num_dofs)
+        interp_disp = zeros(coupled_num_dofs)
+        interp_velo = zeros(coupled_num_dofs)
+        interp_acce = zeros(coupled_num_dofs)
+        interp_∂Ω_f = zeros(size(saved_∂Ω_f))
     end
 
 
@@ -626,28 +629,28 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
         controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
 
-        integrator.displacement .= controller.lambda_disp[coupled_index]
-        integrator.velocity .= controller.lambda_velo[coupled_index]
-        integrator.acceleration .= controller.lambda_acce[coupled_index]
+        coupled_integrator.displacement .= controller.lambda_disp[coupled_index]
+        coupled_integrator.velocity .= controller.lambda_velo[coupled_index]
+        coupled_integrator.acceleration .= controller.lambda_acce[coupled_index]
     else
-        integrator.displacement .= interp_disp
-        integrator.velocity .= interp_velo
-        integrator.acceleration .= interp_acce
+        coupled_integrator.displacement .= interp_disp
+        coupled_integrator.velocity .= interp_velo
+        coupled_integrator.acceleration .= interp_acce
     end
 
     # For ROM coupled subdomains, reconstruct FOM displacement from reduced state before reading it
     if coupled_subsim.model isa RomModel
-        reconstruct_fom_fields!(integrator, coupled_subsim.solver, coupled_subsim.model)
+        reconstruct_fom_fields!(coupled_integrator, coupled_subsim.solver, coupled_subsim.model)
     end
     apply_bc_detail(model, bc)
 
     # Restore previous state (in-place to keep alias intact)
-    integrator.displacement .= saved_disp
-    integrator.velocity .= saved_velo
-    integrator.acceleration .= saved_acce
+    coupled_integrator.displacement .= saved_disp
+    coupled_integrator.velocity .= saved_velo
+    coupled_integrator.acceleration .= saved_acce
     set_internal_force!(coupled_model, saved_∂Ω_f)
     if coupled_subsim.model isa RomModel
-        reconstruct_fom_fields!(integrator, coupled_subsim.solver, coupled_subsim.model)
+        reconstruct_fom_fields!(coupled_integrator, coupled_subsim.solver, coupled_subsim.model)
     end
     return nothing
 end
@@ -741,22 +744,26 @@ function extract_local_vector(bc::SolidMechanicsSchwarzBoundaryCondition, global
     return extract_local_vector(global_vector, global_from_local_map, dim)
 end
 
-function compute_neumann_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
+function compute_neumann_projector(dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
-    H = get_square_projection_matrix(src_model, src_bc)
-    L = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    src_fom = src_model isa RomModel ? src_model.fom_model : src_model
+    dst_fom = dst_model isa RomModel ? dst_model.fom_model : dst_model
+    H = get_square_projection_matrix(src_fom, src_bc)
+    L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
     dst_bc.neumann_projector = L * (H \ I)
     return nothing
 end
 
-function compute_dirichlet_projector(dst_model::SolidMechanics, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
+function compute_dirichlet_projector(dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
-    W = get_square_projection_matrix(dst_model, dst_bc)
-    L = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    src_fom = src_model isa RomModel ? src_model.fom_model : src_model
+    dst_fom = dst_model isa RomModel ? dst_model.fom_model : dst_model
+    W = get_square_projection_matrix(dst_fom, dst_bc)
+    L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
     dst_bc.dirichlet_projector = (W \ I) * L
     return nothing
 end
@@ -766,7 +773,7 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_model = src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
-    src_global_force = src_model.internal_force
+    src_global_force = get_internal_force(src_model)
     src_force = -extract_local_vector(src_bc, src_global_force, 3)
     neumann_projector = dst_bc.neumann_projector
     num_dst_nodes = size(neumann_projector, 1)
@@ -779,7 +786,8 @@ end
 
 function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_sim = coupled_subsim_of(dst_bc)
-    src_model = get_fom_model(src_sim)
+    src_model = src_sim.model
+    src_fom = src_model isa RomModel ? src_model.fom_model : src_model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
@@ -789,10 +797,10 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     src_velo = zeros(3, num_src_nodes)
     src_acce = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_curr[:, i_local] = src_model.reference[:, i_global] + src_model.displacement[:, i_global]
-        src_refe[:, i_local] = src_model.reference[:, i_global]
-        src_velo[:, i_local] = src_model.velocity[:, i_global]
-        src_acce[:, i_local] = src_model.acceleration[:, i_global]
+        src_curr[:, i_local] = src_fom.reference[:, i_global] + src_fom.displacement[:, i_global]
+        src_refe[:, i_local] = src_fom.reference[:, i_global]
+        src_velo[:, i_local] = src_fom.velocity[:, i_global]
+        src_acce[:, i_local] = src_fom.acceleration[:, i_global]
     end
     dirichlet_projector = dst_bc.dirichlet_projector
     num_dst_nodes = size(dirichlet_projector, 1)
@@ -802,7 +810,7 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
     dst_acce = zeros(3, num_dst_nodes)
     for i in 1:3
         dst_curr[i, :] = dirichlet_projector * src_curr[i, :]
-        dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :]) 
+        dst_disp[i, :] = dirichlet_projector * (src_curr[i, :] - src_refe[i, :])
         dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
         dst_acce[i, :] = dirichlet_projector * src_acce[i, :]
     end
@@ -1001,6 +1009,12 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bcs = coupled_model.boundary_conditions
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name
+            if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition &&
+               coupled_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+                if bc.is_dirichlet == coupled_bc.is_dirichlet
+                    norma_abort("Nonoverlap Schwarz BCs must specify different default BC types (Dirichlet vs Neumann).")
+                end
+            end
             coupled_bc.is_dirichlet = !bc.is_dirichlet
             bc.coupled_bc_index = coupled_bc_index
             coupled_bc.coupled_bc_index = bc_index

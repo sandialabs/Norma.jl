@@ -26,6 +26,7 @@ function create_simulation(params::Parameters)
     elseif sim_type == "multi"
         sim = MultiDomainSimulation(params)
         create_bcs(sim)
+        validate_swap_criteria(sim)
         initialize_storage(sim)
         return sim
     else
@@ -84,7 +85,10 @@ function SingleDomainSimulation(params::Parameters)
     norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
     norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
     failed = false
-    return SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing)
+    swaps = parse_swap_plans(params)
+    sim = SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps)
+    validate_swap_plans(sim)
+    return sim
 end
 
 # True when this subsim belongs to a MultiDomainSimulation (i.e., is coupled).
@@ -685,6 +689,7 @@ function schwarz(sim::MultiDomainSimulation)
                 plural = iteration_number == 1 ? "" : "s"
                 norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
                 sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
+                report_overlap_l2_errors(sim)
                 break
             end
         end
@@ -694,13 +699,42 @@ function schwarz(sim::MultiDomainSimulation)
     end
 end
 
+function report_overlap_l2_errors(sim::MultiDomainSimulation)
+    overlap_rows = Vector{Vector{Any}}()
+    for subsim in sim.subsims
+        for bc in subsim.model.boundary_conditions
+            if !stores_overlap_l2_error(bc)
+                continue
+            end
+            overlap_l2_error = compute_overlap_l2_error!(bc)
+            write_overlap_l2_error_screen(subsim.name, bc.name, overlap_l2_error)
+            push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error])
+        end
+    end
+    write_overlap_l2_error_csv(sim, overlap_rows)
+    return nothing
+end
+
+function write_overlap_l2_error_screen(domain_name::String, side_set_name::String, overlap_l2_error::Float64)
+    norma_logf(
+        0,
+        :summary,
+        "Overlap L2 error [%s:%s] = %.6e",
+        domain_name,
+        side_set_name,
+        overlap_l2_error,
+    )
+    flush(stdout)
+    return nothing
+end
+
 
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
     integrator.prev_disp = copy(integrator.displacement)
     integrator.prev_velo = copy(integrator.velocity)
     integrator.prev_acce = copy(integrator.acceleration)
-    return integrator.prev_∂Ω_f = copy(sim.model.internal_force)
+    return integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
 end
 
 function restore_prev_state(sim::SingleDomainSimulation)
@@ -709,7 +743,7 @@ function restore_prev_state(sim::SingleDomainSimulation)
     integrator.displacement .= integrator.prev_disp
     integrator.velocity .= integrator.prev_velo
     integrator.acceleration .= integrator.prev_acce
-    sim.model.internal_force = copy(integrator.prev_∂Ω_f)
+    set_internal_force!(sim.model, copy(integrator.prev_∂Ω_f))
     return nothing
 end
 
@@ -732,7 +766,7 @@ function save_stop_state(sim::MultiDomainSimulation)
         controller.stop_disp[i] = copy(subsim.integrator.displacement)
         controller.stop_velo[i] = copy(subsim.integrator.velocity)
         controller.stop_acce[i] = copy(subsim.integrator.acceleration)
-        controller.stop_∂Ω_f[i] = copy(subsim.model.internal_force)
+        controller.stop_∂Ω_f[i] = copy(get_internal_force(subsim.model))
     end
 end
 
@@ -746,7 +780,10 @@ function restore_stop_state(sim::MultiDomainSimulation)
         subsim.integrator.displacement .= controller.stop_disp[i]
         subsim.integrator.velocity .= controller.stop_velo[i]
         subsim.integrator.acceleration .= controller.stop_acce[i]
-        subsim.model.internal_force = copy(controller.stop_∂Ω_f[i])
+        set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
+        if subsim.model isa RomModel
+            reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)
+        end
     end
 end
 
@@ -766,6 +803,16 @@ function save_schwarz_state(sim::MultiDomainSimulation)
 end
 
 function swap_swappable_bcs(sim::MultiDomainSimulation)
+    has_rom = any(subsim -> subsim.model isa RomModel, sim.subsims)
+    if has_rom
+        for subsim in sim.subsims
+            for bc in subsim.model.boundary_conditions
+                if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.swap_bcs == true
+                    norma_abort("swap BC types not supported with RomModel nonoverlapping Schwarz")
+                end
+            end
+        end
+    end
     for subsim in sim.subsims
         swap_swappable_bcs(subsim)
     end
@@ -858,7 +905,7 @@ function save_history_snapshot(controller::MultiDomainTimeController, sim::Singl
     push!(controller.disp_hist[subsim_index], copy(sim.integrator.displacement))
     push!(controller.velo_hist[subsim_index], copy(sim.integrator.velocity))
     push!(controller.acce_hist[subsim_index], copy(sim.integrator.acceleration))
-    push!(controller.∂Ω_f_hist[subsim_index], copy(sim.model.internal_force))
+    push!(controller.∂Ω_f_hist[subsim_index], copy(get_internal_force(sim.model)))
     return nothing
 end
 
@@ -980,9 +1027,10 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
                 coupled_model = get_fom_model(coupled_subsim_of(bc))
-                W = get_square_projection_matrix(subsim.model, bc)
+                fom_model = get_fom_model(subsim)
+                W = get_square_projection_matrix(fom_model, bc)
                 L = get_overlap_rectangular_projection_matrix(
-                    subsim.model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
+                    fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
                 )
                 bc.dirichlet_projector = (W \ I) * L
             elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
@@ -990,7 +1038,8 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 compute_dirichlet_projector(subsim.model, bc)
                 compute_neumann_projector(subsim.model, bc)
                 if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
-                    bc.square_projector = get_square_projection_matrix(subsim.model, bc)
+                    fom_model = get_fom_model(subsim)
+                    bc.square_projector = get_square_projection_matrix(fom_model, bc)
                 end
             end
         end
@@ -1038,6 +1087,33 @@ function detect_contact(sim::MultiDomainSimulation)
     sim.controller.contact_hist[sim.controller.stop + 1] = sim.controller.active_contact
     write_schwarz_params_csv(sim)
     return nothing
+end
+
+"""
+    get_phys_state_for_predictor(state, subsim) -> Vector{Float64}
+
+For a FOM subdomain, returns `state` unchanged (already a physical DOF vector indexed
+as [3*(node-1)+d] for node index `node` and component d ∈ {1,2,3}).
+
+For a ROM subdomain, `state` holds ROM latent coordinates (length = num_modes).
+This function reconstructs the full physical DOF vector by applying the model basis:
+
+    u_phys[3*(j-1)+d] = basis[d, j, :] ⋅ state    for each node j, component d
+
+Only free DOFs are set; constrained DOFs default to zero. This is safe because
+`extract_interface_state` only ever reads interface nodes, which are always free DOFs.
+"""
+function get_phys_state_for_predictor(state::Vector{Float64}, subsim::Simulation)
+    model = subsim.model
+    model isa RomModel || return state
+    num_nodes = size(model.basis, 2)
+    phys = zeros(3 * num_nodes)
+    @inbounds for j in 1:num_nodes
+        for d in 1:3
+            phys[3 * (j - 1) + d] = model.basis[d, j, :]' * state
+        end
+    end
+    return phys
 end
 
 function extract_interface_state(global_state::Vector{Float64}, bc::SolidMechanicsSchwarzBoundaryCondition)
@@ -1094,10 +1170,10 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 isempty(controller.prev_stop_disp[dom_k]) && continue
                 isempty(controller.prev_stop_disp[dom_j]) && continue
 
-                u_k = extract_interface_state(controller.stop_disp[dom_k], bc_k)
-                u_k_prev = extract_interface_state(controller.prev_stop_disp[dom_k], bc_k)
-                u_j = extract_interface_state(controller.stop_disp[dom_j], bc_j)
-                u_j_prev = extract_interface_state(controller.prev_stop_disp[dom_j], bc_j)
+                u_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_k], subsim_k), bc_k)
+                u_k_prev = extract_interface_state(get_phys_state_for_predictor(controller.prev_stop_disp[dom_k], subsim_k), bc_k)
+                u_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_j], subsim_j), bc_j)
+                u_j_prev = extract_interface_state(get_phys_state_for_predictor(controller.prev_stop_disp[dom_j], subsim_j), bc_j)
 
                 # Each domain extrapolates its own interface displacement independently.
                 # This correctly handles non-conforming meshes: domain k predicts its own
@@ -1105,8 +1181,11 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 u_k_pred = @. 2 * u_k - u_k_prev
                 u_j_pred = @. 2 * u_j - u_j_prev
 
-                write_interface_state!(pred_disp_k, u_k_pred, bc_k)
-                write_interface_state!(pred_disp_j, u_j_pred, bc_j)
+                # For ROM subdomains, pred_disp is the ROM latent state (not a physical
+                # DOF vector), so write_interface_state! must not be called on it.
+                # The t_n latent state is already a safe predictor for ROM domains.
+                subsim_k.model isa RomModel || write_interface_state!(pred_disp_k, u_k_pred, bc_k)
+                subsim_j.model isa RomModel || write_interface_state!(pred_disp_j, u_j_pred, bc_j)
             else
                 # Dynamic: velocity predictor via perfectly inelastic collision using
                 # the interface mass matrices W (row-sum lumping).
@@ -1119,9 +1198,11 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 m_k = vec(sum(W_k; dims=2))    # (n_k,)
                 m_j = vec(sum(W_j; dims=2))    # (n_j,)
 
-                # Interface velocities at t_n from stop state
-                v_k = extract_interface_state(controller.stop_velo[dom_k], bc_k)  # (3, n_k)
-                v_j = extract_interface_state(controller.stop_velo[dom_j], bc_j)  # (3, n_j)
+                # Interface velocities at t_n from stop state.
+                # For ROM subdomains stop_velo holds latent coordinates; reconstruct
+                # the physical DOF vector first so extract_interface_state can index it.
+                v_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_velo[dom_k], subsim_k), bc_k)
+                v_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_velo[dom_j], subsim_j), bc_j)
 
                 # Project domain j's mass and velocity into domain k's interface space
                 m_j_in_k = P_kj * m_j    # (n_k,)
@@ -1146,8 +1227,8 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 # Displacement predictor: velocity-consistent linear extrapolation
                 # u_pred = u_n + Δt * v_pred  (each domain uses its own u_n as baseline)
                 Δt = controller.time_step
-                u_k = extract_interface_state(controller.stop_disp[dom_k], bc_k)
-                u_j = extract_interface_state(controller.stop_disp[dom_j], bc_j)
+                u_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_k], subsim_k), bc_k)
+                u_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_j], subsim_j), bc_j)
                 u_pred_k = @. u_k + Δt * v_pred_k
                 u_pred_j = @. u_j + Δt * v_pred_j
 
@@ -1155,10 +1236,20 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 # pred_acce_k and pred_acce_j already contain zero-valued stop_acce (from t_n
                 # corrected acceleration); no modification needed here.
 
-                write_interface_state!(pred_disp_k, u_pred_k, bc_k)
-                write_interface_state!(pred_velo_k, v_pred_k, bc_k)
-                write_interface_state!(pred_disp_j, u_pred_j, bc_j)
-                write_interface_state!(pred_velo_j, v_pred_j, bc_j)
+                # For ROM subdomains, pred_disp/pred_velo hold ROM latent coordinates.
+                # Calling write_interface_state! on them with a physical-space matrix
+                # would use FOM node indices that are out of bounds for the latent vector.
+                # Instead, leave ROM predictors as the t_n latent state (a safe fallback):
+                # schwarz.jl copies predictor_disp into coupled_integrator.displacement
+                # and then calls reconstruct_fom_fields!, so latent coordinates are correct.
+                if !(subsim_k.model isa RomModel)
+                    write_interface_state!(pred_disp_k, u_pred_k, bc_k)
+                    write_interface_state!(pred_velo_k, v_pred_k, bc_k)
+                end
+                if !(subsim_j.model isa RomModel)
+                    write_interface_state!(pred_disp_j, u_pred_j, bc_j)
+                    write_interface_state!(pred_velo_j, v_pred_j, bc_j)
+                end
             end
 
             # Force predictor: linear temporal extrapolation f_pred = 2*f_n - f_{n-1}.
@@ -1201,4 +1292,24 @@ function write_schwarz_params_csv(sim::MultiDomainSimulation)
         iters_filename = "iterations" * index_string * ".csv"
         writedlm(iters_filename, sim.controller.iteration_number, '\n')
     end
+end
+
+function write_overlap_l2_error_csv(sim::MultiDomainSimulation, overlap_rows::Vector{Vector{Any}})
+    isempty(overlap_rows) && return nothing
+    time         = sim.controller.time
+    initial_time = sim.controller.initial_time
+    csv_interval = Float64(get(sim.params, "CSV output interval", 0.0))
+    if !_is_output_time(time, initial_time, csv_interval)
+        return nothing
+    end
+    stop = sim.controller.stop
+    index_string = "-" * string(stop; pad=4)
+    filename = "overlap-l2-errors" * index_string * ".csv"
+    open(filename, "w") do io
+        write(io, "domain,side_set,overlap_l2_error\n")
+        for row in overlap_rows
+            @printf(io, "%s,%s,%.16e\n", row[1], row[2], row[3])
+        end
+    end
+    return nothing
 end

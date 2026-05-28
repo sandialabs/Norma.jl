@@ -26,10 +26,9 @@ function SolidMechanics(params::Parameters)
     num_blocks = length(blocks)
     if num_blocks_params ≠ num_blocks
         norma_abortf(
-            "Number of blocks in mesh %s (%d) must be equal to number of blocks in materials %s (%d).",
-            model_params["mesh"],
+            "Number of element blocks in mesh '%s' (%d) does not match number of material blocks (%d).",
+            input_mesh.file_name,
             num_blocks,
-            model_params["material"],
             num_blocks_params,
         )
     end
@@ -64,11 +63,16 @@ function SolidMechanics(params::Parameters)
     state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
     stored_energy = Vector{Vector{Float64}}()
+    num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
+    num_int_pts = Vector{Int}(undef, num_blocks)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        block_name = element_block_names[block_index]
+        num_points = haskey(num_int_pts_overrides, block_name) ?
+            Int(num_int_pts_overrides[block_name]) : default_num_int_pts(element_type)
+        num_int_pts[block_index] = num_points
         material = materials[block_index]
         num_states = number_states(material)
         if (num_states > 0)
@@ -106,6 +110,25 @@ function SolidMechanics(params::Parameters)
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
+    recovery_kind = Symbol(get(model_params, "stress recovery", "none"))
+    recover_iv = Bool(get(model_params, "recover internal variables", false))
+    if recover_iv && recovery_kind === :none
+        norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped', 'consistent', or 'both'")
+    end
+    recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
+    recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
+    n_iv = recover_iv ? length(collect_internal_variable_names(materials)) : 0
+    recovered_internal_variables = n_iv > 0 ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    # Extra buffers for the "both" recovery mode; empty for all other modes.
+    is_both = recovery_kind === :both
+    lumped_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
+    consistent_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
+    lumped_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    consistent_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    # Nodal von Mises buffers — derived from recovered stress tensor after recovery.
+    recovered_von_mises = recovery_data isa NoRecovery ? Float64[] : zeros(num_nodes)
+    lumped_recovered_von_mises = is_both ? zeros(num_nodes) : Float64[]
+    consistent_recovered_von_mises = is_both ? zeros(num_nodes) : Float64[]
     return SolidMechanics(
         input_mesh,
         materials,
@@ -134,6 +157,17 @@ function SolidMechanics(params::Parameters)
         mesh_smoothing,
         smooth_reference,
         kinematics,
+        recovery_data,
+        recovered_stress,
+        recovered_internal_variables,
+        lumped_recovered_stress,
+        consistent_recovered_stress,
+        lumped_recovered_internal_variables,
+        consistent_recovered_internal_variables,
+        recovered_von_mises,
+        lumped_recovered_von_mises,
+        consistent_recovered_von_mises,
+        num_int_pts,
     )
 end
 
@@ -624,7 +658,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         block_id = block.id
         element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
         element_type = element_type_from_string(element_type_string)
-        num_points = default_num_int_pts(element_type)
+        num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
