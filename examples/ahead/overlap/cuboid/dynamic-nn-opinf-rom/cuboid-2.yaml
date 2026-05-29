@@ -4,7 +4,7 @@ output mesh file: cuboid-2.e
 model:
   type: neural network opinf rom
   model-directory: ml-models
-  ensemble-size: 1
+  ensemble-size: 3
   material:
     blocks:
       coarse: hyperelastic
@@ -30,7 +30,7 @@ boundary conditions:
       source block: fine
       source side set: ssz+
       model-directory: ml-models
-      ensemble-size: 1
+      ensemble-size: 3
 
 solver:
   type: Hessian minimizer
