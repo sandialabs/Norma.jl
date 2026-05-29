@@ -43,6 +43,13 @@ function create_swap_criterion(params::Parameters)
             "Unknown stress recovery swap direction: '$direction' (expected 'refine' or 'coarsen')",
         )
         return StressRecoverySwapCriterion(tolerance, direction)
+    elseif criterion_type == "elastic to plastic transition"
+        tolerance = Float64(get(params, "tolerance", 0.05))
+        tolerance > 0.0 || norma_abort(
+            "Elastic to plastic transition swap criterion requires a positive 'tolerance' (relative fraction of " *
+            "the yield stress); got $tolerance",
+        )
+        return ElasticToPlasticTransitionSwapCriterion(tolerance)
     elseif criterion_type == "overlap l2 error"
         tolerance = Float64(get(params, "tolerance", 1.0e-6))
         haskey(params, "direction") || norma_abort(
@@ -160,6 +167,40 @@ function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, sim::MultiDoma
     end
 end
 
+# ElasticToPlasticTransitionSwapCriterion is only meaningful for SolidMechanics models
+# that have at least one block using a J2Plasticity material.  Validation is
+# deferred to validate_swap_criterion (called after model construction) so that
+# the material list is available.
+function validate_swap_criterion(::ElasticToPlasticTransitionSwapCriterion, sim::SingleDomainSimulation)
+    model = sim.model
+    if !(model isa SolidMechanics)
+        norma_abort(
+            "ElasticToPlasticTransitionSwapCriterion is only valid for SolidMechanics models. " *
+            "The current model type is $(typeof(model)).",
+        )
+    end
+    _validate_elastic_to_plastic_transition_materials(model)
+    return nothing
+end
+
+function validate_swap_criterion(::ElasticToPlasticTransitionSwapCriterion, sim::MultiDomainSimulation)
+    for sub in sim.subsims
+        if sub.model isa SolidMechanics
+            _validate_elastic_to_plastic_transition_materials(sub.model)
+        end
+    end
+    return nothing
+end
+
+function _validate_elastic_to_plastic_transition_materials(model::SolidMechanics)
+    any(m isa J2Plasticity for m in model.materials) || norma_abort(
+        "ElasticToPlasticTransitionSwapCriterion requires at least one block with a J2Plasticity " *
+        "material, but none were found.  This criterion cannot be used with purely elastic " *
+        "or other non-J2 material models.",
+    )
+    return nothing
+end
+
 # Called from create_simulation after create_bcs, so that boundary_conditions
 # is fully populated when BC-dependent criterion checks run.
 # Single-domain criteria that need BC checks are handled in validate_swap_plans
@@ -261,6 +302,74 @@ function _rel_frob_diff(A::Matrix{Float64}, B::Matrix{Float64})
     ref = max(sqrt(a_sq), sqrt(b_sq))
     ref < eps(Float64) && return 0.0
     return sqrt(diff_sq) / ref
+end
+
+# ---------------------------------------------------------------------------
+# ElasticToPlasticTransitionSwapCriterion dispatch
+# ---------------------------------------------------------------------------
+
+# For a single-domain simulation apply the criterion to its one model.
+function should_swap(c::ElasticToPlasticTransitionSwapCriterion, sim::SingleDomainSimulation)
+    return _elastic_to_plastic_transition_criterion_met(c, sim.model)
+end
+
+# For a multi-domain simulation return true only when ALL subsim models that
+# carry J2Plasticity materials individually satisfy the criterion.  Models
+# without any J2Plasticity block are skipped (they never block the swap).
+function should_swap(c::ElasticToPlasticTransitionSwapCriterion, sim::MultiDomainSimulation)
+    return all(_elastic_to_plastic_transition_criterion_met(c, sub.model) for sub in sim.subsims)
+end
+
+# Non-SolidMechanics models have no stress or material fields; skip them.
+_elastic_to_plastic_transition_criterion_met(::ElasticToPlasticTransitionSwapCriterion, ::Model) = false
+
+# Core evaluation: iterate over every block that uses J2Plasticity and check
+# every integration point.  The criterion fires (returns true, triggering the
+# swap) when NO integration point lies within the yield band
+#   |σ_vm − σy| / σy ≤ tolerance.
+# If every integration point is either well below or well above yield the mesh
+# is not resolving the elastic-to-plastic transition and should be swapped.
+function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransitionSwapCriterion, model::SolidMechanics)
+    any_j2_block = false
+    found_in_band = false
+    for (block_index, material) in enumerate(model.materials)
+        material isa J2Plasticity || continue
+        any_j2_block = true
+        σy = material.σy
+        σy > 0.0 || continue   # degenerate case: zero yield stress, skip
+        block_stress = model.stress[block_index]
+        for element_stress in block_stress
+            for qp_stress in element_stress
+                # Voigt order: [σ11, σ22, σ33, σ23, σ13, σ12]
+                σ11, σ22, σ33, σ23, σ13, σ12 = qp_stress
+                σ_vm = sqrt(
+                    0.5 * ((σ11 - σ22)^2 + (σ22 - σ33)^2 + (σ33 - σ11)^2) +
+                    3.0 * (σ23^2 + σ13^2 + σ12^2),
+                )
+                if abs(σ_vm - σy) / σy ≤ c.tolerance
+                    found_in_band = true
+                    @goto done_scanning   # early exit: one in-band point is enough
+                end
+            end
+        end
+    end
+    @label done_scanning
+    # If the model has no J2 blocks at all the criterion degrades gracefully.
+    if !any_j2_block
+        norma_log(
+            1, :swap,
+            "ElasticToPlasticTransitionSwapCriterion: no J2Plasticity blocks found in model; criterion will not fire",
+        )
+        return false
+    end
+    # Swap fires when NO point is in the yield band (found_in_band == false).
+    fired = !found_in_band
+    norma_logf(
+        1, :swap,
+        "ElasticToPlasticTransitionSwapCriterion: yield-band check (tolerance %.2f%%) → %s",
+        100.0 * c.tolerance, fired ? "swap (no QP in yield band)" : "no swap (QP(s) in yield band)",
+    )
+    return fired
 end
 
 # ---------------------------------------------------------------------------
