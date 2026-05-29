@@ -87,21 +87,22 @@ mutable struct SolidMechanics <: Model
     smooth_reference::String
     kinematics::Kinematics
     recovery_data::AbstractRecoveryData
-    recovered_stress::Matrix{Float64}
-    recovered_internal_variables::Matrix{Float64}
-    # Populated only when recovery_data isa BothRecovery; otherwise zeros(0,0).
+    # Single-mode recovery (recovery_data isa LumpedRecovery or ConsistentRecovery).
+    # Each is zeros(0, 0) when the quantity is not enabled OR when in BothRecovery mode.
+    recovered_stress::Matrix{Float64}                   # 6 × n_nodes
+    recovered_von_mises::Matrix{Float64}                # 1 × n_nodes
+    recovered_F::Matrix{Float64}                        # 9 × n_nodes
+    recovered_internal_variables::Matrix{Float64}       # n_iv × n_nodes
+    # BothRecovery variants.  Each is zeros(0, 0) outside both-mode or when
+    # the quantity is not enabled.
     lumped_recovered_stress::Matrix{Float64}
     consistent_recovered_stress::Matrix{Float64}
+    lumped_recovered_von_mises::Matrix{Float64}
+    consistent_recovered_von_mises::Matrix{Float64}
+    lumped_recovered_F::Matrix{Float64}
+    consistent_recovered_F::Matrix{Float64}
     lumped_recovered_internal_variables::Matrix{Float64}
     consistent_recovered_internal_variables::Matrix{Float64}
-    # Nodal von Mises stress derived from the recovered nodal stress tensor.
-    # Populated after compute_nodal_von_mises! is called (which must follow recover_stress!).
-    # For single recovery mode (lumped or consistent): recovered_von_mises is used.
-    # For BothRecovery: lumped_recovered_von_mises and consistent_recovered_von_mises are used.
-    # Empty (Float64[]) when the corresponding recovery mode is not active.
-    recovered_von_mises::Vector{Float64}
-    lumped_recovered_von_mises::Vector{Float64}
-    consistent_recovered_von_mises::Vector{Float64}
     num_int_pts::Vector{Int}
 end
 

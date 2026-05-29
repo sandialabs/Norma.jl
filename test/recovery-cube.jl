@@ -34,7 +34,8 @@ output mesh file: cube.e
 CSV output interval: 0
 model:
   type: solid mechanics
-  stress recovery: lumped
+  nodal recovery:
+    method: lumped
   material:
     blocks:
       cube: elastic
@@ -95,7 +96,8 @@ output mesh file: cube.e
 CSV output interval: 0
 model:
   type: solid mechanics
-  stress recovery: consistent
+  nodal recovery:
+    method: consistent
   material:
     blocks:
       cube: elastic
@@ -158,7 +160,8 @@ output mesh file: cube.e
 CSV output interval: 0
 model:
   type: solid mechanics
-  stress recovery: both
+  nodal recovery:
+    method: both
   material:
     blocks:
       cube: elastic
@@ -224,8 +227,9 @@ output mesh file: cube.e
 CSV output interval: 0
 model:
   type: solid mechanics
-  stress recovery: lumped
-  recover internal variables: true
+  nodal recovery:
+    method: lumped
+    internal variables: true
   material:
     blocks:
       cube: plastic
@@ -282,3 +286,92 @@ solver:
     @test maximum(eqps_n) - minimum(eqps_n) < 1.0e-9   # uniform across the cube
 end
 
+@testset "Recovery — von Mises stress and deformation gradient (J2 cube)" begin
+    cp("../examples/materials/j2/cube.g", "cube.g"; force=true)
+    open("cube.yaml", "w") do io
+        write(io, """
+type: single
+input mesh file: cube.g
+output mesh file: cube.e
+CSV output interval: 0
+model:
+  type: solid mechanics
+  nodal recovery:
+    method: lumped
+    von mises stress: true
+    deformation gradient: true
+  material:
+    blocks:
+      cube: plastic
+    plastic:
+      model: j2 plasticity
+      elastic modulus: 200.0e9
+      Poisson's ratio: 0.25
+      density: 1000.0
+      yield stress: 1.0e9
+      hardening modulus: 20.0e9
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 0.1
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.01 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 32
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06
+  linear solver relative tolerance: 1.0e-10
+  linear solver absolute tolerance: 1.0e-06
+""")
+    end
+    Norma.run("cube.yaml")
+    exo = ExodusDatabase("cube.e", "r")
+    last_step = Exodus.read_number_of_time_steps(exo)
+    nodal_names = Exodus.read_names(exo, NodalVariable)
+    @test "von_mises_stress_n" in nodal_names
+    @test "F_xx_n" in nodal_names
+    @test "F_yy_n" in nodal_names
+    @test "F_zz_n" in nodal_names
+    @test "F_xy_n" in nodal_names
+    vm = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "von_mises_stress_n"))
+    Fxx = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "F_xx_n"))
+    Fyy = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "F_yy_n"))
+    Fzz = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "F_zz_n"))
+    Fxy = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "F_xy_n"))
+    Fyz = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "F_yz_n"))
+    Fxz = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "F_xz_n"))
+    Exodus.close(exo)
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
+    # 1D J2, linear isotropic hardening, ε_z = 0.01:
+    #   σ_zz = (σy + H·ε_z) / (1 + H/E)
+    #   with σy = 1e9, H = 20e9, E = 200e9  →  σ_zz ≈ 1.0909e9
+    # Uniaxial keeps σ_xx = σ_yy = 0, so σ_vm = σ_zz at every QP, and the
+    # projected nodal vM should reproduce that uniform value.
+    σ_vm_expected = (1.0e9 + 20.0e9 * 0.01) / (1.0 + 20.0e9 / 200.0e9)
+    @test all(isapprox.(vm, σ_vm_expected; rtol=1.0e-2))
+    @test maximum(vm) - minimum(vm) < 1.0e5   # uniform across the cube
+    # F_zz = 1 + ε_z = 1.01 (small-strain regime); off-diagonal F ≈ 0
+    @test all(isapprox.(Fzz, 1.01; atol=1.0e-3))
+    @test all(Fxx .< 1.0) && all(Fyy .< 1.0)   # lateral Poisson contraction
+    @test maximum(abs.(Fxy)) < 1.0e-3
+    @test maximum(abs.(Fyz)) < 1.0e-3
+    @test maximum(abs.(Fxz)) < 1.0e-3
+end

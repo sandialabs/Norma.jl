@@ -110,25 +110,60 @@ function SolidMechanics(params::Parameters)
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
-    recovery_kind = Symbol(get(model_params, "stress recovery", "none"))
-    recover_iv = Bool(get(model_params, "recover internal variables", false))
-    if recover_iv && recovery_kind === :none
-        norma_abort("'recover internal variables: true' requires 'stress recovery' to be 'lumped', 'consistent', or 'both'")
+    for legacy in ("stress recovery", "recover internal variables")
+        if haskey(model_params, legacy)
+            norma_abort(
+                "Legacy key '$legacy' is no longer supported. " *
+                "Replace with a `nodal recovery:` block under `model:` " *
+                "(method: lumped|consistent|both; stress|von mises stress|" *
+                "internal variables|deformation gradient: true|false).",
+            )
+        end
+    end
+    recovery_params = get(model_params, "nodal recovery", nothing)
+    recovery_kind = :none
+    rec_stress = false
+    rec_vm = false
+    rec_iv = false
+    rec_F = false
+    if recovery_params !== nothing
+        method = lowercase(string(get(recovery_params, "method", "")))
+        if method == "lumped"
+            recovery_kind = :lumped
+        elseif method == "consistent"
+            recovery_kind = :consistent
+        elseif method == "both"
+            recovery_kind = :both
+        else
+            norma_abort(
+                "nodal recovery: 'method' must be 'lumped', 'consistent', or 'both' " *
+                "(got '$method').",
+            )
+        end
+        rec_stress = Bool(get(recovery_params, "stress", true))
+        rec_vm = Bool(get(recovery_params, "von mises stress", false))
+        rec_iv = Bool(get(recovery_params, "internal variables", false))
+        rec_F = Bool(get(recovery_params, "deformation gradient", false))
     end
     recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
-    recovered_stress = recovery_data isa NoRecovery ? zeros(0, 0) : zeros(6, num_nodes)
-    n_iv = recover_iv ? length(collect_internal_variable_names(materials)) : 0
-    recovered_internal_variables = n_iv > 0 ? zeros(n_iv, num_nodes) : zeros(0, 0)
-    # Extra buffers for the "both" recovery mode; empty for all other modes.
     is_both = recovery_kind === :both
-    lumped_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
-    consistent_recovered_stress = is_both ? zeros(6, num_nodes) : zeros(0, 0)
-    lumped_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
-    consistent_recovered_internal_variables = (is_both && n_iv > 0) ? zeros(n_iv, num_nodes) : zeros(0, 0)
-    # Nodal von Mises buffers — derived from recovered stress tensor after recovery.
-    recovered_von_mises = recovery_data isa NoRecovery ? Float64[] : zeros(num_nodes)
-    lumped_recovered_von_mises = is_both ? zeros(num_nodes) : Float64[]
-    consistent_recovered_von_mises = is_both ? zeros(num_nodes) : Float64[]
+    n_iv = rec_iv ? length(collect_internal_variable_names(materials)) : 0
+    # Single-mode buffers: allocated only when the quantity is enabled AND
+    # the recovery is not BothRecovery (the latter uses the lumped_/consistent_
+    # pairs below instead).
+    recovered_stress = (rec_stress && !is_both) ? zeros(6, num_nodes) : zeros(0, 0)
+    recovered_von_mises = (rec_vm && !is_both) ? zeros(1, num_nodes) : zeros(0, 0)
+    recovered_F = (rec_F && !is_both) ? zeros(9, num_nodes) : zeros(0, 0)
+    recovered_internal_variables = (n_iv > 0 && !is_both) ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    # BothRecovery buffers: lumped + consistent pair per enabled quantity.
+    lumped_recovered_stress = (rec_stress && is_both) ? zeros(6, num_nodes) : zeros(0, 0)
+    consistent_recovered_stress = (rec_stress && is_both) ? zeros(6, num_nodes) : zeros(0, 0)
+    lumped_recovered_von_mises = (rec_vm && is_both) ? zeros(1, num_nodes) : zeros(0, 0)
+    consistent_recovered_von_mises = (rec_vm && is_both) ? zeros(1, num_nodes) : zeros(0, 0)
+    lumped_recovered_F = (rec_F && is_both) ? zeros(9, num_nodes) : zeros(0, 0)
+    consistent_recovered_F = (rec_F && is_both) ? zeros(9, num_nodes) : zeros(0, 0)
+    lumped_recovered_internal_variables = (n_iv > 0 && is_both) ? zeros(n_iv, num_nodes) : zeros(0, 0)
+    consistent_recovered_internal_variables = (n_iv > 0 && is_both) ? zeros(n_iv, num_nodes) : zeros(0, 0)
     return SolidMechanics(
         input_mesh,
         materials,
@@ -159,14 +194,17 @@ function SolidMechanics(params::Parameters)
         kinematics,
         recovery_data,
         recovered_stress,
+        recovered_von_mises,
+        recovered_F,
         recovered_internal_variables,
         lumped_recovered_stress,
         consistent_recovered_stress,
-        lumped_recovered_internal_variables,
-        consistent_recovered_internal_variables,
-        recovered_von_mises,
         lumped_recovered_von_mises,
         consistent_recovered_von_mises,
+        lumped_recovered_F,
+        consistent_recovered_F,
+        lumped_recovered_internal_variables,
+        consistent_recovered_internal_variables,
         num_int_pts,
     )
 end

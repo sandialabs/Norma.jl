@@ -561,17 +561,15 @@ function _has_ivs_to_transfer(dst::SolidMechanics, src::SolidMechanics)
 end
 
 # Build a consistent recovery on demand if the user didn't enable one.  The
-# freshly-built recovery_data lives on the model afterward; the next
-# initialize_writing(new) sees it and emits nodal stress output as a
-# byproduct of the swap (small surprise, but transparent).
+# freshly-built recovery_data lives on the model afterward; output buffers
+# stay empty so the swap does not silently enable nodal output the user did
+# not request.
 function _ensure_recovery_for_swap!(model::SolidMechanics)
     if model.recovery_data isa NoRecovery
         norma_log(0, :swap, "Building consistent recovery on demand for state transfer")
         model.recovery_data = build_recovery_data(
             :consistent, model.mesh, model.reference, model.num_int_pts,
         )
-        model.recovered_stress = zeros(6, size(model.reference, 2))
-        model.recovered_von_mises = zeros(size(model.reference, 2))
     end
     return nothing
 end
