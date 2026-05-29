@@ -180,7 +180,9 @@ Norma.norma_log(0, :norma, "BEGIN TESTS")
 @testset verbose = true "Norma.jl Test Suite" begin
     for (i, file) in test_files_to_run
         Norma.norma_log(0, :test, "[$i] Running $file...")
-        include(file)
+        @testset "[$i] $file" begin
+            include(file)
+        end
     end
 end
 
