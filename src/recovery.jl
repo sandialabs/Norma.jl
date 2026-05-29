@@ -139,7 +139,7 @@ function build_recovery_data(
             _build_consistent_recovery(input_mesh, reference, num_int_pts),
         )
     else
-        norma_abort("Unknown stress recovery kind: '$kind' (expected :none, :lumped, :consistent, or :both)")
+        norma_abort("Unknown nodal recovery method: '$kind' (expected :none, :lumped, :consistent, or :both)")
     end
 end
 
@@ -153,6 +153,7 @@ function recover_stress!(model::SolidMechanics)
     rec = model.recovery_data
     rec isa NoRecovery && return model
     if rec isa BothRecovery
+        size(model.lumped_recovered_stress, 1) == 0 && return model
         # Assemble the shared L2 RHS into the lumped buffer first.
         lumped_nodal = model.lumped_recovered_stress
         fill!(lumped_nodal, 0.0)
@@ -164,6 +165,7 @@ function recover_stress!(model::SolidMechanics)
         _apply_inverse_mass!(lumped_nodal, rec.lumped)
         _apply_inverse_mass!(consistent_nodal, rec.consistent)
     else
+        size(model.recovered_stress, 1) == 0 && return model
         nodal = model.recovered_stress
         fill!(nodal, 0.0)
         _assemble_l2_rhs_stress!(nodal, model)
@@ -183,6 +185,7 @@ function recover_internal_variables!(model::SolidMechanics, all_iv_names::Vector
     rec isa NoRecovery && return model
     isempty(all_iv_names) && return model
     if rec isa BothRecovery
+        size(model.lumped_recovered_internal_variables, 1) == 0 && return model
         lumped_nodal = model.lumped_recovered_internal_variables
         fill!(lumped_nodal, 0.0)
         _assemble_l2_rhs_internal_variables!(lumped_nodal, model, all_iv_names)
@@ -191,9 +194,62 @@ function recover_internal_variables!(model::SolidMechanics, all_iv_names::Vector
         _apply_inverse_mass!(lumped_nodal, rec.lumped)
         _apply_inverse_mass!(consistent_nodal, rec.consistent)
     else
+        size(model.recovered_internal_variables, 1) == 0 && return model
         nodal = model.recovered_internal_variables
         fill!(nodal, 0.0)
         _assemble_l2_rhs_internal_variables!(nodal, model, all_iv_names)
+        _apply_inverse_mass!(nodal, rec)
+    end
+    return model
+end
+
+# Project per-QP von Mises stress onto a nodal field stored in
+# model.recovered_von_mises (1 × n_nodes).  σ_vm is computed at each QP from
+# the deviatoric Cauchy stress and projected directly — equivalent to running
+# σ_vm = sqrt(3/2 sᵢⱼsᵢⱼ) at the QP level.  Note this is *not* equal to the
+# σ_vm derived from the nodal-projected stress tensor (vM is nonlinear in σ).
+function recover_von_mises_stress!(model::SolidMechanics)
+    rec = model.recovery_data
+    rec isa NoRecovery && return model
+    if rec isa BothRecovery
+        size(model.lumped_recovered_von_mises, 1) == 0 && return model
+        lumped_nodal = model.lumped_recovered_von_mises
+        fill!(lumped_nodal, 0.0)
+        _assemble_l2_rhs_von_mises!(lumped_nodal, model)
+        consistent_nodal = model.consistent_recovered_von_mises
+        consistent_nodal .= lumped_nodal
+        _apply_inverse_mass!(lumped_nodal, rec.lumped)
+        _apply_inverse_mass!(consistent_nodal, rec.consistent)
+    else
+        size(model.recovered_von_mises, 1) == 0 && return model
+        nodal = model.recovered_von_mises
+        fill!(nodal, 0.0)
+        _assemble_l2_rhs_von_mises!(nodal, model)
+        _apply_inverse_mass!(nodal, rec)
+    end
+    return model
+end
+
+# Project per-QP deformation gradient F = I + ∇u onto a nodal field stored in
+# model.recovered_F (9 × n_nodes), column-major: F_11, F_21, F_31, F_12, ...
+# Computed on the fly from displacement (no per-QP storage of F).
+function recover_deformation_gradient!(model::SolidMechanics)
+    rec = model.recovery_data
+    rec isa NoRecovery && return model
+    if rec isa BothRecovery
+        size(model.lumped_recovered_F, 1) == 0 && return model
+        lumped_nodal = model.lumped_recovered_F
+        fill!(lumped_nodal, 0.0)
+        _assemble_l2_rhs_deformation_gradient!(lumped_nodal, model)
+        consistent_nodal = model.consistent_recovered_F
+        consistent_nodal .= lumped_nodal
+        _apply_inverse_mass!(lumped_nodal, rec.lumped)
+        _apply_inverse_mass!(consistent_nodal, rec.consistent)
+    else
+        size(model.recovered_F, 1) == 0 && return model
+        nodal = model.recovered_F
+        fill!(nodal, 0.0)
+        _assemble_l2_rhs_deformation_gradient!(nodal, model)
         _apply_inverse_mass!(nodal, rec)
     end
     return model
@@ -287,6 +343,85 @@ function _assemble_l2_rhs_internal_variables!(
     return nothing
 end
 
+function _assemble_l2_rhs_von_mises!(nodal::Matrix{Float64}, model::SolidMechanics)
+    input_mesh = model.mesh
+    blocks = Exodus.read_sets(input_mesh, Block)
+    for (block_index, block) in enumerate(blocks)
+        block_id = block.id
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
+        num_points = model.num_int_pts[block_index]
+        N, dN, ip_weights = isoparametric(element_type, num_points)
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        block_stress = model.stress[block_index]
+        for block_element_index in 1:num_block_elements
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_connectivity[connectivity_indices]
+            element_reference_position = model.reference[:, node_indices]
+            element_stress = block_stress[block_element_index]
+            for point in 1:num_points
+                Np = N[:, point]
+                dNdξ = dN[:, :, point]
+                dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
+                dvol = det(dXdξ) * ip_weights[point]
+                σ = element_stress[point]   # Voigt: xx, yy, zz, yz, xz, xy
+                σ_vm = sqrt(
+                    0.5 * ((σ[1] - σ[2])^2 + (σ[2] - σ[3])^2 + (σ[3] - σ[1])^2) +
+                    3.0 * (σ[4]^2 + σ[5]^2 + σ[6]^2),
+                )
+                @inbounds for i in 1:num_element_nodes
+                    nodal[1, node_indices[i]] += Np[i] * dvol * σ_vm
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+function _assemble_l2_rhs_deformation_gradient!(nodal::Matrix{Float64}, model::SolidMechanics)
+    input_mesh = model.mesh
+    blocks = Exodus.read_sets(input_mesh, Block)
+    for (block_index, block) in enumerate(blocks)
+        block_id = block.id
+        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
+        element_type = element_type_from_string(element_type_string)
+        num_points = model.num_int_pts[block_index]
+        N, dN, ip_weights = isoparametric(element_type, num_points)
+        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        for block_element_index in 1:num_block_elements
+            connectivity_indices =
+                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
+            node_indices = element_block_connectivity[connectivity_indices]
+            element_reference_position = model.reference[:, node_indices]
+            element_current_position = element_reference_position + model.displacement[:, node_indices]
+            for point in 1:num_points
+                Np = N[:, point]
+                dNdξ = dN[:, :, point]
+                dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
+                dvol = det(dXdξ) * ip_weights[point]
+                # F[i,k] = ∂y_i/∂X_k = sum_a y_i(a) ∂N_a/∂X_k; matches src/model.jl
+                dNdX = dXdξ \ dNdξ
+                F = SMatrix{3,3,Float64,9}(element_current_position * dNdX')
+                @inbounds for i in 1:num_element_nodes
+                    n = node_indices[i]
+                    NiJxW = Np[i] * dvol
+                    # Column-major flattening: F[1,1], F[2,1], F[3,1], F[1,2], ...
+                    for col in 1:3
+                        base = 3 * (col - 1)
+                        for row in 1:3
+                            nodal[base + row, n] += NiJxW * F[row, col]
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
 function _apply_inverse_mass!(nodal::Matrix{Float64}, rec::LumpedRecovery)
     inv_m = rec.inv_m
     n_nodes = size(nodal, 2)
@@ -302,48 +437,6 @@ end
 function _apply_inverse_mass!(nodal::Matrix{Float64}, rec::ConsistentRecovery)
     @views for c in 1:size(nodal, 1)
         nodal[c, :] = rec.factor \ nodal[c, :]
-    end
-    return nothing
-end
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Nodal von Mises stress
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Derive nodal von Mises stress from the already-recovered nodal stress tensor.
-# Must be called AFTER recover_stress! so that the nodal stress matrices are
-# populated.  Results are written into model.recovered_von_mises (single-mode)
-# or model.{lumped,consistent}_recovered_von_mises (BothRecovery).
-function compute_nodal_von_mises!(model::SolidMechanics)
-    rec = model.recovery_data
-    rec isa NoRecovery && return model
-    if rec isa BothRecovery
-        _von_mises_from_nodal!(model.lumped_recovered_von_mises, model.lumped_recovered_stress)
-        _von_mises_from_nodal!(model.consistent_recovered_von_mises, model.consistent_recovered_stress)
-    else
-        _von_mises_from_nodal!(model.recovered_von_mises, model.recovered_stress)
-    end
-    return model
-end
-
-# Compute von Mises at every node from the 6-component Voigt nodal stress matrix
-# (rows: [xx, yy, zz, yz, xz, xy], columns: nodes).
-#
-# σ_vm = √( ½[(σ_xx−σ_yy)² + (σ_yy−σ_zz)² + (σ_zz−σ_xx)²]
-#           + 3(σ_yz² + σ_xz² + σ_xy²) )
-function _von_mises_from_nodal!(vm::Vector{Float64}, sigma::Matrix{Float64})
-    n_nodes = size(sigma, 2)
-    @inbounds for n in 1:n_nodes
-        sxx = sigma[1, n]
-        syy = sigma[2, n]
-        szz = sigma[3, n]
-        syz = sigma[4, n]
-        sxz = sigma[5, n]
-        sxy = sigma[6, n]
-        vm[n] = sqrt(
-            0.5 * ((sxx - syy)^2 + (syy - szz)^2 + (szz - sxx)^2) +
-            3.0 * (syz^2 + sxz^2 + sxy^2),
-        )
     end
     return nothing
 end

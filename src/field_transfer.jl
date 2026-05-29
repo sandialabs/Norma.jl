@@ -19,7 +19,7 @@ function transfer_field(
 )::Matrix{Float64}
     if dst_model.recovery_data isa NoRecovery
         norma_abort(
-            "transfer_field: destination model must have 'stress recovery' set to 'lumped' or 'consistent'",
+            "transfer_field: destination model must have a `nodal recovery:` block with `method: lumped` or `method: consistent`",
         )
     end
 

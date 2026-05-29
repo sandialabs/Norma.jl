@@ -5,7 +5,8 @@ CSV output interval: 0
 model:
   type: cubic opinf rom
   model-file: copinf-operator-2.npz
-  stress recovery: consistent
+  nodal recovery:
+    method: consistent
   material:
     blocks:
       coarse: hyperelastic

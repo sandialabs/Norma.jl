@@ -43,38 +43,52 @@ function initialize_writing(sim::SingleDomainSimulation)
         num_node_vars += 6
         append!(node_var_names, ["velo_x", "velo_y", "velo_z", "acce_x", "acce_y", "acce_z"])
     end
-    # For RomModel, stress recovery is performed on the underlying fom_model after
+    # For RomModel, nodal recovery is performed on the underlying fom_model after
     # reconstructing the full displacement field.  Use fom_model as the source of
     # recovery metadata so that the Exodus variable names are registered correctly
     # regardless of whether the top-level model is a ROM or a FOM.
     solid_model = sim.model isa RomModel ? sim.model.fom_model : sim.model
     if !(solid_model.recovery_data isa NoRecovery)
-        rec = solid_model.recovery_data
-        if rec isa BothRecovery
-            # Both modes active: qualify each name with the projection method.
-            num_node_vars += 12
-            append!(node_var_names, ["sigma_xx_cons_n", "sigma_yy_cons_n", "sigma_zz_cons_n", "sigma_yz_cons_n", "sigma_xz_cons_n", "sigma_xy_cons_n"])
-            append!(node_var_names, ["sigma_xx_lump_n", "sigma_yy_lump_n", "sigma_zz_lump_n", "sigma_yz_lump_n", "sigma_xz_lump_n", "sigma_xy_lump_n"])
-            # Nodal von Mises derived from the recovered stress tensor (one per method).
-            num_node_vars += 2
-            append!(node_var_names, ["von_mises_cons_n", "von_mises_lump_n"])
+        F_comps = ("F_xx", "F_yx", "F_zx", "F_xy", "F_yy", "F_zy", "F_xz", "F_yz", "F_zz")
+        if solid_model.recovery_data isa BothRecovery
+            if size(solid_model.lumped_recovered_stress, 1) > 0
+                num_node_vars += 12
+                append!(node_var_names, ["sigma_xx_cons_n", "sigma_yy_cons_n", "sigma_zz_cons_n", "sigma_yz_cons_n", "sigma_xz_cons_n", "sigma_xy_cons_n"])
+                append!(node_var_names, ["sigma_xx_lump_n", "sigma_yy_lump_n", "sigma_zz_lump_n", "sigma_yz_lump_n", "sigma_xz_lump_n", "sigma_xy_lump_n"])
+            end
+            if size(solid_model.lumped_recovered_von_mises, 1) > 0
+                num_node_vars += 2
+                append!(node_var_names, ["von_mises_stress_cons_n", "von_mises_stress_lump_n"])
+            end
+            if size(solid_model.lumped_recovered_F, 1) > 0
+                num_node_vars += 18
+                append!(node_var_names, [c * "_cons_n" for c in F_comps])
+                append!(node_var_names, [c * "_lump_n" for c in F_comps])
+            end
+            if size(solid_model.lumped_recovered_internal_variables, 1) > 0
+                iv_names = collect_internal_variable_names(solid_model.materials)
+                num_node_vars += 2 * length(iv_names)
+                append!(node_var_names, [name * "_cons_n" for name in iv_names])
+                append!(node_var_names, [name * "_lump_n" for name in iv_names])
+            end
         else
-            # Single recovery mode: use bare names — no qualifier needed.
-            num_node_vars += 6
-            append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
-            # Nodal von Mises derived from the recovered stress tensor.
-            num_node_vars += 1
-            append!(node_var_names, ["von_mises_n"])
-        end
-        if rec isa BothRecovery && size(solid_model.lumped_recovered_internal_variables, 1) > 0
-            iv_names = collect_internal_variable_names(solid_model.materials)
-            num_node_vars += 2 * length(iv_names)
-            append!(node_var_names, [name * "_cons_n" for name in iv_names])
-            append!(node_var_names, [name * "_lump_n" for name in iv_names])
-        elseif !(rec isa BothRecovery) && size(solid_model.recovered_internal_variables, 1) > 0
-            iv_names = collect_internal_variable_names(solid_model.materials)
-            num_node_vars += length(iv_names)
-            append!(node_var_names, [name * "_n" for name in iv_names])
+            if size(solid_model.recovered_stress, 1) > 0
+                num_node_vars += 6
+                append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+            end
+            if size(solid_model.recovered_von_mises, 1) > 0
+                num_node_vars += 1
+                push!(node_var_names, "von_mises_stress_n")
+            end
+            if size(solid_model.recovered_F, 1) > 0
+                num_node_vars += 9
+                append!(node_var_names, [c * "_n" for c in F_comps])
+            end
+            if size(solid_model.recovered_internal_variables, 1) > 0
+                iv_names = collect_internal_variable_names(solid_model.materials)
+                num_node_vars += length(iv_names)
+                append!(node_var_names, [name * "_n" for name in iv_names])
+            end
         end
     end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
@@ -96,7 +110,7 @@ function initialize_writing(sim::SingleDomainSimulation)
     end
 
     all_iv_names = sim.model isa RomModel ? String[] : collect_internal_variable_names(sim.model.materials)
-    num_element_vars = (7 + length(all_iv_names)) * max_num_int_points + 1
+    num_element_vars = (6 + length(all_iv_names)) * max_num_int_points + 1
     Exodus.write_number_of_variables(output_mesh, ElementVariable, num_element_vars)
 
     el_var_names = String[]
@@ -108,7 +122,6 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(el_var_names, "stress_yz" * ip_str)
         push!(el_var_names, "stress_xz" * ip_str)
         push!(el_var_names, "stress_xy" * ip_str)
-        push!(el_var_names, "von_mises_stress" * ip_str)
         for iv_name in all_iv_names
             push!(el_var_names, iv_name * ip_str)
         end
@@ -337,28 +350,38 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "acce_z", acce_z)
     end
     if !(model.recovery_data isa NoRecovery)
-        recover_stress!(model)
-        rec = model.recovery_data
-        if rec isa BothRecovery
-            # Write both projected fields under their method-qualified names.
-            nodal_sigma_c = model.consistent_recovered_stress
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_cons_n", nodal_sigma_c[1, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_cons_n", nodal_sigma_c[2, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_cons_n", nodal_sigma_c[3, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_cons_n", nodal_sigma_c[4, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_cons_n", nodal_sigma_c[5, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_cons_n", nodal_sigma_c[6, :])
-            nodal_sigma_l = model.lumped_recovered_stress
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_lump_n", nodal_sigma_l[1, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_lump_n", nodal_sigma_l[2, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_lump_n", nodal_sigma_l[3, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_lump_n", nodal_sigma_l[4, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_lump_n", nodal_sigma_l[5, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_lump_n", nodal_sigma_l[6, :])
-            # Nodal von Mises derived from the recovered nodal stress tensor.
-            compute_nodal_von_mises!(model)
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_cons_n", model.consistent_recovered_von_mises)
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_lump_n", model.lumped_recovered_von_mises)
+        if model.recovery_data isa BothRecovery
+            if size(model.lumped_recovered_stress, 1) > 0
+                recover_stress!(model)
+                nodal_sigma_c = model.consistent_recovered_stress
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_cons_n", nodal_sigma_c[1, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_cons_n", nodal_sigma_c[2, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_cons_n", nodal_sigma_c[3, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_cons_n", nodal_sigma_c[4, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_cons_n", nodal_sigma_c[5, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_cons_n", nodal_sigma_c[6, :])
+                nodal_sigma_l = model.lumped_recovered_stress
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_lump_n", nodal_sigma_l[1, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_lump_n", nodal_sigma_l[2, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_lump_n", nodal_sigma_l[3, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_lump_n", nodal_sigma_l[4, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_lump_n", nodal_sigma_l[5, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_lump_n", nodal_sigma_l[6, :])
+            end
+            if size(model.lumped_recovered_von_mises, 1) > 0
+                recover_von_mises_stress!(model)
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_stress_cons_n", model.consistent_recovered_von_mises[1, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_stress_lump_n", model.lumped_recovered_von_mises[1, :])
+            end
+            if size(model.lumped_recovered_F, 1) > 0
+                recover_deformation_gradient!(model)
+                nodal_F_c = model.consistent_recovered_F
+                nodal_F_l = model.lumped_recovered_F
+                for (c, comp) in enumerate(("F_xx", "F_yx", "F_zx", "F_xy", "F_yy", "F_zy", "F_xz", "F_yz", "F_zz"))
+                    Exodus.write_values(output_mesh, NodalVariable, time_index, comp * "_cons_n", nodal_F_c[c, :])
+                    Exodus.write_values(output_mesh, NodalVariable, time_index, comp * "_lump_n", nodal_F_l[c, :])
+                end
+            end
             if size(model.lumped_recovered_internal_variables, 1) > 0
                 iv_names = collect_internal_variable_names(model.materials)
                 recover_internal_variables!(model, iv_names)
@@ -370,17 +393,29 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 end
             end
         else
-            # Single recovery mode: write under bare "sigma_*_n" names.
-            nodal_sigma = model.recovered_stress
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_n", nodal_sigma[1, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_n", nodal_sigma[2, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_n", nodal_sigma[3, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
-            # Nodal von Mises derived from the recovered nodal stress tensor.
-            compute_nodal_von_mises!(model)
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_n", model.recovered_von_mises)
+            if size(model.recovered_stress, 1) > 0
+                recover_stress!(model)
+                nodal_sigma = model.recovered_stress
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xx_n", nodal_sigma[1, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yy_n", nodal_sigma[2, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_zz_n", nodal_sigma[3, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_yz_n", nodal_sigma[4, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xz_n", nodal_sigma[5, :])
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "sigma_xy_n", nodal_sigma[6, :])
+            end
+            if size(model.recovered_von_mises, 1) > 0
+                recover_von_mises_stress!(model)
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_stress_n", model.recovered_von_mises[1, :])
+            end
+            if size(model.recovered_F, 1) > 0
+                recover_deformation_gradient!(model)
+                nodal_F = model.recovered_F
+                for (c, name) in enumerate(
+                    ("F_xx_n", "F_yx_n", "F_zx_n", "F_xy_n", "F_yy_n", "F_zy_n", "F_xz_n", "F_yz_n", "F_zz_n"),
+                )
+                    Exodus.write_values(output_mesh, NodalVariable, time_index, name, nodal_F[c, :])
+                end
+            end
             if size(model.recovered_internal_variables, 1) > 0
                 iv_names = collect_internal_variable_names(model.materials)
                 recover_internal_variables!(model, iv_names)
@@ -408,7 +443,6 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         stress_yz = zeros(num_block_elements, num_points)
         stress_xz = zeros(num_block_elements, num_points)
         stress_xy = zeros(num_block_elements, num_points)
-        von_mises_stress = zeros(num_block_elements, num_points)
         for block_element_index in 1:num_block_elements
             element_stress = block_stress[block_element_index]
             for point in 1:num_points
@@ -419,21 +453,6 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 stress_yz[block_element_index, point] = point_stress[4]
                 stress_xz[block_element_index, point] = point_stress[5]
                 stress_xy[block_element_index, point] = point_stress[6]
-                sigma_vm =
-                    0.5 *
-                    (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) *
-                    (stress_xx[block_element_index, point] - stress_yy[block_element_index, point]) +
-                    0.5 *
-                    (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) *
-                    (stress_yy[block_element_index, point] - stress_zz[block_element_index, point]) +
-                    0.5 *
-                    (stress_zz[block_element_index, point] - stress_xx[block_element_index, point]) *
-                    (stress_zz[block_element_index, point] - stress_xx[block_element_index, point]) +
-                    3.0 * stress_yz[block_element_index, point] * stress_yz[block_element_index, point] +
-                    3.0 * stress_xz[block_element_index, point] * stress_xz[block_element_index, point] +
-                    3.0 * stress_xy[block_element_index, point] * stress_xy[block_element_index, point]
-                sigma_vm = sqrt(sigma_vm)
-                von_mises_stress[block_element_index, point] = sigma_vm
             end
         end
         mat_iv_names = isempty(all_iv_names) ? String[] : internal_variable_names(model.materials[block_index])
@@ -456,14 +475,6 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             )
             Exodus.write_values(
                 output_mesh, ElementVariable, time_index, Int64(block_id), "stress_xy" * ip_str, stress_xy[:, point]
-            )
-            Exodus.write_values(
-                output_mesh,
-                ElementVariable,
-                time_index,
-                Int64(block_id),
-                "von_mises_stress" * ip_str,
-                von_mises_stress[:, point],
             )
             for iv_name in all_iv_names
                 iv_idx = findfirst(==(iv_name), mat_iv_names)

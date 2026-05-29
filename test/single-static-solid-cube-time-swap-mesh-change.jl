@@ -9,7 +9,7 @@
 # elastic with identical material parameters, so the post-swap solution
 # should agree with the standard hex8 cube uniaxial-tension baseline.
 #
-# Neither YAML enables `stress recovery`, so the swap exercises the
+# Neither YAML enables `nodal recovery`, so the swap exercises the
 # auto-build path that constructs a consistent recovery on demand to do the
 # L2 transfer of the kinematic state.
 @testset "Single Static Solid Cube Mid-Run Time Swap (cross-mesh)" begin

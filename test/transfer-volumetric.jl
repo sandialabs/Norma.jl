@@ -34,7 +34,8 @@ output mesh file: $(scratch_name).e
 CSV output interval: 0
 model:
   type: solid mechanics
-  stress recovery: consistent
+  nodal recovery:
+    method: consistent
 $npts_yaml  material:
     blocks:
       $block: elastic
