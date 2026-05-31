@@ -110,7 +110,7 @@ function initialize_writing(sim::SingleDomainSimulation)
     end
 
     all_iv_names = sim.model isa RomModel ? String[] : collect_internal_variable_names(sim.model.materials)
-    num_element_vars = (6 + length(all_iv_names)) * max_num_int_points + 1
+    num_element_vars = (7 + length(all_iv_names)) * max_num_int_points + 1
     Exodus.write_number_of_variables(output_mesh, ElementVariable, num_element_vars)
 
     el_var_names = String[]
@@ -122,6 +122,7 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(el_var_names, "stress_yz" * ip_str)
         push!(el_var_names, "stress_xz" * ip_str)
         push!(el_var_names, "stress_xy" * ip_str)
+        push!(el_var_names, "von_mises_stress" * ip_str)
         for iv_name in all_iv_names
             push!(el_var_names, iv_name * ip_str)
         end
@@ -443,6 +444,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         stress_yz = zeros(num_block_elements, num_points)
         stress_xz = zeros(num_block_elements, num_points)
         stress_xy = zeros(num_block_elements, num_points)
+        von_mises = zeros(num_block_elements, num_points)
         for block_element_index in 1:num_block_elements
             element_stress = block_stress[block_element_index]
             for point in 1:num_points
@@ -453,6 +455,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 stress_yz[block_element_index, point] = point_stress[4]
                 stress_xz[block_element_index, point] = point_stress[5]
                 stress_xy[block_element_index, point] = point_stress[6]
+                von_mises[block_element_index, point] = von_mises_from_voigt(point_stress)
             end
         end
         mat_iv_names = isempty(all_iv_names) ? String[] : internal_variable_names(model.materials[block_index])
@@ -475,6 +478,9 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             )
             Exodus.write_values(
                 output_mesh, ElementVariable, time_index, Int64(block_id), "stress_xy" * ip_str, stress_xy[:, point]
+            )
+            Exodus.write_values(
+                output_mesh, ElementVariable, time_index, Int64(block_id), "von_mises_stress" * ip_str, von_mises[:, point]
             )
             for iv_name in all_iv_names
                 iv_idx = findfirst(==(iv_name), mat_iv_names)
