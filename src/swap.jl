@@ -340,12 +340,7 @@ function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransit
         block_stress = model.stress[block_index]
         for element_stress in block_stress
             for qp_stress in element_stress
-                # Voigt order: [σ11, σ22, σ33, σ23, σ13, σ12]
-                σ11, σ22, σ33, σ23, σ13, σ12 = qp_stress
-                σ_vm = sqrt(
-                    0.5 * ((σ11 - σ22)^2 + (σ22 - σ33)^2 + (σ33 - σ11)^2) +
-                    3.0 * (σ23^2 + σ13^2 + σ12^2),
-                )
+                σ_vm = von_mises_from_voigt(qp_stress)
                 if abs(σ_vm - σy) / σy ≤ c.tolerance
                     found_in_band = true
                     @goto done_scanning   # early exit: one in-band point is enough
