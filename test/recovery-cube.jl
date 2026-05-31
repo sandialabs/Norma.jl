@@ -375,3 +375,38 @@ solver:
     @test maximum(abs.(Fyz)) < 1.0e-3
     @test maximum(abs.(Fxz)) < 1.0e-3
 end
+
+@testset "Per-IP von Mises element output (linear elastic uniaxial cube)" begin
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.yaml", "cube.yaml"; force=true)
+    Norma.run("cube.yaml")
+    # Per-IP von Mises is written unconditionally as an ElementVariable,
+    # mirroring the existing per-IP Cauchy stress output — no YAML opt-in.
+    exo = ExodusDatabase("cube.e", "r")
+    last_step = Exodus.read_number_of_time_steps(exo)
+    elem_names = Exodus.read_names(exo, ElementVariable)
+    num_int_pts = 8   # hex8
+    block_ids = [block.id for block in Exodus.read_sets(exo, Block)]
+    vm_ip = Vector{Vector{Float64}}()
+    for ip in 1:num_int_pts
+        name = "von_mises_stress_" * string(ip)
+        @test name in elem_names
+        vals = Float64[]
+        for bid in block_ids
+            append!(vals, Float64.(Exodus.read_values(exo, ElementVariable, last_step, bid, name)))
+        end
+        push!(vm_ip, vals)
+    end
+    Exodus.close(exo)
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
+    # Linear elastic, uniaxial: σ_zz = E·ε = 1e9, σ_xx = σ_yy = 0,
+    # so σ_vm = |σ_zz| = 1e9 exactly at every QP. Linear hex8 with linear
+    # Dirichlet BCs reproduces the analytical displacement field to FE-solver
+    # precision, so vm at every IP should hit 1e9 to ~1e-6 relative.
+    σ_vm_expected = 1.0e9
+    for ip in 1:num_int_pts
+        @test all(isapprox.(vm_ip[ip], σ_vm_expected; rtol=1.0e-6))
+    end
+end

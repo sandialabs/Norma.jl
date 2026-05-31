@@ -152,23 +152,34 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
         push!(bc_vector,disp_val)
     end
 
-    py"""
+
+    py""" 
     import numpy as np
     def setup_inputs(x):
         xi = np.zeros((1,x.size))
         xi[0] = x
-        inputs = torch.tensor(xi)
-        return inputs
+        return torch.tensor(xi)
     """
-
+    if bc.offset == 1
+        offset_name = "x"
+    end
+    if bc.offset == 2
+        offset_name = "y"
+    end
+    if bc.offset == 3
+        offset_name = "z"
+    end
     reduced_bc_vector = bc.basis[1,:,:]' * bc_vector
     model_inputs = py"setup_inputs"(reduced_bc_vector)
+    name = "u-" * bc.name * "-" * offset_name
+    jdict = PyDict(Dict(name => model_inputs))
     ensemble_size = size(bc.nn_model)[1]
     for i in 1:ensemble_size
-      reduced_forcing = bc.nn_model[i].forward(model_inputs)
-      reduced_forcing = reduced_forcing.detach().numpy()[1,:]
+      reduced_forcing = bc.nn_model[i].forward(jdict)
+      reduced_forcing = torch_tensor_vector(reduced_forcing)
+      #flush_pycall_finalizers()
       model.reduced_boundary_forcing[:] += reduced_forcing
-    end
+    end 
     model.reduced_boundary_forcing[:] = model.reduced_boundary_forcing[:] ./ ensemble_size
 end
 
@@ -200,11 +211,17 @@ function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOv
             reduced_bc_vector[:] += bc.basis[i,:,:]' * bc_vector[i,:]
         end
         model_inputs = py"setup_inputs"(reduced_bc_vector)
+        name = "u-" * bc.name
+        jdict = PyDict(Dict(name => model_inputs))
+        ensemble_size = size(bc.nn_model)[1]
         ensemble_size = size(bc.nn_model)[1]
         local_reduced_forcing = zeros(size(model.reduced_boundary_forcing)[1])
+
+
         for i in 1:ensemble_size
-          reduced_forcing = bc.nn_model[i].forward(model_inputs)
-          reduced_forcing = reduced_forcing.detach().numpy()[1,:]
+          reduced_forcing = bc.nn_model[i].forward(jdict)
+          reduced_forcing = torch_tensor_vector(reduced_forcing)
+          #flush_pycall_finalizers()
           local_reduced_forcing[:] += reduced_forcing
         end
         local_reduced_forcing[:] = local_reduced_forcing[:] ./ ensemble_size

@@ -7,7 +7,40 @@
 using NPZ
 using PyCall
 
+function torch_tensor_vector(tensor)
+    values = tensor.detach().cpu().tolist()
+    if ndims(values) == 1
+        return Vector{Float64}(values)
+    end
+    return Vector{Float64}(values[1, :])
+end
+
+function torch_tensor_matrix(tensor)
+    values = tensor.detach().cpu().tolist()
+    if ndims(values) == 2
+        return Matrix{Float64}(values)
+    end
+    return Matrix{Float64}(values[1, :, :])
+end
+
+function flush_pycall_finalizers()
+    GC.gc()
+    return nothing
+end
+
+function require_single_threaded_nn_opinf()
+    num_threads = Base.Threads.nthreads()
+    if num_threads != 1
+        norma_abortf(
+            "Neural network OpInf ROM uses PyCall/Torch and currently requires exactly one Julia thread; current thread count is %d. Run with `julia --threads 1 ...`.",
+            num_threads,
+        )
+    end
+    return nothing
+end
+
 function NeuralNetworkOpInfRom(params::Dict{String,Any})
+    require_single_threaded_nn_opinf()
     params["mesh smoothing"] = false
     fom_model = SolidMechanics(params)
     reference = fom_model.reference
