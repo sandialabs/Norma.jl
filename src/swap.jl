@@ -309,14 +309,22 @@ end
 # ---------------------------------------------------------------------------
 
 # For a single-domain simulation apply the criterion to its one model.
+# Guard: skip the check before the first solve has completed.  In the evolve
+# loop, maybe_apply_swaps! is called BEFORE advance_control (which runs the
+# solve), so at the first iteration model.stress is still all zeros.
+# prev_time is only advanced to the previous time value after a successful
+# solve, so prev_time > initial_time reliably means at least one solve is done.
 function should_swap(c::ElasticToPlasticTransitionSwapCriterion, sim::SingleDomainSimulation)
+    sim.controller.prev_time > sim.controller.initial_time || return false
     return _elastic_to_plastic_transition_criterion_met(c, sim.model)
 end
 
 # For a multi-domain simulation return true only when ALL subsim models that
 # carry J2Plasticity materials individually satisfy the criterion.  Models
 # without any J2Plasticity block are skipped (they never block the swap).
+# Same pre-solve guard as for SingleDomainSimulation.
 function should_swap(c::ElasticToPlasticTransitionSwapCriterion, sim::MultiDomainSimulation)
+    sim.controller.prev_time > sim.controller.initial_time || return false
     return all(_elastic_to_plastic_transition_criterion_met(c, sub.model) for sub in sim.subsims)
 end
 
@@ -325,25 +333,29 @@ _elastic_to_plastic_transition_criterion_met(::ElasticToPlasticTransitionSwapCri
 
 # Core evaluation: iterate over every block that uses J2Plasticity and check
 # every integration point.  The criterion fires (returns true, triggering the
-# swap) when NO integration point lies within the yield band
-#   |σ_vm − σy| / σy ≤ tolerance.
-# If every integration point is either well below or well above yield the mesh
-# is not resolving the elastic-to-plastic transition and should be swapped.
+# swap) when ANY integration point has a von Mises stress that exceeds the
+# upper edge of the yield band:
+#   σ_vm > σy * (1 + tolerance)
+# This means the elastic-to-plastic transition has already occurred at that
+# point and the mesh should be swapped to capture it more accurately.
+# Points below the lower edge (still elastic) or inside the band (transitioning)
+# do not trigger the swap.
 function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransitionSwapCriterion, model::SolidMechanics)
     any_j2_block = false
-    found_in_band = false
+    found_above_band = false
     for (block_index, material) in enumerate(model.materials)
         material isa J2Plasticity || continue
         any_j2_block = true
         σy = material.σy
         σy > 0.0 || continue   # degenerate case: zero yield stress, skip
+        upper_band = σy * (1.0 + c.tolerance)
         block_stress = model.stress[block_index]
         for element_stress in block_stress
             for qp_stress in element_stress
                 σ_vm = von_mises_from_voigt(qp_stress)
-                if abs(σ_vm - σy) / σy ≤ c.tolerance
-                    found_in_band = true
-                    @goto done_scanning   # early exit: one in-band point is enough
+                if σ_vm > upper_band
+                    found_above_band = true
+                    @goto done_scanning   # early exit: one above-band point is enough
                 end
             end
         end
@@ -357,12 +369,12 @@ function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransit
         )
         return false
     end
-    # Swap fires when NO point is in the yield band (found_in_band == false).
-    fired = !found_in_band
+    # Swap fires when at least one QP has exceeded the upper yield band edge.
+    fired = found_above_band
     norma_logf(
         1, :swap,
         "ElasticToPlasticTransitionSwapCriterion: yield-band check (tolerance %.2f%%) → %s",
-        100.0 * c.tolerance, fired ? "swap (no QP in yield band)" : "no swap (QP(s) in yield band)",
+        100.0 * c.tolerance, fired ? "swap (QP(s) above yield band)" : "no swap (all QPs within or below yield band)",
     )
     return fired
 end

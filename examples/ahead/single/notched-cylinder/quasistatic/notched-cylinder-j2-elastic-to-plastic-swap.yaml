@@ -26,7 +26,8 @@ model:
 time integrator:
   type: quasi static
   initial time: 0.0
-  final time: 1.0
+    #final time: 1.0
+  final time: 0.3
   time step: 0.1
   decrease factor: 0.5
   increase factor: 1.2
