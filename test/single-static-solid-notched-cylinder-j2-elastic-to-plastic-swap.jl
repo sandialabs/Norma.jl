@@ -39,6 +39,11 @@ using YAML
         force=true,
     )
     cp(
+        "../examples/ahead/single/notched-cylinder/notched-cylinder-coarse-2.g",
+        "../notched-cylinder-coarse-2.g";
+        force=true,
+    )
+    cp(
         "../examples/ahead/single/notched-cylinder/quasistatic/notched-cylinder-j2-elastic-to-plastic-swap.yaml",
         "notched-cylinder-j2-elastic-to-plastic-swap.yaml";
         force=true,
@@ -90,12 +95,12 @@ using YAML
     avg_disp   = average_components(sim.integrator.displacement)
 
     # Average axial (z) stress is the dominant component.
-    @test avg_stress[3] ≈ 1.563056325065812e8  rtol = 1.0e-3   # tension in z
+    @test avg_stress[3] ≈ 1.6488216849331063e8 rtol = 1.0e-3   # tension in z
 
     # Lateral stresses
-    @test avg_stress[1] ≈ -8.859948932218503e6 rtol = 1.0e-3   # tension in z
-    @test avg_stress[2] ≈ -9.621385369474828e6 rtol = 1.0e-3   # tension in z
+    @test avg_stress[1] ≈ 787278.7098794596 rtol = 1.0e-3   # tension in z
+    @test avg_stress[2] ≈ 966515.4875812242 rtol = 1.0e-3   # tension in z
 
     # Average z-displacement
-    @test avg_disp[3] ≈ 0.0012158121997336813 rtol = 1.0e-8
+    @test avg_disp[3] ≈ 0.0012017908798962838 rtol = 1.0e-8
 end

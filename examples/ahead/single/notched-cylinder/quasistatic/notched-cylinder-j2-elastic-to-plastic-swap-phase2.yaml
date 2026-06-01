@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../notched-cylinder-coarse.g
+input mesh file: ../notched-cylinder-coarse-2.g
 output mesh file: notched-cylinder-coarse-j2-elastic-to-plastic-swap-phase2.e
 CSV output interval: 0
 model:
