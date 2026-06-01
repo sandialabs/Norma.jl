@@ -5,10 +5,8 @@ CSV output interval: 0
 swaps:
   - replacement: notched-cylinder-j2-elastic-to-plastic-swap-phase2.yaml
     criterion:
-      #type: elastic to plastic transition
-      #tolerance: 0.05   # 5 % of σy — default; shown here for clarity
-      type: time
-      t_swap: 0.2
+      type: elastic to plastic transition
+      tolerance: 0.05   # 5 % of σy — default; shown here for clarity
 model:
   type: solid mechanics
   nodal recovery:
