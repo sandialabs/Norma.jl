@@ -546,6 +546,19 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
     copy_model_state!(new.model, sim.model)
     align_replacement_time_single!(new, sim)
 
+    # Seed the new integrator's "previous step" save-state buffers.
+    # These are Float64[] after construction and normally filled by
+    # save_curr_state at the end of the first successful step.  If that
+    # first step fails (e.g. due to a difficult elastic-plastic transition),
+    # restore_prev_state broadcasts into them and crashes with:
+    #   DimensionMismatch: array could not be broadcast to match destination
+    # Seeding with the just-transferred state gives a physically meaningful
+    # fallback and prevents the crash.
+    new.integrator.prev_disp  = copy(new.integrator.displacement)
+    new.integrator.prev_velo  = copy(new.integrator.velocity)
+    new.integrator.prev_acce  = copy(new.integrator.acceleration)
+    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+
     finalize_writing(sim)
     initialize_writing(new)
 
