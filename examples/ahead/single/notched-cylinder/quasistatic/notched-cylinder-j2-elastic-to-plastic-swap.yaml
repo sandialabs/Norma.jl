@@ -15,8 +15,8 @@ model:
     eqps: true
   material:
     blocks:
-      fine: hyperelastic
-    hyperelastic:
+      fine: plastic
+    plastic:
       model: j2 plasticity
       elastic modulus: 70.0e+09
       Poisson's ratio: 0.25
