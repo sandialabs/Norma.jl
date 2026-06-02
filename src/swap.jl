@@ -440,8 +440,13 @@ function maybe_apply_swaps!(sim::MultiDomainSimulation)
     isempty(sim.swaps) && return nothing
     for plan in sim.swaps
         plan.applied && continue
-        should_swap(plan.criterion, sim) || continue
         slot = sim.handle_by_name[plan.subsim_name].id
+        # Evaluate the criterion against the specific subsim being replaced,
+        # not the whole MultiDomainSimulation.  The multi-domain should_swap
+        # dispatch aggregates over ALL subsims (e.g. with `all(...)`), which
+        # is wrong here: only the target subsim's state is relevant for
+        # deciding whether to swap it.
+        should_swap(plan.criterion, sim.subsims[slot]) || continue
         apply_swap!(sim, slot, plan)
     end
     return nothing
@@ -472,6 +477,16 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
 
     finalize_writing(old)
     initialize_writing(new)
+    # Write the transferred state as the first frame of the new output file.
+    # initialize_writing resets the per-file exodus_frame counter to 0, so
+    # write_stop_exodus will write at time_index 1 regardless of the global
+    # controller stop.  We set time to prev_time (the last converged stop) so
+    # the frame carries the correct physical time stamp.
+    let prev_time = sim.controller.prev_time
+        new.controller.time = prev_time
+        write_stop(new)
+        new.controller.time = sim.controller.time  # restore for sync_control_time
+    end
 
     sim.subsims[slot] = new
 
@@ -561,6 +576,16 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
 
     finalize_writing(sim)
     initialize_writing(new)
+    # Write the transferred state as the first frame of the new output file
+    # before overwriting sim's fields.  initialize_writing resets the per-file
+    # exodus_frame counter to 0, so the frame lands at time_index 1.  We set
+    # time to prev_time (the last converged stop) so the frame carries the
+    # correct physical time stamp.
+    let prev_time = sim.controller.prev_time
+        new.controller.time = prev_time
+        write_stop(new)
+        new.controller.time = sim.controller.time  # restore
+    end
 
     sim.name = new.name
     sim.params = new.params
