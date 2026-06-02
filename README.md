@@ -148,7 +148,7 @@ julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl input.yaml
 ```
 after modifying ```input.yaml``` to enable ```CSV output``` and ```CSV write sidesets```, e.g.,
 ```
-CSV output interval: 1
+CSV output interval: {time_step}
 CSV write sidesets: true
 ```
 An example input file can be found [here](https://github.com/sandialabs/Norma.jl/blob/main/examples/ahead/single/cuboid/dynamic-opinf-fom/cuboid.yaml).
