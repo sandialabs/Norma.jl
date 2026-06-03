@@ -343,6 +343,13 @@ function _assemble_l2_rhs_internal_variables!(
     return nothing
 end
 
+@inline function von_mises_from_voigt(σ)
+    return sqrt(
+        0.5 * ((σ[1] - σ[2])^2 + (σ[2] - σ[3])^2 + (σ[3] - σ[1])^2) +
+        3.0 * (σ[4]^2 + σ[5]^2 + σ[6]^2),
+    )
+end
+
 function _assemble_l2_rhs_von_mises!(nodal::Matrix{Float64}, model::SolidMechanics)
     input_mesh = model.mesh
     blocks = Exodus.read_sets(input_mesh, Block)
@@ -367,10 +374,7 @@ function _assemble_l2_rhs_von_mises!(nodal::Matrix{Float64}, model::SolidMechani
                 dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
                 dvol = det(dXdξ) * ip_weights[point]
                 σ = element_stress[point]   # Voigt: xx, yy, zz, yz, xz, xy
-                σ_vm = sqrt(
-                    0.5 * ((σ[1] - σ[2])^2 + (σ[2] - σ[3])^2 + (σ[3] - σ[1])^2) +
-                    3.0 * (σ[4]^2 + σ[5]^2 + σ[6]^2),
-                )
+                σ_vm = von_mises_from_voigt(σ)
                 @inbounds for i in 1:num_element_nodes
                     nodal[1, node_indices[i]] += Np[i] * dvol * σ_vm
                 end
