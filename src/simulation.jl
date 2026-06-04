@@ -67,28 +67,43 @@ function SingleDomainSimulation(params::Parameters)
     norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
     input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
-    Exodus.copy(input_mesh, output_mesh_file)
-    output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
+    local output_mesh
+    try
+        Exodus.copy(input_mesh, output_mesh_file)
+        output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
+    catch
+        # Close the input handle so a subsequent simulation can re-open the
+        # mesh files cleanly even if this construction failed mid-flight.
+        try; Exodus.close(input_mesh); catch; end
+        rethrow()
+    end
     params["output_mesh"] = output_mesh
     params["input_mesh"] = input_mesh
-    n_nodes = Exodus.num_nodes(input_mesh.init)
-    n_elems = Exodus.num_elements(input_mesh.init)
-    norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
-    controller = create_controller(params)
-    norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
-               controller.initial_time, controller.final_time,
-               controller.time_step, controller.num_stops - 1)
-    model = create_model(params)
-    _log_materials(model, input_mesh)
-    integrator = create_time_integrator(params, model)
-    solver = create_solver(params, model)
-    norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
-    norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
-    failed = false
-    swaps = parse_swap_plans(params)
-    sim = SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps)
-    validate_swap_plans(sim)
-    return sim
+    try
+        n_nodes = Exodus.num_nodes(input_mesh.init)
+        n_elems = Exodus.num_elements(input_mesh.init)
+        norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
+        controller = create_controller(params)
+        norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
+                   controller.initial_time, controller.final_time,
+                   controller.time_step, controller.num_stops - 1)
+        model = create_model(params)
+        _log_materials(model, input_mesh)
+        integrator = create_time_integrator(params, model)
+        solver = create_solver(params, model)
+        norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+        norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
+        failed = false
+        swaps = parse_swap_plans(params)
+        sim = SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps)
+        validate_swap_plans(sim)
+        return sim
+    catch
+        # Close both Exodus handles on any failure after they were opened.
+        try; Exodus.close(input_mesh); catch; end
+        try; Exodus.close(output_mesh); catch; end
+        rethrow()
+    end
 end
 
 # True when this subsim belongs to a MultiDomainSimulation (i.e., is coupled).
@@ -153,25 +168,34 @@ function MultiDomainSimulation(params::Parameters)
     handle_by_name = Dict{String,DomainHandle}()
     name_by_handle = String[]
     subsim_index = 1
-    for domain_path in domain_paths
-        domain_name = stripped_name(domain_path)
-        norma_log(4, :domain, domain_name)
-        subparams = YAML.load_file(domain_path; dicttype=Parameters)
-        subparams["name"] = domain_name
-        integrator_params = subparams["time integrator"]
-        subsim_time_step = get(integrator_params, "time step", integrator_dt)
-        subsim_time_step = min(subsim_time_step, integrator_dt)
-        integrator_params["initial time"] = initial_time
-        integrator_params["final time"] = final_time
-        integrator_params["time step"] = subsim_time_step
-        subparams["Exodus output interval"] = exodus_interval
-        subparams["CSV output interval"] = csv_interval
-        subsim = SingleDomainSimulation(subparams)
-        params[domain_name] = subsim.params
-        push!(subsims, subsim)
-        handle_by_name[domain_name] = DomainHandle(subsim_index)
-        push!(name_by_handle, domain_name)
-        subsim_index += 1
+    try
+        for domain_path in domain_paths
+            domain_name = stripped_name(domain_path)
+            norma_log(4, :domain, domain_name)
+            subparams = YAML.load_file(domain_path; dicttype=Parameters)
+            subparams["name"] = domain_name
+            integrator_params = subparams["time integrator"]
+            subsim_time_step = get(integrator_params, "time step", integrator_dt)
+            subsim_time_step = min(subsim_time_step, integrator_dt)
+            integrator_params["initial time"] = initial_time
+            integrator_params["final time"] = final_time
+            integrator_params["time step"] = subsim_time_step
+            subparams["Exodus output interval"] = exodus_interval
+            subparams["CSV output interval"] = csv_interval
+            subsim = SingleDomainSimulation(subparams)
+            params[domain_name] = subsim.params
+            push!(subsims, subsim)
+            handle_by_name[domain_name] = DomainHandle(subsim_index)
+            push!(name_by_handle, domain_name)
+            subsim_index += 1
+        end
+    catch
+        # Close any Exodus handles opened by already-constructed subsims so
+        # the failure does not leak file descriptors into later simulations.
+        for already in subsims
+            try; finalize_writing(already); catch; end
+        end
+        rethrow()
     end
     num_domains = length(subsims)
     swaps = parse_swap_plans(params)
@@ -366,7 +390,6 @@ function evolve(sim::Simulation)
             break
         end
     end
-    finalize_writing(sim)
     return nothing
 end
 
