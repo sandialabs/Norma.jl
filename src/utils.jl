@@ -26,9 +26,9 @@ end
 
 @inline _use_color() =
     get(ENV, "NORMA_NO_COLOR", "false") != "true" &&
-    (get(ENV, "FORCE_COLOR", "") != "" ||
-     (isdefined(Base, :have_color) && Base.have_color === true) ||
-     stdout isa Base.TTY)
+    get(ENV, "NO_COLOR", "") == "" &&
+    get(ENV, "CI", "") == "" &&
+    (get(ENV, "FORCE_COLOR", "") != "" || stdout isa Base.TTY)
 
 const NORMA_COLORS = Dict(
     :abort => :light_red,
