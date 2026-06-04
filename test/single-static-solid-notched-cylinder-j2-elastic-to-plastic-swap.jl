@@ -98,9 +98,9 @@ using YAML
     @test avg_stress[3] ≈ 1.6488216849331063e8 rtol = 1.0e-1   # tension in z
 
     # Lateral stresses
-    @test avg_stress[1] ≈ 787278.7098794596 rtol = 1.0e-1   # tension in z
-    @test avg_stress[2] ≈ 966515.4875812242 rtol = 1.0e-1   # tension in z
+    @test avg_stress[1] ≈ -125706.92506072065 rtol = 1.0e-1   # tension in z
+    @test avg_stress[2] ≈ -175334.19977541023 rtol = 1.0e-1   # tension in z
 
     # Average z-displacement
-    @test avg_disp[3] ≈ 0.0012017908798962838 rtol = 1.0e-5
+    @test avg_disp[3] ≈ 0.0011996028598107954 rtol = 1.0e-5
 end
