@@ -1,0 +1,16 @@
+type: multi
+domains: ["notched-cylinder-1.yaml", "notched-cylinder-2.yaml"]
+swaps:
+  - subsim: notched-cylinder-1
+    replacement: notched-cylinder-1-phase2.yaml
+    criterion:
+      type: elastic to plastic transition
+      tolerance: 0.05 
+CSV output interval: 0
+initial time: 0.0
+final time: 0.3
+time step: 0.1
+minimum iterations: 1
+maximum iterations: 32
+relative tolerance: 1.0e-05
+absolute tolerance: 1.0e-03

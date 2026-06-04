@@ -73,6 +73,29 @@ struct SchwarzOverlapL2SwapCriterion <: SwapCriterion
     direction::Symbol   # :refine (swap above tolerance) or :coarsen (below)
 end
 
+# Trigger a swap based on proximity of the von Mises stress to the initial yield
+# stress of a J2 plasticity material.  For every integration point in every element
+# of every block in the subdomain that uses a J2Plasticity material, the criterion
+# checks whether the von Mises stress is within `tolerance` (a relative fraction,
+# default 5 %) of the initial yield stress σy stored on the material.  If ANY
+# integration point violates this proximity condition the criterion fires and the
+# mesh is swapped.
+#
+# RESTRICTIONS — validation aborts with a descriptive message if violated:
+#   • Only valid for SolidMechanics models.
+#   • At least one block in the model must use a J2Plasticity material.
+#     Using it with a purely elastic model is a configuration error.
+#
+# The check is:  | σ_vm − σy | / σy  ≤  tolerance
+# A point that satisfies this is "within the yield band" and is considered
+# well-resolved for the current mesh.  The swap fires when NO integration point
+# is inside the band — i.e., all points are either well below yield (elastic)
+# or significantly above yield (fully plastic), so the transition region is not
+# being captured by the current mesh.
+struct ElasticToPlasticTransitionSwapCriterion <: SwapCriterion
+    tolerance::Float64   # relative half-width of the yield band (default 0.05 = 5 %)
+end
+
 # A scheduled swap: replace a simulation with the one described by
 # `replacement_file` once `criterion` fires.  `subsim_name` is required for
 # multi-domain swaps (it selects which subsim to replace) and `nothing` for

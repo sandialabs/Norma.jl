@@ -30,6 +30,11 @@ function initialize_writing(sim::SingleDomainSimulation)
     params = sim.params
     integrator = sim.integrator
     output_mesh = params["output_mesh"]
+    # Per-file sequential frame counter.  write_stop_exodus increments this
+    # and uses it as time_index, so the file always gets sequential frames
+    # regardless of the global controller stop value (which may be offset when
+    # a subsim is swapped in mid-run).
+    params["exodus_frame"] = 0
 
     # global variables
     num_global_vars = Exodus.read_number_of_variables(output_mesh, GlobalVariable)
@@ -316,9 +321,12 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     params = sim.params
     integrator = sim.integrator
     time = sim.controller.time
-    stop = sim.controller.stop
-    time_index = stop + 1
     output_mesh = params["output_mesh"]
+    # Increment the per-file frame counter and use it as the Exodus time_index.
+    # This ensures sequential writes (1, 2, 3, …) even when the global
+    # controller stop is offset (e.g. after a mid-run subsim swap).
+    params["exodus_frame"] = params["exodus_frame"] + 1
+    time_index = params["exodus_frame"]
     Exodus.write_time(output_mesh, time_index, time)
 
     displacement = model.displacement

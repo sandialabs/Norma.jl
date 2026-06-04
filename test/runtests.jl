@@ -94,6 +94,10 @@ const indexed_test_files = [
     (74, "schwarz-overlap-static-cuboid-hex8-overlap-l2-swap.jl"),
     (75, "quadratic-opinf-central-difference-schwarz-overlap-cuboid-hex8.jl"),
     (76, "cubic-opinf-central-difference-schwarz-overlap-cuboid-hex8.jl"),
+    (77, "single-static-solid-notched-cylinder-j2-elastic-to-plastic-swap.jl"),
+    (78, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap.jl"),
+    (79, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap-long.jl"),
+    (80, "schwarz-ahead-overlap-dynamic-notched-cylinder-j2-swap-fom.jl"),   
 ]
 
 # Extract test file names
@@ -107,7 +111,7 @@ const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopi
 # - 39..43 schwarz-ahead-nonoverlap-dynamic-*
 # - 51     nnopinf-schwarz-overlap-cuboid-hex8
 # - 54     schwarz-nonoverlap-dynamic-cantilever-dn
-const optional_test_indices = Int[27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 51, 54]
+const optional_test_indices = Int[27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 51, 54, 77, 79, 80]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]

@@ -729,7 +729,17 @@ function save_curr_state(sim::SingleDomainSimulation)
     integrator.prev_disp = copy(integrator.displacement)
     integrator.prev_velo = copy(integrator.velocity)
     integrator.prev_acce = copy(integrator.acceleration)
-    return integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
+    integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
+    # Save per-QP material state so restore_prev_state can roll back internal
+    # variables (e.g. plastic strain) when a step fails and is retried with a
+    # smaller time step.  Without this, model.state_old is left at the
+    # non-converged end-of-failed-solve values and the retry starts from a
+    # physically inconsistent internal-variable state.
+    # Guard: only SolidMechanics has state_old; ROM models do not.
+    if sim.model isa SolidMechanics
+        sim.model.prev_state_old = deepcopy(sim.model.state_old)
+    end
+    return nothing
 end
 
 function restore_prev_state(sim::SingleDomainSimulation)
@@ -739,6 +749,11 @@ function restore_prev_state(sim::SingleDomainSimulation)
     integrator.velocity .= integrator.prev_velo
     integrator.acceleration .= integrator.prev_acce
     set_internal_force!(sim.model, copy(integrator.prev_∂Ω_f))
+    # Restore the per-QP material state saved by save_curr_state so the retry
+    # begins from the correct internal-variable state at the start of the step.
+    if !isempty(sim.model.prev_state_old)
+        sim.model.state_old = deepcopy(sim.model.prev_state_old)
+    end
     return nothing
 end
 

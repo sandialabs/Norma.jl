@@ -43,6 +43,13 @@ function create_swap_criterion(params::Parameters)
             "Unknown stress recovery swap direction: '$direction' (expected 'refine' or 'coarsen')",
         )
         return StressRecoverySwapCriterion(tolerance, direction)
+    elseif criterion_type == "elastic to plastic transition"
+        tolerance = Float64(get(params, "tolerance", 0.05))
+        tolerance > 0.0 || norma_abort(
+            "Elastic to plastic transition swap criterion requires a positive 'tolerance' (relative fraction of " *
+            "the yield stress); got $tolerance",
+        )
+        return ElasticToPlasticTransitionSwapCriterion(tolerance)
     elseif criterion_type == "overlap l2 relative error"
         tolerance = Float64(get(params, "tolerance", 1.0e-6))
         haskey(params, "direction") || norma_abort(
@@ -160,6 +167,40 @@ function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, sim::MultiDoma
     end
 end
 
+# ElasticToPlasticTransitionSwapCriterion is only meaningful for SolidMechanics models
+# that have at least one block using a J2Plasticity material.  Validation is
+# deferred to validate_swap_criterion (called after model construction) so that
+# the material list is available.
+function validate_swap_criterion(::ElasticToPlasticTransitionSwapCriterion, sim::SingleDomainSimulation)
+    model = sim.model
+    if !(model isa SolidMechanics)
+        norma_abort(
+            "ElasticToPlasticTransitionSwapCriterion is only valid for SolidMechanics models. " *
+            "The current model type is $(typeof(model)).",
+        )
+    end
+    _validate_elastic_to_plastic_transition_materials(model)
+    return nothing
+end
+
+function validate_swap_criterion(::ElasticToPlasticTransitionSwapCriterion, sim::MultiDomainSimulation)
+    for sub in sim.subsims
+        if sub.model isa SolidMechanics
+            _validate_elastic_to_plastic_transition_materials(sub.model)
+        end
+    end
+    return nothing
+end
+
+function _validate_elastic_to_plastic_transition_materials(model::SolidMechanics)
+    any(m isa J2Plasticity for m in model.materials) || norma_abort(
+        "ElasticToPlasticTransitionSwapCriterion requires at least one block with a J2Plasticity " *
+        "material, but none were found.  This criterion cannot be used with purely elastic " *
+        "or other non-J2 material models.",
+    )
+    return nothing
+end
+
 # Called from create_simulation after create_bcs, so that boundary_conditions
 # is fully populated when BC-dependent criterion checks run.
 # Single-domain criteria that need BC checks are handled in validate_swap_plans
@@ -264,6 +305,81 @@ function _rel_frob_diff(A::Matrix{Float64}, B::Matrix{Float64})
 end
 
 # ---------------------------------------------------------------------------
+# ElasticToPlasticTransitionSwapCriterion dispatch
+# ---------------------------------------------------------------------------
+
+# For a single-domain simulation apply the criterion to its one model.
+# Guard: skip the check before the first solve has completed.  In the evolve
+# loop, maybe_apply_swaps! is called BEFORE advance_control (which runs the
+# solve), so at the first iteration model.stress is still all zeros.
+# prev_time is only advanced to the previous time value after a successful
+# solve, so prev_time > initial_time reliably means at least one solve is done.
+function should_swap(c::ElasticToPlasticTransitionSwapCriterion, sim::SingleDomainSimulation)
+    sim.controller.prev_time > sim.controller.initial_time || return false
+    return _elastic_to_plastic_transition_criterion_met(c, sim.model)
+end
+
+# For a multi-domain simulation return true only when ALL subsim models that
+# carry J2Plasticity materials individually satisfy the criterion.  Models
+# without any J2Plasticity block are skipped (they never block the swap).
+# Same pre-solve guard as for SingleDomainSimulation.
+function should_swap(c::ElasticToPlasticTransitionSwapCriterion, sim::MultiDomainSimulation)
+    sim.controller.prev_time > sim.controller.initial_time || return false
+    return all(_elastic_to_plastic_transition_criterion_met(c, sub.model) for sub in sim.subsims)
+end
+
+# Non-SolidMechanics models have no stress or material fields; skip them.
+_elastic_to_plastic_transition_criterion_met(::ElasticToPlasticTransitionSwapCriterion, ::Model) = false
+
+# Core evaluation: iterate over every block that uses J2Plasticity and check
+# every integration point.  The criterion fires (returns true, triggering the
+# swap) when ANY integration point has a von Mises stress that exceeds the
+# upper edge of the yield band:
+#   σ_vm > σy * (1 + tolerance)
+# This means the elastic-to-plastic transition has already occurred at that
+# point and the mesh should be swapped to capture it more accurately.
+# Points below the lower edge (still elastic) or inside the band (transitioning)
+# do not trigger the swap.
+function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransitionSwapCriterion, model::SolidMechanics)
+    any_j2_block = false
+    found_above_band = false
+    for (block_index, material) in enumerate(model.materials)
+        material isa J2Plasticity || continue
+        any_j2_block = true
+        σy = material.σy
+        σy > 0.0 || continue   # degenerate case: zero yield stress, skip
+        upper_band = σy * (1.0 + c.tolerance)
+        block_stress = model.stress[block_index]
+        for element_stress in block_stress
+            for qp_stress in element_stress
+                σ_vm = von_mises_from_voigt(qp_stress)
+                if σ_vm > upper_band
+                    found_above_band = true
+                    @goto done_scanning   # early exit: one above-band point is enough
+                end
+            end
+        end
+    end
+    @label done_scanning
+    # If the model has no J2 blocks at all the criterion degrades gracefully.
+    if !any_j2_block
+        norma_log(
+            1, :swap,
+            "ElasticToPlasticTransitionSwapCriterion: no J2Plasticity blocks found in model; criterion will not fire",
+        )
+        return false
+    end
+    # Swap fires when at least one QP has exceeded the upper yield band edge.
+    fired = found_above_band
+    norma_logf(
+        1, :swap,
+        "ElasticToPlasticTransitionSwapCriterion: yield-band check (tolerance %.2f%%) → %s",
+        100.0 * c.tolerance, fired ? "swap (QP(s) above yield band)" : "no swap (all QPs within or below yield band)",
+    )
+    return fired
+end
+
+# ---------------------------------------------------------------------------
 # SchwarzOverlapL2SwapCriterion dispatch
 # ---------------------------------------------------------------------------
 
@@ -324,8 +440,13 @@ function maybe_apply_swaps!(sim::MultiDomainSimulation)
     isempty(sim.swaps) && return nothing
     for plan in sim.swaps
         plan.applied && continue
-        should_swap(plan.criterion, sim) || continue
         slot = sim.handle_by_name[plan.subsim_name].id
+        # Evaluate the criterion against the specific subsim being replaced,
+        # not the whole MultiDomainSimulation.  The multi-domain should_swap
+        # dispatch aggregates over ALL subsims (e.g. with `all(...)`), which
+        # is wrong here: only the target subsim's state is relevant for
+        # deciding whether to swap it.
+        should_swap(plan.criterion, sim.subsims[slot]) || continue
         apply_swap!(sim, slot, plan)
     end
     return nothing
@@ -356,6 +477,16 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
 
     finalize_writing(old)
     initialize_writing(new)
+    # Write the transferred state as the first frame of the new output file.
+    # initialize_writing resets the per-file exodus_frame counter to 0, so
+    # write_stop_exodus will write at time_index 1 regardless of the global
+    # controller stop.  We set time to prev_time (the last converged stop) so
+    # the frame carries the correct physical time stamp.
+    let prev_time = sim.controller.prev_time
+        new.controller.time = prev_time
+        write_stop(new)
+        new.controller.time = sim.controller.time  # restore for sync_control_time
+    end
 
     sim.subsims[slot] = new
 
@@ -430,8 +561,31 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
     copy_model_state!(new.model, sim.model)
     align_replacement_time_single!(new, sim)
 
+    # Seed the new integrator's "previous step" save-state buffers.
+    # These are Float64[] after construction and normally filled by
+    # save_curr_state at the end of the first successful step.  If that
+    # first step fails (e.g. due to a difficult elastic-plastic transition),
+    # restore_prev_state broadcasts into them and crashes with:
+    #   DimensionMismatch: array could not be broadcast to match destination
+    # Seeding with the just-transferred state gives a physically meaningful
+    # fallback and prevents the crash.
+    new.integrator.prev_disp  = copy(new.integrator.displacement)
+    new.integrator.prev_velo  = copy(new.integrator.velocity)
+    new.integrator.prev_acce  = copy(new.integrator.acceleration)
+    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+
     finalize_writing(sim)
     initialize_writing(new)
+    # Write the transferred state as the first frame of the new output file
+    # before overwriting sim's fields.  initialize_writing resets the per-file
+    # exodus_frame counter to 0, so the frame lands at time_index 1.  We set
+    # time to prev_time (the last converged stop) so the frame carries the
+    # correct physical time stamp.
+    let prev_time = sim.controller.prev_time
+        new.controller.time = prev_time
+        write_stop(new)
+        new.controller.time = sim.controller.time  # restore
+    end
 
     sim.name = new.name
     sim.params = new.params
