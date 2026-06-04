@@ -738,6 +738,10 @@ function stores_overlap_l2_error(_)
     return false
 end
 
+function overlap_l2_error_field(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
+    return bc.compute_overlap_l2_error
+end
+
 function get_overlap_l2_error(bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
     return bc.overlap_l2_error
 end

@@ -700,8 +700,9 @@ function report_overlap_l2_errors(sim::MultiDomainSimulation)
                 continue
             end
             overlap_l2_error = compute_overlap_l2_error!(bc)
-            write_overlap_l2_error_screen(subsim.name, bc.name, bc.compute_overlap_l2_error, overlap_l2_error)
-            push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error, bc.compute_overlap_l2_error])
+            field = overlap_l2_error_field(bc)
+            write_overlap_l2_error_screen(subsim.name, bc.name, field, overlap_l2_error)
+            push!(overlap_rows, Any[subsim.name, bc.name, overlap_l2_error, field])
         end
     end
     write_overlap_l2_error_csv(sim, overlap_rows)

@@ -113,6 +113,10 @@ function stores_overlap_l2_error(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCo
   return !isempty(bc.fom_bc.compute_overlap_l2_error)
 end
 
+function overlap_l2_error_field(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+  return bc.fom_bc.compute_overlap_l2_error
+end
+
 function get_overlap_l2_error(bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
   return bc.fom_bc.overlap_l2_error
 end
