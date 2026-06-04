@@ -51,7 +51,7 @@
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
         @test bc_fine.overlap_l2_error ≈ 0.2549171831856978 rtol = 1.0e-06
-        @test bc_coarse.overlap_l2_error = 2.8375269021790513e-13 atol = 1.0e-12
+        @test bc_coarse.overlap_l2_error ≈ 2.8375269021790513e-13 atol = 1.0e-12
         @test isfile("overlap-l2-disp-rel-errors-0001.csv")
 
         overlap_csv = read("overlap-l2-disp-rel-errors-0001.csv", String)
