@@ -7,7 +7,7 @@
 # Overlap L2 error swap — coarsen direction.
 #
 # At the first time step the displacement field is zero everywhere, so the
-# overlap L2 error is exactly 0.0 — well below the 1.0 tolerance.  The
+# overlap relative error is exactly 0.0 — well below the 1.0 tolerance.  The
 # coarsen criterion therefore fires immediately and cuboid-1 is replaced by
 # cuboid-1-phase2 before any Schwarz iteration runs.  The replacement carries
 # the same material and mesh, so the final stress field matches the vanilla
@@ -19,8 +19,8 @@ swaps:
   - subsim: cuboid-1
     replacement: cuboid-1-phase2.yaml
     criterion:
-      type: overlap l2 relative error
-      tolerance: 100.0       # zero error at t = 0 is well below this
+      type: overlap relative error
+      tolerance: 1.0       # zero error at t = 0 is well below this
       direction: coarsen
 CSV output interval: 0
 initial time: 0.0

@@ -197,15 +197,15 @@ end
     bc_default_2 = only([
         bc for bc in sim_default.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
-    @test bc_default_1.compute_overlap_l2_error == false
-    @test bc_default_2.compute_overlap_l2_error == false
+    @test bc_default_1.compute_overlap_l2_error == ""
+    @test bc_default_2.compute_overlap_l2_error == ""
     Exodus.close(sim_default.subsims[1].params["input_mesh"])
     Exodus.close(sim_default.subsims[1].params["output_mesh"])
     Exodus.close(sim_default.subsims[2].params["input_mesh"])
     Exodus.close(sim_default.subsims[2].params["output_mesh"])
 
     sim_default = Norma.run("cuboids.yaml")
-    @test !isfile("overlap-l2-errors-0001.csv")
+    @test !isfile("overlap-l2-disp-rel-errors-0001.csv")
     rm("cuboid-1.e")
     rm("cuboid-2.e")
 
@@ -216,7 +216,7 @@ end
         "cuboid-1.yaml",
         replace(
             cuboid_1_text,
-            "source side set: ssz-" => "source side set: ssz-\n      compute overlap L2 error: true",
+            "source side set: ssz-" => "source side set: ssz-\n      compute overlap L2 relative error: disp",
         ),
     )
     cuboid_2_text = read("cuboid-2.yaml", String)
@@ -224,7 +224,7 @@ end
         "cuboid-2.yaml",
         replace(
             cuboid_2_text,
-            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 error: true",
+            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 relative error: disp",
         ),
     )
 
@@ -235,8 +235,8 @@ end
     bc_enabled_2 = only([
         bc for bc in sim_enabled.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
-    @test bc_enabled_1.compute_overlap_l2_error == true
-    @test bc_enabled_2.compute_overlap_l2_error == true
+    @test bc_enabled_1.compute_overlap_l2_error == "disp"
+    @test bc_enabled_2.compute_overlap_l2_error == "disp"
     @test length(bc_enabled_1.overlap_node_indices) > length(unique(bc_enabled_1.side_set_node_indices))
     @test length(bc_enabled_2.overlap_node_indices) > length(unique(bc_enabled_2.side_set_node_indices))
     @test isnan(bc_enabled_1.overlap_l2_error)
@@ -266,13 +266,13 @@ end
     @test isfinite(bc_enabled_2.overlap_l2_error)
     @test bc_enabled_1.overlap_l2_error >= 0.0
     @test bc_enabled_2.overlap_l2_error >= 0.0
-    @test isfile("overlap-l2-errors-0001.csv")
-    overlap_csv = read("overlap-l2-errors-0001.csv", String)
+    @test isfile("overlap-l2-disp-rel-errors-0001.csv")
+    overlap_csv = read("overlap-l2-disp-rel-errors-0001.csv", String)
     @test occursin("domain,side_set,overlap_l2_error", overlap_csv)
     @test occursin("cuboid-1,ssz+", overlap_csv)
     @test occursin("cuboid-2,ssz-", overlap_csv)
-    @test occursin("Overlap L2 error [cuboid-1:ssz+]", run_output)
-    @test occursin("Overlap L2 error [cuboid-2:ssz-]", run_output)
+    @test occursin("Overlap L2 displacement error [cuboid-1:ssz+]", run_output)
+    @test occursin("Overlap L2 displacement error [cuboid-2:ssz-]", run_output)
 
     rm("cuboids.yaml")
     rm("cuboid-1.yaml")
@@ -282,7 +282,7 @@ end
     rm("cuboid-1.e")
     rm("cuboid-2.e")
     for file in readdir()
-        if startswith(file, "iterations-") || startswith(file, "overlap-l2-errors-")
+        if startswith(file, "iterations-") || startswith(file, "overlap-l2-")
             rm(file)
         end
     end

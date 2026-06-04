@@ -56,7 +56,17 @@ end
 
 function run(sim::Simulation)
     start_time = time()
-    evolve(sim)
+    try
+        evolve(sim)
+    finally
+        # Ensure Exodus handles are closed even if evolve throws, so that a
+        # failed simulation does not leak open file descriptors and cause
+        # cascading ex_create_int errors in subsequent simulations.
+        try
+            finalize_writing(sim)
+        catch
+        end
+    end
     elapsed_time = time() - start_time
     norma_log(0, :done, "Simulation Complete")
     norma_log(0, :time, "Run Time = " * format_time(elapsed_time))

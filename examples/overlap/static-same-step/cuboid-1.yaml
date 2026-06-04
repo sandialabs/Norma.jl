@@ -4,13 +4,9 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Replacement for cuboid-1 loaded after the overlap L2 error swap criterion
-# fires.  Same material and mesh as the original so the solution remains
-# correct; the different output file name lets tests verify the swap occurred.
-
 type: single
 input mesh file: cuboid-1.g
-output mesh file: cuboid-1-phase2.e
+output mesh file: cuboid-1.e
 model:
   type: solid mechanics
   material:
@@ -39,7 +35,7 @@ boundary conditions:
       source: cuboid-2
       source block: coarse
       source side set: ssz-
-      compute overlap L2 relative error: disp
+      compute overlap relative error: true
 solver:
   type: Hessian minimizer
   step: full Newton

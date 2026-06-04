@@ -81,7 +81,7 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCo
     global_from_local_map::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}
     interpolation_function_values::Vector{Vector{Float64}}
-    compute_overlap_l2_error::Bool
+    compute_overlap_l2_error::String
     overlap_node_indices::Vector{Int64}
     overlap_coupled_nodes_indices::Vector{Vector{Int64}}
     overlap_interpolation_function_values::Vector{Vector{Float64}}

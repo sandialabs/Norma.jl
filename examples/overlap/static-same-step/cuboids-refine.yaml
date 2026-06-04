@@ -6,7 +6,7 @@
 
 # Overlap L2 error swap — refine direction.
 #
-# At the first time step the displacement is zero, so the overlap L2 error is
+# At the first time step the displacement is zero, so the overlap relative error is
 # exactly 0.0 and the refine criterion does NOT fire (0 is not > 1e-15).
 # After the first Schwarz solve the displacements are non-zero and the overlap
 # L2 error — evaluated at the start of the second step from the converged
@@ -23,7 +23,7 @@ swaps:
   - subsim: cuboid-1
     replacement: cuboid-1-phase2.yaml
     criterion:
-      type: overlap l2 relative error
+      type: overlap relative error
       tolerance: 1.0e-15   # any finite coupling mismatch exceeds this
       direction: refine
 CSV output interval: 0

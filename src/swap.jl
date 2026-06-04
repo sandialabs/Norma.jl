@@ -50,7 +50,7 @@ function create_swap_criterion(params::Parameters)
             "the yield stress); got $tolerance",
         )
         return ElasticToPlasticTransitionSwapCriterion(tolerance)
-    elseif criterion_type == "overlap l2 error"
+    elseif criterion_type == "overlap l2 relative error"
         tolerance = Float64(get(params, "tolerance", 1.0e-6))
         haskey(params, "direction") || norma_abort(
             "Overlap L2 error swap criterion requires 'direction:' — use 'refine' to swap " *
@@ -133,7 +133,7 @@ end
 # For a multi-domain simulation verify two things:
 #   1. At least one subsim has a SolidMechanicsOverlapSchwarzBoundaryCondition
 #      (ruling out non-overlapping Schwarz and contact-only setups).
-#   2. At least one of those BCs has 'compute overlap L2 error: true'
+#   2. At least one of those BCs has 'compute overlap L2 relative error: disp|velo|acce'
 #      (the criterion cannot evaluate without this flag).
 #
 # NOTE: this is called from validate_swap_criteria (below), NOT from
@@ -159,9 +159,9 @@ function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, sim::MultiDoma
     )
     if !has_l2_flag
         norma_abort(
-            "SchwarzOverlapL2SwapCriterion requires 'compute overlap L2 error: true' on at " *
+            "SchwarzOverlapL2SwapCriterion requires 'compute overlap L2 relative error: disp|velo|acce' on at " *
             "least one Schwarz overlap boundary condition, but no such BC was found.  Add " *
-            "'compute overlap L2 error: true' to the relevant 'Schwarz overlap:' entry in " *
+            "'compute overlap L2 relative error: disp' (or 'velo' or 'acce') to the relevant 'Schwarz overlap:' entry in " *
             "the subsim input file.",
         )
     end
@@ -414,8 +414,8 @@ function _overlap_l2_criterion_met(c::SchwarzOverlapL2SwapCriterion, boundary_co
     if !found_any
         norma_log(
             1, :swap,
-            "SchwarzOverlapL2SwapCriterion: no boundary conditions with 'compute overlap L2 error: true' " *
-            "found; criterion will not fire — add 'compute overlap L2 error: true' to the " *
+            "SchwarzOverlapL2SwapCriterion: no boundary conditions with 'compute overlap L2 relative error: disp|velo|acce' " *
+            "found; criterion will not fire — add 'compute overlap L2 relative error: disp' (or 'velo' or 'acce') to the " *
             "relevant Schwarz overlap boundary condition",
         )
         return false

@@ -31,7 +31,7 @@ boundary conditions:
       source: cuboid-2
       source block: coarse
       source side set: ssz-
-      compute overlap L2 error: true
+      compute overlap L2 relative error: disp
 solver:
   type: Hessian minimizer
   step: full Newton
