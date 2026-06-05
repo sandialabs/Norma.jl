@@ -69,17 +69,12 @@ end
 
 function validate_swap_plans(sim::MultiDomainSimulation)
     isempty(sim.swaps) && return nothing
-    # Swapping is not supported when any subsim runs an OpInf or NNOpInf ROM.
-    # ROM state spaces differ from FOM state spaces, so the state-transfer step
-    # that occurs at swap time is not well-defined in that context.
+    # Only the concrete OpInfModel subtypes that have copy_model_state! overloads
+    # support swapping.  Reject anything else (e.g. NeuralNetworkOpInfRom, or any
+    # future RomModel subtype added without a corresponding state-transfer method)
+    # with a clear message at parse time rather than a MethodError at swap time.
     for subsim in sim.subsims
-        if subsim.model isa RomModel
-            norma_abort(
-                "Swap criteria cannot be used when any subsim is an OpInf or NNOpInf ROM. " *
-                "Subsim '$(subsim.name)' uses a ROM model.  Swapping is only supported for " *
-                "full-order model (FOM) subsims.",
-            )
-        end
+        _assert_rom_swap_supported(subsim.model, "Subsim '$(subsim.name)'")
     end
     for plan in sim.swaps
         plan.subsim_name === nothing &&
@@ -94,13 +89,7 @@ end
 
 function validate_swap_plans(sim::SingleDomainSimulation)
     isempty(sim.swaps) && return nothing
-    # Swapping is not supported for OpInf or NNOpInf ROM simulations.
-    if sim.model isa RomModel
-        norma_abort(
-            "Swap criteria cannot be used with an OpInf or NNOpInf ROM simulation.  " *
-            "Swapping is only supported for full-order model (FOM) simulations.",
-        )
-    end
+    _assert_rom_swap_supported(sim.model, "This simulation")
     for plan in sim.swaps
         plan.subsim_name === nothing ||
             norma_abort("Single-domain swap plan must not specify `subsim:` (there is no choice of target)")
@@ -109,6 +98,38 @@ function validate_swap_plans(sim::SingleDomainSimulation)
         validate_swap_criterion(plan.criterion, sim)
     end
     return nothing
+end
+
+# Whitelist of RomModel subtypes for which copy_model_state! overloads exist.
+# SolidMechanics (FOM) is always supported and does not need to be listed here.
+# Any RomModel subtype NOT in this list causes an early abort with a clear
+# message, rather than a cryptic MethodError at the moment the swap fires.
+const _SWAP_SUPPORTED_ROM_TYPES = Union{
+    LinearOpInfRom,
+    QuadraticOpInfRom,
+    CubicOpInfRom,
+    RBFKernelROM,
+}
+
+# FOM models are always swap-compatible; nothing to check.
+_assert_rom_swap_supported(::SolidMechanics, ::String) = nothing
+
+# Supported ROM subtypes: pass through.
+_assert_rom_swap_supported(::_SWAP_SUPPORTED_ROM_TYPES, ::String) = nothing
+
+# Catch-all: any other RomModel (including NeuralNetworkOpInfRom and any
+# future subtype without a copy_model_state! overload) aborts here.
+function _assert_rom_swap_supported(model::RomModel, context::String)
+    norma_abortf(
+        "%s uses a %s, which does not support mid-run swapping.  " *
+        "Swap state transfer is implemented for: LinearOpInfRom, QuadraticOpInfRom, " *
+        "CubicOpInfRom, RBFKernelROM.  To add support for a new ROM type, implement " *
+        "copy_model_state!(dst::<YourRomType>, src::SolidMechanics), " *
+        "copy_model_state!(dst::SolidMechanics, src::<YourRomType>), and " *
+        "copy_model_state!(dst::<YourRomType>, src::<YourRomType>) in swap.jl, " *
+        "then add <YourRomType> to _SWAP_SUPPORTED_ROM_TYPES.",
+        context, typeof(model),
+    )
 end
 
 # ---------------------------------------------------------------------------
@@ -475,6 +496,18 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     copy_model_state!(new.model, old.model)
     align_replacement_time!(new, sim, old)
 
+    # After state transfer, sync the new integrator's kinematic arrays from
+    # the model.  ROM integrators hold reduced-space arrays that must be
+    # copied from the model's reduced_state / reduced_velocity which
+    # copy_model_state! just populated.
+    _sync_integrator_from_model!(new.integrator, new.model)
+
+    # Seed the new integrator's rollback buffers (same reason as single-domain).
+    new.integrator.prev_disp  = copy(new.integrator.displacement)
+    new.integrator.prev_velo  = copy(new.integrator.velocity)
+    new.integrator.prev_acce  = copy(new.integrator.acceleration)
+    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+
     finalize_writing(old)
     initialize_writing(new)
     # Write the transferred state as the first frame of the new output file.
@@ -561,6 +594,14 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
     copy_model_state!(new.model, sim.model)
     align_replacement_time_single!(new, sim)
 
+    # After state transfer, sync the new integrator's kinematic arrays from
+    # the model.  For a FOM (SolidMechanics) the integrator holds unsafe_wrap
+    # views into the model's arrays so no explicit sync is needed.  For a ROM
+    # the integrator's displacement/velocity/acceleration are in the reduced
+    # coordinate space and must be copied from the model's reduced_state /
+    # reduced_velocity which copy_model_state! just populated.
+    _sync_integrator_from_model!(new.integrator, new.model)
+
     # Seed the new integrator's "previous step" save-state buffers.
     # These are Float64[] after construction and normally filled by
     # save_curr_state at the end of the first successful step.  If that
@@ -643,6 +684,35 @@ end
 
 copy_model_state!(::Model, ::Model) = nothing
 
+# Safety net: if copy_model_state! is somehow called with a RomModel that has
+# no specific overload (i.e. one not in _SWAP_SUPPORTED_ROM_TYPES), throw
+# immediately with a clear message rather than silently doing nothing via the
+# ::Model, ::Model no-op above.  validate_swap_plans should catch these at
+# parse time, but this guards against future code paths that bypass validation.
+function copy_model_state!(dst::Model, src::RomModel)
+    src isa _SWAP_SUPPORTED_ROM_TYPES && return _copy_model_state_dispatch!(dst, src)
+    error(
+        "copy_model_state!: no state-transfer implementation for source ROM type $(typeof(src)).  " *
+        "Add copy_model_state! overloads and register the type in _SWAP_SUPPORTED_ROM_TYPES.",
+    )
+end
+
+function copy_model_state!(dst::RomModel, src::Model)
+    dst isa _SWAP_SUPPORTED_ROM_TYPES && return _copy_model_state_dispatch!(dst, src)
+    error(
+        "copy_model_state!: no state-transfer implementation for destination ROM type $(typeof(dst)).  " *
+        "Add copy_model_state! overloads and register the type in _SWAP_SUPPORTED_ROM_TYPES.",
+    )
+end
+
+# Internal dispatch used by the catch-alls above once the type is confirmed
+# supported.  Forwards to the concrete overloads defined further below.
+_copy_model_state_dispatch!(dst::OpInfModel, src::SolidMechanics) = copy_model_state!(dst, src)
+_copy_model_state_dispatch!(dst::SolidMechanics, src::OpInfModel) = copy_model_state!(dst, src)
+_copy_model_state_dispatch!(dst::OpInfModel, src::OpInfModel)     = copy_model_state!(dst, src)
+# Fallback for any other combination (e.g. two different non-SolidMechanics FOMs).
+_copy_model_state_dispatch!(::Model, ::Model) = nothing
+
 # Public entry: dispatches to the cheap same-mesh direct copy when meshes
 # and per-QP state layouts match, otherwise to the cross-mesh L2 path.
 function copy_model_state!(dst::SolidMechanics, src::SolidMechanics)
@@ -714,6 +784,7 @@ function _has_ivs_to_transfer(dst::SolidMechanics, src::SolidMechanics)
     return !isempty(intersect(Set(src_names), Set(dst_names)))
 end
 
+
 # Build a consistent recovery on demand if the user didn't enable one.  The
 # freshly-built recovery_data lives on the model afterward; output buffers
 # stay empty so the swap does not silently enable nodal output the user did
@@ -725,5 +796,185 @@ function _ensure_recovery_for_swap!(model::SolidMechanics)
             :consistent, model.mesh, model.reference, model.num_int_pts,
         )
     end
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+# ROM ↔ FOM and ROM ↔ ROM state transfer
+# ---------------------------------------------------------------------------
+#
+# Design rationale
+# ----------------
+# An OpInf ROM stores kinematic state in the *reduced* coordinate q̂ ∈ ℝʳ
+# (model.reduced_state / reduced_velocity) and keeps a "shadow" FOM in
+# model.fom_model whose nodal fields are reconstructed from q̂ after every
+# time step via reconstruct_fom_fields!.  Both the reduced and the full-order
+# fields are therefore available at swap time.
+#
+# Four transitions are handled:
+#
+#   FOM  → FOM   (already covered by the SolidMechanics overload above)
+#   FOM  → ROM   project the FOM kinematic fields onto the new ROM basis
+#   ROM  → FOM   lift the ROM's shadow FOM fields into the destination FOM
+#   ROM  → ROM   project the source shadow FOM fields onto the new ROM basis
+#
+# For FOM→ROM and ROM→ROM the projection uses the L2/Galerkin formula
+#       q̂ₖ = Σᵢ Σⱼ Φ[j,i,k] * u_fom[j,i]
+# where Φ has shape (n_var, n_node, n_mode) and u_fom has shape (n_var, n_node).
+# This is the same inner product used in the ROM time integrators.
+#
+# When the source and destination share the *same* FOM mesh, the projection is
+# exact up to machine precision.  When meshes differ (e.g. refining the FOM
+# behind the ROM) we first L2-project the source full-order fields to the
+# destination mesh before computing reduced coordinates, reusing the existing
+# transfer_field machinery.
+#
+# The `time` field on the shadow FOM is also synced so that boundary-condition
+# evaluations after the swap see the correct physical time.
+
+# --- FOM → ROM ---------------------------------------------------------------
+# Project a full-order displacement/velocity/acceleration into the ROM's
+# reduced state and keep the ROM's shadow FOM consistent.
+function copy_model_state!(dst::OpInfModel, src::SolidMechanics)
+    norma_log(1, :swap, "State transfer: FOM → ROM (projecting FOM fields onto ROM basis)")
+    dst_fom = dst.fom_model
+
+    # Transfer full-order kinematic fields to the ROM's shadow FOM, using
+    # mesh-to-mesh L2 projection when meshes differ, direct copy otherwise.
+    if _meshes_match(dst_fom, src) && _state_layouts_match(dst_fom, src)
+        _copy_model_state_direct!(dst_fom, src)
+    else
+        _ensure_recovery_for_swap!(dst_fom)
+        _ensure_recovery_for_swap!(src)
+        _copy_model_state_l2!(dst_fom, src)
+    end
+
+    # Project the (now up-to-date) shadow FOM fields onto the ROM basis.
+    _project_fom_to_rom!(dst)
+    return nothing
+end
+
+# --- ROM → FOM ---------------------------------------------------------------
+# Lift the ROM's reconstructed full-order state into the destination FOM.
+function copy_model_state!(dst::SolidMechanics, src::OpInfModel)
+    norma_log(1, :swap, "State transfer: ROM → FOM (lifting ROM shadow FOM fields into FOM)")
+    src_fom = src.fom_model
+
+    # Use the shadow FOM of the source ROM as the origin.
+    if _meshes_match(dst, src_fom) && _state_layouts_match(dst, src_fom)
+        _copy_model_state_direct!(dst, src_fom)
+    else
+        _ensure_recovery_for_swap!(dst)
+        _ensure_recovery_for_swap!(src_fom)
+        _copy_model_state_l2!(dst, src_fom)
+    end
+    return nothing
+end
+
+# --- ROM → ROM ---------------------------------------------------------------
+# Project the source ROM's reconstructed FOM fields onto the destination ROM basis.
+function copy_model_state!(dst::OpInfModel, src::OpInfModel)
+    norma_log(1, :swap, "State transfer: ROM → ROM (re-projecting onto new ROM basis)")
+    src_fom = src.fom_model
+    dst_fom = dst.fom_model
+
+    # First, bring the destination shadow FOM up to date from the source.
+    if _meshes_match(dst_fom, src_fom) && _state_layouts_match(dst_fom, src_fom)
+        _copy_model_state_direct!(dst_fom, src_fom)
+    else
+        _ensure_recovery_for_swap!(dst_fom)
+        _ensure_recovery_for_swap!(src_fom)
+        _copy_model_state_l2!(dst_fom, src_fom)
+    end
+
+    # Project the destination shadow FOM fields onto the new ROM basis.
+    _project_fom_to_rom!(dst)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+# Core projection helper: FOM nodal fields → ROM reduced coordinates
+# ---------------------------------------------------------------------------
+#
+# Computes the Galerkin projection
+#   q̂ₖ = Σᵢ Σⱼ Φ[i,j,k] * u[i,j]
+# for displacement and velocity, using the shadow FOM stored on `rom`.
+# Acceleration is projected the same way.  The reduced coordinates on `rom`
+# are updated in-place.  The shadow FOM fields are assumed to be current
+# before this function is called.
+function _project_fom_to_rom!(rom::OpInfModel)
+    basis = rom.basis                   # (n_var, n_node, n_mode)
+    fom   = rom.fom_model
+    n_var, n_node, n_mode = size(basis)
+
+    u = fom.displacement  # (n_var, n_node)
+    v = fom.velocity
+    a = fom.acceleration
+
+    q̂_u = zeros(n_mode)
+    q̂_v = zeros(n_mode)
+    q̂_a = zeros(n_mode)
+
+    for k in 1:n_mode
+        for j in 1:n_node
+            for i in 1:n_var
+                dof = (j - 1) * n_var + i
+                fom.free_dofs[dof] || continue
+                q̂_u[k] += basis[i, j, k] * u[i, j]
+                q̂_v[k] += basis[i, j, k] * v[i, j]
+                q̂_a[k] += basis[i, j, k] * a[i, j]
+            end
+        end
+    end
+
+    rom.reduced_state    .= q̂_u
+    rom.reduced_velocity .= q̂_v
+    # Sync the ROM's time from its shadow FOM.
+    rom.time              = fom.time
+
+    norma_logf(1, :swap,
+        "_project_fom_to_rom!: projected %d FOM DOFs onto %d ROM modes",
+        n_var * n_node, n_mode)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+# Integrator ↔ model synchronisation after a swap
+# ---------------------------------------------------------------------------
+#
+# For FOM (SolidMechanics) models the Newmark / CentralDifference integrators
+# hold unsafe_wrap views into the model's displacement / velocity / acceleration
+# arrays, so writing to the model arrays automatically updates the integrator.
+# No explicit sync is needed and the FOM overload is a no-op.
+#
+# For ROM (OpInfModel) models the integrators hold *separate* reduced-space
+# vectors of length n_modes that are NOT linked by view.  After copy_model_state!
+# updates model.reduced_state and model.reduced_velocity we must copy those
+# into the integrator so that the very first predict/correct step after the
+# swap uses the transferred state.
+
+# FOM: no action needed.
+_sync_integrator_from_model!(::TimeIntegrator, ::SolidMechanics) = nothing
+
+# ROM: copy reduced coordinates into the integrator's kinematic arrays.
+function _sync_integrator_from_model!(integrator::TimeIntegrator, model::OpInfModel)
+    n = length(model.reduced_state)
+    # Guard against size mismatch (should not happen if the replacement YAML
+    # specifies the same reduced dimension, but we abort with a clear message
+    # rather than silently broadcasting wrong data).
+    if length(integrator.displacement) != n
+        norma_abortf(
+            "_sync_integrator_from_model!: integrator displacement length %d does not " *
+            "match ROM reduced_state length %d after swap.  Check that the replacement " *
+            "ROM input file uses the same reduced dimension as the source model.",
+            length(integrator.displacement), n,
+        )
+    end
+    integrator.displacement .= model.reduced_state
+    integrator.velocity     .= model.reduced_velocity
+    # Acceleration is zeroed rather than projected: it would require a second
+    # force evaluation on the new model which may not be valid yet.  The first
+    # Newmark predict step will overwrite it with the correct value.
+    fill!(integrator.acceleration, 0.0)
     return nothing
 end
