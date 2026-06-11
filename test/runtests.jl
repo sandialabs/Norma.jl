@@ -97,7 +97,9 @@ const indexed_test_files = [
     (77, "single-static-solid-notched-cylinder-j2-elastic-to-plastic-swap.jl"),
     (78, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap.jl"),
     (79, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap-long.jl"),
-    (80, "schwarz-ahead-overlap-dynamic-notched-cylinder-j2-swap-fom.jl"),   
+    (80, "schwarz-ahead-overlap-dynamic-notched-cylinder-j2-swap-fom.jl"),
+    (81, "single-implicit-dynamic-solid-clamped-bc.jl"),
+    (82, "single-explicit-dynamic-solid-clamped-bc.jl"),
 ]
 
 # Extract test file names
