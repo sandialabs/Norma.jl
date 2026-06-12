@@ -555,6 +555,15 @@ function build_replacement_subsim(sim::MultiDomainSimulation, slot::Int64, plan:
     new.handle = DomainHandle(slot)
     create_bcs(new)
     initialize_storage(new)
+    # Apply BCs at the swap time before returning so that free_dofs is
+    # correctly populated (constrained DOFs marked false) when the caller
+    # subsequently invokes copy_model_state!.  Without this, free_dofs is
+    # all-true (set in the SolidMechanics / OpInfModel constructor) and
+    # _project_fom_to_rom! incorrectly includes constrained-node displacements
+    # in the basis projection, producing a wrong initial reduced state and
+    # negative Jacobians on the first FOM evaluate after a ROM→FOM swap.
+    new.model.time = sim.controller.prev_time
+    apply_bcs(new)
     return new
 end
 
@@ -658,6 +667,15 @@ function build_replacement_single_domain_sim(sim::SingleDomainSimulation, plan::
     new = SingleDomainSimulation(subparams)
     create_bcs(new)
     initialize_storage(new)
+    # Apply BCs at the swap time before returning so that free_dofs is
+    # correctly populated (constrained DOFs marked false) when the caller
+    # subsequently invokes copy_model_state!.  Without this, free_dofs is
+    # all-true (set in the SolidMechanics / OpInfModel constructor) and
+    # _project_fom_to_rom! incorrectly includes constrained-node displacements
+    # in the basis projection, producing a wrong initial reduced state and
+    # negative Jacobians on the first FOM evaluate after a ROM→FOM swap.
+    new.model.time = sim.controller.prev_time
+    apply_bcs(new)
     return new
 end
 
@@ -903,26 +921,44 @@ end
 # are updated in-place.  The shadow FOM fields are assumed to be current
 # before this function is called.
 function _project_fom_to_rom!(rom::OpInfModel)
-    basis = rom.basis                   # (n_var, n_node, n_mode)
+    basis = rom.basis                   # (n_var, n_node_basis, n_mode)
     fom   = rom.fom_model
-    n_var, n_node, n_mode = size(basis)
+    _, _, n_mode = size(basis)
 
-    u = fom.displacement  # (n_var, n_node)
+    u = fom.displacement  # (n_var, n_nodes_fom)
     v = fom.velocity
     a = fom.acceleration
+    # Use the actual FOM node count, not the basis middle dimension.  The
+    # basis array may have been generated with a different mesh or padded with
+    # extra entries, so size(basis, 2) can exceed the number of FOM nodes and
+    # must not be used to bound the node loop (it would produce out-of-bounds
+    # accesses into fom.free_dofs).  This matches the pattern used everywhere
+    # else in the codebase (e.g. reconstruct_fom_fields!).
+    n_nodes_fom = size(u, 2)
 
     q̂_u = zeros(n_mode)
     q̂_v = zeros(n_mode)
     q̂_a = zeros(n_mode)
 
-    for k in 1:n_mode
-        for j in 1:n_node
-            for i in 1:n_var
-                dof = (j - 1) * n_var + i
-                fom.free_dofs[dof] || continue
-                q̂_u[k] += basis[i, j, k] * u[i, j]
-                q̂_v[k] += basis[i, j, k] * v[i, j]
-                q̂_a[k] += basis[i, j, k] * a[i, j]
+    for j in 1:n_nodes_fom
+        x_dof = 3 * (j - 1) + 1
+        y_dof = 3 * (j - 1) + 2
+        z_dof = 3 * (j - 1) + 3
+        for k in 1:n_mode
+            if fom.free_dofs[x_dof]
+                q̂_u[k] += basis[1, j, k] * u[1, j]
+                q̂_v[k] += basis[1, j, k] * v[1, j]
+                q̂_a[k] += basis[1, j, k] * a[1, j]
+            end
+            if fom.free_dofs[y_dof]
+                q̂_u[k] += basis[2, j, k] * u[2, j]
+                q̂_v[k] += basis[2, j, k] * v[2, j]
+                q̂_a[k] += basis[2, j, k] * a[2, j]
+            end
+            if fom.free_dofs[z_dof]
+                q̂_u[k] += basis[3, j, k] * u[3, j]
+                q̂_v[k] += basis[3, j, k] * v[3, j]
+                q̂_a[k] += basis[3, j, k] * a[3, j]
             end
         end
     end
@@ -934,7 +970,7 @@ function _project_fom_to_rom!(rom::OpInfModel)
 
     norma_logf(1, :swap,
         "_project_fom_to_rom!: projected %d FOM DOFs onto %d ROM modes",
-        n_var * n_node, n_mode)
+        3 * n_nodes_fom, n_mode)
     return nothing
 end
 
