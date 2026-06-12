@@ -484,6 +484,34 @@ function maybe_apply_swaps!(sim::SingleDomainSimulation)
 end
 
 # ---------------------------------------------------------------------------
+# Output-file disambiguation
+# ---------------------------------------------------------------------------
+
+# Avoid clobbering output written earlier in this run when the user swaps back
+# to a mesh whose replacement YAML reuses the original "output mesh file".
+# The SingleDomainSimulation constructor unconditionally rm()s and recreates
+# that file, so without uniquification a mesh1 → mesh2 → mesh1 sequence
+# silently loses the first mesh1 phase.  Append "-phase2", "-phase3", ... to
+# both the output filename and the subsim name, matching the convention used
+# by examples/overlap/static-same-step/cuboids-swap.
+function uniquify_swap_output!(subparams::Parameters)
+    output_file = String(subparams["output mesh file"])
+    isfile(output_file) || return nothing
+    base, ext = splitext(output_file)
+    n = 2
+    while isfile(string(base, "-phase", n, ext))
+        n += 1
+    end
+    new_output = string(base, "-phase", n, ext)
+    subparams["output mesh file"] = new_output
+    subparams["name"] = string(subparams["name"], "-phase", n)
+    norma_logf(0, :swap,
+               "Output file '%s' already exists; writing to '%s' instead",
+               output_file, new_output)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
 # The swap itself
 # ---------------------------------------------------------------------------
 
@@ -547,6 +575,8 @@ function build_replacement_subsim(sim::MultiDomainSimulation, slot::Int64, plan:
         get(sim.params, "Exodus output interval", sim.controller.time_step))
     subparams["CSV output interval"] = Float64(
         get(sim.params, "CSV output interval", 0.0))
+
+    uniquify_swap_output!(subparams)
 
     new = SingleDomainSimulation(subparams)
     # Wire parent/handle BEFORE create_bcs so Schwarz BC factories can
@@ -663,6 +693,8 @@ function build_replacement_single_domain_sim(sim::SingleDomainSimulation, plan::
         get(sim.params, "Exodus output interval", sim.controller.time_step))
     subparams["CSV output interval"] = Float64(
         get(sim.params, "CSV output interval", 0.0))
+
+    uniquify_swap_output!(subparams)
 
     new = SingleDomainSimulation(subparams)
     create_bcs(new)
