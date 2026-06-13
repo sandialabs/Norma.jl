@@ -43,3 +43,4 @@ solver:
   maximum iterations: 16
   relative tolerance: 1.0e-10
   absolute tolerance: 1.0e-06
+  rom linear solver: iterative
