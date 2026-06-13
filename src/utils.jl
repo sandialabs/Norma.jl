@@ -160,10 +160,19 @@ function norma_abortf(fmt::AbstractString, args...)
 end
 
 function log_run_error(e::Exception, bt)
-    msg = sprint(showerror, e)
-    norma_log(0, :error, "Run failed with exception: " * msg)
-    bt_str = sprint(Base.show_backtrace, bt)
-    norma_log(0, :error, "Backtrace:" * bt_str)
+    # Emit one norma_log per line so wrap_lines (which split()s on all
+    # whitespace including '\n') doesn't flatten the backtrace's frame-per-line
+    # structure into a single re-wrapped paragraph.  show_backtrace already
+    # prints its own "Stacktrace:" header, so don't add a redundant label.
+    norma_log(0, :error, "Run failed with exception:")
+    for line in split(sprint(showerror, e), '\n')
+        isempty(line) && continue
+        norma_log(0, :error, line)
+    end
+    for line in split(sprint(Base.show_backtrace, bt), '\n')
+        isempty(line) && continue
+        norma_log(0, :error, line)
+    end
     return nothing
 end
 
