@@ -159,6 +159,14 @@ function norma_abortf(fmt::AbstractString, args...)
     end
 end
 
+function log_run_error(e::Exception, bt)
+    msg = sprint(showerror, e)
+    norma_log(0, :error, "Run failed with exception: " * msg)
+    bt_str = sprint(Base.show_backtrace, bt)
+    norma_log(0, :error, "Backtrace:" * bt_str)
+    return nothing
+end
+
 function log_matrix(level::Int, keyword::Symbol, label::AbstractString, M::AbstractMatrix)
     norma_log(level, keyword, "$label:")
     for i in axes(M, 1)
