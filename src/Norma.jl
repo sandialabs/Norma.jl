@@ -44,6 +44,11 @@ function run(input_file::String)
     try
         norma_log(0, :norma, "BEGIN SIMULATION")
         return run(create_simulation(input_file))
+    catch e
+        # Catch here, while the log file is still open, so the error lands in
+        # {example_name}.log.  The finally block closes the file afterward.
+        log_run_error(e, catch_backtrace())
+        rethrow()
     finally
         close_log_file()
     end
