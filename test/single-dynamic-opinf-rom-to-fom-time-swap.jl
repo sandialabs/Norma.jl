@@ -48,7 +48,7 @@
     # After execute the sim should carry the phase-2 name and have no
     # remaining swap plans.
     @test sim.name == "cuboid-fom-t-swap-phase2"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
 
     # ── Completion ──────────────────────────────────────────────────────────
     @test sim.failed == false

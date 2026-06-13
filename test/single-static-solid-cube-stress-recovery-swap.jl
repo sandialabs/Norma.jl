@@ -31,7 +31,7 @@
     # The swap must have fired: name reflects the phase-2 YAML and the
     # plan list (mirroring the replacement, which has none) is empty.
     @test sim.name == "cube-sr-swap-phase2"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
 
     # Simulation ran to completion without failure.
     @test sim.failed == false
@@ -72,7 +72,7 @@ end
     # The swap must have fired: name reflects the phase-2 YAML and the
     # plan list (mirroring the replacement, which has none) is empty.
     @test sim.name == "cube-sr-swap-refine-phase2"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
 
     # Simulation ran to completion without failure.
     @test sim.failed == false

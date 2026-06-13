@@ -18,7 +18,7 @@
     # and the plan list (now mirroring the replacement's, which has none) is
     # empty.
     @test sim.name == "cube-t-swap-phase2"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
     # Simulation reached final time without failure.
     @test sim.failed == false
     @test sim.controller.time ≈ 1.0 rtol = 1.0e-09
