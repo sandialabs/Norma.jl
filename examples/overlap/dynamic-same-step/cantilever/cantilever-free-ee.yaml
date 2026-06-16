@@ -26,7 +26,6 @@ boundary conditions:
     - side set: ssx-
       source: cantilever-clamped
       source block: cantilever_clamped
-      source side set: ssx+
 solver:
     type: explicit solver
     step: explicit

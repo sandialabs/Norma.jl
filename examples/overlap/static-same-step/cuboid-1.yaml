@@ -34,7 +34,6 @@ boundary conditions:
     - side set: ssz+
       source: cuboid-2
       source block: coarse
-      source side set: ssz-
       compute overlap relative error: true
 solver:
   type: Hessian minimizer

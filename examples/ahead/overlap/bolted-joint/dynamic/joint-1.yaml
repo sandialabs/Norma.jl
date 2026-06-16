@@ -38,7 +38,6 @@ boundary conditions:
     - side set: schwarz_ss_parts
       source: joint-2
       source block: component
-      source side set: schwarz_ss_bolts
       search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer

@@ -38,7 +38,6 @@ boundary conditions:
     - side set: ssx+
       source: beam-2
       source block: coarse
-      source side set: ssx-
 solver:
   type: Hessian minimizer
   step: full Newton

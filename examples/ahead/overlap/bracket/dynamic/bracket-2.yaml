@@ -31,7 +31,6 @@ boundary conditions:
     - side set: right-backSS
       source: bracket-1
       source block: left
-      source side set: left-frontSS
 solver:
   type: Hessian minimizer
   step: full Newton

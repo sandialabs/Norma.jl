@@ -42,7 +42,6 @@ boundary conditions:
     - side set: -Z_ss
       source: torsion-1
       source block: bottom
-      source side set: +Z_ss
 solver:
   type: Hessian minimizer
   step: full Newton

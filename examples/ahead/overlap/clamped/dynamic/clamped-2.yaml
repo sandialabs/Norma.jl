@@ -42,7 +42,6 @@ boundary conditions:
     - side set: ssz-
       source: clamped-1
       source block: coarse
-      source side set: ssz+
 solver:
   type: Hessian minimizer
   step: full Newton

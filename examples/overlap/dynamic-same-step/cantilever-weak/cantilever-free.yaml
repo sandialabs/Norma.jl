@@ -25,7 +25,6 @@ boundary conditions:
     - side set: ssx-
       source: cantilever-clamped
       source block: cantilever_clamped
-      source side set: ssx+
       weak: true
 solver:
   type: Hessian minimizer

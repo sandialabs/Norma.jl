@@ -35,7 +35,6 @@ boundary conditions:
     - side set: ssx+
       source: cantilever-free
       source block: cantilever_free
-      source side set: ssx-
       weak: true
 solver:
   type: Hessian minimizer

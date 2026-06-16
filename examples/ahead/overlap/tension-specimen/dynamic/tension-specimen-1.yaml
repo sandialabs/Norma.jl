@@ -31,7 +31,6 @@ boundary conditions:
     - side set: schwarz_lower_ss
       source: tension-specimen-2
       source block: upper
-      source side set: schwarz_upper_ss
       search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer

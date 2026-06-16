@@ -36,7 +36,6 @@ boundary conditions:
     - side set: ssx+
       source: cantilever-free
       source block: cantilever_free
-      source side set: ssx-
 solver:
     type: explicit solver
     step: explicit

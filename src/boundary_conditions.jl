@@ -406,7 +406,9 @@ function SMCouplingSchwarzBC(
     side_set_name = bc_params["side set"]
     coupled_block_name = get(bc_params, "source block", "")
     tol = get(bc_params, "search tolerance", 1.0e-06)
-    coupled_side_set_name = bc_params["source side set"]
+    # Only the nonoverlap variants below use a source side set; overlap variants
+    # couple via a source block instead, so this key may be legitimately absent.
+    coupled_side_set_name = get(bc_params, "source side set", "")
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
     num_nodes_sides = Int64.(num_nodes_sides)
