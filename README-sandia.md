@@ -82,9 +82,12 @@ Open a new shell (or `source` the file) so these take effect.
 
 ### A.3 — Point conda at it (unblocks the PyCall build)
 
-Norma depends on **PyCall**, whose build step runs `conda install numpy` using a
-conda it installs into `~/.julia/conda`. That conda's Python ignores
-`SSL_CERT_FILE`, so configure it explicitly in `~/.condarc`:
+**Only needed if you use the neural-network OpInf ROM.** PyCall is an optional
+dependency (a package extension); a normal install does not build it, so most
+users can skip this section. You only reach it after running `]add PyCall` to
+enable that feature. PyCall's build step runs `conda install numpy` using a conda
+it installs into `~/.julia/conda`. That conda's Python ignores `SSL_CERT_FILE`,
+so configure it explicitly in `~/.condarc`:
 
 ```yaml
 ssl_verify: /home/<you>/ssl/my-ca-bundle.pem   # macOS: /Users/<you>/ssl/my-ca-bundle.pem
@@ -162,7 +165,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 |---|---|---|
 | `Pkg.update()`/first op hangs forever | General registry bootstrap stalled on a transient network hiccup | Re-run; or `julia -e 'using Pkg; Pkg.Registry.add("General")'` then retry. Not a config problem. |
 | `Pkg` fails fetching registry/packages with a TLS/cert error | Julia's bundled CA doesn't trust Sandia's intercepted cert | Section A.1–A.2 (`SSL_CERT_FILE` → CA bundle) |
-| Build error in **PyCall** → `CondaSSLError: CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate` | conda's Python doesn't trust Sandia's cert | Section A.3 (`~/.condarc` `ssl_verify`), then `julia --project=. -e 'using Pkg; Pkg.build("PyCall")'` |
+| Build error in **PyCall** → `CondaSSLError: CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate` (only if you opted into PyCall for the neural-network OpInf ROM) | conda's Python doesn't trust Sandia's cert | Section A.3 (`~/.condarc` `ssl_verify`), then `julia --project=. -e 'using Pkg; Pkg.build("PyCall")'` |
 | Connections time out off-site | Need the Sandia proxy | Section A.4 |
 | `git clone` over SSH hangs | Outbound port 22 blocked | Use the HTTPS URL (Section C) |
 
