@@ -30,6 +30,15 @@ PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 # only when PyCall is present in the active environment.
 NormaPyTorchExt = "PyCall"
 
+[extras]
+# Test-only: `Pkg.test` runs the neural-network ROM test (`--with-nnopinf`),
+# which needs the PyCall backend. Listing PyCall here makes it available in the
+# test environment; the normal install (instantiate) still pulls no Python.
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+
+[targets]
+test = ["PyCall"]
+
 [compat]
 DelimitedFiles = "1"
 Einsum = "0.4"

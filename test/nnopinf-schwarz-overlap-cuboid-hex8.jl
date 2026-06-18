@@ -3,6 +3,13 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+
+# The neural-network OpInf ROM runs on the optional PyTorch backend, which lives
+# in the NormaPyTorchExt package extension. Loading PyCall here triggers that
+# extension so the NN methods are available for the tests below. (This file only
+# runs under `--with-nnopinf`, where PyCall + torch are expected to be present.)
+import PyCall
+
 @testset "NN Opinf Schwarz Overlap Dynamic Cuboid Hex8 Same Step" begin
     cp("../examples/ahead/overlap/cuboid/dynamic-nn-opinf-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/ahead/overlap/cuboid/dynamic-nn-opinf-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
