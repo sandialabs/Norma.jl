@@ -13,6 +13,11 @@ module NormaPyTorchExt
 
 using PyCall
 using LinearAlgebra
+# `import Norma` binds the module name itself so qualified references like
+# `Norma.coupled_subsim_of` and `Norma.SolidMechanics` below resolve. The
+# `import Norma: ...` list only brings the individual names into scope, not the
+# `Norma` module, so both forms are needed.
+import Norma
 import Norma:
     load_torch_models,
     apply_bc,

@@ -51,8 +51,21 @@ jobs:
         env:
           PYTHON: python
 
+      # PyCall is now an optional weak dependency, so julia-buildpkg above does
+      # not install or build it. The neural-network OpInf ROM test needs PyCall
+      # pointed at the system Python (where torch is pip-installed). Build it
+      # explicitly here so its shared deps.jl is configured against `python`
+      # rather than falling back to the Conda backend (which isn't provisioned).
+      # This also overrides any Conda-configured deps.jl restored from cache.
+      - name: Build PyCall against the system Python
+        run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("PyCall"); Pkg.build("PyCall")'
+        env:
+          PYTHON: python
+
       - name: Run tests
         run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--with-nnopinf"])'
+        env:
+          PYTHON: python
 
       - name: Process coverage
         uses: julia-actions/julia-processcoverage@v1
