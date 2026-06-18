@@ -33,7 +33,6 @@ boundary conditions:
   Schwarz overlap:
     - side set: -Z_topSS
       source: notched-cylinder-1
-      source side set: +Z_bottomSS
       source block: fine
       search tolerance: 5.0e-02
 solver:

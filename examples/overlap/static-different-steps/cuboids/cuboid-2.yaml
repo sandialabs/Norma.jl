@@ -29,7 +29,6 @@ boundary conditions:
     - side set: ssz-
       source: cuboid-1
       source block: fine
-      source side set: ssz+
 solver:
   type: Hessian minimizer
   step: full Newton

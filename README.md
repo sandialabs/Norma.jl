@@ -74,9 +74,62 @@ Norma.run("input.yaml")
 ---
 
 ## **Features**
-- Prototyping of coupling and multiphysics algorithms.
-- Applications in solid mechanics and heat conduction.
-- Designed for extensibility and experimentation.
+
+A prototyping framework for solid mechanics, multiphysics, and coupling
+algorithms, with an emphasis on extensibility and experimentation. The
+capabilities currently implemented are:
+
+**Material models** (infinitesimal- and finite-strain kinematics)
+- Linear elastic
+- Saint-Venant–Kirchhoff
+- Neohookean
+- Seth-Hill (generalized hyperelastic with tunable exponents)
+- J2 plasticity (finite deformation, multiplicative split, radial return, linear isotropic hardening)
+
+**Time integration**
+- Quasi-static (with adaptive stepping)
+- Newmark (implicit dynamic)
+- Central difference (explicit dynamic, CFL-controlled)
+
+**Solvers**
+- Newton's method (Hessian minimizer) with optional backtracking line search
+- Matrix-free steepest descent
+- Explicit (lumped-mass) solver
+
+**Element library**
+- 1D: BAR2
+- 2D: TRI3, TRI6, QUAD4
+- 3D: TETRA4, TETRA10, HEX8
+- Gauss, Dunavant, and Keast quadrature rules
+
+**Multidomain coupling — Schwarz alternating method**
+- Single-domain and multi-domain simulations
+- Overlapping and non-overlapping (Dirichlet–Neumann) Schwarz
+- Robin–Robin and impedance-matching (absorbing) Schwarz
+- Frictionless/tied contact via Schwarz
+- Fixed and Aitken (Irons–Tuck) adaptive relaxation, with interface predictor acceleration
+
+**Boundary conditions**
+- Dirichlet (time-dependent displacement/velocity/acceleration)
+- Neumann traction and pressure
+- Robin (mixed displacement–traction)
+- Inclined-surface support via rotation matrices
+
+**Reduced-order models**
+- Operator Inference (OpInf): linear, quadratic, cubic, and neural-network ROMs
+- RBF kernel ROMs (Gaussian, inverse quadratic, inverse multiquadric, thin-plate-spline, Matérn variants)
+
+**Adaptive mesh swapping**
+- Triggered by time, stress-recovery error, overlap L2 displacement error, or elastic-to-plastic transition
+
+**Nodal recovery and field transfer**
+- L2-projection recovery (lumped and consistent mass) of stress, von Mises stress, deformation gradient, and internal variables
+- Mesh-to-mesh field transfer for multidomain and remeshing workflows
+
+**Input/output**
+- YAML input configuration
+- Exodus II output (nodal, element, and global variables)
+- CSV output of nodal and side-set quantities
 
 ---
 
@@ -316,13 +369,9 @@ JULIA_DEBUG= julia --project=@/path/to/Norma.jl /path/to/Norma.jl/src/Norma.jl i
 
 ## **Troubleshooting**
 
-### SSL Certificate Issues
-```bash
-cd ~/.julia/registries
-git clone https://github.com/JuliaRegistries/General.git
-export JULIA_SSL_CA_ROOTS_PATH=/etc/ssl/certs/ca-bundle.crt
-```
-Then retry installation.
+If you are on Sandia's network and run into SSL/TLS certificate errors when
+installing or fetching packages, see [README-sandia.md](README-sandia.md) for a
+complete setup guide.
 
 ---
 

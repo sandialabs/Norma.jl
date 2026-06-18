@@ -159,6 +159,23 @@ function norma_abortf(fmt::AbstractString, args...)
     end
 end
 
+function log_run_error(e::Exception, bt)
+    # Emit one norma_log per line so wrap_lines (which split()s on all
+    # whitespace including '\n') doesn't flatten the backtrace's frame-per-line
+    # structure into a single re-wrapped paragraph.  show_backtrace already
+    # prints its own "Stacktrace:" header, so don't add a redundant label.
+    norma_log(0, :error, "Run failed with exception:")
+    for line in split(sprint(showerror, e), '\n')
+        isempty(line) && continue
+        norma_log(0, :error, line)
+    end
+    for line in split(sprint(Base.show_backtrace, bt), '\n')
+        isempty(line) && continue
+        norma_log(0, :error, line)
+    end
+    return nothing
+end
+
 function log_matrix(level::Int, keyword::Symbol, label::AbstractString, M::AbstractMatrix)
     norma_log(level, keyword, "$label:")
     for i in axes(M, 1)

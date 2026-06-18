@@ -25,7 +25,6 @@ boundary conditions:
   Schwarz overlap:
     - side set: schwarz_ss_bolts
       source: joint-1
-      source side set: schwarz_ss_parts
       source block: component
       search tolerance: 5.0e-02
 solver:

@@ -216,7 +216,7 @@ end
         "cuboid-1.yaml",
         replace(
             cuboid_1_text,
-            "source side set: ssz-" => "source side set: ssz-\n      compute overlap L2 relative error: disp",
+            "source block: coarse" => "source block: coarse\n      compute overlap L2 relative error: disp",
         ),
     )
     cuboid_2_text = read("cuboid-2.yaml", String)
@@ -224,7 +224,7 @@ end
         "cuboid-2.yaml",
         replace(
             cuboid_2_text,
-            "source side set: ssz+" => "source side set: ssz+\n      compute overlap L2 relative error: disp",
+            "source block: fine" => "source block: fine\n      compute overlap L2 relative error: disp",
         ),
     )
 

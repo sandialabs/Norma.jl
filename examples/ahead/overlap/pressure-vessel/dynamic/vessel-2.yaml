@@ -30,7 +30,6 @@ boundary conditions:
   Schwarz overlap:
     - side set: schwarz_ss_top
       source: vessel-1
-      source side set: schwarz_ss_bottom
       source block: vessel-bottom
   Neumann pressure:
     - side set: interior_ss_top
