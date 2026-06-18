@@ -2,7 +2,14 @@ using LinearAlgebra
 using Random
 using Exodus
 
-include("../src/Norma.jl")
+# Under the test suite, Norma is already loaded by runtests.jl and its package
+# extensions (e.g. NormaPyTorchExt, the neural-network OpInf backend) are active.
+# Re-including the source would define a second `Main.Norma` without those
+# extension methods, breaking later tests that rely on them. Only load from
+# source when this file is run on its own.
+if !isdefined(Main, :Norma)
+    include("../src/Norma.jl")
+end
 Random.seed!(0)
 
 a = 1
