@@ -16,13 +16,6 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
   velo_num = expand_derivatives(D(disp_num))
   acce_num = expand_derivatives(D(velo_num))
   opinf_model_directory = bc_params["model-directory"]
-  py"""
-  import torch
-  def get_model(model_file):
-    import os
-    assert os.path.isfile(model_file) , print(model_file + " cannot be found" )
-    return torch.load(model_file,weights_only=False)
-  """
   ensemble_size = bc_params["ensemble-size"]
   if offset == 1
     offset_name = "x"
@@ -33,11 +26,9 @@ function SolidMechanicsOpInfDirichletBC(input_mesh::ExodusDatabase, bc_params::D
   if offset == 3
     offset_name = "z"
   end
-  model = []
-  for i in 1:ensemble_size
-    tmp = py"get_model"(opinf_model_directory * "/BC-" * node_set_name * "-" * offset_name * "-" * string(i-1) * ".pt")
-    push!(model,tmp)
-  end
+  model = load_torch_models([
+    opinf_model_directory * "/BC-" * node_set_name * "-" * offset_name * "-" * string(i - 1) * ".pt" for i in 1:ensemble_size
+  ])
   basis_file = bc_params["model-directory"] * "/nn-opinf-basis-" * node_set_name * "-" * offset_name * ".npz"
   basis = NPZ.npzread(basis_file)
   basis = basis["basis"]
@@ -75,17 +66,10 @@ function SolidMechanicsOpInfOverlapSchwarzBoundaryCondition(
     num_nodes_sides, coupled_subsim, subsim, false, compute_overlap_l2_error
   )
   opinf_model_directory = bc_params["model-directory"]
-  py"""
-  import torch
-  def get_model(model_file):
-    return torch.load(model_file,weights_only=False)
-  """
   ensemble_size = bc_params["ensemble-size"]
-  model = []
-  for i in 1:ensemble_size
-    tmp = py"get_model"(opinf_model_directory * "/BC-" * side_set_name * "-" * string(i-1) * ".pt")
-    push!(model,tmp)
-  end
+  model = load_torch_models([
+    opinf_model_directory * "/BC-" * side_set_name * "-" * string(i - 1) * ".pt" for i in 1:ensemble_size
+  ])
   basis_file = bc_params["model-directory"] * "/nn-opinf-basis-" * side_set_name * ".npz"
   basis = NPZ.npzread(basis_file)
   basis = basis["basis"]
@@ -143,86 +127,11 @@ function SMOpInfCouplingSchwarzBC(
   )
 end
 
-function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichletBC)
-  model.fom_model.time = model.time
-  apply_bc(model.fom_model,bc.fom_bc)
-  bc_vector = zeros(0)
-  for node_index ∈ bc.fom_bc.node_set_node_indices
-    dof_index = 3 * (node_index - 1) + bc.fom_bc.offset
-    disp_val = model.fom_model.displacement[bc.fom_bc.offset, node_index]
-    push!(bc_vector,disp_val)
-  end
-  py"""
-  import numpy as np
-  def setup_inputs(x):
-    xi = np.zeros((1,x.size))
-    xi[0] = x
-    return torch.tensor(xi)
-  """
-  if bc.offset == 1
-    offset_name = "x"
-  end
-  if bc.offset == 2
-    offset_name = "y"
-  end
-  if bc.offset == 3
-    offset_name = "z"
-  end
-  reduced_bc_vector = bc.basis[1,:,:]' * bc_vector
-  model_inputs = py"setup_inputs"(reduced_bc_vector)
-  name = "u-" * bc.name * "-" * offset_name
-  jdict = PyDict(Dict(name => model_inputs))
-  ensemble_size = size(bc.nn_model)[1]
-  for i in 1:ensemble_size
-    reduced_forcing = bc.nn_model[i].forward(jdict)
-    reduced_forcing = torch_tensor_vector(reduced_forcing)
-    #flush_pycall_finalizers()
-    model.reduced_boundary_forcing[:] += reduced_forcing
-  end
-  model.reduced_boundary_forcing[:] = model.reduced_boundary_forcing[:] ./ ensemble_size
-end
-
-function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
-  if (typeof(coupled_subsim_of(bc).model) == SolidMechanics)
-    ## Apply BC to the FOM vector
-    apply_bc_detail(model.fom_model, bc.fom_bc)
-    # populate our own BC vector
-    unique_node_indices = unique(bc.fom_bc.side_set_node_indices)
-    bc_vector = zeros(3, length(unique_node_indices))
-    for i in 1:length(unique_node_indices)
-      node_index = unique_node_indices[i]
-      bc_vector[:, i] = model.fom_model.displacement[:, node_index]
-    end
-    py"""
-    import numpy as np
-    def setup_inputs(x):
-      xi = np.zeros((1,x.size))
-      xi[0] = x
-      inputs = torch.tensor(xi)
-      return inputs
-    """
-    reduced_bc_vector = zeros(size(bc.basis)[3])
-    for i in 1:3
-      reduced_bc_vector[:] += bc.basis[i,:,:]' * bc_vector[i,:]
-    end
-    model_inputs = py"setup_inputs"(reduced_bc_vector)
-    name = "u-" * bc.name
-    jdict = PyDict(Dict(name => model_inputs))
-    ensemble_size = size(bc.nn_model)[1]
-    ensemble_size = size(bc.nn_model)[1]
-    local_reduced_forcing = zeros(size(model.reduced_boundary_forcing)[1])
-    for i in 1:ensemble_size
-      reduced_forcing = bc.nn_model[i].forward(jdict)
-      reduced_forcing = torch_tensor_vector(reduced_forcing)
-      #flush_pycall_finalizers()
-      local_reduced_forcing[:] += reduced_forcing
-    end
-    local_reduced_forcing[:] = local_reduced_forcing[:] ./ ensemble_size
-    model.reduced_boundary_forcing[:] += local_reduced_forcing
-  else
-    throw("ROM-ROM coupling not supported yet")
-  end
-end
+## apply_bc(::NeuralNetworkOpInfRom, ::SolidMechanicsOpInfDirichletBC) and
+## apply_bc_detail(::NeuralNetworkOpInfRom, ::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
+## run PyTorch forward passes and are defined in ext/NormaPyTorchExt.jl. They are
+## only reachable once a NeuralNetworkOpInfRom has been constructed, which already
+## requires the PyCall extension.
 
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
   ## Need to create a fake time integrator and solver for the FOM IC routine

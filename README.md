@@ -116,7 +116,7 @@ capabilities currently implemented are:
 - Inclined-surface support via rotation matrices
 
 **Reduced-order models**
-- Operator Inference (OpInf): linear, quadratic, cubic, and neural-network ROMs
+- Operator Inference (OpInf): linear, quadratic, cubic, and neural-network ROMs (the neural-network variant needs the optional PyCall + PyTorch backend; the rest are pure Julia)
 - RBF kernel ROMs (Gaussian, inverse quadratic, inverse multiquadric, thin-plate-spline, Matérn variants)
 
 **Adaptive mesh swapping**
@@ -152,6 +152,18 @@ pkg> update
 pkg> instantiate
 ```
 Press `Backspace` or `Delete` to exit the package manager.
+
+This installs **no Python dependencies**. Norma's full-order solver, Schwarz
+coupling, the linear/quadratic/cubic OpInf ROMs, and the RBF kernel ROMs are all
+pure Julia. Only the **neural-network OpInf ROM** needs Python (PyTorch via
+PyCall); it is an optional [package extension](https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)).
+To enable it, add PyCall to the environment and make sure its Python has
+`torch` installed:
+```julia
+pkg> add PyCall
+```
+Julia then loads the backend automatically. Without it, requesting a
+`neural network opinf rom` aborts with a message telling you to install PyCall.
 
 ---
 

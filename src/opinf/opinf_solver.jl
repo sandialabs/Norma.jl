@@ -305,41 +305,7 @@ function stop_solve(_::RomExplicitSolver, _::Int64)
     return true
 end
 
-function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::NeuralNetworkOpInfRom)
-    beta  = integrator.β
-    gamma = integrator.γ
-    dt = integrator.time_step
-    num_dof, = size(model.free_dofs)
-    I = Matrix{Float64}(LinearAlgebra.I, num_dof,num_dof)
-    py"""
-    import numpy as np
-    def setup_inputs(x):
-        xi = np.zeros((1,x.size))
-        xi[0] = x
-        inputs = {'x':torch.tensor(xi)}
-        return inputs
-    """ 
-    ensemble_size = size(model.nn_model)[1]
-    stiffness = zeros( num_dof,num_dof )
-    f = zeros( num_dof )
-    model_inputs = py"setup_inputs"(solver.solution)
-    for i in 1:ensemble_size
-      ft,Kt = model.nn_model[i].forward(model_inputs,return_jacobian=true)
-      f += torch_tensor_vector(ft)
-      stiffness += torch_tensor_matrix(Kt)
-      #flush_pycall_finalizers()
-    end
-    stiffness = stiffness./ensemble_size
-    f = f./ensemble_size
-    LHS = I / (dt*dt*beta) - stiffness
-    RHS = model.reduced_boundary_forcing + 1.0/(dt*dt*beta).*integrator.disp_pre
-    residual = RHS - LHS * solver.solution
-    solver.hessian[:,:] = LHS
-    solver.gradient[:] = -residual
-    if any(!isfinite, solver.gradient)
-        model.failed = true
-        norma_log(0, :error, "Non-finite values detected in ROM residual. This may indicate solution divergence.")
-        return nothing
-    end
-    return nothing
-end
+# evaluate(::RomNewmark, ::RomHessianMinimizer, ::NeuralNetworkOpInfRom) runs the
+# PyTorch forward/Jacobian passes and is defined in ext/NormaPyTorchExt.jl. It is
+# only reachable once a NeuralNetworkOpInfRom has been constructed, which already
+# requires the PyCall extension.

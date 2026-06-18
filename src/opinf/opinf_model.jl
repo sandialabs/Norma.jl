@@ -5,28 +5,22 @@
 # top-level Norma.jl directory.
 
 using NPZ
-using PyCall
 
-function torch_tensor_vector(tensor)
-    values = tensor.detach().cpu().tolist()
-    if ndims(values) == 1
-        return Vector{Float64}(values)
-    end
-    return Vector{Float64}(values[1, :])
-end
+# --- Neural-network OpInf ROM: optional PyTorch backend ----------------------
+# Loading the torch stiffness/BC models and running their forward passes is the
+# only part of Norma that needs Python. That code lives in the NormaPyTorchExt
+# package extension, which Julia loads automatically when PyCall is available in
+# the active environment. The stub below is reached only when it is not, and
+# gives a clear, actionable error instead of a cryptic failure.
+const NN_OPINF_PYTORCH_MESSAGE =
+    "Neural-network OpInf ROMs require the optional PyCall + PyTorch backend, " *
+    "which is not installed. Add it with `import Pkg; Pkg.add(\"PyCall\")` and " *
+    "make sure the Python it uses has PyTorch (torch) available."
 
-function torch_tensor_matrix(tensor)
-    values = tensor.detach().cpu().tolist()
-    if ndims(values) == 2
-        return Matrix{Float64}(values)
-    end
-    return Matrix{Float64}(values[1, :, :])
-end
-
-function flush_pycall_finalizers()
-    GC.gc()
-    return nothing
-end
+# Load a torch model from each path and return them as a vector. The real
+# implementation lives in ext/NormaPyTorchExt.jl; this broad `::Any` fallback is
+# only used when the extension is not loaded.
+load_torch_models(_paths) = norma_abort(NN_OPINF_PYTORCH_MESSAGE)
 
 function require_single_threaded_nn_opinf()
     num_threads = Base.Threads.nthreads()
@@ -48,17 +42,10 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     basis_file = opinf_model_directory * "/nn-opinf-basis.npz"
     basis = NPZ.npzread(basis_file)
     basis = basis["basis"]
-    py"""
-    import torch
-    def get_model(model_file):
-      return torch.load(model_file,weights_only=False)
-    """
     ensemble_size = params["model"]["ensemble-size"]
-    model = []
-    for i in 1:ensemble_size
-      tmp =  py"get_model"(opinf_model_directory * "/stiffness-" * string(i-1) * ".pt")
-      push!(model,tmp)
-    end
+    model = load_torch_models([
+        opinf_model_directory * "/stiffness-" * string(i - 1) * ".pt" for i in 1:ensemble_size
+    ])
     num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
     num_dofs = reduced_dim
 
