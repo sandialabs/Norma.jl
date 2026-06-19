@@ -23,6 +23,7 @@ mutable struct RomHessianMinimizer <: Minimizer
     step::Step
     line_search::BackTrackLineSearch
     use_line_search::Bool
+    linear_solver::String
     fom_solver::HessianMinimizer
 end
 

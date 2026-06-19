@@ -44,7 +44,16 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::RomModel)
             model.fom_model.acceleration[3, i] = model.basis[3, i, :]'acceleration
         end
     end
+    model.fom_model.failed = false
     evaluate(model.fom_model, integrator.fom_integrator, solver.fom_solver)
+    if model.fom_model.failed
+        norma_abort(
+            "ROM output reconstruction produced a non-positive Jacobian. " *
+            "The reconstructed full-order displacement field is physically invalid. " *
+            "This may indicate that the ROM basis does not adequately represent " *
+            "the current deformation state, or that the ROM reduced state has diverged.",
+        )
+    end
     write_stop_exodus(sim, model.fom_model)
     return nothing
 end

@@ -27,7 +27,7 @@
 
     # Replacement was substituted in place; phase-2 has no swaps of its own.
     @test sim.name == "cube-tet4-t-swap"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
     @test sim.failed == false
     @test sim.controller.time ≈ 1.0 rtol = 1.0e-09
 

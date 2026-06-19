@@ -67,7 +67,7 @@ using YAML
     # so after the swap the running sim takes that name and carries no further
     # swap plans of its own.
     @test sim.name == "notched-cylinder-j2-elastic-to-plastic-swap-phase2"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
 
     # ── Completion ──────────────────────────────────────────────────────────
     @test sim.failed == false

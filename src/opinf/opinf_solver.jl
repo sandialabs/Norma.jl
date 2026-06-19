@@ -27,6 +27,16 @@ function RomHessianMinimizer(params::Parameters, model::RomModel)
     failed = false
     step = create_step(solver_params)
     use_line_search = get(solver_params, "use line search", false)
+    # Linear solver for the ROM reduced system.  "direct" (default) uses Julia's
+    # built-in LU factorisation via the backslash operator and handles non-symmetric
+    # matrices correctly.  "iterative" uses CG from IterativeSolvers; this is only
+    # appropriate when the ROM system matrix is symmetric positive-definite and the
+    # reduced dimension is large enough that a direct solve would be expensive.
+    linear_solver = get(solver_params, "rom linear solver", "direct")
+    linear_solver in ("direct", "iterative") || norma_abortf(
+        "Unknown ROM linear solver '%s'. Valid options are 'direct' and 'iterative'.",
+        linear_solver,
+    )
     ls_backtrack_factor = get(solver_params, "line search backtrack factor", 0.5)
     ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
     ls_max_iters = get(solver_params, "line search maximum iterations", 16)
@@ -51,6 +61,7 @@ function RomHessianMinimizer(params::Parameters, model::RomModel)
         step,
         line_search,
         use_line_search,
+        linear_solver,
         fom_solver,
     )
 end
@@ -260,9 +271,20 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Li
 end
 
 function compute_step(_::DynamicTimeIntegrator, model::RomModel, solver::RomHessianMinimizer, _::NewtonStep)
-    atol = solver.linear_solver_absolute_tolerance
-    rtol = solver.linear_solver_relative_tolerance
-    return -solve_linear(solver.hessian, solver.gradient, atol, rtol)
+    if solver.linear_solver == "direct"
+        # Dense direct solve (LU factorisation via backslash).  Correct for both
+        # symmetric and non-symmetric ROM system matrices, and cheap for the small
+        # reduced systems typical in OpInf.  This is the default.
+        return -Matrix(solver.hessian) \ solver.gradient
+    else
+        # Iterative CG solve.  Only appropriate when the ROM system matrix is
+        # symmetric positive-definite (e.g. symmetric OpInf operators) and the
+        # reduced dimension is large enough to justify an iterative approach.
+        # Opt in via 'rom linear solver: iterative' in the solver yaml block.
+        atol = solver.linear_solver_absolute_tolerance
+        rtol = solver.linear_solver_relative_tolerance
+        return -solve_linear(solver.hessian, solver.gradient, atol, rtol)
+    end
 end
 
 function compute_step(_::RomCentralDifference, model::RomModel, solver::RomExplicitSolver, _::ExplicitStep)

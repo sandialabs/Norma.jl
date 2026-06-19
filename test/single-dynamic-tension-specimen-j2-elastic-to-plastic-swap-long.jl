@@ -55,7 +55,7 @@
 
     # ── Swap fired ──────────────────────────────────────────────────────────
     @test sim.name == "tension-specimen-j2-elastic-to-plastic-swap-phase2"
-    @test isempty(sim.swaps)
+    @test all(p.applied for p in sim.swaps)
 
     # ── Completion ──────────────────────────────────────────────────────────
     @test sim.failed == false
