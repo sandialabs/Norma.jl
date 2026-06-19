@@ -2,10 +2,12 @@ ${side = 1.0}
 ${h_size = 0.1}
 
 create brick x {side} y {side} z {side}
+volume all scheme tetmesh
 volume all size {h_size}
 mesh volume all
 block 1 volume 1
 block 1 name "cube"
+block 1 element type tetra4
 nodeset 1 surface with x_coord < 0
 nodeset 1 name "nsx-"
 nodeset 2 surface with x_coord > 0

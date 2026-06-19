@@ -1,14 +1,16 @@
 type: single
 input mesh file: cube.g
 output mesh file: cube.e
-CSV output interval: 0
 model:
   type: mesh smoothing
+  smooth reference: max
   material:
     blocks:
       cube: elastic
     elastic:
-      model: neohookean
+      model: seth-hill
+      m: 2
+      n: 2
       bulk modulus: 1.0e+03
       shear modulus: 1.0e+03
       density: 1000.0
