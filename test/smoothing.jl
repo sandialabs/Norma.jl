@@ -521,3 +521,134 @@ end
         rm(out; force=true)
     end
 end
+
+# Structured cube of n^3 hex cells, each split into 6 tets (Kuhn split on the
+# v0-v6 diagonal).  Returns coordinates, connectivity (num_elems x 4), and the
+# boundary / interior node-id lists.
+function _make_tet_grid(n)
+    idx(i, j, k) = i + (n + 1) * j + (n + 1)^2 * k + 1
+    coords = zeros(3, (n + 1)^3)
+    boundary = Int[]
+    interior = Int[]
+    h = 1.0 / n
+    for k in 0:n, j in 0:n, i in 0:n
+        p = idx(i, j, k)
+        coords[:, p] = [i * h, j * h, k * h]
+        (i in (0, n) || j in (0, n) || k in (0, n)) ? push!(boundary, p) : push!(interior, p)
+    end
+    tets = NTuple{4,Int}[]
+    for k in 0:n-1, j in 0:n-1, i in 0:n-1
+        v = (idx(i, j, k), idx(i+1, j, k), idx(i+1, j+1, k), idx(i, j+1, k),
+             idx(i, j, k+1), idx(i+1, j, k+1), idx(i+1, j+1, k+1), idx(i, j+1, k+1))
+        for t in ((1,2,3,7), (1,3,4,7), (1,4,8,7), (1,8,5,7), (1,5,6,7), (1,6,2,7))
+            push!(tets, (v[t[1]], v[t[2]], v[t[3]], v[t[4]]))
+        end
+    end
+    conn = Matrix{Int}(undef, length(tets), 4)
+    for (e, t) in enumerate(tets)
+        conn[e, :] .= collect(t)
+    end
+    return coords, conn, boundary, interior, h
+end
+
+# Flip node order so every tet has positive signed volume (the smoothing ideal
+# reference is positively oriented, so this keeps det(F) > 0 at the start).
+function _orient_tets!(coords, conn)
+    for e in 1:size(conn, 1)
+        p = coords[:, conn[e, :]]
+        if dot(p[:,2]-p[:,1], cross(p[:,3]-p[:,1], p[:,4]-p[:,1])) < 0
+            tmp = conn[e, 3]; conn[e, 3] = conn[e, 4]; conn[e, 4] = tmp
+        end
+    end
+end
+
+@testset "torture_mesh_robustness" begin
+    # Robustness guard: on a sliver-laden mesh, the L-BFGS step must be no less
+    # robust than steepest descent — i.e. it must not invert an element where SD
+    # would survive.  We build a small structured tet grid, fix the whole
+    # boundary, and shove the interior nodes by 30% of the cell size (a fixed
+    # pseudo-random perturbation that produces strongly distorted, near-sliver
+    # elements while keeping a valid start).  Both solvers must finish without a
+    # non-positive Jacobian (model.failed) and reduce the pseudo-energy.
+    mesh = joinpath(@__DIR__, "torture_robustness.g")
+    coords, conn, boundary, interior, h = _make_tet_grid(3)
+    _orient_tets!(coords, conn)
+    Random.seed!(123)
+    for p in interior
+        coords[:, p] .+= (2 .* Random.rand(3) .- 1) .* (0.30 * h)
+    end
+
+    function smooth(step)
+        out = joinpath(@__DIR__, "torture_robustness_$(step).e")
+        rm(out; force=true)
+        params = Dict{String,Any}(
+            "name" => "torture_robustness", "type" => "single",
+            "input mesh file" => mesh, "output mesh file" => out,
+            "Exodus output interval" => 0, "CSV output interval" => 0,
+            "model" => Dict{String,Any}(
+                "type" => "mesh smoothing", "smooth reference" => "max",
+                "material" => Dict{String,Any}(
+                    "blocks" => Dict{String,Any}("block" => "elastic"),
+                    "elastic" => Dict{String,Any}(
+                        "model" => "seth-hill", "m" => 2, "n" => 2,
+                        "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    ),
+                ),
+            ),
+            "time integrator" => Dict{String,Any}(
+                "type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0
+            ),
+            "boundary conditions" => Dict{String,Any}(
+                "Dirichlet" => [
+                    Dict{String,Any}("node set" => "boundary", "component" => "x", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "boundary", "component" => "y", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "boundary", "component" => "z", "function" => "0.0"),
+                ],
+            ),
+            "solver" => Dict{String,Any}(
+                "type" => "steepest descent", "step" => step,
+                "minimum iterations" => 1, "maximum iterations" => 60,
+                "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
+                "step length" => 1.0e-3, "use line search" => true,
+                "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+                "line search maximum iterations" => 16,
+            ),
+        )
+        step == "lbfgs" && (params["solver"]["memory"] = 10)
+        sim = Norma.create_simulation(params)
+        Norma.initialize(sim)
+        Norma.evaluate(sim.integrator, sim.solver, sim.model)
+        e0 = sim.model.strain_energy
+        Norma.evolve(sim)
+        ef = sim.model.strain_energy
+        Norma.finalize_writing(sim)
+        rm(out; force=true)
+        return e0, ef, sim.model.failed
+    end
+
+    try
+        init = Initialization{Int32}(
+            Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
+        )
+        rm(mesh; force=true)
+        exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
+        write_coordinates(exo, coords)
+        write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
+        write_name(exo, Block, 1, "block")
+        ns = NodeSet(1, Vector{Int32}(boundary))
+        write_set(exo, ns)
+        write_name(exo, ns, "boundary")
+        close(exo)
+
+        e0_sd, ef_sd, failed_sd = smooth("steepest descent")
+        e0_lb, ef_lb, failed_lb = smooth("lbfgs")
+
+        @test !failed_sd            # SD does not invert the mesh
+        @test !failed_lb            # L-BFGS does not invert it either (the guard)
+        @test ef_sd < e0_sd         # both actually smooth
+        @test ef_lb < e0_lb
+        @test ef_lb ≤ ef_sd         # and L-BFGS is no worse than SD here
+    finally
+        rm(mesh; force=true)
+    end
+end
