@@ -441,3 +441,83 @@ end
         rm(output_mesh_file; force=true)
     end
 end
+
+@testset "awful_cube_multielement" begin
+    # Multi-element regression on the real, badly distorted awful-cube mesh
+    # (6955 tets, slivers along the boundary).  Unlike the single-tet cases
+    # above there is no closed-form minimizer, so we check the two robust
+    # invariants of a working smoother: the total pseudo-strain-energy (the
+    # global distortion measure being minimized) drops sharply, and the mesh
+    # stays valid (every det(F) > 0, i.e. no element inverts — surfaced by
+    # model.failed).  We run a single pseudo-time step with a small iteration
+    # budget for both the steepest-descent and L-BFGS steps, and also confirm
+    # L-BFGS reaches a lower energy than SD for the same budget.
+    mesh = joinpath(@__DIR__, "..", "examples", "ems", "awful-cube", "awful-cube.g")
+    out = joinpath(@__DIR__, "awful_cube_regression.e")
+
+    function smooth_energy(step)
+        params = Dict{String,Any}(
+            "name" => "awful_cube_regression",
+            "type" => "single",
+            "input mesh file" => mesh,
+            "output mesh file" => out,
+            "Exodus output interval" => 0,
+            "CSV output interval" => 0,
+            "model" => Dict{String,Any}(
+                "type" => "mesh smoothing",
+                "smooth reference" => "max",
+                "material" => Dict{String,Any}(
+                    "blocks" => Dict{String,Any}("awful" => "elastic"),
+                    "elastic" => Dict{String,Any}(
+                        "model" => "seth-hill", "m" => 2, "n" => 2,
+                        "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    ),
+                ),
+            ),
+            "time integrator" => Dict{String,Any}(
+                "type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0
+            ),
+            "boundary conditions" => Dict{String,Any}(
+                "Dirichlet" => [
+                    Dict{String,Any}("node set" => "nsx-", "component" => "x", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "nsy-", "component" => "y", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "nsz-", "component" => "z", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "nsx+", "component" => "x", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "nsy+", "component" => "y", "function" => "0.0"),
+                    Dict{String,Any}("node set" => "nsz+", "component" => "z", "function" => "0.0"),
+                ],
+            ),
+            "solver" => Dict{String,Any}(
+                "type" => "steepest descent", "step" => step,
+                "minimum iterations" => 1, "maximum iterations" => 30,
+                "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
+                "step length" => 1.0e-3, "use line search" => true,
+                "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+                "line search maximum iterations" => 16,
+            ),
+        )
+        step == "lbfgs" && (params["solver"]["memory"] = 10)
+        rm(out; force=true)  # Exodus refuses to overwrite an existing output mesh
+        sim = Norma.create_simulation(params)
+        Norma.initialize(sim)
+        Norma.evaluate(sim.integrator, sim.solver, sim.model)
+        e0 = sim.model.strain_energy        # energy of the original mesh
+        Norma.evolve(sim)
+        ef = sim.model.strain_energy        # energy after smoothing
+        Norma.finalize_writing(sim)         # close the output Exodus handle
+        return e0, ef, sim.model.failed
+    end
+
+    try
+        e0_sd, ef_sd, failed_sd = smooth_energy("steepest descent")
+        @test !failed_sd                    # no inverted elements: min det(F) > 0
+        @test ef_sd < 0.05 * e0_sd          # SD reduces distortion energy by >20x
+
+        e0_lb, ef_lb, failed_lb = smooth_energy("lbfgs")
+        @test !failed_lb                    # no inverted elements: min det(F) > 0
+        @test ef_lb < 1.0e-3 * e0_lb        # L-BFGS reduces it by >1000x
+        @test ef_lb < ef_sd                 # and outperforms SD at equal budget
+    finally
+        rm(out; force=true)
+    end
+end
