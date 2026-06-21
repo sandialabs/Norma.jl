@@ -376,3 +376,68 @@ output_mesh_file = "tet_smoothing.e"
         end
     end
 end
+
+@testset "tet_smoothing_lbfgs" begin
+    # Same pure-shear analytical case as the first sub-test of "tet_smoothing",
+    # but solved with the L-BFGS step instead of steepest descent.  Both must
+    # recover the regular tetrahedron (the exact energy minimizer), so this is a
+    # correctness check on the quasi-Newton step against a known solution.
+    a = 1
+    top_xy_disp = Random.rand(2) * a * 0.1
+    tet_coords = reg_tet_coords + [
+        0.0 0.0 0.0 top_xy_disp[1]
+        0.0 0.0 0.0 top_xy_disp[2]
+        0.0 0.0 0.0 0.0
+    ]
+    node_sets = Dict{String,Vector}("base" => tet_base)
+    num_dim, num_nodes = size(tet_coords)
+    num_elems = size(tet_conn, 2)
+
+    try
+        tet_init = Initialization{Int32}(
+            Int32(num_dim), Int32(num_nodes), Int32(num_elems), Int32(1), Int32(length(node_sets)), Int32(0)
+        )
+        rm(input_mesh_file; force=true)
+        rm(output_mesh_file; force=true)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
+        write_coordinates(tet_exo, tet_coords)
+        write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
+        write_name(tet_exo, Block, 1, "block")
+        for (i, (node_set_name, ns)) in enumerate(node_sets)
+            node_set = NodeSet(i, Vector{Int32}(ns))
+            write_set(tet_exo, node_set)
+            write_name(tet_exo, node_set, node_set_name)
+        end
+        close(tet_exo)
+
+        lbfgs_params = deepcopy(base_params)
+        lbfgs_params["solver"]["step"] = "lbfgs"
+        lbfgs_params["solver"]["memory"] = 10
+        lbfgs_params["solver"]["step length"] = 1.0e-3
+        tet_test_params = merge(
+            lbfgs_params,
+            Dict{String,Any}(
+                "name" => "shear_tet_smoothing_lbfgs",
+                "input mesh file" => input_mesh_file,
+                "output mesh file" => output_mesh_file,
+                "boundary conditions" => Dict{String,Any}(
+                    "Dirichlet" => [
+                        Dict{String,Any}("node set" => "base", "component" => "x", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "base", "component" => "y", "function" => "0.0"),
+                        Dict{String,Any}("node set" => "base", "component" => "z", "function" => "0.0"),
+                    ],
+                ),
+            ),
+        )
+        tet_test_params["model"]["material"]["elastic"]["shear modulus"] = 1.0
+        tet_test_params["model"]["material"]["elastic"]["bulk modulus"] = 0.0
+        tet_test_params["model"]["smooth reference"] = "equal volume"
+
+        sim = Norma.run(tet_test_params)
+
+        @test sim.integrator.displacement ≈ vec(reg_tet_coords - tet_coords) atol = a*1.0e-6
+    finally
+        rm(input_mesh_file; force=true)
+        rm(output_mesh_file; force=true)
+    end
+end

@@ -211,6 +211,13 @@ const I3 = @SMatrix [
     0.0 0.0 1.0
 ]
 
+# Placeholder returned in lieu of the material tangent when a matrix-free
+# solver (e.g. steepest descent, L-BFGS) is in use and the tangent would only
+# be discarded.  Constructing the real tangent (AD Hessian for SethHill, or the
+# convected/finite-difference tangents for the other models) dominates the
+# per-element cost, so skipping it speeds up every residual-only evaluation.
+const ZERO_TANGENT = zero(SArray{Tuple{3,3,3,3},Float64,4,81})
+
 function odot(A::SMatrix{3,3,Float64,9}, B::SMatrix{3,3,Float64,9})
     C = MArray{Tuple{3,3,3,3},Float64}(undef)
     for a in 1:3
@@ -331,7 +338,7 @@ function strain_energy(material::SethHill, F::SMatrix{3,3,T,9}) where {T<:Number
     return Wbulk + Wshear
 end
 
-function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9})
+function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     C = F' * F
     E = 0.5 .* (C - I3)
     λ = material.λ
@@ -339,6 +346,8 @@ function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9}
     trE = tr(E)
     W = 0.5 * λ * (trE^2) + μ * tr(E * E)
     S = λ * trE .* I3 .+ 2.0 .* μ .* E
+    P = F * S
+    need_tangent || return W, P, ZERO_TANGENT
     CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3
         for j in 1:3
@@ -350,12 +359,11 @@ function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9}
         end
     end
     CC_s = SArray{Tuple{3,3,3,3}}(CC_m)
-    P = F * S
     AA = convect_tangent(CC_s, S, F)
     return W, P, AA
 end
 
-function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
+function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     ∇u = F - I3
     ϵ = 0.5 .* (∇u + ∇u')
     λ = material.λ
@@ -363,6 +371,7 @@ function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
     trϵ = tr(ϵ)
     W = 0.5 * λ * (trϵ^2) + μ * tr(ϵ * ϵ)
     σ = λ * trϵ .* I3 .+ 2.0 .* μ .* ϵ
+    need_tangent || return W, σ, ZERO_TANGENT
     CC_m = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3
         for j in 1:3
@@ -377,7 +386,7 @@ function constitutive(material::Linear_Elastic, F::SMatrix{3,3,Float64,9})
     return W, σ, CC_s
 end
 
-function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9})
+function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     C = F' * F
     J2 = det(C)
     Jm23 = inv(cbrt(J2))
@@ -391,13 +400,14 @@ function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9})
     Svol = 0.5 * κ * (J2 - 1.0) .* IC
     Sdev = μ .* Jm23 .* (I3 .- (IC .* (trC / 3.0)))
     S = Svol .+ Sdev
+    P = F * S
+    need_tangent || return W, P, ZERO_TANGENT
     ICxIC = ox(IC, IC)
     ICoIC = odot(IC, IC)
     μJ2n = 2.0 * μ * Jm23 / 3.0
     CCvol = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC)
     CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
     CC = CCvol .+ CCdev
-    P = F * S
     AA = convect_tangent(CC, S, F)
     return W, P, AA
 end
@@ -427,7 +437,7 @@ function tangent_ad(material::Elastic, F::SMatrix{3,3,Float64,9})
 end
 
 # SethHill: manual (W, P) — shares intermediates — plus AD tangent.
-function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
+function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     C = F' * F
     F⁻¹ = inv(F)
     F⁻ᵀ = F⁻¹'
@@ -454,6 +464,7 @@ function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9})
         material.μ / material.n *
         (1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
     P = Pbulk + Pshear
+    need_tangent || return W, P, ZERO_TANGENT
     AA = tangent_ad(material, F)
     return W, P, AA
 end
@@ -464,14 +475,15 @@ end
 # (e.g. new models added by a developer who only defines strain_energy).
 # ---------------------------------------------------------------------------
 
-function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9})
+function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     Fv = Vector{Float64}(undef, 9)
     Fv .= vec(F)
     W_func = x -> strain_energy(material, SMatrix{3,3,eltype(x),9}(x))
     W = W_func(Fv)
     Pv = ForwardDiff.gradient(W_func, Fv)
-    Hmat = ForwardDiff.hessian(W_func, Fv)
     P = SMatrix{3,3,Float64,9}(reshape(Pv, 3, 3))
+    need_tangent || return W, P, ZERO_TANGENT
+    Hmat = ForwardDiff.hessian(W_func, Fv)
     AA = SArray{Tuple{3,3,3,3},Float64,4,81}(reshape(Hmat, 3, 3, 3, 3))
     return W, P, AA
 end
@@ -983,9 +995,10 @@ end
 # Top-level constitutive call (replaces old _j2_stress + _j2_tangent_analytical)
 # ---------------------------------------------------------------------------
 
-function constitutive(material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
+function constitutive(material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64}; need_tangent::Bool=true)
     W, P, state_new, s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n =
         _sh_j2_stress(material, F, state_old)
+    need_tangent || return W, P, ZERO_TANGENT, state_new
     AA = _sh_j2_tangent(material, F, state_old, P,
                          s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n)
     return W, P, AA, state_new

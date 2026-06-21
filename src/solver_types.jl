@@ -80,4 +80,21 @@ struct SteepestDescentStep <: Step
     step_length::Float64
 end
 
+# Limited-memory BFGS step for matrix-free minimization (e.g. EMS mesh
+# smoothing).  Stores a short history of (s, y) = (Δsolution, Δgradient) pairs
+# and reconstructs a quasi-Newton search direction via the two-loop recursion,
+# giving curvature-aware steps without ever assembling a Hessian.  Mutable
+# because the history evolves across iterations; `reset_step!` clears it at the
+# start of each nonlinear solve.
+mutable struct LBFGSStep <: Step
+    step_length::Float64
+    memory::Int64
+    s_history::Vector{Vector{Float64}}
+    y_history::Vector{Vector{Float64}}
+    rho_history::Vector{Float64}
+    prev_solution::Vector{Float64}
+    prev_gradient::Vector{Float64}
+    initialized::Bool
+end
+
 include("opinf/opinf_solver_types.jl")

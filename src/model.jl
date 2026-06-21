@@ -736,9 +736,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
                 local W, P, AA
                 try
                     if material isa (Elastic)
-                        W, P, AA = constitutive(material, F)
+                        W, P, AA = constitutive(material, F; need_tangent=flags.compute_stiffness)
                     else
-                        W, P, AA, state_new = constitutive(material, F, state)
+                        W, P, AA, state_new = constitutive(material, F, state; need_tangent=flags.compute_stiffness)
                         model.state[block_index][block_element_index][point] = state_new
                     end
                 catch e

@@ -156,6 +156,12 @@ function SteepestDescentStep(params::Parameters)
     return SteepestDescentStep(step_length)
 end
 
+function LBFGSStep(params::Parameters)
+    step_length = get(params, "step length", 1.0)
+    memory = get(params, "memory", 10)
+    return LBFGSStep(step_length, memory, Vector{Float64}[], Vector{Float64}[], Float64[], Float64[], Float64[], false)
+end
+
 function create_step(solver_params::Parameters)
     step_name = solver_params["step"]
     if step_name == "full Newton"
@@ -164,9 +170,23 @@ function create_step(solver_params::Parameters)
         return ExplicitStep(solver_params)
     elseif step_name == "steepest descent"
         return SteepestDescentStep(solver_params)
+    elseif step_name == "lbfgs"
+        return LBFGSStep(solver_params)
     else
         norma_abort("Unknown type of solver step: $step_name")
     end
+end
+
+# Clear any per-solve state held by a step.  Most steps are stateless; L-BFGS
+# carries a (s, y) history that must be discarded at the start of each
+# nonlinear solve so curvature is not mixed across pseudo-time steps.
+reset_step!(::Step) = nothing
+function reset_step!(step::LBFGSStep)
+    empty!(step.s_history)
+    empty!(step.y_history)
+    empty!(step.rho_history)
+    step.initialized = false
+    return nothing
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
@@ -329,6 +349,115 @@ function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver:
     return backtrack_line_search(integrator, solver, model, direction)
 end
 
+# Two-loop recursion: reconstruct d = -H g, where H approximates the inverse
+# Hessian from the stored (s, y) history (Nocedal & Wright, Alg. 7.4).
+function lbfgs_direction(step::LBFGSStep, g::Vector{Float64})
+    m = length(step.s_history)
+    m == 0 && return -g  # no curvature yet: plain steepest descent
+    q = copy(g)
+    α = Vector{Float64}(undef, m)
+    @inbounds for i in m:-1:1
+        α[i] = step.rho_history[i] * dot(step.s_history[i], q)
+        q .-= α[i] .* step.y_history[i]
+    end
+    s_last = step.s_history[m]
+    y_last = step.y_history[m]
+    γ = dot(s_last, y_last) / dot(y_last, y_last)  # initial Hessian scaling
+    r = γ .* q
+    @inbounds for i in 1:m
+        β = step.rho_history[i] * dot(step.y_history[i], r)
+        r .+= (α[i] - β) .* step.s_history[i]
+    end
+    return -r
+end
+
+function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::MatrixFree, step::LBFGSStep)
+    free = model.free_dofs
+    g = solver.gradient[free]
+    x = solver.solution[free]
+    # Fold the step just taken into the curvature history before computing the
+    # next direction.  s = Δsolution, y = Δgradient over the previous iteration.
+    if step.initialized
+        s = x - step.prev_solution
+        y = g - step.prev_gradient
+        sy = dot(s, y)
+        if sy > 1.0e-12 * dot(s, s)  # curvature condition keeps H positive definite
+            push!(step.s_history, s)
+            push!(step.y_history, y)
+            push!(step.rho_history, 1.0 / sy)
+            if length(step.s_history) > step.memory
+                popfirst!(step.s_history)
+                popfirst!(step.y_history)
+                popfirst!(step.rho_history)
+            end
+        end
+    end
+    if length(step.s_history) == 0
+        # No curvature yet: take a unit-normalized steepest-descent step whose
+        # length is set by `step length` (small), exactly like the SD solver.
+        direction = LinearAlgebra.normalize(-g)
+        step_length0 = step.step_length
+    else
+        # Quasi-Newton direction is already Hessian-scaled, so a unit step is
+        # the natural starting point for the line search.
+        direction = lbfgs_direction(step, g)
+        step_length0 = 1.0
+    end
+    step.prev_solution = x
+    step.prev_gradient = g
+    step.initialized = true
+    return backtrack_line_search_energy(integrator, solver, model, step_length0, direction)
+end
+
+# Armijo backtracking line search on the potential energy (`solver.value`),
+# the quantity EMS smoothing actually minimizes.  Unlike `backtrack_line_search`
+# (which uses the residual-norm merit and a unit-normalized direction), this
+# keeps the quasi-Newton step magnitude and uses the energy directional
+# derivative gᵀd, so an accepted L-BFGS step length near 1 is the common case.
+function backtrack_line_search_energy(
+    integrator::TimeIntegrator, solver::Solver, model::SolidMechanics, step_length0::Float64, direction::Vector{Float64}
+)
+    backtrack_factor = solver.line_search.backtrack_factor
+    decrease_factor = solver.line_search.decrease_factor
+    max_iters = solver.line_search.max_iters
+    free = model.free_dofs
+    g = solver.gradient[free]
+    slope = dot(g, direction)
+    if slope ≥ 0.0  # not a descent direction (numerical breakdown): fall back
+        direction = -g
+        slope = dot(g, direction)
+    end
+    energy_init = solver.value
+    step_length = step_length0
+    compute_stiffness = model.compute_stiffness
+    compute_mass = model.compute_mass
+    compute_lumped_mass = model.compute_lumped_mass
+    model.compute_stiffness = false
+    model.compute_mass = false
+    model.compute_lumped_mass = false
+    initial_solution = 1.0 * solver.solution
+    increment = step_length * direction
+    for iter in 1:max_iters
+        increment = step_length * direction
+        solver.solution[free] = initial_solution[free] + increment
+        evaluate(integrator, solver, model)
+        if model.failed == true
+            model.failed = false  # a non-positive Jacobian only means the trial step is too long
+            step_length *= backtrack_factor
+            continue
+        end
+        if solver.value ≤ energy_init + decrease_factor * step_length * slope
+            break
+        end
+        step_length *= backtrack_factor
+    end
+    solver.solution .= initial_solution
+    model.compute_stiffness = compute_stiffness
+    model.compute_mass = compute_mass
+    model.compute_lumped_mass = compute_lumped_mass
+    return increment
+end
+
 function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
     return -solver.gradient[free] ./ solver.lumped_hessian[free]
@@ -418,6 +547,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     iteration_number = 1
     solver.failed = solver.failed || model.failed
     step_type = solver.step
+    reset_step!(step_type)  # clear any per-solve state (e.g. L-BFGS curvature history)
     while true
         step = compute_step(integrator, model, solver, step_type)
         solver.solution[model.free_dofs] += step
