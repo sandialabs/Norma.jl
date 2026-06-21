@@ -1,0 +1,150 @@
+${m = 1.0}
+${mm = 0.001 * m}
+${side = 1.0 * mm}
+${length = 1.0 * m}
+${h_size_face = 1.0 * mm}
+${intervals_1 = 500}
+${intervals_2 = 500}
+${intervals_3 = 500}
+
+# Three overlapping subdomains in the z direction.
+# For n = 3 subdomains with pairwise overlap overlap_length,
+# length = 3 * domain_length - 2 * overlap_length.
+${overlap_length = side * 500}
+${domain_length = (length + 2.0 * overlap_length) / 3.0}
+
+# Place the full domain over z in [-length/2, length/2].
+# Subdomain 1: [-length/2, -length/2 + domain_length]
+# Subdomain 2: [z1_max - overlap_length, z1_max - overlap_length + domain_length]
+# Subdomain 3: [z2_max - overlap_length, length/2]
+${center_1 = -length / 2.0 + domain_length / 2.0}
+${center_2 = center_1 + domain_length - overlap_length}
+${center_3 = center_2 + domain_length - overlap_length}
+${shift_12 = center_2 - center_1}
+${shift_23 = center_3 - center_2}
+
+create brick x {side} y {side} z {domain_length}
+move volume 1 z {center_1} include_merged
+surface 1 2 size {h_size_face}
+surface 1 2 scheme submap
+mesh surface 1 2
+curve 9 10 11 12 interval {intervals_1}
+mesh volume 1
+block 1 volume 1
+block 1 name "subdomain_1"
+nodeset 1 surface with x_coord < 0
+nodeset 1 name "nsx-"
+nodeset 2 surface with x_coord > 0
+nodeset 2 name "nsx+"
+nodeset 3 surface with y_coord < 0
+nodeset 3 name "nsy-"
+nodeset 4 surface with y_coord > 0
+nodeset 4 name "nsy+"
+#nodeset 5 surface with z_coord < 0
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+#nodeset 6 surface with z_coord > 0
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0
+sideset 1 name "ssx-"
+sideset 2 surface with x_coord > 0
+sideset 2 name "ssx+"
+sideset 3 surface with y_coord < 0
+sideset 3 name "ssy-"
+sideset 4 surface with y_coord > 0
+sideset 4 name "ssy+"
+#sideset 5 surface with z_coord < 0
+sideset 5 surface 2
+sideset 5 name "ssz-"
+#sideset 6 surface with z_coord > 0
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "clamped-3sd-1.g" overwrite
+
+delete mesh
+move volume 1 z {shift_12} include_merged
+surface 1 2 size {h_size_face}
+surface 1 2 scheme submap
+mesh surface 1 2
+curve 9 10 11 12 interval {intervals_2}
+mesh volume 1
+block 1 volume 1
+block 1 name "subdomain_2"
+nodeset 1 surface with x_coord < 0
+nodeset 1 name "nsx-"
+nodeset 2 surface with x_coord > 0
+nodeset 2 name "nsx+"
+nodeset 3 surface with y_coord < 0
+nodeset 3 name "nsy-"
+nodeset 4 surface with y_coord > 0
+nodeset 4 name "nsy+"
+#nodeset 5 surface with z_coord < 0
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+#nodeset 6 surface with z_coord > 0
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0
+sideset 1 name "ssx-"
+sideset 2 surface with x_coord > 0
+sideset 2 name "ssx+"
+sideset 3 surface with y_coord < 0
+sideset 3 name "ssy-"
+sideset 4 surface with y_coord > 0
+sideset 4 name "ssy+"
+#sideset 5 surface with z_coord < 0
+sideset 5 surface 2
+sideset 5 name "ssz-"
+#sideset 6 surface with z_coord > 0
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "clamped-3sd-2.g" overwrite
+
+delete mesh
+move volume 1 z {shift_23} include_merged
+surface 1 2 size {h_size_face}
+surface 1 2 scheme submap
+mesh surface 1 2
+curve 9 10 11 12 interval {intervals_3}
+mesh volume 1
+block 1 volume 1
+block 1 name "subdomain_3"
+nodeset 1 surface with x_coord < 0
+nodeset 1 name "nsx-"
+nodeset 2 surface with x_coord > 0
+nodeset 2 name "nsx+"
+nodeset 3 surface with y_coord < 0
+nodeset 3 name "nsy-"
+nodeset 4 surface with y_coord > 0
+nodeset 4 name "nsy+"
+#nodeset 5 surface with z_coord < 0
+nodeset 5 surface 2
+nodeset 5 name "nsz-"
+#nodeset 6 surface with z_coord > 0
+nodeset 6 surface 1
+nodeset 6 name "nsz+"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0
+sideset 1 name "ssx-"
+sideset 2 surface with x_coord > 0
+sideset 2 name "ssx+"
+sideset 3 surface with y_coord < 0
+sideset 3 name "ssy-"
+sideset 4 surface with y_coord > 0
+sideset 4 name "ssy+"
+#sideset 5 surface with z_coord < 0
+sideset 5 surface 2
+sideset 5 name "ssz-"
+#sideset 6 surface with z_coord > 0
+sideset 6 surface 1
+sideset 6 name "ssz+"
+set large exodus file off
+export mesh "clamped-3sd-3.g" overwrite
