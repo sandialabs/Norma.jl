@@ -36,11 +36,6 @@ function initialize_writing(sim::SingleDomainSimulation)
     # a subsim is swapped in mid-run).
     params["exodus_frame"] = 0
 
-    # global variables
-    num_global_vars = Exodus.read_number_of_variables(output_mesh, GlobalVariable)
-    num_global_vars += 1  # adjust as necessary
-    Exodus.write_number_of_variables(output_mesh, GlobalVariable, num_global_vars)
-
     # setup nodal variables
     num_node_vars = 6
     node_var_names = ["refe_x", "refe_y", "refe_z", "disp_x", "disp_y", "disp_z"]
