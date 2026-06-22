@@ -541,7 +541,19 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     if is_explicit_dynamic == false
         raw_status = "[WAIT]"
         status = colored_status(raw_status)
-        norma_logf(8, :solve, "Iteration [%d] %s = %.2e : %s = %.2e : %s", 0, "|R|", norm_residual, "|r|", 1.0, status)
+        norma_logf(
+            8,
+            :solve,
+            "Iteration [%d] %s = %.2e : %s = %.2e : %s = %.4e : %s",
+            0,
+            "|R|",
+            norm_residual,
+            "|r|",
+            1.0,
+            "E",
+            solver.value,
+            status,
+        )
     end
     solver.initial_norm = norm_residual
     iteration_number = 1
@@ -565,12 +577,14 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             norma_logf(
                 8,
                 :solve,
-                "Iteration [%d] %s = %.2e : %s = %.2e : %s",
+                "Iteration [%d] %s = %.2e : %s = %.2e : %s = %.4e : %s",
                 iteration_number,
                 "|R|",
                 solver.absolute_error,
                 "|r|",
                 solver.relative_error,
+                "E",
+                solver.value,
                 status,
             )
         end
