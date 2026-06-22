@@ -89,6 +89,59 @@ tet_first_node = [1]
     end
 end
 
+@testset "size_field_reference" begin
+    # The size field prescribes the target edge length of the regular reference
+    # element, combined with the volume criterion via max(size field, volume).
+    tet_edges(ref) = [
+        norm(ref[:, 1] - ref[:, 2]), norm(ref[:, 1] - ref[:, 3]), norm(ref[:, 1] - ref[:, 4]),
+        norm(ref[:, 2] - ref[:, 3]), norm(ref[:, 2] - ref[:, 4]), norm(ref[:, 3] - ref[:, 4]),
+    ]
+
+    # A regular tet of edge ~1: a large constant size field dominates the volume
+    # criterion, so the reference is a regular tet of that prescribed edge length.
+    big = Norma.create_size_field("size field", "5.0")
+    ref_big = Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, big, 0.0)
+    for e in tet_edges(ref_big)
+        @test e ≈ 5.0 atol = 1.0e-12
+    end
+
+    # A tiny constant size field is dominated by the volume criterion (max), so
+    # the reference matches the equal-volume reference instead.
+    tiny = Norma.create_size_field("size field", "1.0e-6")
+    ref_tiny = Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, tiny, 0.0)
+    ref_vol = Norma.create_smooth_reference("equal volume", Norma.TETRA4, reg_tet_coords)
+    @test norm(ref_tiny[:, 1] - ref_tiny[:, 2]) ≈ norm(ref_vol[:, 1] - ref_vol[:, 2]) atol = 1.0e-12
+
+    # A spatially varying field is evaluated at the element reference centroid.
+    sfx = Norma.create_size_field("size field", "10.0*x")
+    for shift in (1.0, 2.5, 4.0)
+        coords = reg_tet_coords .+ [shift; 0.0; 0.0]
+        centroid_x = sum(coords[1, :]) / 4
+        ref = Norma.create_smooth_reference("size field", Norma.TETRA4, coords, sfx, 0.0)
+        for e in tet_edges(ref)
+            @test e ≈ 10.0 * centroid_x atol = 1.0e-10
+        end
+    end
+
+    # A time-varying field uses the supplied time argument.
+    sft = Norma.create_size_field("size field", "2.0 + t")
+    for time in (0.0, 1.0, 3.0)
+        ref = Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, sft, time)
+        @test norm(ref[:, 1] - ref[:, 2]) ≈ (2.0 + time) atol = 1.0e-12
+    end
+
+    # Non-size-field modes compile no size field.
+    @test Norma.create_size_field("max", nothing) === nothing
+    @test Norma.create_size_field("equal volume", "1.0") === nothing
+
+    # Selecting the size-field mode without an expression is an error.
+    @test_throws Exception Norma.create_size_field("size field", nothing)
+
+    # A non-positive field yields an invalid reference and must abort.
+    bad = Norma.create_size_field("size field", "x - 100.0")
+    @test_throws Exception Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, bad, 0.0)
+end
+
 base_params = Dict{String,Any}(
     "type" => "single",
     "model" => Dict{String,Any}(
@@ -650,5 +703,87 @@ end
         @test ef_lb ≤ ef_sd         # and L-BFGS is no worse than SD here
     finally
         rm(mesh; force=true)
+    end
+end
+
+@testset "size_field_end_to_end" begin
+    # Exercise the full smoothing pipeline with a "size field" reference on a
+    # multi-element mesh.  This runs create_smooth_reference inside the threaded
+    # element loop (catching any world-age/thread-safety issue with the compiled
+    # field) and confirms the smoother reduces energy without inverting.
+    mesh = joinpath(@__DIR__, "size_field_e2e.g")
+    coords, conn, boundary, interior, h = _make_tet_grid(3)
+    _orient_tets!(coords, conn)
+    Random.seed!(7)
+    for p in interior
+        coords[:, p] .+= (2 .* Random.rand(3) .- 1) .* (0.25 * h)
+    end
+
+    out = joinpath(@__DIR__, "size_field_e2e.e")
+    params = Dict{String,Any}(
+        "name" => "size_field_e2e", "type" => "single",
+        "input mesh file" => mesh, "output mesh file" => out,
+        "Exodus output interval" => 0, "CSV output interval" => 0,
+        "model" => Dict{String,Any}(
+            "type" => "mesh smoothing",
+            "smooth reference" => "size field",
+            "size field" => "0.3 + 0.1 * x",     # spatially varying target edge length
+            "material" => Dict{String,Any}(
+                "blocks" => Dict{String,Any}("block" => "elastic"),
+                "elastic" => Dict{String,Any}(
+                    "model" => "seth-hill", "m" => 2, "n" => 2,
+                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                ),
+            ),
+        ),
+        "time integrator" => Dict{String,Any}(
+            "type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0
+        ),
+        "boundary conditions" => Dict{String,Any}(
+            "Dirichlet" => [
+                Dict{String,Any}("node set" => "boundary", "component" => "x", "function" => "0.0"),
+                Dict{String,Any}("node set" => "boundary", "component" => "y", "function" => "0.0"),
+                Dict{String,Any}("node set" => "boundary", "component" => "z", "function" => "0.0"),
+            ],
+        ),
+        "solver" => Dict{String,Any}(
+            "type" => "steepest descent", "step" => "lbfgs", "memory" => 10,
+            "minimum iterations" => 1, "maximum iterations" => 40,
+            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3, "use line search" => true,
+            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "line search maximum iterations" => 16,
+        ),
+    )
+
+    try
+        init = Initialization{Int32}(
+            Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
+        )
+        rm(mesh; force=true)
+        exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
+        write_coordinates(exo, coords)
+        write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
+        write_name(exo, Block, 1, "block")
+        ns = NodeSet(1, Vector{Int32}(boundary))
+        write_set(exo, ns)
+        write_name(exo, ns, "boundary")
+        close(exo)
+
+        rm(out; force=true)
+        sim = Norma.create_simulation(params)
+        @test sim.model.size_field !== nothing      # field compiled and stored
+        Norma.initialize(sim)
+        Norma.evaluate(sim.integrator, sim.solver, sim.model)
+        e0 = sim.model.strain_energy
+        Norma.evolve(sim)
+        ef = sim.model.strain_energy
+        Norma.finalize_writing(sim)
+
+        @test !sim.model.failed                     # no inverted elements
+        @test ef < e0                               # the mesh is smoothed
+    finally
+        rm(mesh; force=true)
+        rm(out; force=true)
     end
 end

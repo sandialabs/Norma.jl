@@ -86,6 +86,7 @@ mutable struct SolidMechanics <: Model
     failed::Bool
     mesh_smoothing::Bool
     smooth_reference::String
+    size_field::Union{Function,Nothing}  # compiled s(t,x,y,z) target edge length, or nothing
     kinematics::Kinematics
     recovery_data::AbstractRecoveryData
     # Single-mode recovery (recovery_data isa LumpedRecovery or ConsistentRecovery).

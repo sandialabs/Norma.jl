@@ -111,6 +111,7 @@ function SolidMechanics(params::Parameters)
     compute_lumped_mass = true
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
+    size_field = create_size_field(smooth_reference, get(model_params, "size field", nothing))
     for legacy in ("stress recovery", "recover internal variables")
         if haskey(model_params, legacy)
             norma_abort(
@@ -193,6 +194,7 @@ function SolidMechanics(params::Parameters)
         failed,
         mesh_smoothing,
         smooth_reference,
+        size_field,
         kinematics,
         recovery_data,
         recovered_stress,
@@ -234,7 +236,31 @@ function create_model(params::Parameters)
     end
 end
 
-function create_smooth_reference(smooth_reference::String, element_type::ElementType, element_ref_pos::Matrix{Float64})
+# Compile a user-defined size field s(t, x, y, z) into a callable that returns
+# the target edge length for the smooth reference element at a given location
+# and time.  Returns `nothing` for smoothing modes that do not use a size field.
+# Reuses the same Symbolics pipeline as boundary/initial conditions; the module
+# variables t, x, y, z are declared in boundary_conditions.jl.
+function create_size_field(smooth_reference::String, expression)
+    if smooth_reference != "size field"
+        return nothing
+    end
+    if expression === nothing
+        norma_abort(
+            "smooth reference = \"size field\" requires a \"size field\" expression under the model parameters",
+        )
+    end
+    size_num = eval(Meta.parse(string(expression)))
+    return eval(build_function(size_num, [t, x, y, z]; expression=Val(false)))
+end
+
+function create_smooth_reference(
+    smooth_reference::String,
+    element_type::ElementType,
+    element_ref_pos::Matrix{Float64},
+    size_field::Union{Function,Nothing}=nothing,
+    time::Float64=0.0,
+)
     if element_type == TETRA4
         u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
         v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
@@ -246,6 +272,11 @@ function create_smooth_reference(smooth_reference::String, element_type::Element
             h = avg_edge_length_tet_h(u, v, w)
         elseif smooth_reference == "max"
             h = max(avg_edge_length_tet_h(u, v, w), equal_volume_tet_h(u, v, w))
+        elseif smooth_reference == "size field"
+            # Target edge length from the user-defined size field at the element
+            # reference centroid, combined with the volume criterion (max) to
+            # anchor the reference size and avoid sliver pathologies.
+            h = max(size_field_tet_h(size_field, element_ref_pos, time), equal_volume_tet_h(u, v, w))
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
@@ -269,6 +300,24 @@ end
 
 function avg_edge_length_tet_h(u::Vector{Float64}, v::Vector{Float64}, w::Vector{Float64})
     h = (norm(u) + norm(v) + norm(w) + norm(u - v) + norm(u - w) + norm(v - w)) / 6.0
+    return h
+end
+
+# Target edge length from the user-defined size field, evaluated at the element
+# reference centroid and the current time.  The field must be strictly positive
+# and finite to yield a valid (non-degenerate) reference element.
+function size_field_tet_h(size_field::Union{Function,Nothing}, element_ref_pos::Matrix{Float64}, time::Float64)
+    if size_field === nothing
+        norma_abort("smooth reference = \"size field\" selected but no size field was compiled")
+    end
+    centroid = vec(sum(element_ref_pos; dims=2) / size(element_ref_pos, 2))
+    h = size_field((time, centroid[1], centroid[2], centroid[3]))
+    if !isfinite(h) || h ≤ 0.0
+        norma_abort(
+            "Size field must be strictly positive and finite; got $h at centroid " *
+            "($(centroid[1]), $(centroid[2]), $(centroid[3])) and time $time",
+        )
+    end
     return h
 end
 
@@ -709,7 +758,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             )
             if flags.mesh_smoothing == true
                 element_reference_position = create_smooth_reference(
-                    model.smooth_reference, element_type, model.reference[:, node_indices]
+                    model.smooth_reference, element_type, model.reference[:, node_indices], model.size_field, model.time
                 )
             else
                 element_reference_position = model.reference[:, node_indices]
