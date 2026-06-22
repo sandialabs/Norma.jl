@@ -544,7 +544,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         norma_logf(
             8,
             :solve,
-            "Iteration [%d] %s = %.2e : %s = %.2e : %s = %.4e : %s",
+            "Iteration [%d] %s = %.2e : %s = %.2e : %s = %.2e : %s",
             0,
             "|R|",
             norm_residual,
