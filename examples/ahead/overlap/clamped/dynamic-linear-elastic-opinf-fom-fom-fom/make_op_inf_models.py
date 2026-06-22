@@ -15,12 +15,12 @@ if __name__ == '__main__':
   settings['forcing'] =  False
   settings['truncation-type'] = 'size'
   settings['boundary-truncation-type'] =  'size'
-  settings['truncation-value'] = 30
+  settings['truncation-value'] = 20
   settings['boundary-truncation-value'] = 4
-  settings['regularization-parameter'] =  5.e-3
-  settings['trial-space-splitting-type'] = 'split'
+  settings['regularization-parameter'] =  [1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6, 1.0e-7, 1.0e-8, 1.0e-9, 1.0e-10]
+  settings['trial-space-splitting-type'] = 'combined'
   settings['acceleration-computation-type'] = 'acceleration-snapshots'
   snapshots_dict = normaopinf.opinf.get_processed_snapshots(settings)
-  settings['model-name'] = 'linear-opinf-operator'
+  settings['model-name'] = 'linear-opinf-operator-2'
   normaopinf.opinf.make_opinf_model_from_snapshots_dict(snapshots_dict,settings)
 
