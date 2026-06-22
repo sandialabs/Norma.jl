@@ -45,7 +45,7 @@ istep       = 10          # snapshot index increment
 iend        = 1000        # last snapshot index
 pad_width   = 4           # zero-padding width of the snapshot index, e.g. 0000
 
-save_figs  = False
+save_figs  = True
 pause_time = 0.5
 scale = 0.001 * 2
 
@@ -57,22 +57,26 @@ colors = ['b', 'r', 'g', 'm', 'k', 'y']  # cycle if nsd > 6
 # Most subdomains use a single fixed prefix for the whole run, e.g.
 #     SUBDOMAIN_PREFIXES[k] = f'{base_prefix}-{k}'
 #
-# A subdomain that swaps from FOM to ROM partway through (Norma's
-# swapping capability) instead gets a list of (prefix, last_index)
-# segments, in order, where last_index is the last snapshot index
-# (inclusive) that segment's prefix is used for. The example below
-# matches a case where subdomain 2 runs as
-#     clamped-fom-2-disp-0000.csv ... clamped-fom-2-disp-0300.csv
+# A subdomain that swaps prefixes partway through (Norma's swapping
+# capability, FOM->ROM or ROM->FOM) instead gets a list of
+# (prefix, last_index) segments, in order, where last_index is the
+# last snapshot index (inclusive) that segment's prefix is used for.
+#
+# The example below matches a case where subdomains 1 and 3 each swap
+# from ROM to FOM at t=0.0003 (index 300), e.g. for subdomain 1:
+#     clamped-rom-1-disp-0000.csv ... clamped-rom-1-disp-0300.csv
 # then swaps to
-#     clamped-rom-2-disp-0310.csv ... clamped-rom-2-disp-1000.csv
+#     clamped-fom-1-phase2-disp-0310.csv ... clamped-fom-1-phase2-disp-1000.csv
+# while subdomain 2 remains FOM the whole time (a single fixed
+# prefix, clamped-fom-2).
 #
 # To plot a plain (non-swapping) case, just set every entry to a
 # single string prefix, e.g. SUBDOMAIN_PREFIXES = {1: 'clamped-1', ...}
 # ------------------------------------------------------------------
 SUBDOMAIN_PREFIXES = {
-    1: f'{base_prefix}-1',
-    2: [(f'{base_prefix}-fom-2', 300), (f'{base_prefix}-rom-2', iend)],
-    3: f'{base_prefix}-3',
+    1: [(f'{base_prefix}-rom-1', 300), (f'{base_prefix}-fom-1-phase2', iend)],
+    2: f'{base_prefix}-fom-2',
+    3: [(f'{base_prefix}-rom-3', 300), (f'{base_prefix}-fom-3-phase2', iend)],
 }
 
 

@@ -39,10 +39,10 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: ssz-
-      source: clamped-1
+      source: clamped-rom-1
       source block: subdomain_1
     - side set: ssz+
-      source: clamped-3
+      source: clamped-rom-3
       source block: subdomain_3
 solver:
   type: Hessian minimizer

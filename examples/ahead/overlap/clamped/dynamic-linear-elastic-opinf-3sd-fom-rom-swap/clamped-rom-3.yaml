@@ -1,14 +1,14 @@
 type: single
-input mesh file: ../clamped-3sd-2.g
-output mesh file: clamped-3sd-rom-2.e
+input mesh file: ../clamped-3sd-3.g
+output mesh file: clamped-3sd-3.e
 CSV output interval: 1.0e-5
 CSV write sidesets: true
 model:
   type: linear opinf rom
-  model-file: linear-opinf-operator-M30-2.npz
+  model-file: linear-opinf-operator-M30-3.npz
   material:
     blocks:
-      subdomain_2: hyperelastic
+      subdomain_3: hyperelastic
     hyperelastic:
       model: linear elastic
       elastic modulus: 1.0e+09
@@ -38,13 +38,13 @@ boundary conditions:
     - node set: nsy+
       component: y
       function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
   Schwarz overlap:
     - side set: ssz-
-      source: clamped-rom-1
-      source block: subdomain_1
-    - side set: ssz+
-      source: clamped-rom-3
-      source block: subdomain_3
+      source: clamped-fom-2
+      source block: subdomain_2
 solver:
   type: Hessian minimizer
   step: full Newton

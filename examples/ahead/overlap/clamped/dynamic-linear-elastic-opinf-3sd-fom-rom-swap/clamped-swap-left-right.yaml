@@ -1,0 +1,29 @@
+type: multi
+domains: ["clamped-rom-1.yaml", "clamped-fom-2.yaml", "clamped-rom-3.yaml"]
+#At time t = 0.0003, swap subdomains 1 and 3 from ROM->FOM and subdomain 2 from FOM->ROM.
+swaps:
+  #- subsim: clamped-fom-2
+  #  replacement: clamped-rom-2.yaml
+  #  criterion:
+  #    type: time
+  #    t_swap: 0.0003
+  - subsim: clamped-rom-1
+    replacement: clamped-fom-1.yaml
+    criterion:
+      type: time
+      t_swap: 0.0003
+  - subsim: clamped-rom-3
+    replacement: clamped-fom-3.yaml
+    criterion:
+      type: time
+      t_swap: 0.0003
+Exodus output interval: 1.0e-5
+CSV output interval: 1.0e-5
+CSV write sidesets: true
+initial time: 0.0
+final time: 1.0e-3
+time step: 1.0e-6
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08
