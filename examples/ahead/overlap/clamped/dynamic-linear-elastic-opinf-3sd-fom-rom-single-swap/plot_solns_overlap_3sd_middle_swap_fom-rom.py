@@ -71,7 +71,7 @@ colors = ['b', 'r', 'g', 'm', 'k', 'y']  # cycle if nsd > 6
 # ------------------------------------------------------------------
 SUBDOMAIN_PREFIXES = {
     1: f'{base_prefix}-rom-1',
-    2: [(f'{base_prefix}-fom-2', 300), (f'{base_prefix}-rom-2-phase2', iend)],
+    2: [(f'{base_prefix}-fom-2', 300), (f'{base_prefix}-rom-2', iend)],
     3: f'{base_prefix}-rom-3',
 }
 
