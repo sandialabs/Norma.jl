@@ -1,5 +1,5 @@
 type: single
-input mesh file: ../dynamic-opinf-fom/notched-cylinder-1.g
+input mesh file: ../notched-cylinder-1-coarse.g
 output mesh file: notched-cylinder-1.e
 model:
   type: solid mechanics
@@ -8,16 +8,18 @@ model:
       fine: hyperelastic
     hyperelastic:
       model: linear elastic
-      elastic modulus: 1.0e+09
+      elastic modulus: 70.0e+09
       Poisson's ratio: 0.25
       density: 1000.0
+      yield stress: 250.0e+06
+      hardening modulus: 0.7e+09
 time integrator:
   type: Newmark
   β: 0.25
   γ: 0.5
   maximum time step: 0.1
-  minimum time step: 1.0e-05
-  increase factor: 1.1
+  minimum time step: 1.0e-06
+  increase factor: 1.2
   decrease factor: 0.5
 boundary conditions:
   Dirichlet:
@@ -38,6 +40,10 @@ boundary conditions:
 solver:
   type: Hessian minimizer
   step: full Newton
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-07

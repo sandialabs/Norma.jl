@@ -1,12 +1,12 @@
 type: single
-input mesh file: ../notched-cylinder-1-coarse.g
-output mesh file: notched-cylinder-1.e
-CSV write sidesets: true
+input mesh file: ../notched-cylinder-2-coarse.g
+output mesh file: notched-cylinder-2.e
 model:
-  type: solid mechanics
+  type: linear opinf rom
+  model-file: linear-opinf-operator-M3-2.npz
   material:
     blocks:
-      fine: hyperelastic
+      coarse: hyperelastic
     hyperelastic:
       model: linear elastic
       elastic modulus: 70.0e+09
@@ -24,19 +24,19 @@ time integrator:
   decrease factor: 0.5
 boundary conditions:
   Dirichlet:
-    - node set: -X_bottom
+    - node set: -X_top
       component: x
       function: "0.0"
-    - node set: -Y_bottom
+    - node set: -Y_top
       component: y
       function: "0.0"
-    - node set: -Z_bottom
+    - node set: +Z_top
       component: z
-      function: "0.0"
+      function: "0.0064 * (0.5 - 0.5 * cos(pi * t / 6.0 ))"
   Schwarz overlap:
-    - side set: +Z_bottomSS
-      source: notched-cylinder-2
-      source block: coarse
+    - side set: -Z_topSS
+      source: notched-cylinder-rom-1
+      source block: fine
       search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer
