@@ -610,20 +610,30 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
 
     sim.subsims[slot] = new
 
-    # Re-key the name → slot lookup so the slot is reachable under its new
-    # occupant's name.  Without this, a later swap plan targeting the
-    # replacement by name (e.g. a ROM → FOM plan with `subsim: clamped-rom-2`
-    # after an earlier FOM → ROM swap put a subsim named "clamped-rom-2" into
-    # this slot) can never resolve, because handle_by_name would still only
-    # contain the *original* domain name ("clamped-fom-2") for this slot.
+    # Register the slot under its new occupant's name too, so a later swap
+    # plan targeting the replacement by name (e.g. a ROM → FOM plan with
+    # `subsim: clamped-rom-2` after an earlier FOM → ROM swap put a subsim
+    # named "clamped-rom-2" into this slot) can resolve it — handle_by_name
+    # would otherwise still only contain the *original* domain name
+    # ("clamped-fom-2") for this slot.
+    #
+    # The old name is deliberately *kept* as a surviving alias for the same
+    # slot rather than removed: existing code and tests may look a subsim up
+    # by its original domain name after a swap (e.g. to confirm the handle
+    # for a known domain is still resolvable), and since coupled_subsim_of
+    # resolves Schwarz partners by slot id rather than by name, an old name
+    # continuing to point at its slot causes no ambiguity on its own.
     #
     # Guard against two different slots concurrently claiming the same name:
     # this can only happen if two distinct swap plans (for two distinct
     # slots) share the same replacement file and are both live (applied) at
-    # once, which would make later `subsim:` name lookups ambiguous.  This is
-    # a narrower, runtime-only case beyond what validate_swap_plans can catch
-    # statically (it permits the same replacement file for different slots,
-    # since that's fine as long as they don't overlap in time).
+    # once, which would make a `subsim:` name lookup ambiguous between the
+    # two slots.  This is a narrower, runtime-only case beyond what
+    # validate_swap_plans can catch statically (it permits the same
+    # replacement file for different slots, since that's fine as long as
+    # they don't overlap in time).  Re-claiming a name already owned by THIS
+    # same slot (e.g. swapping back to the original domain name in a
+    # round-trip chain) is fine and does not trigger this guard.
     if haskey(sim.handle_by_name, new.name) && sim.handle_by_name[new.name].id != slot
         norma_abortf(
             "Swap into slot %d would register subsim name '%s', but that name is " *
@@ -632,7 +642,6 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
             slot, new.name, sim.handle_by_name[new.name].id,
         )
     end
-    delete!(sim.handle_by_name, old.name)
     sim.handle_by_name[new.name] = DomainHandle(slot)
     sim.name_by_handle[slot] = new.name
 
