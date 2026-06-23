@@ -1,6 +1,6 @@
 type: multi
 domains: ["clamped-rom-1.yaml", "clamped-fom-2.yaml", "clamped-rom-3.yaml"]
-#At time t = 0.0003, swap subdomains 1 and 3 from ROM->FOM and subdomain 2 from FOM->ROM.
+#At time t = 0.0003, swap subdomain 2 from FOM->ROM.
 swaps:
   - subsim: clamped-fom-2
     replacement: clamped-rom-2.yaml
