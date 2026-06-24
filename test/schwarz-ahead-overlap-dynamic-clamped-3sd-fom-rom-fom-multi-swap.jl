@@ -49,8 +49,10 @@
 # schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap.jl for the same
 # check applied to the single-swap (FOM -> ROM only) version of this problem.
 # Here it is evaluated on subdomain 2 at the (shortened) final time, after
-# both swaps have run, to confirm the final FOM is holding a physically
-# correct field rather than e.g. stale, zeroed, or mis-projected data.
+# both swaps have run, to confirm the final FOM is holding physically
+# correct displacement, velocity, AND acceleration fields rather than e.g.
+# stale, zeroed, or mis-projected data — acceleration in particular is the
+# field reported as corrupted in issue #197.
 
 using LinearAlgebra
 using YAML
@@ -162,6 +164,8 @@ using YAML
     disp2_x = model2.displacement[1, :]
     disp2_y = model2.displacement[2, :]
     disp2_z = model2.displacement[3, :]
+    velo2_z = model2.velocity[3, :]
+    acce2_z = model2.acceleration[3, :]
 
     # Exact 1-D wave solution for a Gaussian pulse on a bar clamped at both
     # ends (superposition of the two traveling-wave reflections), evaluated
@@ -178,18 +182,53 @@ using YAML
 
     n2 = length(z2)
     disp2_z_exact = zeros(Float64, n2)
+    velo2_z_exact = zeros(Float64, n2)
+    acce2_z_exact = zeros(Float64, n2)
     for i in 1:n2
         disp2_z_exact[i] =
             0.5 * a * (exp(-(z2[i] - c * t - b)^2 / 2 / s^2) + exp(-(z2[i] + c * t - b)^2 / 2 / s^2)) -
             0.5 * a * (exp(-(z2[i] - c * (T - t) - b)^2 / 2 / s^2) + exp(-(z2[i] + c * (T - t) - b)^2 / 2 / s^2))
+        velo2_z_exact[i] =
+            0.5 * c * a / s^2 * (
+                (z2[i] - c * t - b) * exp(-(z2[i] - c * t - b)^2 / 2 / s^2) -
+                (z2[i] + c * t - b) * exp(-(z2[i] + c * t - b)^2 / 2 / s^2)
+            ) +
+            0.5 * c * a / s^2 * (
+                (z2[i] - c * (T - t) - b) * exp(-(z2[i] - c * (T - t) - b)^2 / 2 / s^2) -
+                (z2[i] + c * (T - t) - b) * exp(-(z2[i] + c * (T - t) - b)^2 / 2 / s^2)
+            )
+        acce2_z_exact[i] =
+            0.5 * a * (
+                -c^2 / s^2 * exp(-0.5 * (z2[i] - c * t - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] - c * t - b)^2 * exp(-0.5 * (z2[i] - c * t - b)^2 / s^2) -
+                c^2 / s^2 * exp(-0.5 * (z2[i] + c * t - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] + c * t - b)^2 * exp(-0.5 * (z2[i] + c * t - b)^2 / s^2)
+            ) -
+            0.5 * a * (
+                -c^2 / s^2 * exp(-0.5 * (z2[i] - c * (T - t) - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] - c * (T - t) - b)^2 * exp(-0.5 * (z2[i] - c * (T - t) - b)^2 / s^2) -
+                c^2 / s^2 * exp(-0.5 * (z2[i] + c * (T - t) - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] + c * (T - t) - b)^2 * exp(-0.5 * (z2[i] + c * (T - t) - b)^2 / s^2)
+            )
     end
 
     disp2_z_relerr = norm(disp2_z_exact - disp2_z) / norm(disp2_z_exact)
+    velo2_z_relerr = norm(velo2_z_exact - velo2_z) / norm(velo2_z_exact)
+    acce2_z_relerr = norm(acce2_z_exact - acce2_z) / norm(acce2_z_exact)
 
     # Loose tolerance: this checks that the round-tripped FOM is tracking the
     # correct physical solution (catching e.g. a stale, zeroed, or
     # mis-projected state after either swap), not tight numerical accuracy.
-    @test disp2_z_relerr < 0.1
+    # Acceleration is checked with the same rigor as displacement/velocity
+    # here, since it is the field reported as corrupted by issue #197 (a
+    # ROM's shadow FOM left stale at swap time — see
+    # _sync_integrator_from_model! and the reconstruct_fom_fields! call added
+    # to apply_swap! in src/swap.jl); this round-trip case exercises that
+    # path twice (FOM -> ROM, then ROM -> FOM), so it is worth checking here
+    # too rather than only in the single-swap test.
+    @test disp2_z_relerr < 0.05
+    @test velo2_z_relerr < 0.09
+    @test acce2_z_relerr < 0.12
     @test norm(disp2_x) ≈ 0.0 atol = 1.0e-8
     @test norm(disp2_y) ≈ 0.0 atol = 1.0e-8
 end
