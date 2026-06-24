@@ -24,6 +24,20 @@ mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegular
     acce_fun::Function
 end
 
+# Dirichlet BC whose constrained nodes are the nodes of a side set rather than
+# a node set.  Behaves exactly like SolidMechanicsDirichletBoundaryCondition
+# (prescribes displacement/velocity/acceleration and constrains the DOFs), but
+# resolves its node list from a side set via read_side_set_node_list.
+mutable struct SolidMechanicsSideSetDirichletBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+    name::String
+    offset::Int64
+    side_set_id::Int64
+    node_indices::Vector{Int64}  # unique nodes belonging to the side set
+    disp_fun::Function
+    velo_fun::Function
+    acce_fun::Function
+end
+
 mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
     name::String
     offset::Int64

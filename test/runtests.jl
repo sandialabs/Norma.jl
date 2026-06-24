@@ -104,6 +104,7 @@ const indexed_test_files = [
     (84, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap.jl"),
     (85, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-fom-multi-swap.jl"),
     (86, "schwarz-ahead-overlap-dynamic-notched-cylinder-opinf-swap-rom-fom.jl"),
+    (87, "single-static-solid-cube-sideset-dbc.jl"),
 ]
 
 # Extract test file names

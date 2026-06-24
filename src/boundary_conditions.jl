@@ -32,6 +32,31 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     )
 end
 
+function SolidMechanicsSideSetDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
+    side_set_name = bc_params["side set"]
+    expression = bc_params["function"]
+    offset = component_offset_from_string(bc_params["component"])
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    # read_side_set_node_list repeats a node once per side it touches; the unique
+    # node list is all we need to constrain the surface DOFs.
+    _, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    node_indices = unique(Int64.(side_set_node_indices))
+
+    # Build symbolic expressions
+    disp_num = eval(Meta.parse(expression))
+    velo_num = expand_derivatives(D(disp_num))
+    acce_num = expand_derivatives(D(velo_num))
+
+    # Compile them into functions
+    disp_fun = eval(build_function(disp_num, [t, x, y, z]; expression=Val(false)))
+    velo_fun = eval(build_function(velo_num, [t, x, y, z]; expression=Val(false)))
+    acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
+
+    return SolidMechanicsSideSetDirichletBoundaryCondition(
+        side_set_name, offset, side_set_id, node_indices, disp_fun, velo_fun, acce_fun
+    )
+end
+
 function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
@@ -516,6 +541,24 @@ end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
     for node_index in bc.node_set_node_indices
+        txzy = (
+            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
+        )
+
+        disp_val = bc.disp_fun(txzy)
+        velo_val = bc.velo_fun(txzy)
+        acce_val = bc.acce_fun(txzy)
+
+        dof_index = 3 * (node_index - 1) + bc.offset
+        model.displacement[bc.offset, node_index] = disp_val
+        model.velocity[bc.offset, node_index] = velo_val
+        model.acceleration[bc.offset, node_index] = acce_val
+        model.free_dofs[dof_index] = false
+    end
+end
+
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsSideSetDirichletBoundaryCondition)
+    for node_index in bc.node_indices
         txzy = (
             model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
         )

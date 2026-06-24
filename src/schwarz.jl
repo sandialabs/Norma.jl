@@ -856,7 +856,15 @@ function _create_bcs(subsim::SingleDomainSimulation)
     for (bc_type, bc_type_params) in bc_params
         for bc_setting_params in bc_type_params
             if bc_type == "Dirichlet"
-                boundary_condition = SolidMechanicsDirichletBoundaryCondition(input_mesh, bc_setting_params)
+                # Same "Dirichlet" syntax for both: a "node set" entry applies on
+                # a node set, a "side set" entry applies on the nodes of a side set.
+                if haskey(bc_setting_params, "side set")
+                    boundary_condition = SolidMechanicsSideSetDirichletBoundaryCondition(input_mesh, bc_setting_params)
+                elseif haskey(bc_setting_params, "node set")
+                    boundary_condition = SolidMechanicsDirichletBoundaryCondition(input_mesh, bc_setting_params)
+                else
+                    norma_abort("A Dirichlet boundary condition requires either a \"node set\" or a \"side set\" entry.")
+                end
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "OpInf Dirichlet"
                 boundary_condition = SolidMechanicsOpInfDirichletBC(input_mesh, bc_setting_params)
