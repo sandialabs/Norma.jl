@@ -1,9 +1,9 @@
 type: single
 input mesh file: ../notched-cylinder-1-coarse.g
 output mesh file: notched-cylinder-1.e
-CSV write sidesets: true
 model:
-  type: solid mechanics
+  type: linear opinf rom
+  model-file: linear-opinf-operator-M3-1.npz
   material:
     blocks:
       fine: hyperelastic
@@ -35,7 +35,7 @@ boundary conditions:
       function: "0.0"
   Schwarz overlap:
     - side set: +Z_bottomSS
-      source: notched-cylinder-2
+      source: notched-cylinder-rom-2
       source block: coarse
       search tolerance: 5.0e-02
 solver:

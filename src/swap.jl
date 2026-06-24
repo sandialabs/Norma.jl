@@ -76,10 +76,41 @@ function validate_swap_plans(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         _assert_rom_swap_supported(subsim.model, "Subsim '$(subsim.name)'")
     end
+    # A plan's `subsim:` target is valid if it names either (a) one of the
+    # original domains, or (b) the name a *later-applied* replacement file
+    # will carry once it's loaded (i.e. stripped_name(replacement_file) of
+    # some other plan in this same list).  This lets a parent file declare a
+    # whole swap chain (FOM → ROM at t1, ROM → FOM at t2, ...) up front
+    # without requiring each replacement YAML to also carry its own `swaps:`
+    # block.  handle_by_name itself is re-keyed at the moment each swap fires
+    # (see apply_swap!), so by the time a later plan's slot lookup runs in
+    # maybe_apply_swaps!, the name will actually resolve.
+    #
+    # Note: a replacement legitimately reusing an *original* domain's name is
+    # fine and expected for a round-trip chain (e.g. FOM → ROM → FOM, where
+    # the second replacement file is literally the original FOM domain file,
+    # swapping the same slot back to its starting name).  The only thing that
+    # is genuinely ambiguous is two distinct replacement files both resolving
+    # to the same name — that case is rejected below.
+    original_names = Set(keys(sim.handle_by_name))
+    replacement_names = Dict{String,String}()  # stripped name → replacement_file, for collision messages
+    for plan in sim.swaps
+        rname = stripped_name(plan.replacement_file)
+        if haskey(replacement_names, rname) && replacement_names[rname] != plan.replacement_file
+            norma_abort(
+                "Swap plan replacement files '$(replacement_names[rname])' and " *
+                "'$(plan.replacement_file)' both resolve to the same name ('$rname'). " *
+                "Each distinct replacement file referenced in `swaps:` must resolve to a " *
+                "unique name so that `subsim:` references in later plans are unambiguous.",
+            )
+        end
+        replacement_names[rname] = plan.replacement_file
+    end
+    known_names = union(original_names, keys(replacement_names))
     for plan in sim.swaps
         plan.subsim_name === nothing &&
             norma_abort("Multi-domain swap plan must specify `subsim:` to select the subsim to replace")
-        haskey(sim.handle_by_name, plan.subsim_name) ||
+        plan.subsim_name ∈ known_names ||
             norma_abort("Swap plan references unknown subsim: $(plan.subsim_name)")
         isfile(plan.replacement_file) ||
             norma_abort("Swap replacement file not found: $(plan.replacement_file)")
@@ -473,6 +504,16 @@ function maybe_apply_swaps!(sim::MultiDomainSimulation)
     isempty(sim.swaps) && return nothing
     for plan in sim.swaps
         plan.applied && continue
+        # A later plan in a swap chain (e.g. ROM → FOM after an earlier
+        # FOM → ROM) names a subsim that does not exist yet — it is only
+        # created when the earlier plan's apply_swap! runs and re-keys
+        # handle_by_name to the replacement's name.  Skip such plans for now;
+        # they become resolvable on a later call once their target name
+        # appears.  validate_swap_plans already checked that the name is
+        # *eventually* reachable (either an original domain or some other
+        # plan's replacement name), so silently skipping here cannot mask a
+        # genuinely unknown subsim.
+        haskey(sim.handle_by_name, plan.subsim_name) || continue
         slot = sim.handle_by_name[plan.subsim_name].id
         # Evaluate the criterion against the specific subsim being replaced,
         # not the whole MultiDomainSimulation.  The multi-domain should_swap
@@ -568,6 +609,41 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     end
 
     sim.subsims[slot] = new
+
+    # Register the slot under its new occupant's name too, so a later swap
+    # plan targeting the replacement by name (e.g. a ROM → FOM plan with
+    # `subsim: clamped-rom-2` after an earlier FOM → ROM swap put a subsim
+    # named "clamped-rom-2" into this slot) can resolve it — handle_by_name
+    # would otherwise still only contain the *original* domain name
+    # ("clamped-fom-2") for this slot.
+    #
+    # The old name is deliberately *kept* as a surviving alias for the same
+    # slot rather than removed: existing code and tests may look a subsim up
+    # by its original domain name after a swap (e.g. to confirm the handle
+    # for a known domain is still resolvable), and since coupled_subsim_of
+    # resolves Schwarz partners by slot id rather than by name, an old name
+    # continuing to point at its slot causes no ambiguity on its own.
+    #
+    # Guard against two different slots concurrently claiming the same name:
+    # this can only happen if two distinct swap plans (for two distinct
+    # slots) share the same replacement file and are both live (applied) at
+    # once, which would make a `subsim:` name lookup ambiguous between the
+    # two slots.  This is a narrower, runtime-only case beyond what
+    # validate_swap_plans can catch statically (it permits the same
+    # replacement file for different slots, since that's fine as long as
+    # they don't overlap in time).  Re-claiming a name already owned by THIS
+    # same slot (e.g. swapping back to the original domain name in a
+    # round-trip chain) is fine and does not trigger this guard.
+    if haskey(sim.handle_by_name, new.name) && sim.handle_by_name[new.name].id != slot
+        norma_abortf(
+            "Swap into slot %d would register subsim name '%s', but that name is " *
+            "already claimed by slot %d.  Two different subsims cannot share the same " *
+            "replacement name while both are active; rename one of the replacement files.",
+            slot, new.name, sim.handle_by_name[new.name].id,
+        )
+    end
+    sim.handle_by_name[new.name] = DomainHandle(slot)
+    sim.name_by_handle[slot] = new.name
 
     # Cached coupled_bc_index and is_dirichlet flags on partner BCs may now
     # point into the old BC list — rebuild them.

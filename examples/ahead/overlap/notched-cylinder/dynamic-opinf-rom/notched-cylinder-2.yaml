@@ -1,43 +1,50 @@
 type: single
-input mesh file: ../dynamic-opinf-fom/notched-cylinder-2.g
+input mesh file: ../notched-cylinder-2-coarse.g
 output mesh file: notched-cylinder-2.e
 model:
   type: linear opinf rom
-  model-file: opinf-operator.npz
+  model-file: linear-opinf-operator-M3-2.npz
   material:
     blocks:
       coarse: hyperelastic
     hyperelastic:
       model: linear elastic
-      elastic modulus: 1.0e+09
+      elastic modulus: 70.0e+09
       Poisson's ratio: 0.25
       density: 1000.0
+      yield stress: 250.0e+06
+      hardening modulus: 0.7e+09
 time integrator:
   type: Newmark
   β: 0.25
   γ: 0.5
   maximum time step: 0.1
-  minimum time step: 1.0e-05
-  increase factor: 1.1
+  minimum time step: 1.0e-06
+  increase factor: 1.2
   decrease factor: 0.5
 boundary conditions:
   Dirichlet:
-    #- node set: -X_top
-    #  component: x
-    #  function: "0.0"
-    #- node set: -Y_top
-    #  component: y
-    #  function: "0.0"
+    - node set: -X_top
+      component: x
+      function: "0.0"
+    - node set: -Y_top
+      component: y
+      function: "0.0"
     - node set: +Z_top
       component: z
-      function: "0.0064 * (0.5 - 0.5 * cos(pi * t))"
+      function: "0.0064 * (0.5 - 0.5 * cos(pi * t / 6.0 ))"
   Schwarz overlap:
     - side set: -Z_topSS
       source: notched-cylinder-1
       source block: fine
+      search tolerance: 5.0e-02
 solver:
   type: Hessian minimizer
   step: full Newton
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-07
