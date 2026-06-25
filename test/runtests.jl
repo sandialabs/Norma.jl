@@ -110,6 +110,7 @@ const indexed_test_files = [
     (90, "schwarz-nonoverlap-static-cuboid-hex8-aitken-secant.jl"),
     (91, "schwarz-nonoverlap-dynamic-cantilever-dn-aitken-secant.jl"),
     (92, "schwarz-nonoverlap-static-cuboid-robin-robin-aitken.jl"),
+    (93, "schwarz-nonoverlap-dynamic-cuboids-impedance-aitken.jl"),
 ]
 
 # Extract test file names
