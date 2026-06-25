@@ -1,15 +1,34 @@
 type: multi
 domains: ["clamped-rom-1.yaml", "clamped-fom-2.yaml", "clamped-rom-3.yaml"]
-#At time t = 0.0003, swap subdomain 2 from FOM->ROM.
-#At time t = 0.0006, swap subdomain 2 from ROM->FOM.
+#At time t = 0.0003, swap subdomains 1 and 3 from ROM->FOM.
 swaps:
+  - subsim: clamped-rom-1
+    replacement: clamped-fom-1.yaml
+    criterion:
+      type: time
+      t_swap: 0.0003
   - subsim: clamped-fom-2
     replacement: clamped-rom-2.yaml
     criterion:
       type: time
+      t_swap: 0.00025
+  - subsim: clamped-rom-3
+    replacement: clamped-fom-3.yaml
+    criterion:
+      type: time
       t_swap: 0.0003
+  - subsim: clamped-fom-1
+    replacement: clamped-rom-1.yaml
+    criterion:
+      type: time
+      t_swap: 0.0006
   - subsim: clamped-rom-2
     replacement: clamped-fom-2.yaml
+    criterion:
+      type: time
+      t_swap: 0.00055
+  - subsim: clamped-fom-3
+    replacement: clamped-rom-3.yaml
     criterion:
       type: time
       t_swap: 0.0006

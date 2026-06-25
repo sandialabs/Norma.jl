@@ -56,10 +56,11 @@
 # clamped.jl for the same formula applied to a 2-subdomain, no-swap case.
 # Here it is evaluated on subdomain 2 at the (shortened) final time, after
 # the swap has replaced its model with a ROM, to confirm the swapped-in ROM
-# is producing a physically correct field rather than e.g. stale or zeroed
-# data.  Note T below is the *original* problem's final time (1.0e-3, the
-# wave-reflection timescale baked into the closed-form solution), which is
-# independent of how long this test actually runs the simulation for.
+# is producing physically correct displacement, velocity, AND acceleration
+# fields rather than e.g. stale or zeroed data — acceleration in particular
+# is the field reported as corrupted in issue #197.  Note T below is the
+# *original* problem's final time (1.0e-3), which does not change just
+# because this test stops the simulation early.
 
 using LinearAlgebra
 using YAML
@@ -159,6 +160,8 @@ using YAML
     disp2_x = fom2.displacement[1, :]
     disp2_y = fom2.displacement[2, :]
     disp2_z = fom2.displacement[3, :]
+    velo2_z = fom2.velocity[3, :]
+    acce2_z = fom2.acceleration[3, :]
 
     # Exact 1-D wave solution for a Gaussian pulse on a bar clamped at both
     # ends (superposition of the two traveling-wave reflections), evaluated
@@ -178,13 +181,39 @@ using YAML
 
     n2 = length(z2)
     disp2_z_exact = zeros(Float64, n2)
+    velo2_z_exact = zeros(Float64, n2)
+    acce2_z_exact = zeros(Float64, n2)
     for i in 1:n2
         disp2_z_exact[i] =
             0.5 * a * (exp(-(z2[i] - c * t - b)^2 / 2 / s^2) + exp(-(z2[i] + c * t - b)^2 / 2 / s^2)) -
             0.5 * a * (exp(-(z2[i] - c * (T - t) - b)^2 / 2 / s^2) + exp(-(z2[i] + c * (T - t) - b)^2 / 2 / s^2))
+        velo2_z_exact[i] =
+            0.5 * c * a / s^2 * (
+                (z2[i] - c * t - b) * exp(-(z2[i] - c * t - b)^2 / 2 / s^2) -
+                (z2[i] + c * t - b) * exp(-(z2[i] + c * t - b)^2 / 2 / s^2)
+            ) +
+            0.5 * c * a / s^2 * (
+                (z2[i] - c * (T - t) - b) * exp(-(z2[i] - c * (T - t) - b)^2 / 2 / s^2) -
+                (z2[i] + c * (T - t) - b) * exp(-(z2[i] + c * (T - t) - b)^2 / 2 / s^2)
+            )
+        acce2_z_exact[i] =
+            0.5 * a * (
+                -c^2 / s^2 * exp(-0.5 * (z2[i] - c * t - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] - c * t - b)^2 * exp(-0.5 * (z2[i] - c * t - b)^2 / s^2) -
+                c^2 / s^2 * exp(-0.5 * (z2[i] + c * t - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] + c * t - b)^2 * exp(-0.5 * (z2[i] + c * t - b)^2 / s^2)
+            ) -
+            0.5 * a * (
+                -c^2 / s^2 * exp(-0.5 * (z2[i] - c * (T - t) - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] - c * (T - t) - b)^2 * exp(-0.5 * (z2[i] - c * (T - t) - b)^2 / s^2) -
+                c^2 / s^2 * exp(-0.5 * (z2[i] + c * (T - t) - b)^2 / s^2) +
+                c^2 / s^4 * (z2[i] + c * (T - t) - b)^2 * exp(-0.5 * (z2[i] + c * (T - t) - b)^2 / s^2)
+            )
     end
 
     disp2_z_relerr = norm(disp2_z_exact - disp2_z) / norm(disp2_z_exact)
+    velo2_z_relerr = norm(velo2_z_exact - velo2_z) / norm(velo2_z_exact)
+    acce2_z_relerr = norm(acce2_z_exact - acce2_z) / norm(acce2_z_exact)
 
     # Loose-ish tolerance: this checks that the post-swap ROM is tracking the
     # correct physical solution (catching e.g. a stale, zeroed, or
@@ -195,8 +224,16 @@ using YAML
     # order of margin as the no-swap, full-amplitude reference check in
     # schwarz-ahead-overlap-dynamic-clamped.jl (~2% there), loosened to
     # account for ROM truncation and the FOM -> ROM state-transfer projection
-    # at the swap, neither of which that reference case has.
-    @test disp2_z_relerr < 0.1
+    # at the swap, neither of which that reference case has. Acceleration
+    # gets the same tolerance as displacement/velocity here: this is the
+    # field reported as corrupted by issue #197 (a ROM's shadow FOM left
+    # stale at swap time — see _sync_integrator_from_model! and the
+    # reconstruct_fom_fields! call added to apply_swap! in src/swap.jl), so
+    # it is checked against the exact solution with the same rigor as the
+    # other two fields rather than being left as an afterthought.
+    @test disp2_z_relerr < 0.05
+    @test velo2_z_relerr < 0.09
+    @test acce2_z_relerr < 0.11
     @test norm(disp2_x) ≈ 0.0 atol = 1.0e-8
     @test norm(disp2_y) ≈ 0.0 atol = 1.0e-8
 end
