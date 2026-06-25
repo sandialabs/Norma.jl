@@ -226,8 +226,18 @@ acceleration-form integrator (Sierra/SM) it is $\bm{a}$.}
 
 On a representative dynamic non-overlapping Dirichlet--Neumann cantilever
 problem the secant variant converged in \num{2} Schwarz iterations per time
-step, versus \numrange{4}{5} for the recursive variant, while both matched the
-monolithic single-domain reference to a relative tip error of $\sim\!10^{-10}$.
+step, versus \numrange{4}{5} for the recursive variant. The two are not
+interchangeable there, however: because the displacement-only secant imposes a
+recovered (rather than independently relaxed) interface velocity and
+acceleration, its transient differs from the all-fields recursive variant. A
+full-field comparison against the monolithic single-domain solution shows the
+recursive variant within \SI{0.7}{\percent} while the secant variant is
+\SI{8.8}{\percent} off; the agreement is close only at isolated points such as
+the cantilever tip. The secant variant thus accelerates the displacement
+fixed point at the cost of transient accuracy for Dirichlet--Neumann dynamics.
+For the force-relaxed couplings (Robin--Robin, impedance) no kinematic recovery
+is involved and all methods reproduce the monolithic solution equally well
+(\SI{0.5}{\percent}--\SI{0.7}{\percent} on the same problem).
 
 \begin{thebibliography}{9}
 \bibitem{SambataroTezaur} G.~Sambataro and I.~Tezaur,
