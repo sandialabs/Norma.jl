@@ -8,6 +8,12 @@ the simulation (e.g. "clamped-fom-2-*" up to some snapshot index, then
 "clamped-rom-2-*" from then on), while still representing one
 continuous subdomain.
 
+The legend label for each subdomain reflects which model it currently
+is ("ROM1", "FOM2", ...), derived from the "rom"/"fom" substring in
+its current segment's filename prefix -- see model_type_label() below.
+The label updates automatically the moment a subdomain swaps models,
+so the legend itself shows when and to what each subdomain swapped.
+
 At the end, the relative error (over all snapshots) between each
 subdomain's computed solution and the exact analytical solution is
 printed for all 3 fields (disp/velo/acce) and all subdomains.
@@ -93,6 +99,20 @@ def prefix_for_index(segments, i):
             return prefix
     # fall back to the last segment if i exceeds every last_index
     return segments[-1][0]
+
+
+def model_type_label(prefix, k):
+    """Derive a short legend label like 'ROM1' or 'FOM3' from a prefix
+    such as 'clamped-rom-1' or 'clamped-fom-3-phase2'. Looks for the
+    literal substring 'rom' or 'fom' in the prefix (case-insensitive);
+    if neither is present, falls back to just the subdomain number so
+    the legend still renders something sensible."""
+    lower = prefix.lower()
+    if 'rom' in lower:
+        return f'ROM{k}'
+    if 'fom' in lower:
+        return f'FOM{k}'
+    return str(k)
 
 
 subdomain_segments = {k: normalize_prefix_segments(SUBDOMAIN_PREFIXES[k])
@@ -192,15 +212,10 @@ den_acce = {k: 0.0 for k in range(1, nsd + 1)}
 plt.ion()
 fig, axes = plt.subplots(3, 1, figsize=(8, 10))
 
-# legend handles: one line per subdomain, plus the exact solution
-legend_handles = [
-    mlines.Line2D([], [], color=colors[(k - 1) % len(colors)], linestyle='-',
-                  label=f'subdomain {k}')
-    for k in range(1, nsd + 1)
-]
-legend_handles.append(
-    mlines.Line2D([], [], color='c', linestyle='--', label='exact')
-)
+# legend handles are rebuilt every snapshot (see inside the loop below),
+# since each subdomain's label ("ROM1", "FOM1", ...) can change when it
+# swaps models partway through the run. Only the "exact" handle is fixed.
+exact_handle = mlines.Line2D([], [], color='c', linestyle='--', label='exact')
 
 ctr = 0
 for i in range(istart, iend + 1, istep):
@@ -212,8 +227,10 @@ for i in range(istart, iend + 1, istep):
     dzk = {}
     vzk = {}
     azk = {}
+    label_k = {}
     for k in range(1, nsd + 1):
         file_prefix = prefix_for_index(subdomain_segments[k], i)
+        label_k[k] = model_type_label(file_prefix, k)
 
         dk = np.loadtxt(f'{file_prefix}-disp-{idx_str}.csv', delimiter=',')
         vk = np.loadtxt(f'{file_prefix}-velo-{idx_str}.csv', delimiter=',')
@@ -231,6 +248,16 @@ for i in range(istart, iend + 1, istep):
         t_snap = float(tk)  # time should be identical across subdomains
 
     t1 = t_snap
+
+    # legend handles for this snapshot: labels reflect each subdomain's
+    # CURRENT model type ("ROM1", "FOM1", ...), so the legend visibly
+    # updates the moment a subdomain swaps models.
+    legend_handles = [
+        mlines.Line2D([], [], color=colors[(k - 1) % len(colors)], linestyle='-',
+                      label=label_k[k])
+        for k in range(1, nsd + 1)
+    ]
+    legend_handles.append(exact_handle)
 
     # ---- exact / reference solution, evaluated on the union of
     #      subdomain z-coords (for plotting) ----
