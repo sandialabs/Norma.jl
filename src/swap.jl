@@ -667,6 +667,36 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     sim.handle_by_name[new.name] = DomainHandle(slot)
     sim.name_by_handle[slot] = new.name
 
+    # uniquify_swap_output! (called from build_replacement_subsim, above) may
+    # have renamed the occupant (e.g. "clamped-fom-1" -> "clamped-fom-1-phase2")
+    # to avoid clobbering an output file already written by an earlier phase
+    # of this same slot.  A later swap plan in the same chain, written before
+    # any of this renaming was known, still names the subsim by its ORIGINAL,
+    # un-renamed name (stripped_name(plan.replacement_file)) — that is what
+    # validate_swap_plans checked against and what the person who wrote the
+    # `swaps:` block actually typed. Register that name as a surviving alias
+    # for this slot too, so such a plan's `subsim:` lookup in
+    # maybe_apply_swaps! resolves instead of being silently skipped forever
+    # (haskey(sim.handle_by_name, plan.subsim_name) would otherwise never
+    # become true for that name). Skipped entirely when it equals new.name
+    # (the common case, no rename happened) since that was just registered
+    # above. The same collision guard applies: this can only legitimately
+    # collide with another slot if two distinct swap plans for two distinct
+    # slots resolve to the same intended name while both are live, which is
+    # exactly the ambiguous case the guard above already rejects.
+    intended_name = stripped_name(plan.replacement_file)
+    if intended_name != new.name
+        if haskey(sim.handle_by_name, intended_name) && sim.handle_by_name[intended_name].id != slot
+            norma_abortf(
+                "Swap into slot %d would register subsim name '%s', but that name is " *
+                "already claimed by slot %d.  Two different subsims cannot share the same " *
+                "replacement name while both are active; rename one of the replacement files.",
+                slot, intended_name, sim.handle_by_name[intended_name].id,
+            )
+        end
+        sim.handle_by_name[intended_name] = DomainHandle(slot)
+    end
+
     # Cached coupled_bc_index and is_dirichlet flags on partner BCs may now
     # point into the old BC list — rebuild them.
     pair_schwarz_bcs(sim)
