@@ -249,13 +249,21 @@ function SolidMultiDomainTimeController(params::Parameters)
     aitken_N0 = 1
     if has_relaxation_key
         relaxation_value = params["relaxation"]
-        if relaxation_value isa AbstractString && lowercase(relaxation_value) == "aitken"
+        relaxation_string = relaxation_value isa AbstractString ? lowercase(relaxation_value) : ""
+        if relaxation_string == "aitken"
             relaxation_method = :aitken
             if has_aitken_N0_parameter
                 aitken_N0 = Int(params["aitken N0 parameter"])
-            end 
+            end
+        elseif relaxation_string == "aitken secant"
+            # Non-recursive secant Aitken (Sambataro-Tezaur eq. 9 / Deparis-
+            # Discacciati-Quarteroni), the original-paper relaxation factor.
+            relaxation_method = :aitken_secant
+            if has_aitken_N0_parameter
+                aitken_N0 = Int(params["aitken N0 parameter"])
+            end
         else
-            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken` is recognized).")
+            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken` and `aitken secant` are recognized).")
         end
     end
     if has_relaxation_parameter
@@ -269,6 +277,7 @@ function SolidMultiDomainTimeController(params::Parameters)
     aitken_prev_residual_velo = [Vector{Float64}() for _ in 1:num_domains]
     aitken_prev_residual_acce = [Vector{Float64}() for _ in 1:num_domains]
     aitken_theta_disp = ones(Float64, num_domains)
+    aitken_prev_lambda_disp = [Vector{Float64}() for _ in 1:num_domains]
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
@@ -321,6 +330,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         aitken_prev_residual_velo,
         aitken_prev_residual_acce,
         aitken_theta_disp,
+        aitken_prev_lambda_disp,
         is_schwarz,
         schwarz_contact,
         active_contact,

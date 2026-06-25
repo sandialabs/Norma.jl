@@ -23,11 +23,10 @@ get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : 
 coupled_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.coupled_handle.id]
 self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsims[bc.self_handle.id]
 
-# Safeguard bounds for Aitken θ. Very small ‖δ‖² implies a stale residual
-# direction; clamp aggressive magnitudes to avoid divergence on near-parallel
-# residuals.
-const AITKEN_THETA_MIN = 0.1
-const AITKEN_THETA_MAX = 2.0
+# Floor on ‖δ‖² guarding the division when successive residuals are essentially
+# identical (a stale residual direction). This is numerical safety only; the
+# Aitken factor itself is left unclamped so it is free to take the large or
+# negative excursions that accelerate convergence.
 const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
 
 # Returns the relaxation factor θ applied to interp_disp for this Schwarz
@@ -58,7 +57,6 @@ function relaxation_theta!(
         δ_sq = dot(δ, δ)
         if δ_sq > AITKEN_DELTA_SQ_FLOOR
             θ = -θ_prev * dot(prev_residual, δ) / δ_sq
-            θ = clamp(θ, AITKEN_THETA_MIN, AITKEN_THETA_MAX)
         else
             θ = θ_prev
         end
@@ -67,6 +65,72 @@ function relaxation_theta!(
     controller.aitken_theta_disp[slot] = θ
     norma_logf(1, :schwarz, "Aitken θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
     return θ
+end
+
+# Non-recursive secant Aitken factor (the original-paper form):
+# Sambataro-Tezaur eq. (9), equivalently Deparis-Discacciati-Quarteroni:
+#
+#   ρ^(n) = - (d^(n) · δ^(n)) / ‖δ^(n)‖²,
+#
+# with the interface jump (fixed-point residual) r^(n) = E^(n) = T(g^(n)) - g^(n),
+# δ^(n) = r^(n) - r^(n-1), and d^(n) = g^(n) - g^(n-1) formed directly from the
+# stored interface iterates. This minimizes ‖d^(n) + ρ δ^(n)‖² and, unlike the
+# recursive Irons-Tuck form in `relaxation_theta!`, does not carry θ^(n-1), so it
+# is immune to the init/N0 bookkeeping required for the recursion to stay exact.
+function relaxation_secant_theta!(
+    controller::MultiDomainTimeController,
+    slot::Int,
+    iter::Int,
+    interp_disp::AbstractVector{Float64},
+    lambda_prev::AbstractVector{Float64},
+)
+    residual = interp_disp .- lambda_prev                 # r^(n) = T(g^(n)) - g^(n)
+    prev_residual = controller.aitken_prev_residual_disp[slot]   # r^(n-1)
+    prev_lambda = controller.aitken_prev_lambda_disp[slot]       # g^(n-1)
+    # For iter < N0 use the input ρ^(1) = relaxation_parameter (paper's N0 idea).
+    θ = controller.relaxation_parameter
+    if iter >= controller.aitken_N0 &&
+       !isempty(prev_residual) && length(prev_residual) == length(residual) &&
+       !isempty(prev_lambda) && length(prev_lambda) == length(lambda_prev)
+        δ = residual .- prev_residual                     # δ^(n)
+        d = lambda_prev .- prev_lambda                    # d^(n) = g^(n) - g^(n-1)
+        δ_sq = dot(δ, δ)
+        if δ_sq > AITKEN_DELTA_SQ_FLOOR
+            # Pure secant factor, paper eq. (9): no value clamp, so the factor is
+            # free to take the large/negative excursions that accelerate (or
+            # damp) convergence. The δ_sq floor above is kept only to guard the
+            # division when successive residuals are essentially identical.
+            θ = -dot(d, δ) / δ_sq
+        end
+    end
+    controller.aitken_prev_residual_disp[slot] = residual
+    controller.aitken_prev_lambda_disp[slot] = copy(lambda_prev)
+    norma_logf(1, :schwarz, "Aitken-secant θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
+    return θ
+end
+
+# Recover interface velocity and acceleration consistent with a relaxed interface
+# displacement, instead of relaxing them independently. Norma's implicit Newmark
+# is displacement-form (the solver unknown is u; see `correct`, time_integrator.jl),
+# so the single interface unknown to relax is the displacement, and v, a follow
+# from the integrator's own recovery relations using the stored predictors:
+#   a = (u - u_pre) / (β Δt²),   v = v_pre + γ Δt a.
+# For integrators without these predictors (e.g. quasi-static, explicit), the
+# interpolated kinematics are passed through unrelaxed.
+function recover_interface_kinematics!(controller, slot, integrator, interp_velo, interp_acce)
+    if integrator isa Newmark
+        Δt = integrator.time_step
+        β = integrator.β
+        γ = integrator.γ
+        u = controller.lambda_disp[slot]
+        a = (u .- integrator.disp_pre) ./ (β * Δt * Δt)
+        controller.lambda_acce[slot] = a
+        controller.lambda_velo[slot] = integrator.velo_pre .+ (γ * Δt) .* a
+    else
+        controller.lambda_velo[slot] = interp_velo
+        controller.lambda_acce[slot] = interp_acce
+    end
+    return nothing
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
@@ -623,11 +687,19 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         λ_v_prev = iter < 1 ? interp_velo : controller.lambda_velo[coupled_index]
         λ_a_prev = iter < 1 ? interp_acce : controller.lambda_acce[coupled_index]
 
-        θ = relaxation_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+        if controller.relaxation_method === :aitken_secant
+            # Relax the single d-form interface unknown (displacement); recover
+            # velocity and acceleration consistently from it (see functions above).
+            θ = relaxation_secant_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+            controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
+            recover_interface_kinematics!(controller, coupled_index, coupled_integrator, interp_velo, interp_acce)
+        else
+            θ = relaxation_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
 
-        controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-        controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
-        controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+            controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
+            controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
+            controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+        end
 
         coupled_integrator.displacement .= controller.lambda_disp[coupled_index]
         coupled_integrator.velocity .= controller.lambda_velo[coupled_index]

@@ -47,6 +47,9 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     aitken_prev_residual_velo::Vector{Vector{Float64}}
     aitken_prev_residual_acce::Vector{Vector{Float64}}
     aitken_theta_disp::Vector{Float64}
+    # Previous interface displacement iterate g^(n-1), used by the secant
+    # (paper eq. 9) Aitken variant to form d^(n) = g^(n) - g^(n-1) directly.
+    aitken_prev_lambda_disp::Vector{Vector{Float64}}
     is_schwarz::Bool
     schwarz_contact::Bool
     active_contact::Bool
