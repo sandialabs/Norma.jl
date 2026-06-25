@@ -101,10 +101,12 @@ const indexed_test_files = [
     (81, "single-implicit-dynamic-solid-clamped-bc.jl"),
     (82, "single-explicit-dynamic-solid-clamped-bc.jl"),
     (83, "single-dynamic-opinf-rom-to-fom-time-swap.jl"),
-    (84, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap.jl"),
+    (84, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap-middle.jl"),
     (85, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-fom-multi-swap.jl"),
     (86, "schwarz-ahead-overlap-dynamic-notched-cylinder-opinf-swap-rom-fom.jl"),
     (87, "single-static-solid-cube-sideset-dbc.jl"),
+    (88, "schwarz-ahead-overlap-dynamic-clamped-3sd-rom-fom-swap-sides.jl"),
+    (89, "schwarz-ahead-overlap-dynamic-clamped-3sd-round-trip-swap-chain.jl"),
 ]
 
 # Extract test file names

@@ -8,11 +8,14 @@ the simulation (e.g. "clamped-fom-2-*" up to some snapshot index, then
 "clamped-rom-2-*" from then on), while still representing one
 continuous subdomain.
 
-The legend label for each subdomain reflects which model it currently
-is ("ROM1", "FOM2", ...), derived from the "rom"/"fom" substring in
-its current segment's filename prefix -- see model_type_label() below.
-The label updates automatically the moment a subdomain swaps models,
-so the legend itself shows when and to what each subdomain swapped.
+This version matches clamped-swap.yaml's round trip on all three
+subdomains: subdomain 1 and 3 each go ROM -> FOM (t=0.0003) -> ROM
+(t=0.0006), and subdomain 2 goes FOM -> ROM (t=0.00025) -> FOM
+(t=0.00055) -- three CSV-filename segments per subdomain. See the
+SUBDOMAIN_PREFIXES comment below for the exact snapshot-index
+boundaries and the "-phaseN" filename suffixes Norma's
+uniquify_swap_output! assigns when a later swap phase reuses an
+earlier phase's output mesh file.
 
 At the end, the relative error (over all snapshots) between each
 subdomain's computed solution and the exact analytical solution is
@@ -27,12 +30,12 @@ Each subdomain's CSV files normally follow the naming convention:
 where k is the subdomain label and XXXX is a zero-padded snapshot
 index.
 
-For a subdomain that swaps prefixes mid-run (FOM -> ROM), specify a
-list of (prefix, last_index) segments instead of a single prefix --
-see SUBDOMAIN_PREFIXES below. The reference geometry (*-refe.csv) is
-read once per subdomain, using the *first* segment's prefix, since
-Norma's ROM phase reuses the FOM subdomain's mesh and does not write
-its own refe.csv.
+For a subdomain that swaps prefixes mid-run (FOM -> ROM or ROM -> FOM,
+any number of times), specify a list of (prefix, last_index) segments
+instead of a single prefix -- see SUBDOMAIN_PREFIXES below. The
+reference geometry (*-refe.csv) is read once per subdomain, using the
+*first* segment's prefix, since every later phase reuses the original
+subdomain's mesh and does not write its own refe.csv.
 
 Run this script from the directory containing the CSV files.
 """
@@ -63,22 +66,56 @@ colors = ['b', 'r', 'g', 'm', 'k', 'y']  # cycle if nsd > 6
 # Most subdomains use a single fixed prefix for the whole run, e.g.
 #     SUBDOMAIN_PREFIXES[k] = f'{base_prefix}-{k}'
 #
-# A subdomain that swaps from FOM to ROM partway through (Norma's
-# swapping capability) instead gets a list of (prefix, last_index)
-# segments, in order, where last_index is the last snapshot index
-# (inclusive) that segment's prefix is used for. The example below
-# matches a case where subdomain 2 runs as
-#     clamped-fom-2-disp-0000.csv ... clamped-fom-2-disp-0300.csv
-# then swaps to
-#     clamped-rom-2-disp-0310.csv ... clamped-rom-2-disp-1000.csv
+# A subdomain that swaps prefixes partway through (Norma's swapping
+# capability, FOM->ROM or ROM->FOM, any number of times) instead gets
+# a list of (prefix, last_index) segments, in order, where last_index
+# is the last snapshot index (inclusive) that segment's prefix is used
+# for.
+#
+# clamped-swap.yaml for this run declares a full round trip on every
+# subdomain (t_swap = 0.00025, 0.0003, 0.00055, 0.0006), giving THREE
+# CSV-filename segments per subdomain:
+#
+#   - Subdomain 2: FOM -> ROM -> FOM
+#         clamped-fom-2          (index 0000 .. 0250)
+#         clamped-rom-2          (index 0260 .. 0550)
+#         clamped-fom-2-phase2   (index 0560 .. 1000)
+#     The first swap's replacement (clamped-rom-2.yaml) writes to a
+#     DIFFERENT output mesh file (clamped-3sd-rom-2.e) than the
+#     original phase (clamped-3sd-fom-2.e), so no rename happens there.
+#     The second swap's replacement (clamped-fom-2.yaml) reuses the
+#     very first phase's output file, so THAT one gets renamed to
+#     "-phase2" by uniquify_swap_output! (src/swap.jl).
+#
+#   - Subdomains 1 and 3: ROM -> FOM -> ROM
+#         clamped-rom-1          (index 0000 .. 0300)
+#         clamped-fom-1-phase2   (index 0310 .. 0600)
+#         clamped-rom-1-phase3   (index 0610 .. 1000)
+#     Here BOTH swaps reuse the same output mesh file (clamped-3sd-1.e
+#     / clamped-3sd-3.e — clamped-rom-1.yaml and clamped-fom-1.yaml
+#     always write there), so uniquify_swap_output! renames on every
+#     swap: "-phase2" the first time, then "-phase3" the second time
+#     (it keeps incrementing past whichever "-phaseN" suffixes already
+#     exist on disk).
+#
+# A second swap landing back on a subsim's ORIGINAL name (e.g. the
+# `subsim: clamped-fom-1` plan that fires at t=0.0006) only resolves
+# correctly with the fix to apply_swap! in src/swap.jl that registers
+# that original, un-renamed name as a surviving alias for the slot —
+# without it, that second swap is silently skipped forever and
+# subdomains 1 and 3 only ever show two segments, not three. See the
+# apply_swap! comments in src/swap.jl for details.
 #
 # To plot a plain (non-swapping) case, just set every entry to a
 # single string prefix, e.g. SUBDOMAIN_PREFIXES = {1: 'clamped-1', ...}
 # ------------------------------------------------------------------
 SUBDOMAIN_PREFIXES = {
-    1: f'{base_prefix}-rom-1',
-    2: [(f'{base_prefix}-fom-2', 300), (f'{base_prefix}-rom-2', iend)],
-    3: f'{base_prefix}-rom-3',
+    1: [(f'{base_prefix}-rom-1', 300), (f'{base_prefix}-fom-1-phase2', 600),
+        (f'{base_prefix}-rom-1-phase3', iend)],
+    2: [(f'{base_prefix}-fom-2', 250), (f'{base_prefix}-rom-2', 550),
+        (f'{base_prefix}-fom-2-phase2', iend)],
+    3: [(f'{base_prefix}-rom-3', 300), (f'{base_prefix}-fom-3-phase2', 600),
+        (f'{base_prefix}-rom-3-phase3', iend)],
 }
 
 

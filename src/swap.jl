@@ -580,6 +580,28 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
                old.name, plan.replacement_file, sim.controller.time)
 
     new = build_replacement_subsim(sim, slot, plan)
+    # If the source is a ROM, its shadow FOM (old.model.fom_model) is only
+    # refreshed as an incidental side effect of OTHER subsims' Schwarz
+    # overlap-BC coupling reading it (see apply_bc in schwarz.jl, which
+    # temporarily writes interpolated state into a coupled ROM's integrator,
+    # calls reconstruct_fom_fields!, then restores and reconstructs again).
+    # Because subcycle() always processes subsims in a fixed order
+    # (1, 2, 3, ...), a subsim that is processed LATER than its Schwarz
+    # partner never gets this incidental refresh applied with its own
+    # FINAL, converged-this-iteration acceleration: the partner already ran
+    # earlier in the same iteration, using whatever this subsim's integrator
+    # held at the END of the PREVIOUS iteration. That one-iteration lag is
+    # harmless during normal time-stepping (Schwarz has converged by the
+    # time anything reads it, so the lag is below tolerance), but it is not
+    # acceptable here: this is the one place that treats the shadow FOM as
+    # exactly authoritative.  Force a fresh reconstruction directly from
+    # old's own integrator (which holds the true, just-converged reduced
+    # acceleration with no staleness, since correct() sets it directly)
+    # before reading it, rather than trusting whatever the last incidental
+    # side effect happened to leave there.
+    if old.model isa RomModel
+        reconstruct_fom_fields!(old.integrator, old.solver, old.model)
+    end
     copy_model_state!(new.model, old.model)
     align_replacement_time!(new, sim, old)
 
@@ -644,6 +666,36 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     end
     sim.handle_by_name[new.name] = DomainHandle(slot)
     sim.name_by_handle[slot] = new.name
+
+    # uniquify_swap_output! (called from build_replacement_subsim, above) may
+    # have renamed the occupant (e.g. "clamped-fom-1" -> "clamped-fom-1-phase2")
+    # to avoid clobbering an output file already written by an earlier phase
+    # of this same slot.  A later swap plan in the same chain, written before
+    # any of this renaming was known, still names the subsim by its ORIGINAL,
+    # un-renamed name (stripped_name(plan.replacement_file)) — that is what
+    # validate_swap_plans checked against and what the person who wrote the
+    # `swaps:` block actually typed. Register that name as a surviving alias
+    # for this slot too, so such a plan's `subsim:` lookup in
+    # maybe_apply_swaps! resolves instead of being silently skipped forever
+    # (haskey(sim.handle_by_name, plan.subsim_name) would otherwise never
+    # become true for that name). Skipped entirely when it equals new.name
+    # (the common case, no rename happened) since that was just registered
+    # above. The same collision guard applies: this can only legitimately
+    # collide with another slot if two distinct swap plans for two distinct
+    # slots resolve to the same intended name while both are live, which is
+    # exactly the ambiguous case the guard above already rejects.
+    intended_name = stripped_name(plan.replacement_file)
+    if intended_name != new.name
+        if haskey(sim.handle_by_name, intended_name) && sim.handle_by_name[intended_name].id != slot
+            norma_abortf(
+                "Swap into slot %d would register subsim name '%s', but that name is " *
+                "already claimed by slot %d.  Two different subsims cannot share the same " *
+                "replacement name while both are active; rename one of the replacement files.",
+                slot, intended_name, sim.handle_by_name[intended_name].id,
+            )
+        end
+        sim.handle_by_name[intended_name] = DomainHandle(slot)
+    end
 
     # Cached coupled_bc_index and is_dirichlet flags on partner BCs may now
     # point into the old BC list — rebuild them.
@@ -724,6 +776,14 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
                sim.name, plan.replacement_file, sim.controller.time)
 
     new = build_replacement_single_domain_sim(sim, plan)
+    # See the analogous comment in apply_swap! (multi-domain): a ROM's
+    # shadow FOM is not guaranteed to be refreshed from its own integrator's
+    # current, converged reduced state at an arbitrary point in time — force
+    # a fresh reconstruction here so copy_model_state! reads an authoritative
+    # value rather than whatever was last left there.
+    if sim.model isa RomModel
+        reconstruct_fom_fields!(sim.integrator, sim.solver, sim.model)
+    end
     copy_model_state!(new.model, sim.model)
     align_replacement_time_single!(new, sim)
 
@@ -1146,9 +1206,32 @@ function _sync_integrator_from_model!(integrator::TimeIntegrator, model::OpInfMo
     end
     integrator.displacement .= model.reduced_state
     integrator.velocity     .= model.reduced_velocity
-    # Acceleration is zeroed rather than projected: it would require a second
-    # force evaluation on the new model which may not be valid yet.  The first
-    # Newmark predict step will overwrite it with the correct value.
+    # Project the shadow FOM's acceleration onto the new ROM basis, the same
+    # way initialize() seeds the integrator's acceleration on the very first
+    # time step.  copy_model_state! has already brought model.fom_model.
+    # acceleration up to date (directly or via L2 transfer) by the time this
+    # runs, so no extra force evaluation is needed here.
+    #
+    # Leaving this zeroed (as a previous version of this function did) causes
+    # a visible artifact: the very next predict() call multiplies this stale
+    # zero acceleration into the Newmark/central-difference displacement and
+    # velocity predictors (e.g. ½dt²(1-2β)·a), producing a spurious one-step
+    # transient right at the swap time, even though correct() will eventually
+    # recompute a consistent acceleration once the solve converges.
+    basis = model.basis
+    fom   = model.fom_model
+    n_var, _, n_mode = size(basis)
+    n_nodes_fom = size(fom.acceleration, 2)
     fill!(integrator.acceleration, 0.0)
+    for j in 1:n_nodes_fom
+        for k in 1:n_mode
+            for v in 1:n_var
+                dof_index = 3 * (j - 1) + v
+                if fom.free_dofs[dof_index]
+                    integrator.acceleration[k] += basis[v, j, k] * fom.acceleration[v, j]
+                end
+            end
+        end
+    end
     return nothing
 end
