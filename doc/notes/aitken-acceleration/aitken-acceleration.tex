@@ -1,0 +1,244 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+\usepackage{caption}
+\captionsetup{font=small}
+
+\newcommand{\R}{\mathbb{R}}
+\renewcommand{\d}{\mathrm{d}}
+
+\title{\vspace{-2em}Aitken acceleration in Norma: two formulations}
+\author{Alejandro Mota \\ \small Sandia National Laboratories}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note records the two Aitken-acceleration formulations implemented in
+Norma's non-overlapping Schwarz alternating solver, together with the
+displacement-form kinematic recovery they use. The purpose is to fix the exact
+formulas and index conventions so they can be reproduced in Sierra/SM. Both
+formulations are exposed through the multi-domain controller: the recursive
+Irons--Tuck variant (\texttt{relaxation: aitken}) and the non-recursive secant
+variant (\texttt{relaxation: aitken secant}). They are mathematically
+equivalent in exact arithmetic but differ in their initialization bookkeeping
+and in how they treat the interface velocity and acceleration.
+\end{abstract}
+
+\section{Setting and fixed-point reformulation}
+
+Consider a domain decomposition of $\Omega$ into two non-overlapping subdomains
+$\Omega_1$ and $\Omega_2$ sharing the interface $\Gamma$. Norma drives the
+coupling \emph{multiplicatively} (Gauss--Seidel ordering of the subdomain
+solves) with a strongly imposed Dirichlet condition on the Dirichlet side of
+the interface and a traction (Neumann) condition on the other. Let $\bm{g}$
+denote the interface unknown, i.e.\ the displacement datum imposed on the
+interface. Following Sambataro and Tezaur~\cite{SambataroTezaur} we write the
+multiplicative Schwarz sweep as a fixed-point map
+\begin{equation}
+    \bm{g} \;\mapsto\; T(\bm{g}),
+    \label{eq:T}
+\end{equation}
+where $T(\bm{g})$ is obtained by solving the subdomains in order with the
+current interface data and projecting the resulting trace back onto $\Gamma$;
+the converged interface state satisfies $\bm{g}^\star = T(\bm{g}^\star)$.
+
+Define the \emph{interface jump} (the fixed-point residual)
+\begin{equation}
+    \bm{r}^{(n)} \;:=\; T\!\left(\bm{g}^{(n)}\right) - \bm{g}^{(n)} .
+    \label{eq:residual}
+\end{equation}
+In the Norma implementation (\texttt{src/schwarz.jl}) the two terms map to the
+code variables as
+\begin{equation*}
+    \bm{g}^{(n)} \;=\; \texttt{lambda\_disp} \ \text{(from iteration $n{-}1$)},
+    \qquad
+    T\!\left(\bm{g}^{(n)}\right) \;=\; \texttt{interp\_disp} ,
+\end{equation*}
+so that $\bm{r}^{(n)} = \texttt{interp\_disp} - \texttt{lambda\_disp}$. This is
+the displacement mismatch the relaxation acts on; it is non-degenerate because
+\texttt{interp\_disp} is the freshly projected neighbor trace, whereas the
+strongly imposed continuity makes the \emph{post-imposition} interface residual
+identically zero on the Dirichlet side.
+
+The relaxed update common to all variants is
+\begin{equation}
+    \bm{g}^{(n+1)} \;=\; \bm{g}^{(n)} + \omega^{(n)} \, \bm{r}^{(n)}
+    \;=\; \omega^{(n)} \, T\!\left(\bm{g}^{(n)}\right)
+        + \bigl(1 - \omega^{(n)}\bigr)\,\bm{g}^{(n)} ,
+    \label{eq:update}
+\end{equation}
+with relaxation factor $\omega^{(n)}$. Classical relaxation uses a fixed
+$\omega^{(n)} \equiv \omega$; the Aitken variants choose $\omega^{(n)}$
+dynamically.
+
+\section{Version 1: recursive Irons--Tuck Aitken (\texttt{relaxation: aitken})}
+
+With $\bm{\delta}^{(n)} := \bm{r}^{(n)} - \bm{r}^{(n-1)}$, the Irons--Tuck
+recursion~\cite{IronsTuck} sets
+\begin{equation}
+    \omega^{(n)} \;=\;
+    -\,\omega^{(n-1)}\,
+    \frac{\bm{r}^{(n-1)} \cdot \bm{\delta}^{(n)}}
+         {\bigl\lVert \bm{\delta}^{(n)} \bigr\rVert^{2}} .
+    \label{eq:ironstuck}
+\end{equation}
+The factor carries the damping history through the multiplicative
+$\omega^{(n-1)}$, which requires the iterate to have advanced by exactly
+$\omega^{(n-1)}\bm{r}^{(n-1)}$ for the recursion to remain consistent (see
+Section~\ref{sec:equiv}).
+
+\section{Version 2: non-recursive secant Aitken (\texttt{relaxation: aitken secant})}
+
+This is the form derived in the original references,
+Sambataro--Tezaur~\cite{SambataroTezaur} (Eq.~9) and
+Deparis--Discacciati--Quarteroni~\cite{Deparis}. With
+$\bm{d}^{(n)} := \bm{g}^{(n)} - \bm{g}^{(n-1)}$ (the change in the interface
+iterate) and $\bm{\delta}^{(n)}$ as above,
+\begin{equation}
+    \omega^{(n)} \;=\;
+    -\,\frac{\bm{d}^{(n)} \cdot \bm{\delta}^{(n)}}
+            {\bigl\lVert \bm{\delta}^{(n)} \bigr\rVert^{2}}
+    \;=\; \arg\min_{\omega}\,
+          \bigl\lVert \bm{d}^{(n)} + \omega\,\bm{\delta}^{(n)} \bigr\rVert^{2} .
+    \label{eq:secant}
+\end{equation}
+The numerator uses the change of the iterate $\bm{d}^{(n)}$, not the previous
+residual, and there is no recursive $\omega^{(n-1)}$ factor. Norma forms
+$\bm{d}^{(n)} = \bm{g}^{(n)} - \bm{g}^{(n-1)}$ directly from the two stored
+interface iterates rather than from the recursion.
+
+\section{Relationship between the two forms}
+\label{sec:equiv}
+
+The update~\eqref{eq:update} gives
+$\bm{g}^{(n)} = \bm{g}^{(n-1)} + \omega^{(n-1)}\bm{r}^{(n-1)}$, hence
+\begin{equation}
+    \bm{d}^{(n)} \;=\; \bm{g}^{(n)} - \bm{g}^{(n-1)}
+                 \;=\; \omega^{(n-1)}\,\bm{r}^{(n-1)} .
+    \label{eq:dlink}
+\end{equation}
+Substituting~\eqref{eq:dlink} into the secant factor~\eqref{eq:secant}
+reproduces the Irons--Tuck factor~\eqref{eq:ironstuck} exactly. The two forms
+therefore coincide \emph{whenever the interface iterate advances by exactly}
+$\omega^{(n-1)}\bm{r}^{(n-1)}$. They diverge only where that identity is broken
+by the initialization and warm-up bookkeeping (Section~\ref{sec:init}): the
+secant form reads the actual stored iterates $\bm{g}^{(n)},\bm{g}^{(n-1)}$ and
+is robust to it, while the recursion silently inherits any inconsistency in the
+stored $\omega^{(n-1)}$ and $\bm{r}^{(n-1)}$.
+
+\section{Initialization}
+\label{sec:init}
+
+Let $\omega^{(1)}$ be a user-supplied initial factor (Norma:
+\texttt{relaxation parameter}, default $1$) and $N_0$ a warm-up count (Norma:
+\texttt{aitken N0 parameter}, default $1$). For $1 \le n < N_0$ the factor is
+held at $\omega^{(n)} = \omega^{(1)}$; the first dynamic factor is computed at
+$n = N_0$, once two residuals (Version~1) and additionally two iterates
+(Version~2) are on record.
+
+\section{Numerical safeguards}
+
+A single safeguard is retained: a floor on
+$\lVert\bm{\delta}^{(n)}\rVert^{2}$ ($10^{-20}$) that guards the division
+in~\eqref{eq:ironstuck} and~\eqref{eq:secant} when successive residuals are
+essentially identical; in that case the previous factor is reused (Version~1)
+or $\omega^{(1)}$ is used (Version~2). No value clamp is applied to
+$\omega^{(n)}$: clamping caps the very large or near-zero steps that produce
+the acceleration and was found to slow convergence, so it is omitted.
+
+\section{Which variable to relax: kinematic consistency}
+\label{sec:fields}
+
+For dynamics the interface carries displacement $\bm{u}$, velocity $\bm{v}$,
+and acceleration $\bm{a}$. Under Newmark integration with a \emph{fixed}
+step history $(\bm{u}_n,\bm{v}_n,\bm{a}_n)$ and parameters $\beta,\gamma,\Delta
+t$, the end-of-step kinematics lie on a one-parameter family,
+\begin{equation}
+    \bm{u}_{n+1} = \bm{u}_{\mathrm{pre}} + \beta\Delta t^2\,\bm{a}_{n+1},
+    \qquad
+    \bm{v}_{n+1} = \bm{v}_{\mathrm{pre}} + \gamma\Delta t\,\bm{a}_{n+1},
+    \label{eq:newmark}
+\end{equation}
+with predictors
+$\bm{u}_{\mathrm{pre}} = \bm{u}_n + \Delta t\,\bm{v}_n
+ + (\tfrac12 - \beta)\Delta t^2\,\bm{a}_n$ and
+$\bm{v}_{\mathrm{pre}} = \bm{v}_n + (1-\gamma)\Delta t\,\bm{a}_n$.
+Thus only one of $(\bm{u},\bm{v},\bm{a})$ is independent: the integrator's
+primary solve variable. The relaxation should act on that variable, with the
+remaining two recovered from~\eqref{eq:newmark}.
+
+\paragraph{Norma (displacement-form Newmark).}
+The solver unknown is $\bm{u}$ (\texttt{src/time\_integrator.jl}, \texttt{correct}).
+The secant variant therefore relaxes \emph{displacement only},
+$\bm{u}^{(n+1)} = \bm{g}^{(n+1)}$ from~\eqref{eq:update}, and recovers
+\begin{equation}
+    \bm{a}^{(n+1)} = \frac{\bm{u}^{(n+1)} - \bm{u}_{\mathrm{pre}}}{\beta\Delta t^2},
+    \qquad
+    \bm{v}^{(n+1)} = \bm{v}_{\mathrm{pre}} + \gamma\Delta t\,\bm{a}^{(n+1)} .
+    \label{eq:recover}
+\end{equation}
+The legacy \texttt{relaxation: aitken} variant instead relaxes
+$\bm{u}$, $\bm{v}$, and $\bm{a}$ independently with the same $\omega^{(n)}$. A
+$\omega$-blend of two kinematically consistent triples is again consistent, so
+the two treatments agree when the incoming triple lies on~\eqref{eq:newmark};
+they differ slightly otherwise because Norma interpolates the three interface
+histories independently in time. Recovering from a single relaxed variable
+keeps the imposed interface state exactly on the integrator manifold.
+
+\paragraph{Sierra/SM (acceleration-form).}
+In an acceleration-form integrator the primary unknown is $\bm{a}$. The same
+principle then prescribes relaxing the \emph{acceleration} and recovering
+$\bm{u}$ and $\bm{v}$ by inverting~\eqref{eq:newmark}, i.e.\ replacing the role
+of $\bm{u}$ in~\eqref{eq:recover} by $\bm{a}$. This is the relevant choice for
+reproduction in Sierra/SM.
+
+\section{Summary for reproduction}
+
+\begin{table}[ht!]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Formulation & Relaxation factor & Norma key & Variable relaxed \\
+\midrule
+Irons--Tuck (recursive) &
+$\omega^{(n)} = -\omega^{(n-1)}\dfrac{\bm{r}^{(n-1)}\cdot\bm{\delta}^{(n)}}{\lVert\bm{\delta}^{(n)}\rVert^2}$ &
+\texttt{aitken} & $\bm{u},\bm{v},\bm{a}$ (same $\omega$) \\[1.4em]
+Secant (non-recursive) &
+$\omega^{(n)} = -\dfrac{\bm{d}^{(n)}\cdot\bm{\delta}^{(n)}}{\lVert\bm{\delta}^{(n)}\rVert^2}$ &
+\texttt{aitken secant} & primary unknown; recover rest \\
+\bottomrule
+\end{tabular}
+\caption{The two Aitken formulations implemented in Norma. Here
+$\bm{r}^{(n)} = T(\bm{g}^{(n)}) - \bm{g}^{(n)}$,
+$\bm{\delta}^{(n)} = \bm{r}^{(n)} - \bm{r}^{(n-1)}$, and
+$\bm{d}^{(n)} = \bm{g}^{(n)} - \bm{g}^{(n-1)}$. For Norma's
+displacement-form Newmark the primary unknown is $\bm{u}$; for an
+acceleration-form integrator (Sierra/SM) it is $\bm{a}$.}
+\end{table}
+
+On a representative dynamic non-overlapping Dirichlet--Neumann cantilever
+problem the secant variant converged in \num{2} Schwarz iterations per time
+step, versus \numrange{4}{5} for the recursive variant, while both matched the
+monolithic single-domain reference to a relative tip error of $\sim\!10^{-10}$.
+
+\begin{thebibliography}{9}
+\bibitem{SambataroTezaur} G.~Sambataro and I.~Tezaur,
+\emph{On the role of relaxation and acceleration in the non-overlapping Schwarz
+alternating method for coupling}, arXiv:2603.17143.
+\bibitem{Deparis} S.~Deparis, M.~Discacciati, and A.~Quarteroni,
+\emph{A domain decomposition framework for fluid-structure interaction
+problems}, MOX Report 45, Politecnico di Milano.
+\bibitem{IronsTuck} B.~M.~Irons and R.~C.~Tuck,
+\emph{A version of the Aitken accelerator for computer iteration},
+Int.\ J.\ Numer.\ Methods Eng.\ \textbf{1} (1969) 275--277.
+\end{thebibliography}
+
+\end{document}
