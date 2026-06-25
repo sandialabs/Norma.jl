@@ -491,7 +491,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
               model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
           end
       end
-    else #left subdomain
+    else #left subdomain (relaxation applied on this side)
       #Set g and lambda to 0 for iter = 0
       if (iter == 0)
         n = length(model.boundary_force)
@@ -501,7 +501,23 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
         #In particular, we set g to past lambda_disp
         g = controller.lambda_disp[coupled_index]
       end
-      #println("IKT g norm = ", norm(g))
+      # Optional dynamic Aitken relaxation factor. The fixed-point iterate is the
+      # Robin RHS stored in lambda_disp; its unrelaxed (theta = 1) candidate is
+      # T(g) = boundary_force + coupling term, from which the residual r = T(g) - g
+      # is formed. The fixed-theta blend below is otherwise unchanged.
+      if controller.relaxation_method === :aitken || controller.relaxation_method === :aitken_secant
+          candidate = copy(model.boundary_force)
+          for comp in 1:3
+              alpha_W_u = α * (W * dst_disp[comp, :])
+              for (i_local, i_global) in enumerate(global_from_local_map)
+                  dof_i = 3 * (i_global - 1) + comp
+                  candidate[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
+              end
+          end
+          theta = controller.relaxation_method === :aitken_secant ?
+              relaxation_secant_theta!(controller, coupled_index, iter, candidate, g) :
+              relaxation_theta!(controller, coupled_index, iter, candidate, g)
+      end
       #initialize lambda_disp  = model.boundary_force
       controller.lambda_disp[coupled_index] = copy(model.boundary_force)
       for comp in 1:3

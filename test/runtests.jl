@@ -107,6 +107,7 @@ const indexed_test_files = [
     (87, "single-static-solid-cube-sideset-dbc.jl"),
     (88, "schwarz-nonoverlap-static-cuboid-hex8-aitken-secant.jl"),
     (89, "schwarz-nonoverlap-dynamic-cantilever-dn-aitken-secant.jl"),
+    (90, "schwarz-nonoverlap-static-cuboid-robin-robin-aitken.jl"),
 ]
 
 # Extract test file names
