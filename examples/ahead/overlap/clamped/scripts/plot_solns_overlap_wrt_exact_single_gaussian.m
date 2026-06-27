@@ -20,7 +20,7 @@ dispz2 = []; veloz2 = []; accez2 = [];
 disp_computed = []; velo_computed = []; acce_computed = [];
 disp_exact = []; velo_exact = []; acce_exact = [];
 fig = figure();
-save_figs = 1;
+save_figs = 0;
 ctr = 1;
 for i=0:10:1000
   if (i < 10)
@@ -110,19 +110,16 @@ for i=0:10:1000
   b = 0.0;
   s = 0.02;
   T = 1e-3;
-  if (t1 <= T/2)
-    xi = zz + c*t1 - b;
-    d_ex = a*exp(-xi.^2/2/s^2);
-    v_ex = -a/s^2*c*xi.*exp(-xi.^2/2/s^2);
-    a_ex = -a/s^2*c^2*exp(-1/2*xi.^2/s^2) ...
-         + a/s^4*c^2*xi.^2.*exp(-1/2*xi.^2/s^2);
-  else
-    xi = zz - c*t1 + b + 1.0;
-    d_ex = -a*exp(-xi.^2/2/s^2);
-    v_ex = -a/s^2*c*xi.*exp(-xi.^2/2/s^2);
-    a_ex = a/s^2*c^2*exp(-1/2*xi.^2/s^2) ...
-         - a/s^4*c^2*xi.^2.*exp(-1/2*xi.^2/s^2);
-  end
+  xL = min(zz);
+  xi_inc = zz + c*t1 - b;              % incident left-moving pulse
+  xi_ref = 2*xL - zz + c*t1 - b;       % mirror image across x = -0.5
+  E_inc = exp(-0.5*xi_inc.^2/s^2);
+  E_ref = exp(-0.5*xi_ref.^2/s^2);
+  d_ex = a*E_inc - a*E_ref;
+  v_ex = -a*c/s^2*xi_inc.*E_inc ...
+       + a*c/s^2*xi_ref.*E_ref;
+  a_ex = a*c^2*(xi_inc.^2/s^4 - 1/s^2).*E_inc ...
+      -a*c^2*(xi_ref.^2/s^4 - 1/s^2).*E_ref;
   disp_computed = [disp_computed, dispz_merged];
   velo_computed = [velo_computed, veloz_merged];
   acce_computed = [acce_computed, accez_merged];
