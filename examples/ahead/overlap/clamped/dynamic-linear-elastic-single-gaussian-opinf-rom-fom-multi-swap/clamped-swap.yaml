@@ -1,0 +1,33 @@
+type: multi
+domains: ["clamped-rom-1.yaml", "clamped-fom-2.yaml"]
+swaps:
+  - subsim: clamped-rom-1
+    replacement: clamped-fom-1.yaml
+    criterion:
+      type: time
+      t_swap: 0.0001
+  - subsim: clamped-fom-2
+    replacement: clamped-rom-2.yaml
+    criterion:
+      type: time
+      t_swap: 0.00035
+  - subsim: clamped-rom-2
+    replacement: clamped-fom-2.yaml
+    criterion:
+      type: time
+      t_swap: 0.0005
+  - subsim: clamped-fom-1
+    replacement: clamped-rom-1.yaml
+    criterion:
+      type: time
+      t_swap: 0.00085
+Exodus output interval: 1.0e-5
+CSV output interval: 1.0e-5
+CSV write sidesets: true
+initial time: 0.0
+final time: 1.0e-3
+time step: 1.0e-6
+minimum iterations: 1
+maximum iterations: 16
+relative tolerance: 1.0e-12
+absolute tolerance: 1.0e-08
