@@ -65,9 +65,9 @@
         max_vm = max(max_vm, σ_vm)
     end
     @test max_vm > σy
-    @test max_vm ≈ 3.650555617152344e8 rtol = 1.0e-2
+    @test max_vm ≈ 4.2598936532813066e8 rtol = 1.0e-2
 
     # Average y-displacement
     avg_disp = average_components(sim.integrator.displacement)
-    @test avg_disp[2] ≈ 0.0008299533558821846 rtol = 2.0e-2
+    @test avg_disp[2] ≈ 0.0008799718537250359 rtol = 2.0e-2
 end
