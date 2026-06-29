@@ -205,6 +205,7 @@ end
 function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
     free = model.free_dofs
+    fixed = .!free
     evaluate(model, integrator, solver)
     if model.failed == true
         norma_abort("Finite element model failed to initialize")
@@ -217,7 +218,39 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     integrator.stored_energy = model.strain_energy
     atol = solver.linear_solver_absolute_tolerance
     rtol = solver.linear_solver_relative_tolerance
-    integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
+    # Mff * a_free = (F_ext - F_int)_free - Mfc * a_fixed. The prescribed
+    # (Dirichlet) DOFs generally have a nonzero acceleration of their own
+    # (e.g. a moving boundary condition), already set on model/integrator
+    # .acceleration by apply_bcs. With a consistent (non-lumped) mass matrix,
+    # free and fixed DOFs adjacent to the same elements are inertially
+    # coupled through the Mfc off-diagonal block, so that contribution has to
+    # be subtracted from the right-hand side; omitting it is only invisible
+    # when a_fixed is exactly zero (e.g. a fresh run starting from rest).
+    #
+    # Schwarz-coupled fixed DOFs are excluded from this correction: this
+    # function runs once, at the very start of the simulation, before any
+    # subdomain has ever taken a predictor step. The Schwarz coupling
+    # machinery (coupling_weak_dbc / contact_weak_dbc / overlap variants)
+    # derives its acceleration either by reading the coupled side's
+    # integrator.acceleration directly, or — under Aitken-secant relaxation —
+    # via integrator.disp_pre, both of which are only physically meaningful
+    # after a real Newmark predict() has run somewhere. At this point neither
+    # side of any Schwarz interface has one, so whatever value apply_bcs left
+    # on those DOFs is not a trustworthy acceleration and must not be allowed
+    # into this one-shot linear solve. A plain (non-Schwarz) Dirichlet BC's
+    # prescribed acceleration is exact at any time, including t=0, and is
+    # always trusted.
+    schwarz_fixed = falses(length(free))
+    for bc in model.boundary_conditions
+        if bc isa SolidMechanicsSchwarzBoundaryCondition
+            for i_global in bc.global_from_local_map
+                schwarz_fixed[(3 * i_global - 2):(3 * i_global)] .= true
+            end
+        end
+    end
+    trusted_fixed = fixed .& .!schwarz_fixed
+    rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * integrator.acceleration[trusted_fixed]
+    integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
     return nothing
 end
 

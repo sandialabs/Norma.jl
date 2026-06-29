@@ -16,6 +16,100 @@ function create_simulation(input_file::String)
     return create_simulation(params)
 end
 
+# Read the restart snapshot (time + nodal displacement/velocity fields) for a
+# single-domain simulation from its (already-opened) input mesh, validate the
+# request, and stash the result on params under "restart_info" for SolidMechanics
+# to consume. Also overwrites params["time integrator"]["initial time"] so that
+# the controller and integrator are built with the restart time from the outset
+# (num_stops depends on it). No-op (params["restart_info"] = nothing) when the
+# input file has no `restart:` block.
+function process_restart!(params::Parameters, input_mesh, basename::String)
+    if haskey(params, "restart") == false
+        params["restart_info"] = nothing
+        return nothing
+    end
+    if get(params, "_is_subdomain", false) == true
+        norma_abort(
+            "Restart is not currently supported for subdomains of a multi-domain " *
+            "(Schwarz) simulation. Remove the `restart:` block from this subdomain's " *
+            "input file, or run it as a standalone single-domain simulation.",
+        )
+    end
+    if haskey(params, "initial conditions")
+        norma_abort(
+            "Cannot specify both `restart:` and `initial conditions:` in the same " *
+            "input file ($basename). The restart snapshot already supplies the " *
+            "initial displacement and velocity fields; remove one or the other.",
+        )
+    end
+    model_params = get(params, "model", Parameters())
+    if get(model_params, "type", "") != "solid mechanics"
+        norma_abort(
+            "Restart is only supported for `model: type: solid mechanics` (FOM) " *
+            "models. Reduced-order model restart is not implemented.",
+        )
+    end
+    restart_params = params["restart"]
+    haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
+    restart_index = Int64(restart_params["index"])
+    num_steps = Exodus.read_number_of_time_steps(input_mesh)
+    if num_steps < 1
+        norma_abort("Restart mesh '$(input_mesh.file_name)' contains no time steps.")
+    end
+    if restart_index < 1 || restart_index > num_steps
+        norma_abortf(
+            "Restart index %d is out of range for mesh '%s', which has %d time step(s) " *
+            "(valid range is 1:%d).",
+            restart_index,
+            input_mesh.file_name,
+            num_steps,
+            num_steps,
+        )
+    end
+    restart_time = Exodus.read_time(input_mesh, restart_index)
+    disp_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_x")
+    disp_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_y")
+    disp_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_z")
+    velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
+    velo_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_y")
+    velo_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_z")
+    num_nodes = Exodus.num_nodes(input_mesh.init)
+    displacement = Matrix{Float64}(undef, 3, num_nodes)
+    velocity = Matrix{Float64}(undef, 3, num_nodes)
+    displacement[1, :] = disp_x
+    displacement[2, :] = disp_y
+    displacement[3, :] = disp_z
+    velocity[1, :] = velo_x
+    velocity[2, :] = velo_y
+    velocity[3, :] = velo_z
+    # Override the initial time unconditionally: the restart snapshot's time is
+    # the only initial time consistent with the restart displacement/velocity
+    # fields, regardless of what `time integrator: initial time` says in the
+    # input file.
+    integrator_params = params["time integrator"]
+    requested_initial_time = get(integrator_params, "initial time", nothing)
+    integrator_params["initial time"] = restart_time
+    norma_log(0, :restart, "Restarting simulation from snapshot data.")
+    norma_logf(0, :restart, "Restart index:  %d (of %d)", restart_index, num_steps)
+    norma_logf(0, :restart, "Restart time:   %.6e", restart_time)
+    if requested_initial_time !== nothing && !isapprox(Float64(requested_initial_time), restart_time; atol=1e-12)
+        norma_logf(
+            0,
+            :restart,
+            "Overriding `time integrator: initial time` (%.6e) with restart time (%.6e).",
+            Float64(requested_initial_time),
+            restart_time,
+        )
+    end
+    params["restart_info"] = (
+        index=restart_index,
+        time=restart_time,
+        displacement=displacement,
+        velocity=velocity,
+    )
+    return nothing
+end
+
 function create_simulation(params::Parameters)
     sim_type = params["type"]
     if sim_type == "single"
@@ -83,6 +177,7 @@ function SingleDomainSimulation(params::Parameters)
         n_nodes = Exodus.num_nodes(input_mesh.init)
         n_elems = Exodus.num_elements(input_mesh.init)
         norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
+        process_restart!(params, input_mesh, basename)
         controller = create_controller(params)
         norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
                    controller.initial_time, controller.final_time,
@@ -174,6 +269,7 @@ function MultiDomainSimulation(params::Parameters)
             norma_log(4, :domain, domain_name)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
             subparams["name"] = domain_name
+            subparams["_is_subdomain"] = true
             integrator_params = subparams["time integrator"]
             subsim_time_step = get(integrator_params, "time step", integrator_dt)
             subsim_time_step = min(subsim_time_step, integrator_dt)

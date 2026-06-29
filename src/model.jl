@@ -13,8 +13,14 @@ function SolidMechanics(params::Parameters)
     coords = read_coordinates(input_mesh)
     num_nodes = Exodus.num_nodes(input_mesh.init)
     reference = Matrix{Float64}(undef, 3, num_nodes)
-    displacement = zeros(3, num_nodes)
-    velocity = zeros(3, num_nodes)
+    restart_info = get(params, "restart_info", nothing)
+    if restart_info === nothing
+        displacement = zeros(3, num_nodes)
+        velocity = zeros(3, num_nodes)
+    else
+        displacement = copy(restart_info.displacement)
+        velocity = copy(restart_info.velocity)
+    end
     acceleration = zeros(3, num_nodes)
     for node in 1:num_nodes
         reference[:, node] = coords[:, node]
