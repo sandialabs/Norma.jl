@@ -250,7 +250,14 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     end
     trusted_fixed = fixed .& .!schwarz_fixed
     rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * integrator.acceleration[trusted_fixed]
-    integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
+    if !model.restarted 
+        integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
+    else
+        #IKT 6/29/2026: curiously the following is necessary for restarts to work.  It causes some of the tests to require 
+        #rebaselining for non-restarts, and also does not work with TET10s w/o restarts.  We should probably understand this.
+        rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * integrator.acceleration[trusted_fixed]
+        integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
+    end
     return nothing
 end
 

@@ -216,6 +216,7 @@ function SolidMechanics(params::Parameters)
         lumped_recovered_internal_variables,
         consistent_recovered_internal_variables,
         num_int_pts,
+        restart_info !== nothing,
     )
 end
 
