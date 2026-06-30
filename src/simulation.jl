@@ -16,6 +16,25 @@ function create_simulation(input_file::String)
     return create_simulation(params)
 end
 
+# Model types for which restart is supported. "solid mechanics" is the FOM
+# model; the rest are single-domain ROM model types (see create_model() in
+# model.jl for the canonical list of recognized `model: type:` strings). Each
+# ROM type wraps an internal FOM model (`fom_model::SolidMechanics`) that is
+# restored from the restart snapshot the same way a standalone FOM model is;
+# see process_restart!() and apply_ics(::Parameters, ::RomModel, ...) for how
+# the restored FOM state is then projected onto the reduced basis.
+const RESTART_SUPPORTED_MODEL_TYPES = (
+    "solid mechanics",
+    "linear opinf rom",
+    "linear kernel rom",
+    "quadratic opinf rom",
+    "quadratic kernel rom",
+    "cubic opinf rom",
+    "cubic kernel rom",
+    "neural network opinf rom",
+    "rbf kernel rom",
+)
+
 # Read the restart snapshot (time + nodal displacement/velocity fields) for a
 # single-domain simulation from its (already-opened) input mesh, validate the
 # request, and stash the result on params under "restart_info" for SolidMechanics
@@ -43,12 +62,26 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         )
     end
     model_params = get(params, "model", Parameters())
-    if get(model_params, "type", "") != "solid mechanics"
-        norma_abort(
-            "Restart is only supported for `model: type: solid mechanics` (FOM) " *
-            "models. Reduced-order model restart is not implemented.",
+    model_type = get(model_params, "type", "")
+    if model_type ∉ RESTART_SUPPORTED_MODEL_TYPES
+        norma_abortf(
+            "Restart is only supported for `model: type: solid mechanics` (FOM) models " *
+            "and single-domain ROM models (%s). Got `model: type: %s`.",
+            join(RESTART_SUPPORTED_MODEL_TYPES[2:end], ", "),
+            model_type,
         )
     end
+    # ROM restart is built on top of the FOM restart machinery: every ROM model
+    # type constructs an internal `fom_model::SolidMechanics` (see opinf_model.jl
+    # / krom_model.jl), which is restored from the restart snapshot exactly like
+    # a standalone FOM model. apply_ics() then projects the restored FOM
+    # displacement/velocity onto the reduced basis (see opinf_ics_bcs.jl). ROM
+    # restart is therefore only as good as FOM restart — in particular it is
+    # still subject to the underlying J2-plasticity internal-variable
+    # limitation enforced in SolidMechanics().
+    #
+    # Multi-domain (Schwarz-coupled) ROM restart is excluded above by the
+    # `_is_subdomain` check; only single-domain ROM restart is supported.
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
     restart_index = Int64(restart_params["index"])

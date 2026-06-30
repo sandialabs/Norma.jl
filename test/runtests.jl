@@ -117,6 +117,7 @@ const indexed_test_files = [
     (97, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-rom-fom-multi-swap.jl"),
     (98, "single-ahead-cuboid-dynamic-restart.jl"),
     (99, "single-ahead-clamped-opinf-fom-restart.jl"),
+    (100, "single-ahead-clamped-opinf-rom-restart.jl"),
 ]
 
 # Extract test file names
