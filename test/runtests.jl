@@ -15,6 +15,60 @@ include("helpers.jl")
 # Suppress per-input .log files during the test suite.
 Norma.NORMA_WRITE_LOG_FILE[] = false
 
+# --------------------------------------------------------------------------
+# Tee all stdout/stderr output to test/runtests.log while still printing to
+# the console, so a full record of the run is always written to disk.
+# --------------------------------------------------------------------------
+const norma_runtests_log_path = joinpath(@__DIR__, "runtests.log")
+const norma_runtests_log_io = open(norma_runtests_log_path, "w")
+
+const _norma_orig_stdout = stdout
+const _norma_orig_stderr = stderr
+
+const (_norma_stdout_rd, _norma_stdout_wr) = redirect_stdout()
+const (_norma_stderr_rd, _norma_stderr_wr) = redirect_stderr()
+
+function _norma_tee(rd::IO, console::IO, logio::IO)
+    @async begin
+        try
+            while !eof(rd)
+                chunk = readavailable(rd)
+                write(console, chunk)
+                flush(console)
+                write(logio, chunk)
+                flush(logio)
+            end
+        catch
+            # The pipe was closed during shutdown; nothing more to forward.
+        end
+    end
+end
+
+const _norma_stdout_tee_task = _norma_tee(_norma_stdout_rd, _norma_orig_stdout, norma_runtests_log_io)
+const _norma_stderr_tee_task = _norma_tee(_norma_stderr_rd, _norma_orig_stderr, norma_runtests_log_io)
+
+const _norma_log_tee_closed = Ref(false)
+function _norma_close_log_tee()
+    _norma_log_tee_closed[] && return
+    _norma_log_tee_closed[] = true
+    redirect_stdout(_norma_orig_stdout)
+    redirect_stderr(_norma_orig_stderr)
+    close(_norma_stdout_wr)
+    close(_norma_stderr_wr)
+    try
+        wait(_norma_stdout_tee_task)
+    catch
+    end
+    try
+        wait(_norma_stderr_tee_task)
+    catch
+    end
+    close(norma_runtests_log_io)
+end
+# Ensure the log file is always flushed and closed, even on exit(...) calls
+# from inside parse_args (e.g. --list, --filter with no matches, bad index).
+atexit(_norma_close_log_tee)
+
 # List of all test files (ordered)
 const indexed_test_files = [
     (1,  "minitensor.jl"),
@@ -221,3 +275,7 @@ for ext in ["yaml", "e", "g", "csv"]
         rm(file; force=true)
     end
 end
+
+# Stop teeing stdout/stderr and finish writing the log file.
+_norma_close_log_tee()
+println("Norma test log written to $(norma_runtests_log_path)")
