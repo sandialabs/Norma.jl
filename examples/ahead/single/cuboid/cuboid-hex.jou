@@ -32,4 +32,4 @@ sideset 5 name "ssz-"
 sideset 6 surface with z_coord > 0
 sideset 6 name "ssz+"
 set large exodus file off
-export mesh "cuboid-hex.g" overwrite
+export mesh "cuboid.g" overwrite
