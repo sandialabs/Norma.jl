@@ -1,8 +1,8 @@
 type: single
-input mesh file: cuboid-restart.e
+input mesh file: cuboid-restart-in.e
 restart: 
   index: 2
-output mesh file: cuboid.e
+output mesh file: cuboid-restart-out.e
 CSV output interval: 0
 model:
   type: solid mechanics

@@ -9,7 +9,7 @@
 #
 #   1. "dynamic"         — a single continuous run from t = 0.0 to t = 1.0.
 #   2. "dynamic-restart"  — a restart run that resumes from the checkpoint
-#                            stored in cuboid-restart.e (index 2, t = 0.1)
+#                            stored in cuboid-restart-in.e (index 2, t = 0.1)
 #                            and continues on to t = 1.0.
 #
 # If restart is implemented correctly, the displacement, velocity,
@@ -18,7 +18,7 @@
 
 @testset "AHeaD Single Dynamic Cuboid Restart" begin
     # ── Phase 1: full, uninterrupted dynamic run (t = 0.0 -> 1.0) ──────────
-    cp("../examples/ahead/single/cuboid/cuboid.g", "../cuboid.g"; force=true)
+    cp("../examples/ahead/single/cuboid/cuboid-hex.g", "../cuboid-hex.g"; force=true)
     cp("../examples/ahead/single/cuboid/dynamic/cuboid.yaml", "cuboid-dynamic.yaml"; force=true)
 
     sim_dynamic = Norma.run("cuboid-dynamic.yaml")
@@ -28,8 +28,8 @@
 
     # ── Phase 2: restart run resuming from t = 0.1 -> 1.0 ───────────────────
     cp(
-        "../examples/ahead/single/cuboid/dynamic-restart/cuboid-restart.e",
-        "cuboid-restart.e";
+        "../examples/ahead/single/cuboid/dynamic-restart/cuboid-restart-in.e",
+        "cuboid-restart-in.e";
         force=true,
     )
     cp("../examples/ahead/single/cuboid/dynamic-restart/cuboid.yaml", "cuboid-dynamic-restart.yaml"; force=true)
@@ -37,9 +37,9 @@
     sim_restart = Norma.run("cuboid-dynamic-restart.yaml")
 
     rm("cuboid-dynamic-restart.yaml"; force=true)
-    rm("cuboid-restart.e"; force=true)
-    rm("cuboid.e"; force=true)
-    rm("../cuboid.g"; force=true)
+    rm("cuboid-restart-in.e"; force=true)
+    rm("cuboid-restart-out.e"; force=true)
+    rm("../cuboid-hex.g"; force=true)
 
     # ── Both runs reached the same final time without failing ──────────────
     @test sim_dynamic.failed == false
@@ -53,7 +53,7 @@
 
     @test model_restart.displacement ≈ model_dynamic.displacement rtol = 1.0e-06
     @test model_restart.velocity ≈ model_dynamic.velocity rtol = 1.0e-06
-    @test model_restart.acceleration ≈ model_dynamic.acceleration rtol = 1.0e-05
+    @test model_restart.acceleration ≈ model_dynamic.acceleration rtol = 1.0e-06
 
     # ── Final-step stress field agrees as well ──────────────────────────────
     avg_stress_dynamic = average_components(model_dynamic.stress)
