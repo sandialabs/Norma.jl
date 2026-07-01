@@ -40,6 +40,34 @@ const RESTART_SUPPORTED_MODEL_TYPES = (
     "rbf kernel rom",
 )
 
+# Restart and mid-run mesh swapping (`swaps:`, see swap.jl) are mutually
+# incompatible in the current implementation and must never be combined.
+# Restart seeds the initial displacement/velocity fields with a *positional*
+# read from the input mesh file (see process_restart!() below): node i of the
+# restart snapshot is assigned directly to node i of the model, with no
+# node-ID cross-reference, coordinate check, or interpolation. Swap plans can
+# replace that model outright with one on a different mesh. The combination
+# has not been validated end-to-end and gives no correctness guarantee, so it
+# is rejected outright here rather than risking silently wrong results.
+# Checked wherever a `params` (or subdomain `subparams`) dict could carry
+# both a `restart:` and a `swaps:` block: SingleDomainSimulation() (covers
+# both standalone single-domain runs and individual Schwarz subdomains,
+# whose `restart:` may have been injected by process_multidomain_restart!())
+# and MultiDomainSimulation() (covers a shared top-level `restart:` combined
+# with top-level `swaps:` plans that target subdomains by `subsim:` name).
+function _reject_restart_with_swaps!(params::Parameters, context::String)
+    if haskey(params, "restart") && haskey(params, "swaps")
+        norma_abort(
+            "`restart:` and `swaps:` cannot be used together ($context). Restart seeds " *
+            "the initial state with a positional (node-for-node) read from the input " *
+            "mesh file and has no cross-mesh mapping, while `swaps:` may replace the " *
+            "model with one on a different mesh mid-run; combining the two is not " *
+            "supported. Remove one or the other.",
+        )
+    end
+    return nothing
+end
+
 # Read the restart snapshot (time + nodal displacement/velocity fields) for a
 # single-domain simulation from its (already-opened) input mesh, validate the
 # request, and stash the result on params under "restart_info" for SolidMechanics
@@ -338,6 +366,7 @@ end
 function SingleDomainSimulation(params::Parameters)
     t_setup = time()
     basename = params["name"]
+    _reject_restart_with_swaps!(params, basename)
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
     norma_log(0, :setup, "Input:  $input_mesh_file")
@@ -437,6 +466,7 @@ function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
     domain_paths = params["domains"]
     process_multidomain_restart!(params)
+    _reject_restart_with_swaps!(params, basename)
     subsims = Vector{SingleDomainSimulation}()
     controller = create_controller(params)
     initial_time = controller.initial_time
