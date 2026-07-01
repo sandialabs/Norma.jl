@@ -17,16 +17,17 @@ function create_simulation(input_file::String)
 end
 
 # Model types for which restart is supported. "solid mechanics" is the FOM
-# model; the rest are single-domain ROM model types (see create_model() in
-# model.jl for the canonical list of recognized `model: type:` strings). Each
-# ROM type wraps an internal FOM model (`fom_model::SolidMechanics`) that is
-# restored from the restart snapshot the same way a standalone FOM model is;
-# see process_restart!() and apply_ics(::Parameters, ::RomModel, ...) for how
-# the restored FOM state is then projected onto the reduced basis.
+# model; the rest are ROM model types (see create_model() in model.jl for the
+# canonical list of recognized `model: type:` strings). Each ROM type wraps
+# an internal FOM model (`fom_model::SolidMechanics`) that is restored from
+# the restart snapshot the same way a standalone FOM model is; see
+# process_restart!() and apply_ics(::Parameters, ::RomModel, ...) for how the
+# restored FOM state is then projected onto the reduced basis.
 #
-# For multi-domain (Schwarz-coupled) simulations, only "solid mechanics"
-# (FOM) subdomains currently support restart; see
-# process_multidomain_restart!() below.
+# This list applies uniformly to single-domain and multi-domain
+# (Schwarz-coupled) simulations: any combination of FOM and ROM subdomains
+# (including mixed FOM-ROM pairings) may restart. See
+# process_multidomain_restart!() below for the multi-domain-specific checks.
 const RESTART_SUPPORTED_MODEL_TYPES = (
     "solid mechanics",
     "linear opinf rom",
@@ -51,7 +52,6 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         params["restart_info"] = nothing
         return nothing
     end
-    is_subdomain = get(params, "_is_subdomain", false) == true
     if haskey(params, "initial conditions")
         norma_abort(
             "Cannot specify both `restart:` and `initial conditions:` in the same " *
@@ -64,7 +64,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     if model_type ∉ RESTART_SUPPORTED_MODEL_TYPES
         norma_abortf(
             "Restart is only supported for `model: type: solid mechanics` (FOM) models " *
-            "and single-domain ROM models (%s). Got `model: type: %s`.",
+            "and ROM models (%s). Got `model: type: %s`.",
             join(RESTART_SUPPORTED_MODEL_TYPES[2:end], ", "),
             model_type,
         )
@@ -78,18 +78,12 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # still subject to the underlying J2-plasticity internal-variable
     # limitation enforced in SolidMechanics().
     #
-    # Multi-domain (Schwarz-coupled) restart is only supported for FOM
-    # (`solid mechanics`) subdomains for now; ROM-coupled Schwarz restart
-    # (e.g. a FOM-ROM pairing) is not yet implemented.
-    if is_subdomain && model_type != "solid mechanics"
-        norma_abortf(
-            "Schwarz (multi-domain) restart currently only supports `model: type: " *
-            "solid mechanics` (FOM) subdomains. Subdomain '%s' has `model: type: %s`. " *
-            "ROM-coupled Schwarz restart is not yet implemented.",
-            basename,
-            model_type,
-        )
-    end
+    # Multi-domain (Schwarz-coupled) restart supports both FOM
+    # (`solid mechanics`) and ROM subdomains — including mixed FOM-ROM
+    # pairings — since ROM restart is layered on the same FOM machinery used
+    # here; no extra check is needed in this per-subdomain function. See
+    # process_multidomain_restart!() for the multi-domain-specific checks
+    # (shared restart index/time, no per-subdomain `restart:` blocks).
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
     restart_index = Int64(restart_params["index"])
@@ -188,8 +182,8 @@ end
 # that restart time, and records the shared index on params so
 # MultiDomainSimulation()'s per-domain loop can hand each subdomain a
 # `restart: index: N` of its own — reusing process_restart!() unmodified for
-# the actual per-subdomain work (reading displacement/velocity, the FOM-only
-# and `j2 plasticity` checks, building `restart_info`) once real subdomain
+# the actual per-subdomain work (reading displacement/velocity, the
+# `j2 plasticity` check, building `restart_info`) once real subdomain
 # construction happens.
 #
 # This has to happen before create_controller(params) builds the top-level
@@ -203,12 +197,11 @@ end
 # No-op when the top-level file has no `restart:` block. Aborts if a
 # subdomain file has its own `restart:` block instead (restart belongs at
 # the top level only, for Schwarz), if subdomains' checkpoints disagree on
-# what time the shared index lands on, if a restarting subdomain is not a
-# FOM (`model: type: solid mechanics`) — Schwarz restart currently only
-# supports FOM subdomains; ROM-coupled Schwarz restart is not yet
-# implemented — or if a restarting subdomain uses the `j2 plasticity`
-# material model, for the same internal-state-variable reason monolithic
-# restart rejects it (see SolidMechanics() in model.jl).
+# what time the shared index lands on, or if a restarting subdomain uses the
+# `j2 plasticity` material model, for the same internal-state-variable reason
+# monolithic restart rejects it (see SolidMechanics() in model.jl). Both FOM
+# (`solid mechanics`) and ROM subdomains may restart, including mixed
+# FOM-ROM pairings.
 function process_multidomain_restart!(params::Parameters)
     domain_paths = params["domains"]
     for domain_path in domain_paths
@@ -230,16 +223,6 @@ function process_multidomain_restart!(params::Parameters)
     for domain_path in domain_paths
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
         model_params = get(subparams, "model", Parameters())
-        model_type = get(model_params, "type", "")
-        if model_type != "solid mechanics"
-            norma_abortf(
-                "Schwarz restart currently only supports `model: type: solid mechanics` " *
-                "(FOM) subdomains. Subdomain '%s' has `model: type: %s`. ROM-coupled " *
-                "Schwarz restart is not yet implemented.",
-                domain_path,
-                model_type,
-            )
-        end
         if "j2 plasticity" in _material_models_used(model_params)
             norma_abortf(
                 "Schwarz restart does not support the `j2 plasticity` material model " *
@@ -845,6 +828,13 @@ end
 function initialize(sim::MultiDomainSimulation)
     initialize_bc_projectors(sim)
     apply_ics(sim)
+    # This first snapshot (used only as apply_bcs()'s fallback while every
+    # subdomain still has a placeholder zero acceleration) is pushed for FOM
+    # subdomains only, matching existing non-restart behavior; ROM neighbors
+    # fall back to zero here exactly as they always have (see apply_bc() in
+    # schwarz.jl). The restart-only refinement pass below is what actually
+    # gives every subdomain — FOM and ROM alike — a real Schwarz-coupled
+    # snapshot to interpolate from.
     for (subsim_index, subsim) in enumerate(sim.subsims)
         if subsim.model isa SolidMechanics
             save_history_snapshot(sim.controller, subsim, subsim_index)
@@ -864,7 +854,13 @@ function initialize(sim::MultiDomainSimulation)
     # correct thing to do on a fresh, at-rest-ish start. On a restart,
     # though, the simulation is resuming mid-motion and the true
     # acceleration at a Schwarz interface generally isn't small, so that
-    # placeholder can be badly wrong right where it matters most.
+    # placeholder can be badly wrong right where it matters most. This
+    # applies equally to FOM and ROM subdomains: a ROM subdomain's own
+    # initial acceleration is solved on its internal fom_model (see
+    # initialize(::RomNewmark, ...) / initialize(::RomCentralDifference, ...)
+    # in opinf_time_integrator.jl), which is restored from the restart
+    # snapshot exactly like a standalone FOM model (is_restarted() below
+    # checks subsim.model.fom_model.restarted for a ROM subsim).
     #
     # apply_bc() for a Schwarz-coupled BC (schwarz.jl) does not read the
     # coupled side's *live* integrator state — it interpolates from
@@ -878,17 +874,36 @@ function initialize(sim::MultiDomainSimulation)
     # history and re-push a fresh snapshot reflecting its now-real,
     # pass-1-solved state first, *then* refresh apply_bcs and re-solve, this
     # time trusting the Schwarz-coupled DOFs.
-    if any(subsim.model isa SolidMechanics && subsim.model.restarted for subsim in sim.subsims)
-        for (subsim_index, subsim) in enumerate(sim.subsims)
-            if subsim.model isa SolidMechanics
+    #
+    # Run this reset/apply/re-solve sequence twice (not once) when a ROM
+    # subdomain is involved. For a FOM neighbor, model.displacement and
+    # integrator.displacement are the same aliased array, so as soon as
+    # apply_bc() writes a real value anywhere, every reader sees it
+    # immediately, in any subdomain order. A ROM neighbor's full-order
+    # fields are a *separate* reconstruction from its reduced state
+    # (reconstruct_fom_fields!() in opinf_solver.jl), and that
+    # reconstruction skips any DOF where the ROM's own fom_model.free_dofs
+    # is false — including the DOFs where the ROM's own Schwarz coupling
+    # prescribes values from a *different* neighbor. Whether those DOFs
+    # hold real or still-placeholder data by the time some other subdomain
+    # reads them within a single apply_bcs(sim) sweep depends on whether
+    # that ROM's own coupling BC happened to already run earlier in the
+    # same sweep — i.e. on sim.subsims order, not physics. A second
+    # sweep removes that order-dependence: every subdomain enters it with
+    # a real (round-1-refined) acceleration already in place, so every
+    # reconstruction this time reads real data no matter which subdomain
+    # is processed first.
+    if any(is_restarted(subsim.model) for subsim in sim.subsims)
+        for _ in 1:2
+            for (subsim_index, subsim) in enumerate(sim.subsims)
                 reset_history(sim.controller, subsim_index)
                 save_history_snapshot(sim.controller, subsim, subsim_index)
             end
-        end
-        apply_bcs(sim)
-        for subsim in sim.subsims
-            initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
-            save_curr_state(subsim)
+            apply_bcs(sim)
+            for subsim in sim.subsims
+                initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
+                save_curr_state(subsim)
+            end
         end
     end
     detect_contact(sim)

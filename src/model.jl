@@ -7,6 +7,21 @@
 
 using Base.Threads: @threads, threadid, nthreads, maxthreadid
 
+# Whether `model` was constructed by resuming from a restart checkpoint (see
+# process_restart!() / process_multidomain_restart!() in simulation.jl). For
+# a ROM model this reflects whether the ROM's internal FOM model
+# (model.fom_model) was restarted: ROM restart is layered on top of FOM
+# restart — the FOM displacement/velocity fields are restored from the
+# snapshot inside SolidMechanics() construction, then projected onto the
+# reduced basis by apply_ics(::Parameters, ::RomModel, ...) in
+# opinf_ics_bcs.jl — so the two always agree. Used by
+# initialize(sim::MultiDomainSimulation) (simulation.jl) to decide whether
+# the restart-only Schwarz refinement pass is needed, and forwarded as
+# `trust_schwarz` into initialize(::TimeIntegrator, ::Solver, ::Model) /
+# initialize(::RomNewmark, ...) / initialize(::RomCentralDifference, ...).
+is_restarted(model::SolidMechanics) = model.restarted
+is_restarted(model::RomModel) = model.fom_model.restarted
+
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
