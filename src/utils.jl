@@ -67,7 +67,14 @@ end
 const NORMA_WRITE_LOG_FILE = Ref(true)
 const NORMA_LOG_FILE = Ref{Union{IOStream,Nothing}}(nothing)
 
+# A session log is a single log file that persists across many run() calls
+# (e.g. the whole test suite) instead of one file per input.  While a session
+# log is open, the per-input open_log_file/close_log_file become no-ops so that
+# individual runs neither replace nor close it.
+const NORMA_SESSION_LOG = Ref(false)
+
 function open_log_file(input_file::AbstractString)
+    NORMA_SESSION_LOG[] && return nothing  # a session log already owns the file
     NORMA_WRITE_LOG_FILE[] || return nothing
     NORMA_LOG_FILE[] === nothing || return nothing  # outermost run() owns the file
     path = first(splitext(input_file)) * ".log"
@@ -76,6 +83,27 @@ function open_log_file(input_file::AbstractString)
 end
 
 function close_log_file()
+    NORMA_SESSION_LOG[] && return nothing  # never close a session-owned log here
+    io = NORMA_LOG_FILE[]
+    io === nothing && return nothing
+    close(io)
+    NORMA_LOG_FILE[] = nothing
+    return nothing
+end
+
+# Open a single log file that captures every norma_log message until
+# close_session_log_file() is called.  Output is written with the same ASCII
+# sanitization (color codes stripped) as the per-input logs.
+function open_session_log_file(path::AbstractString)
+    close_session_log_file()  # replace any prior session log
+    NORMA_LOG_FILE[] = open(path, "w")
+    NORMA_SESSION_LOG[] = true
+    return nothing
+end
+
+function close_session_log_file()
+    NORMA_SESSION_LOG[] || return nothing
+    NORMA_SESSION_LOG[] = false
     io = NORMA_LOG_FILE[]
     io === nothing && return nothing
     close(io)

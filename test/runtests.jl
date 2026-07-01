@@ -12,8 +12,37 @@ using Norma
 
 include("helpers.jl")
 
-# Suppress per-input .log files during the test suite.
-Norma.NORMA_WRITE_LOG_FILE[] = false
+# Capture the whole suite in a single log file (test/runtests.log) using Norma's
+# own logging system, instead of the many per-input .log files.  Every norma_log
+# message is written to it as sanitized ASCII (color codes stripped), matching
+# what an individual run writes to its own .log file.
+const runtests_log_path = joinpath(@__DIR__, "runtests.log")
+Norma.open_session_log_file(runtests_log_path)
+
+# Recursively count passes/fails/errors in a testset, descending into nested
+# testsets that a test file may define.  Used to record a per-file result line
+# in the log, since the Test stdlib's own summary is not routed through norma_log.
+function count_test_results(ts::Test.AbstractTestSet)
+    passes = fails = errors = 0
+    if isdefined(ts, :n_passed)
+        passes += ts.n_passed
+    end
+    for r in ts.results
+        if r isa Test.Fail
+            fails += 1
+        elseif r isa Test.Error
+            errors += 1
+        elseif r isa Test.Pass
+            passes += 1
+        elseif r isa Test.AbstractTestSet
+            p, f, e = count_test_results(r)
+            passes += p
+            fails += f
+            errors += e
+        end
+    end
+    return passes, fails, errors
+end
 
 # List of all test files (ordered)
 const indexed_test_files = [
@@ -204,8 +233,14 @@ Norma.norma_log(0, :norma, "BEGIN TESTS")
 @testset verbose = true "Norma.jl Test Suite" begin
     for (i, file) in test_files_to_run
         Norma.norma_log(0, :test, "[$i] Running $file...")
-        @testset "[$i] $file" begin
+        ts = @testset "[$i] $file" begin
             include(file)
+        end
+        passes, fails, errors = count_test_results(ts)
+        if fails == 0 && errors == 0
+            Norma.norma_log(0, :done, "[$i] $file: $passes passed")
+        else
+            Norma.norma_log(0, :error, "[$i] $file: $passes passed, $fails failed, $errors errored")
         end
     end
 end
@@ -214,6 +249,10 @@ elapsed_time = time() - start_time
 Norma.norma_log(0, :done, "Tests Complete")
 Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
 Norma.norma_log(0, :norma, "END TESTS")
+
+# Finish writing the suite log and report where it was written.
+Norma.close_session_log_file()
+Norma.norma_log(0, :info, "Test log written to $runtests_log_path")
 
 # Cleanup artifacts
 for ext in ["yaml", "e", "g", "csv"]
