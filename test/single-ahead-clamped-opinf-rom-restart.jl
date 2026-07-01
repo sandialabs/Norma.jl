@@ -120,8 +120,7 @@ using YAML
     avg_stress_full = average_components(model_full.fom_model.stress)
     avg_stress_restart = average_components(model_restart.fom_model.stress)
     err_abs = norm(avg_stress_full - avg_stress_restart)
-    println("IKT err_abs = ", err_abs)  
-    @test norm(err_abs) ≈ 6.682167652892721e-7 atol = 1.0e-7
+    @test err_abs ≈ 6.682167652892721e-7 atol = 1.0e-7
 
     # ── Sanity check: the body actually moved from its Gaussian-pulse IC ───
     avg_disp_full = average_components(vec(model_full.fom_model.displacement))

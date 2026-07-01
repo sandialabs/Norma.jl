@@ -65,7 +65,7 @@ save_figs = True
 plt.ion()
 fig, axs = plt.subplots(3, 1, figsize=(8, 10))
 
-for ctr, i in enumerate(range(0, 1001, 10), start=1):
+for ctr, i in enumerate(range(0, 710, 10), start=1):
     # -------------------------------------------------------------------------
     # Read snapshot data
     # -------------------------------------------------------------------------
