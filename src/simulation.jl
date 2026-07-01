@@ -23,6 +23,10 @@ end
 # restored from the restart snapshot the same way a standalone FOM model is;
 # see process_restart!() and apply_ics(::Parameters, ::RomModel, ...) for how
 # the restored FOM state is then projected onto the reduced basis.
+#
+# For multi-domain (Schwarz-coupled) simulations, only "solid mechanics"
+# (FOM) subdomains currently support restart; see
+# process_multidomain_restart!() below.
 const RESTART_SUPPORTED_MODEL_TYPES = (
     "solid mechanics",
     "linear opinf rom",
@@ -47,13 +51,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         params["restart_info"] = nothing
         return nothing
     end
-    if get(params, "_is_subdomain", false) == true
-        norma_abort(
-            "Restart is not currently supported for subdomains of a multi-domain " *
-            "(Schwarz) simulation. Remove the `restart:` block from this subdomain's " *
-            "input file, or run it as a standalone single-domain simulation.",
-        )
-    end
+    is_subdomain = get(params, "_is_subdomain", false) == true
     if haskey(params, "initial conditions")
         norma_abort(
             "Cannot specify both `restart:` and `initial conditions:` in the same " *
@@ -80,8 +78,18 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # still subject to the underlying J2-plasticity internal-variable
     # limitation enforced in SolidMechanics().
     #
-    # Multi-domain (Schwarz-coupled) ROM restart is excluded above by the
-    # `_is_subdomain` check; only single-domain ROM restart is supported.
+    # Multi-domain (Schwarz-coupled) restart is only supported for FOM
+    # (`solid mechanics`) subdomains for now; ROM-coupled Schwarz restart
+    # (e.g. a FOM-ROM pairing) is not yet implemented.
+    if is_subdomain && model_type != "solid mechanics"
+        norma_abortf(
+            "Schwarz (multi-domain) restart currently only supports `model: type: " *
+            "solid mechanics` (FOM) subdomains. Subdomain '%s' has `model: type: %s`. " *
+            "ROM-coupled Schwarz restart is not yet implemented.",
+            basename,
+            model_type,
+        )
+    end
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
     restart_index = Int64(restart_params["index"])
@@ -140,6 +148,165 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         displacement=displacement,
         velocity=velocity,
     )
+    return nothing
+end
+
+# The list of `material: <name>: model:` strings actually referenced by a
+# subdomain's `material: blocks:` mapping (block_name => material_name). Used
+# by process_multidomain_restart!() to reject restart for subdomains using
+# material models with internal state that the restart snapshot can't carry
+# (currently just `j2 plasticity`), without having to open the mesh or build
+# the full model. Mirrors the block -> material_name -> model resolution in
+# SolidMechanics() (model.jl) and create_material() (constitutive.jl).
+function _material_models_used(model_params::Parameters)
+    material_params = get(model_params, "material", Parameters())
+    blocks = get(material_params, "blocks", Parameters())
+    return [
+        get(get(material_params, material_name, Parameters()), "model", "")
+        for material_name in values(blocks)
+    ]
+end
+
+# Resolve and validate restart for a multi-domain (Schwarz) simulation. Run
+# once, at the very start of MultiDomainSimulation() construction, before the
+# top-level controller is built.
+#
+# Unlike single-domain restart, Schwarz restart is specified *once*, in the
+# top-level (multi-domain) file's own `restart: index: N` block — not
+# per-subdomain — because every subdomain must resume the coupled iteration
+# at the same physical time, and duplicating the same index into every
+# subdomain file would just invite drift (a forgotten file, a typo'd index).
+# Subdomains keep supplying their own restart checkpoint the normal way,
+# through `input mesh file` (still subdomain-local, since each subdomain has
+# its own checkpoint mesh); only the `index` into that checkpoint is shared.
+#
+# This function peeks at each subdomain's checkpoint mesh just far enough to
+# read the snapshot time at that shared index (as a consistency check —
+# every subdomain should land on the same physical time, since Exodus output
+# interval is forced equal across all subdomains) and requires those times
+# to all agree. It then overwrites the top-level params["initial time"] with
+# that restart time, and records the shared index on params so
+# MultiDomainSimulation()'s per-domain loop can hand each subdomain a
+# `restart: index: N` of its own — reusing process_restart!() unmodified for
+# the actual per-subdomain work (reading displacement/velocity, the FOM-only
+# and `j2 plasticity` checks, building `restart_info`) once real subdomain
+# construction happens.
+#
+# This has to happen before create_controller(params) builds the top-level
+# Schwarz controller, because sync_control_time() unconditionally
+# re-broadcasts the top-level controller's time fields (initial_time, time,
+# prev_time, num_stops, stop) onto every subdomain at the start of every
+# control step — so the top-level controller's initial time is the only one
+# that actually has to be correct; whatever a subdomain's own controller
+# computes is overwritten regardless.
+#
+# No-op when the top-level file has no `restart:` block. Aborts if a
+# subdomain file has its own `restart:` block instead (restart belongs at
+# the top level only, for Schwarz), if subdomains' checkpoints disagree on
+# what time the shared index lands on, if a restarting subdomain is not a
+# FOM (`model: type: solid mechanics`) — Schwarz restart currently only
+# supports FOM subdomains; ROM-coupled Schwarz restart is not yet
+# implemented — or if a restarting subdomain uses the `j2 plasticity`
+# material model, for the same internal-state-variable reason monolithic
+# restart rejects it (see SolidMechanics() in model.jl).
+function process_multidomain_restart!(params::Parameters)
+    domain_paths = params["domains"]
+    for domain_path in domain_paths
+        subparams = YAML.load_file(domain_path; dicttype=Parameters)
+        if haskey(subparams, "restart")
+            norma_abort(
+                "`restart:` must be specified once, in the top-level multi-domain file, " *
+                "not in individual subdomain files (found one in '$domain_path'). Every " *
+                "subdomain restarts from the same physical time; move the `restart:` " *
+                "block there and remove it from '$domain_path'.",
+            )
+        end
+    end
+    haskey(params, "restart") || return nothing
+    restart_params = params["restart"]
+    haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
+    restart_index = Int64(restart_params["index"])
+    restart_time = nothing
+    for domain_path in domain_paths
+        subparams = YAML.load_file(domain_path; dicttype=Parameters)
+        model_params = get(subparams, "model", Parameters())
+        model_type = get(model_params, "type", "")
+        if model_type != "solid mechanics"
+            norma_abortf(
+                "Schwarz restart currently only supports `model: type: solid mechanics` " *
+                "(FOM) subdomains. Subdomain '%s' has `model: type: %s`. ROM-coupled " *
+                "Schwarz restart is not yet implemented.",
+                domain_path,
+                model_type,
+            )
+        end
+        if "j2 plasticity" in _material_models_used(model_params)
+            norma_abortf(
+                "Schwarz restart does not support the `j2 plasticity` material model " *
+                "(subdomain '%s'), for the same reason monolithic restart does not: the " *
+                "restart snapshot only stores nodal displacement and velocity fields; J2 " *
+                "plasticity's internal state variables (e.g. plastic strain, back stress) " *
+                "are not written to or read from the restart file, so resuming would " *
+                "silently discard the accumulated plastic history. Remove the `restart:` " *
+                "block, or switch to a material model without internal state variables, " *
+                "until restart support for internal variables is implemented.",
+                domain_path,
+            )
+        end
+        haskey(subparams, "input mesh file") ||
+            norma_abort("Subdomain '$domain_path' has no `input mesh file`.")
+        input_mesh_file = subparams["input mesh file"]
+        input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
+        domain_time = try
+            num_steps = Exodus.read_number_of_time_steps(input_mesh)
+            if num_steps < 1
+                norma_abort("Restart mesh '$input_mesh_file' (subdomain '$domain_path') contains no time steps.")
+            end
+            if restart_index < 1 || restart_index > num_steps
+                norma_abortf(
+                    "Restart index %d is out of range for mesh '%s' (subdomain '%s'), " *
+                    "which has %d time step(s) (valid range is 1:%d).",
+                    restart_index,
+                    input_mesh_file,
+                    domain_path,
+                    num_steps,
+                    num_steps,
+                )
+            end
+            Exodus.read_time(input_mesh, restart_index)
+        finally
+            Exodus.close(input_mesh)
+        end
+        if restart_time === nothing
+            restart_time = domain_time
+        elseif !isapprox(domain_time, restart_time; atol=1.0e-9)
+            norma_abortf(
+                "Schwarz restart: subdomain '%s' checkpoint at index %d is at time %.6e, " *
+                "which does not match the time %.6e read from an earlier subdomain's " *
+                "checkpoint at the same index. All subdomains must restart from the same " *
+                "physical time.",
+                domain_path,
+                restart_index,
+                domain_time,
+                restart_time,
+            )
+        end
+    end
+    requested_initial_time = get(params, "initial time", nothing)
+    params["initial time"] = restart_time
+    params["_multidomain_restart_index"] = restart_index
+    norma_log(0, :restart, "Restarting Schwarz simulation from snapshot data.")
+    norma_logf(0, :restart, "Restart index:  %d", restart_index)
+    norma_logf(0, :restart, "Restart time:   %.6e", restart_time)
+    if requested_initial_time !== nothing && !isapprox(Float64(requested_initial_time), restart_time; atol=1e-12)
+        norma_logf(
+            0,
+            :restart,
+            "Overriding top-level `initial time` (%.6e) with restart time (%.6e).",
+            Float64(requested_initial_time),
+            restart_time,
+        )
+    end
     return nothing
 end
 
@@ -286,6 +453,7 @@ _log_materials(::Model, _) = nothing
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
     domain_paths = params["domains"]
+    process_multidomain_restart!(params)
     subsims = Vector{SingleDomainSimulation}()
     controller = create_controller(params)
     initial_time = controller.initial_time
@@ -303,6 +471,9 @@ function MultiDomainSimulation(params::Parameters)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
             subparams["name"] = domain_name
             subparams["_is_subdomain"] = true
+            if haskey(params, "_multidomain_restart_index")
+                subparams["restart"] = Parameters("index" => params["_multidomain_restart_index"])
+            end
             integrator_params = subparams["time integrator"]
             subsim_time_step = get(integrator_params, "time step", integrator_dt)
             subsim_time_step = min(subsim_time_step, integrator_dt)
