@@ -856,6 +856,41 @@ function initialize(sim::MultiDomainSimulation)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
     end
+    # Restart-only refinement: the pass above computes each subdomain's own
+    # initial acceleration while every Schwarz-coupled boundary DOF still
+    # holds the placeholder (zero) value apply_bcs() left before any
+    # subdomain had a real acceleration — see the comment in
+    # initialize(::Newmark, ...) (time_integrator.jl) for why that's the
+    # correct thing to do on a fresh, at-rest-ish start. On a restart,
+    # though, the simulation is resuming mid-motion and the true
+    # acceleration at a Schwarz interface generally isn't small, so that
+    # placeholder can be badly wrong right where it matters most.
+    #
+    # apply_bc() for a Schwarz-coupled BC (schwarz.jl) does not read the
+    # coupled side's *live* integrator state — it interpolates from
+    # controller.{time,disp,velo,acce,∂Ω_f}_hist[coupled_index], populated by
+    # save_history_snapshot(). The very first entry in that history was
+    # pushed above, before any subdomain had a real acceleration, so it's
+    # exactly as stale as the placeholder apply_bcs() left; simply calling
+    # apply_bcs() again would still interpolate from that same one stale
+    # entry (interpolate() with a single history point ignores the query
+    # time and just returns it) and be a no-op. So: reset each subdomain's
+    # history and re-push a fresh snapshot reflecting its now-real,
+    # pass-1-solved state first, *then* refresh apply_bcs and re-solve, this
+    # time trusting the Schwarz-coupled DOFs.
+    if any(subsim.model isa SolidMechanics && subsim.model.restarted for subsim in sim.subsims)
+        for (subsim_index, subsim) in enumerate(sim.subsims)
+            if subsim.model isa SolidMechanics
+                reset_history(sim.controller, subsim_index)
+                save_history_snapshot(sim.controller, subsim, subsim_index)
+            end
+        end
+        apply_bcs(sim)
+        for subsim in sim.subsims
+            initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
+            save_curr_state(subsim)
+        end
+    end
     detect_contact(sim)
     return nothing
 end
