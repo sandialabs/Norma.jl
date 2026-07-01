@@ -321,6 +321,34 @@ function process_multidomain_restart!(params::Parameters)
     return nothing
 end
 
+# Warn (but do not abort) when a Schwarz restart is combined with
+# non-overlapping Schwarz coupling (`Schwarz DN nonoverlap`, `Schwarz RR
+# nonoverlap`, or `Schwarz impedance nonoverlap`). Nothing in process_restart!()
+# or process_multidomain_restart!() is specific to overlapping vs.
+# non-overlapping coupling — the positional nodal-field read is unaffected
+# either way — but this combination has not been exercised by the test suite,
+# so flag it for the user's attention rather than silently proceeding.
+# Called from create_simulation() after create_bcs(), since boundary
+# conditions are not populated until then.
+function warn_restart_with_nonoverlap_schwarz(sim::MultiDomainSimulation)
+    haskey(sim.params, "restart") || return nothing
+    has_nonoverlap = any(
+        any(bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
+        for sub in sim.subsims
+    )
+    if has_nonoverlap
+        norma_log(
+            0,
+            :warning,
+            "Restart is being used with non-overlapping Schwarz coupling. This should " *
+            "work but has not been tested; please use with caution.",
+        )
+    end
+    return nothing
+end
+
+warn_restart_with_nonoverlap_schwarz(::SingleDomainSimulation) = nothing
+
 function create_simulation(params::Parameters)
     sim_type = params["type"]
     if sim_type == "single"
@@ -332,6 +360,7 @@ function create_simulation(params::Parameters)
         sim = MultiDomainSimulation(params)
         create_bcs(sim)
         validate_swap_criteria(sim)
+        warn_restart_with_nonoverlap_schwarz(sim)
         initialize_storage(sim)
         return sim
     else
