@@ -136,10 +136,20 @@ end
 function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrator, solver::Solver)
   ## Need to create a fake time integrator and solver for the FOM IC routine
   apply_ics(params, model.fom_model, integrator.fom_integrator, solver.fom_solver)
-  if haskey(params, "initial conditions") == false
+  # The FOM displacement/velocity arrays are nonzero (and must be projected
+  # onto the reduced basis below) in two mutually-exclusive cases: an explicit
+  # `initial conditions:` block (just applied above), or a `restart:` snapshot
+  # (applied directly to model.fom_model.displacement/velocity inside
+  # SolidMechanics() construction, before this function ever runs — see
+  # model.jl and process_restart!() in simulation.jl). Without this check,
+  # reduced_state/reduced_velocity would silently stay at their
+  # zero-initialized default on restart, discarding the restored FOM state.
+  has_ics = haskey(params, "initial conditions")
+  is_restart = get(params, "restart_info", nothing) !== nothing
+  if !has_ics && !is_restart
     return nothing
   end
-  n_var, n_node, n_mode = model.basis.size
+  n_var, n_node, n_mode = size(model.basis)
   n_var_fom, n_node_fom = size(model.fom_model.displacement)
   # Make sure basis is the right size
   if n_var != n_var_fom || n_node != n_node_fom
@@ -156,6 +166,9 @@ function apply_ics(params::Parameters, model::RomModel, integrator::TimeIntegrat
         model.reduced_velocity[k] += model.basis[n, j, k] * (model.fom_model.velocity[n, j])
       end
     end
+  end
+  if is_restart
+    norma_log(0, :restart, "Projected restarted FOM displacement/velocity onto the reduced basis.")
   end
 end
 

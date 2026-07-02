@@ -48,6 +48,7 @@ const NORMA_COLORS = Dict(
     :output => :cyan,
     :progress => :green,
     :recover => :yellow,
+    :restart => :light_green,
     :schwarz => :light_blue,
     :setup => :magenta,
     :solve => :cyan,

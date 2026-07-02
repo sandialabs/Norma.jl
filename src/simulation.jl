@@ -16,6 +16,339 @@ function create_simulation(input_file::String)
     return create_simulation(params)
 end
 
+# Model types for which restart is supported. "solid mechanics" is the FOM
+# model; the rest are ROM model types (see create_model() in model.jl for the
+# canonical list of recognized `model: type:` strings). Each ROM type wraps
+# an internal FOM model (`fom_model::SolidMechanics`) that is restored from
+# the restart snapshot the same way a standalone FOM model is; see
+# process_restart!() and apply_ics(::Parameters, ::RomModel, ...) for how the
+# restored FOM state is then projected onto the reduced basis.
+#
+# This list applies uniformly to single-domain and multi-domain
+# (Schwarz-coupled) simulations: any combination of FOM and ROM subdomains
+# (including mixed FOM-ROM pairings) may restart. See
+# process_multidomain_restart!() below for the multi-domain-specific checks.
+const RESTART_SUPPORTED_MODEL_TYPES = (
+    "solid mechanics",
+    "linear opinf rom",
+    "linear kernel rom",
+    "quadratic opinf rom",
+    "quadratic kernel rom",
+    "cubic opinf rom",
+    "cubic kernel rom",
+    "neural network opinf rom",
+    "rbf kernel rom",
+)
+
+# Restart and mid-run mesh swapping (`swaps:`, see swap.jl) are mutually
+# incompatible in the current implementation and must never be combined.
+# Restart seeds the initial displacement/velocity fields with a *positional*
+# read from the input mesh file (see process_restart!() below): node i of the
+# restart snapshot is assigned directly to node i of the model, with no
+# node-ID cross-reference, coordinate check, or interpolation. Swap plans can
+# replace that model outright with one on a different mesh. The combination
+# has not been validated end-to-end and gives no correctness guarantee, so it
+# is rejected outright here rather than risking silently wrong results.
+# Checked wherever a `params` (or subdomain `subparams`) dict could carry
+# both a `restart:` and a `swaps:` block: SingleDomainSimulation() (covers
+# both standalone single-domain runs and individual Schwarz subdomains,
+# whose `restart:` may have been injected by process_multidomain_restart!())
+# and MultiDomainSimulation() (covers a shared top-level `restart:` combined
+# with top-level `swaps:` plans that target subdomains by `subsim:` name).
+function _reject_restart_with_swaps!(params::Parameters, context::String)
+    if haskey(params, "restart") && haskey(params, "swaps")
+        norma_abort(
+            "`restart:` and `swaps:` cannot be used together ($context). Restart seeds " *
+            "the initial state with a positional (node-for-node) read from the input " *
+            "mesh file and has no cross-mesh mapping, while `swaps:` may replace the " *
+            "model with one on a different mesh mid-run; combining the two is not " *
+            "supported. Remove one or the other.",
+        )
+    end
+    return nothing
+end
+
+# Read the restart snapshot (time + nodal displacement/velocity fields) for a
+# single-domain simulation from its (already-opened) input mesh, validate the
+# request, and stash the result on params under "restart_info" for SolidMechanics
+# to consume. Also overwrites params["time integrator"]["initial time"] so that
+# the controller and integrator are built with the restart time from the outset
+# (num_stops depends on it). No-op (params["restart_info"] = nothing) when the
+# input file has no `restart:` block.
+function process_restart!(params::Parameters, input_mesh, basename::String)
+    if haskey(params, "restart") == false
+        params["restart_info"] = nothing
+        return nothing
+    end
+    if haskey(params, "initial conditions")
+        norma_abort(
+            "Cannot specify both `restart:` and `initial conditions:` in the same " *
+            "input file ($basename). The restart snapshot already supplies the " *
+            "initial displacement and velocity fields; remove one or the other.",
+        )
+    end
+    model_params = get(params, "model", Parameters())
+    model_type = get(model_params, "type", "")
+    if model_type ∉ RESTART_SUPPORTED_MODEL_TYPES
+        norma_abortf(
+            "Restart is only supported for `model: type: solid mechanics` (FOM) models " *
+            "and ROM models (%s). Got `model: type: %s`.",
+            join(RESTART_SUPPORTED_MODEL_TYPES[2:end], ", "),
+            model_type,
+        )
+    end
+    # ROM restart is built on top of the FOM restart machinery: every ROM model
+    # type constructs an internal `fom_model::SolidMechanics` (see opinf_model.jl
+    # / krom_model.jl), which is restored from the restart snapshot exactly like
+    # a standalone FOM model. apply_ics() then projects the restored FOM
+    # displacement/velocity onto the reduced basis (see opinf_ics_bcs.jl). ROM
+    # restart is therefore only as good as FOM restart — in particular it is
+    # still subject to the underlying J2-plasticity internal-variable
+    # limitation enforced in SolidMechanics().
+    #
+    # Multi-domain (Schwarz-coupled) restart supports both FOM
+    # (`solid mechanics`) and ROM subdomains — including mixed FOM-ROM
+    # pairings — since ROM restart is layered on the same FOM machinery used
+    # here; no extra check is needed in this per-subdomain function. See
+    # process_multidomain_restart!() for the multi-domain-specific checks
+    # (shared restart index/time, no per-subdomain `restart:` blocks).
+    restart_params = params["restart"]
+    haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
+    restart_index = Int64(restart_params["index"])
+    num_steps = Exodus.read_number_of_time_steps(input_mesh)
+    if num_steps < 1
+        norma_abort("Restart mesh '$(input_mesh.file_name)' contains no time steps.")
+    end
+    if restart_index < 1 || restart_index > num_steps
+        norma_abortf(
+            "Restart index %d is out of range for mesh '%s', which has %d time step(s) " *
+            "(valid range is 1:%d).",
+            restart_index,
+            input_mesh.file_name,
+            num_steps,
+            num_steps,
+        )
+    end
+    restart_time = Exodus.read_time(input_mesh, restart_index)
+    disp_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_x")
+    disp_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_y")
+    disp_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_z")
+    velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
+    velo_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_y")
+    velo_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_z")
+    num_nodes = Exodus.num_nodes(input_mesh.init)
+    displacement = Matrix{Float64}(undef, 3, num_nodes)
+    velocity = Matrix{Float64}(undef, 3, num_nodes)
+    displacement[1, :] = disp_x
+    displacement[2, :] = disp_y
+    displacement[3, :] = disp_z
+    velocity[1, :] = velo_x
+    velocity[2, :] = velo_y
+    velocity[3, :] = velo_z
+    # Override the initial time unconditionally: the restart snapshot's time is
+    # the only initial time consistent with the restart displacement/velocity
+    # fields, regardless of what `time integrator: initial time` says in the
+    # input file.
+    integrator_params = params["time integrator"]
+    requested_initial_time = get(integrator_params, "initial time", nothing)
+    integrator_params["initial time"] = restart_time
+    norma_log(0, :restart, "Restarting simulation from snapshot data.")
+    norma_logf(0, :restart, "Restart index:  %d (of %d)", restart_index, num_steps)
+    norma_logf(0, :restart, "Restart time:   %.6e", restart_time)
+    if requested_initial_time !== nothing && !isapprox(Float64(requested_initial_time), restart_time; atol=1e-12)
+        norma_logf(
+            0,
+            :restart,
+            "Overriding `time integrator: initial time` (%.6e) with restart time (%.6e).",
+            Float64(requested_initial_time),
+            restart_time,
+        )
+    end
+    params["restart_info"] = (
+        index=restart_index,
+        time=restart_time,
+        displacement=displacement,
+        velocity=velocity,
+    )
+    return nothing
+end
+
+# The list of `material: <name>: model:` strings actually referenced by a
+# subdomain's `material: blocks:` mapping (block_name => material_name). Used
+# by process_multidomain_restart!() to reject restart for subdomains using
+# material models with internal state that the restart snapshot can't carry
+# (currently just `j2 plasticity`), without having to open the mesh or build
+# the full model. Mirrors the block -> material_name -> model resolution in
+# SolidMechanics() (model.jl) and create_material() (constitutive.jl).
+function _material_models_used(model_params::Parameters)
+    material_params = get(model_params, "material", Parameters())
+    blocks = get(material_params, "blocks", Parameters())
+    return [
+        get(get(material_params, material_name, Parameters()), "model", "")
+        for material_name in values(blocks)
+    ]
+end
+
+# Resolve and validate restart for a multi-domain (Schwarz) simulation. Run
+# once, at the very start of MultiDomainSimulation() construction, before the
+# top-level controller is built.
+#
+# Unlike single-domain restart, Schwarz restart is specified *once*, in the
+# top-level (multi-domain) file's own `restart: index: N` block — not
+# per-subdomain — because every subdomain must resume the coupled iteration
+# at the same physical time, and duplicating the same index into every
+# subdomain file would just invite drift (a forgotten file, a typo'd index).
+# Subdomains keep supplying their own restart checkpoint the normal way,
+# through `input mesh file` (still subdomain-local, since each subdomain has
+# its own checkpoint mesh); only the `index` into that checkpoint is shared.
+#
+# This function peeks at each subdomain's checkpoint mesh just far enough to
+# read the snapshot time at that shared index (as a consistency check —
+# every subdomain should land on the same physical time, since Exodus output
+# interval is forced equal across all subdomains) and requires those times
+# to all agree. It then overwrites the top-level params["initial time"] with
+# that restart time, and records the shared index on params so
+# MultiDomainSimulation()'s per-domain loop can hand each subdomain a
+# `restart: index: N` of its own — reusing process_restart!() unmodified for
+# the actual per-subdomain work (reading displacement/velocity, the
+# `j2 plasticity` check, building `restart_info`) once real subdomain
+# construction happens.
+#
+# This has to happen before create_controller(params) builds the top-level
+# Schwarz controller, because sync_control_time() unconditionally
+# re-broadcasts the top-level controller's time fields (initial_time, time,
+# prev_time, num_stops, stop) onto every subdomain at the start of every
+# control step — so the top-level controller's initial time is the only one
+# that actually has to be correct; whatever a subdomain's own controller
+# computes is overwritten regardless.
+#
+# No-op when the top-level file has no `restart:` block. Aborts if a
+# subdomain file has its own `restart:` block instead (restart belongs at
+# the top level only, for Schwarz), if subdomains' checkpoints disagree on
+# what time the shared index lands on, or if a restarting subdomain uses the
+# `j2 plasticity` material model, for the same internal-state-variable reason
+# monolithic restart rejects it (see SolidMechanics() in model.jl). Both FOM
+# (`solid mechanics`) and ROM subdomains may restart, including mixed
+# FOM-ROM pairings.
+function process_multidomain_restart!(params::Parameters)
+    domain_paths = params["domains"]
+    for domain_path in domain_paths
+        subparams = YAML.load_file(domain_path; dicttype=Parameters)
+        if haskey(subparams, "restart")
+            norma_abort(
+                "`restart:` must be specified once, in the top-level multi-domain file, " *
+                "not in individual subdomain files (found one in '$domain_path'). Every " *
+                "subdomain restarts from the same physical time; move the `restart:` " *
+                "block there and remove it from '$domain_path'.",
+            )
+        end
+    end
+    haskey(params, "restart") || return nothing
+    restart_params = params["restart"]
+    haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
+    restart_index = Int64(restart_params["index"])
+    restart_time = nothing
+    for domain_path in domain_paths
+        subparams = YAML.load_file(domain_path; dicttype=Parameters)
+        model_params = get(subparams, "model", Parameters())
+        if "j2 plasticity" in _material_models_used(model_params)
+            norma_abortf(
+                "Schwarz restart does not support the `j2 plasticity` material model " *
+                "(subdomain '%s'), for the same reason monolithic restart does not: the " *
+                "restart snapshot only stores nodal displacement and velocity fields; J2 " *
+                "plasticity's internal state variables (e.g. plastic strain, back stress) " *
+                "are not written to or read from the restart file, so resuming would " *
+                "silently discard the accumulated plastic history. Remove the `restart:` " *
+                "block, or switch to a material model without internal state variables, " *
+                "until restart support for internal variables is implemented.",
+                domain_path,
+            )
+        end
+        haskey(subparams, "input mesh file") ||
+            norma_abort("Subdomain '$domain_path' has no `input mesh file`.")
+        input_mesh_file = subparams["input mesh file"]
+        input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
+        domain_time = try
+            num_steps = Exodus.read_number_of_time_steps(input_mesh)
+            if num_steps < 1
+                norma_abort("Restart mesh '$input_mesh_file' (subdomain '$domain_path') contains no time steps.")
+            end
+            if restart_index < 1 || restart_index > num_steps
+                norma_abortf(
+                    "Restart index %d is out of range for mesh '%s' (subdomain '%s'), " *
+                    "which has %d time step(s) (valid range is 1:%d).",
+                    restart_index,
+                    input_mesh_file,
+                    domain_path,
+                    num_steps,
+                    num_steps,
+                )
+            end
+            Exodus.read_time(input_mesh, restart_index)
+        finally
+            Exodus.close(input_mesh)
+        end
+        if restart_time === nothing
+            restart_time = domain_time
+        elseif !isapprox(domain_time, restart_time; atol=1.0e-9)
+            norma_abortf(
+                "Schwarz restart: subdomain '%s' checkpoint at index %d is at time %.6e, " *
+                "which does not match the time %.6e read from an earlier subdomain's " *
+                "checkpoint at the same index. All subdomains must restart from the same " *
+                "physical time.",
+                domain_path,
+                restart_index,
+                domain_time,
+                restart_time,
+            )
+        end
+    end
+    requested_initial_time = get(params, "initial time", nothing)
+    params["initial time"] = restart_time
+    params["_multidomain_restart_index"] = restart_index
+    norma_log(0, :restart, "Restarting Schwarz simulation from snapshot data.")
+    norma_logf(0, :restart, "Restart index:  %d", restart_index)
+    norma_logf(0, :restart, "Restart time:   %.6e", restart_time)
+    if requested_initial_time !== nothing && !isapprox(Float64(requested_initial_time), restart_time; atol=1e-12)
+        norma_logf(
+            0,
+            :restart,
+            "Overriding top-level `initial time` (%.6e) with restart time (%.6e).",
+            Float64(requested_initial_time),
+            restart_time,
+        )
+    end
+    return nothing
+end
+
+# Warn (but do not abort) when a Schwarz restart is combined with
+# non-overlapping Schwarz coupling (`Schwarz DN nonoverlap`, `Schwarz RR
+# nonoverlap`, or `Schwarz impedance nonoverlap`). Nothing in process_restart!()
+# or process_multidomain_restart!() is specific to overlapping vs.
+# non-overlapping coupling — the positional nodal-field read is unaffected
+# either way — but this combination has not been exercised by the test suite,
+# so flag it for the user's attention rather than silently proceeding.
+# Called from create_simulation() after create_bcs(), since boundary
+# conditions are not populated until then.
+function warn_restart_with_nonoverlap_schwarz(sim::MultiDomainSimulation)
+    haskey(sim.params, "restart") || return nothing
+    has_nonoverlap = any(
+        any(bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
+        for sub in sim.subsims
+    )
+    if has_nonoverlap
+        norma_log(
+            0,
+            :warning,
+            "Restart is being used with non-overlapping Schwarz coupling. This should " *
+            "work but has not been tested; please use with caution.",
+        )
+    end
+    return nothing
+end
+
+warn_restart_with_nonoverlap_schwarz(::SingleDomainSimulation) = nothing
+
 function create_simulation(params::Parameters)
     sim_type = params["type"]
     if sim_type == "single"
@@ -27,6 +360,7 @@ function create_simulation(params::Parameters)
         sim = MultiDomainSimulation(params)
         create_bcs(sim)
         validate_swap_criteria(sim)
+        warn_restart_with_nonoverlap_schwarz(sim)
         initialize_storage(sim)
         return sim
     else
@@ -61,6 +395,7 @@ end
 function SingleDomainSimulation(params::Parameters)
     t_setup = time()
     basename = params["name"]
+    _reject_restart_with_swaps!(params, basename)
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
     norma_log(0, :setup, "Input:  $input_mesh_file")
@@ -83,6 +418,7 @@ function SingleDomainSimulation(params::Parameters)
         n_nodes = Exodus.num_nodes(input_mesh.init)
         n_elems = Exodus.num_elements(input_mesh.init)
         norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
+        process_restart!(params, input_mesh, basename)
         controller = create_controller(params)
         norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
                    controller.initial_time, controller.final_time,
@@ -158,6 +494,8 @@ _log_materials(::Model, _) = nothing
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
     domain_paths = params["domains"]
+    process_multidomain_restart!(params)
+    _reject_restart_with_swaps!(params, basename)
     subsims = Vector{SingleDomainSimulation}()
     controller = create_controller(params)
     initial_time = controller.initial_time
@@ -174,6 +512,10 @@ function MultiDomainSimulation(params::Parameters)
             norma_log(4, :domain, domain_name)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
             subparams["name"] = domain_name
+            subparams["_is_subdomain"] = true
+            if haskey(params, "_multidomain_restart_index")
+                subparams["restart"] = Parameters("index" => params["_multidomain_restart_index"])
+            end
             integrator_params = subparams["time integrator"]
             subsim_time_step = get(integrator_params, "time step", integrator_dt)
             subsim_time_step = min(subsim_time_step, integrator_dt)
@@ -546,6 +888,13 @@ end
 function initialize(sim::MultiDomainSimulation)
     initialize_bc_projectors(sim)
     apply_ics(sim)
+    # This first snapshot (used only as apply_bcs()'s fallback while every
+    # subdomain still has a placeholder zero acceleration) is pushed for FOM
+    # subdomains only, matching existing non-restart behavior; ROM neighbors
+    # fall back to zero here exactly as they always have (see apply_bc() in
+    # schwarz.jl). The restart-only refinement pass below is what actually
+    # gives every subdomain — FOM and ROM alike — a real Schwarz-coupled
+    # snapshot to interpolate from.
     for (subsim_index, subsim) in enumerate(sim.subsims)
         if subsim.model isa SolidMechanics
             save_history_snapshot(sim.controller, subsim, subsim_index)
@@ -556,6 +905,66 @@ function initialize(sim::MultiDomainSimulation)
         log_dof_counts(subsim.model)
         initialize(subsim.integrator, subsim.solver, subsim.model)
         save_curr_state(subsim)
+    end
+    # Restart-only refinement: the pass above computes each subdomain's own
+    # initial acceleration while every Schwarz-coupled boundary DOF still
+    # holds the placeholder (zero) value apply_bcs() left before any
+    # subdomain had a real acceleration — see the comment in
+    # initialize(::Newmark, ...) (time_integrator.jl) for why that's the
+    # correct thing to do on a fresh, at-rest-ish start. On a restart,
+    # though, the simulation is resuming mid-motion and the true
+    # acceleration at a Schwarz interface generally isn't small, so that
+    # placeholder can be badly wrong right where it matters most. This
+    # applies equally to FOM and ROM subdomains: a ROM subdomain's own
+    # initial acceleration is solved on its internal fom_model (see
+    # initialize(::RomNewmark, ...) / initialize(::RomCentralDifference, ...)
+    # in opinf_time_integrator.jl), which is restored from the restart
+    # snapshot exactly like a standalone FOM model (is_restarted() below
+    # checks subsim.model.fom_model.restarted for a ROM subsim).
+    #
+    # apply_bc() for a Schwarz-coupled BC (schwarz.jl) does not read the
+    # coupled side's *live* integrator state — it interpolates from
+    # controller.{time,disp,velo,acce,∂Ω_f}_hist[coupled_index], populated by
+    # save_history_snapshot(). The very first entry in that history was
+    # pushed above, before any subdomain had a real acceleration, so it's
+    # exactly as stale as the placeholder apply_bcs() left; simply calling
+    # apply_bcs() again would still interpolate from that same one stale
+    # entry (interpolate() with a single history point ignores the query
+    # time and just returns it) and be a no-op. So: reset each subdomain's
+    # history and re-push a fresh snapshot reflecting its now-real,
+    # pass-1-solved state first, *then* refresh apply_bcs and re-solve, this
+    # time trusting the Schwarz-coupled DOFs.
+    #
+    # Run this reset/apply/re-solve sequence twice (not once) when a ROM
+    # subdomain is involved. For a FOM neighbor, model.displacement and
+    # integrator.displacement are the same aliased array, so as soon as
+    # apply_bc() writes a real value anywhere, every reader sees it
+    # immediately, in any subdomain order. A ROM neighbor's full-order
+    # fields are a *separate* reconstruction from its reduced state
+    # (reconstruct_fom_fields!() in opinf_solver.jl), and that
+    # reconstruction skips any DOF where the ROM's own fom_model.free_dofs
+    # is false — including the DOFs where the ROM's own Schwarz coupling
+    # prescribes values from a *different* neighbor. Whether those DOFs
+    # hold real or still-placeholder data by the time some other subdomain
+    # reads them within a single apply_bcs(sim) sweep depends on whether
+    # that ROM's own coupling BC happened to already run earlier in the
+    # same sweep — i.e. on sim.subsims order, not physics. A second
+    # sweep removes that order-dependence: every subdomain enters it with
+    # a real (round-1-refined) acceleration already in place, so every
+    # reconstruction this time reads real data no matter which subdomain
+    # is processed first.
+    if any(is_restarted(subsim.model) for subsim in sim.subsims)
+        for _ in 1:2
+            for (subsim_index, subsim) in enumerate(sim.subsims)
+                reset_history(sim.controller, subsim_index)
+                save_history_snapshot(sim.controller, subsim, subsim_index)
+            end
+            apply_bcs(sim)
+            for subsim in sim.subsims
+                initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
+                save_curr_state(subsim)
+            end
+        end
     end
     detect_contact(sim)
     return nothing

@@ -106,6 +106,9 @@ mutable struct SolidMechanics <: Model
     lumped_recovered_internal_variables::Matrix{Float64}
     consistent_recovered_internal_variables::Matrix{Float64}
     num_int_pts::Vector{Int}
+    # Tracks whether this model was constructed from restart
+    # snapshot data 
+    restarted::Bool
 end
 
 include("opinf/opinf_model_types.jl")

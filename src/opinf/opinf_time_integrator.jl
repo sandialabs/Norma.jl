@@ -108,9 +108,9 @@ function create_time_integrator(params::Parameters, model::RomModel)
     end
 end
 
-function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::RomModel)
+function initialize(integrator::RomNewmark, solver::RomHessianMinimizer, model::RomModel; trust_schwarz::Bool=false)
     # Compute initial accelerations
-    initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+    initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model; trust_schwarz=trust_schwarz)
 
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
@@ -156,9 +156,9 @@ function correct(integrator::RomNewmark, solver::Solver, model::RomModel)
     return nothing
 end
 
-function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver, model::RomModel)
+function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver, model::RomModel; trust_schwarz::Bool=false)
     # Compute initial accelerations
-    initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model)
+    initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model; trust_schwarz=trust_schwarz)
     # project onto basis
     n_var, n_node, n_mode = size(model.basis)
     integrator.displacement[:] = model.reduced_state[:]

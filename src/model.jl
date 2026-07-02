@@ -7,14 +7,35 @@
 
 using Base.Threads: @threads, threadid, nthreads, maxthreadid
 
+# Whether `model` was constructed by resuming from a restart checkpoint (see
+# process_restart!() / process_multidomain_restart!() in simulation.jl). For
+# a ROM model this reflects whether the ROM's internal FOM model
+# (model.fom_model) was restarted: ROM restart is layered on top of FOM
+# restart — the FOM displacement/velocity fields are restored from the
+# snapshot inside SolidMechanics() construction, then projected onto the
+# reduced basis by apply_ics(::Parameters, ::RomModel, ...) in
+# opinf_ics_bcs.jl — so the two always agree. Used by
+# initialize(sim::MultiDomainSimulation) (simulation.jl) to decide whether
+# the restart-only Schwarz refinement pass is needed, and forwarded as
+# `trust_schwarz` into initialize(::TimeIntegrator, ::Solver, ::Model) /
+# initialize(::RomNewmark, ...) / initialize(::RomCentralDifference, ...).
+is_restarted(model::SolidMechanics) = model.restarted
+is_restarted(model::RomModel) = model.fom_model.restarted
+
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
     coords = read_coordinates(input_mesh)
     num_nodes = Exodus.num_nodes(input_mesh.init)
     reference = Matrix{Float64}(undef, 3, num_nodes)
-    displacement = zeros(3, num_nodes)
-    velocity = zeros(3, num_nodes)
+    restart_info = get(params, "restart_info", nothing)
+    if restart_info === nothing
+        displacement = zeros(3, num_nodes)
+        velocity = zeros(3, num_nodes)
+    else
+        displacement = copy(restart_info.displacement)
+        velocity = copy(restart_info.velocity)
+    end
     acceleration = zeros(3, num_nodes)
     for node in 1:num_nodes
         reference[:, node] = coords[:, node]
@@ -52,6 +73,17 @@ function SolidMechanics(params::Parameters)
             end
         end
         push!(materials, material_model)
+    end
+    if restart_info !== nothing && any(material isa J2Plasticity for material in materials)
+        norma_abort(
+            "Restart is not currently supported for the `j2 plasticity` material model. " *
+            "The restart snapshot only stores nodal displacement and velocity fields; " *
+            "J2 plasticity's internal state variables (e.g. plastic strain, back stress) " *
+            "are not written to or read from the restart file, so resuming would silently " *
+            "discard the accumulated plastic history. Remove the `restart:` block, or switch " *
+            "to a material model without internal state variables, until restart support for " *
+            "internal variables is implemented.",
+        )
     end
     time = 0.0
     failed = false
@@ -210,6 +242,7 @@ function SolidMechanics(params::Parameters)
         lumped_recovered_internal_variables,
         consistent_recovered_internal_variables,
         num_int_pts,
+        restart_info !== nothing,
     )
 end
 
