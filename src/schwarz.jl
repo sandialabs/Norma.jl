@@ -284,8 +284,20 @@ end
 # Impedance overlap Schwarz: absorbing condition on overlap boundaries
 # ---------------------------------------------------------------------------
 #
-# Instead of overwriting DOFs (DBC-DBC), applies impedance-matching force:
-#   boundary_force += -t_partner + Z * u̇_partner  (strong interpolation)
+# Instead of overwriting DOFs (DBC-DBC), applies an impedance-matching
+# (zeroth-order optimized-Schwarz Robin) force built from the partner's
+# traction and kinematics, strongly interpolated at this subdomain's overlap
+# boundary:
+#   boundary_force += W * (t_partner + Z * u̇_partner + α * u_partner)
+# with the matching self terms W * (Z * u̇ + α * u) assembled on the
+# internal-force side (build_impedance_schwarz_force), so the converged
+# transmission condition is
+#   t - t_partner + Z * (u̇ - u̇_partner) + α * (u - u_partner) = 0,
+# which the monodomain solution satisfies identically. Omitting t_partner
+# turns the condition into a relative dashpot t = Z(u̇_partner - u̇) + ...,
+# which the monodomain solution fails by exactly t: the converged coupled
+# solution then carries a spurious interface velocity jump ≈ t/Z whose power
+# drain ~|t|²/Z acts as permanent interface damping.
 # DOFs remain free — waves pass through instead of reflecting.
 
 function _get_impedance_scale(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
@@ -304,24 +316,43 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     W = bc.square_projector
 
     coupled_model_obj = coupled_subsim_of(bc).model
-    get_coupled_field = if coupled_model_obj isa SolidMechanics
-        (field -> getfield(coupled_model_obj, field))
-    else
-        (field -> getfield(coupled_model_obj.fom_model, field))
-    end
+    coupled_solid =
+        coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
+    coupled_displacement = coupled_solid.displacement
+    coupled_velocity = coupled_solid.velocity
 
-    coupled_displacement = get_coupled_field(:displacement)
-    coupled_reference = get_coupled_field(:reference)
-    coupled_velocity  = get_coupled_field(:velocity)
-    coupled_internal  = get_coupled_field(:internal_force)
+    # Partner traction t_partner = σ_partner · n at this subdomain's Schwarz
+    # boundary. That boundary is an interior surface of the partner mesh, so
+    # the partner's assembled internal force cannot supply the traction there
+    # (interior rows carry the inertia residual, not σ·n). Instead interpolate
+    # the partner's nodal-recovered stress with the same shape-function data
+    # used for u̇ and u below. Stress recovery is force-enabled for coupled
+    # models when this BC type is present (see SolidMechanics() in model.jl).
+    recover_stress!(coupled_solid)
+    coupled_nodal_stress = if size(coupled_solid.recovered_stress, 1) > 0
+        coupled_solid.recovered_stress
+    elseif size(coupled_solid.consistent_recovered_stress, 1) > 0
+        coupled_solid.consistent_recovered_stress
+    else
+        norma_abort(
+            "Schwarz impedance overlap requires nodal stress recovery on the coupled " *
+            "subdomain to evaluate the partner traction. Enable `nodal recovery:` with " *
+            "`stress: true` in the coupled subdomain's `model:` block.",
+        )
+    end
+    # Outward unit normals of this subdomain's Schwarz boundary, indexed like
+    # global_from_local_map (= unique(side_set_node_indices), same ordering).
+    normals = compute_normal(model.mesh, bc.side_set_id, model)
 
     global_from_local_map = bc.global_from_local_map
     unique_node_indices = unique(bc.side_set_node_indices)
 
-    # Interpolate partner displacement and velocity at each overlap boundary node
+    # Interpolate partner traction, displacement, and velocity at each overlap
+    # boundary node
     num_dst_nodes = length(unique_node_indices)
     partner_velo = zeros(3, num_dst_nodes)
     partner_disp = zeros(3, num_dst_nodes)
+    partner_trac = zeros(3, num_dst_nodes)
 
     for (i, node_index) in enumerate(unique_node_indices)
         coupled_node_indices = bc.coupled_nodes_indices[i]
@@ -330,15 +361,21 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
             partner_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
             partner_disp[comp, i] = sum(coupled_displacement[comp, coupled_node_indices] .* N)
         end
+        # Voigt order of recovered stress: xx, yy, zz, yz, xz, xy.
+        σ = coupled_nodal_stress[:, coupled_node_indices] * N
+        n = normals[:, i]
+        partner_trac[1, i] = σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3]
+        partner_trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
+        partner_trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
     end
 
-    # RHS (partner contribution only): f = W * (Z * u̇_partner + α * u_partner)
+    # RHS (partner contribution only): f = W * (t_partner + Z * u̇_partner + α * u_partner)
     # The self terms (Z*W*u̇_self + α*W*u_self) are handled by
     # apply_impedance_bcs_internal_force! called at each Newton iteration.
     for comp in 1:3
         Z_vdot = Z * partner_velo[comp, :]
         alpha_u = α * partner_disp[comp, :]
-        rhs = W * (Z_vdot + alpha_u)
+        rhs = W * (partner_trac[comp, :] + Z_vdot + alpha_u)
         for (i_local, i_global) in enumerate(global_from_local_map)
             dof_i = 3 * (i_global - 1) + comp
             model.boundary_force[dof_i] += rhs[i_local]
