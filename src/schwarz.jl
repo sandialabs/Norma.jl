@@ -46,6 +46,7 @@ function relaxation_aitken_recursive_theta!(
     if iter < aitken_N0
         controller.aitken_theta_disp[slot] = controller.relaxation_parameter
         controller.aitken_prev_residual_disp[slot] = Float64[]
+        norma_logf(1, :schwarz, "Aitken-recursive θ[slot=%d, iter=%d] = %.4f", slot, iter, 1.0)
         return 1.0
     end
     residual = interp_disp .- lambda_prev
