@@ -27,11 +27,11 @@ end
 
 @testset "Schwarz Nonoverlap Dynamic Cuboids Impedance Aitken" begin
     sim_fixed = run_cuboids_impedance(nothing)
-    sim_aitken = run_cuboids_impedance("aitken")
+    sim_aitken = run_cuboids_impedance("aitken recursive")
     sim_secant = run_cuboids_impedance("aitken secant")
 
     @test sim_fixed.controller.relaxation_method == :fixed
-    @test sim_aitken.controller.relaxation_method == :aitken
+    @test sim_aitken.controller.relaxation_method == :aitken_recursive
     @test sim_secant.controller.relaxation_method == :aitken_secant
     @test sim_aitken.failed == false
     @test sim_secant.failed == false

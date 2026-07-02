@@ -10,4 +10,4 @@ maximum iterations: 16
 relative tolerance: 1.0e-12
 absolute tolerance: 1.0e-08
   #relaxation parameter: 0.473
-relaxation: aitken
+relaxation: aitken recursive

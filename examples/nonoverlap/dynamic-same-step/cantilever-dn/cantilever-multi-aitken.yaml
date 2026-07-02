@@ -9,4 +9,4 @@ minimum iterations: 1
 maximum iterations: 128
 relative tolerance: 1.0e-08
 absolute tolerance: 2.54e-08
-relaxation: aitken
+relaxation: aitken recursive

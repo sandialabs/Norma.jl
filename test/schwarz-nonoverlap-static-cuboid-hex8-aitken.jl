@@ -24,7 +24,7 @@
     rm("cuboid-1.e"; force=true)
     rm("cuboid-2.e"; force=true)
 
-    @test sim.controller.relaxation_method == :aitken
+    @test sim.controller.relaxation_method == :aitken_recursive
     @test sim.failed == false
 
     # Aitken must reach the same physical solution as classical relaxation.
@@ -55,8 +55,8 @@ end
     cp(src * "cuboid-2.g", "cuboid-2.g"; force=true)
 
     write("cuboids-aitken.yaml", replace(read("cuboids-aitken.yaml", String),
-    "relaxation: aitken" =>
-    "relaxation: aitken\nrelaxation parameter: 0.1\naitken N0 parameter: 2"))
+    "relaxation: aitken recursive" =>
+    "relaxation: aitken recursive\nrelaxation parameter: 0.1\naitken N0 parameter: 2"))
     
     sim = Norma.run("cuboids-aitken.yaml")
     subsims = sim.subsims
@@ -71,7 +71,7 @@ end
     rm("cuboid-1.e"; force=true)
     rm("cuboid-2.e"; force=true)
 
-    @test sim.controller.relaxation_method == :aitken
+    @test sim.controller.relaxation_method == :aitken_recursive
     @test sim.failed == false
 
     # Aitken must reach the same physical solution as classical relaxation.

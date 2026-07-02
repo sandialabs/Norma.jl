@@ -11,10 +11,10 @@
     cp(src * "cuboid-1.g", "cuboid-1.g"; force=true)
     cp(src * "cuboid-2.g", "cuboid-2.g"; force=true)
 
-    # Select the non-recursive secant Aitken (paper eq. 9) instead of the
-    # default recursive Irons-Tuck form.
+    # Select the Aitken secant (non-recursive, paper eq. 9) instead of the
+    # Aitken-recursive Irons-Tuck form.
     write("cuboids-aitken-secant.yaml", replace(read("cuboids-aitken-secant.yaml", String),
-        "relaxation: aitken" => "relaxation: aitken secant"))
+        "relaxation: aitken recursive" => "relaxation: aitken secant"))
 
     sim = Norma.run("cuboids-aitken-secant.yaml")
     subsims = sim.subsims
@@ -32,8 +32,8 @@
     @test sim.controller.relaxation_method == :aitken_secant
     @test sim.failed == false
 
-    # Secant Aitken must reach the same physical solution as classical
-    # relaxation and the recursive Irons-Tuck Aitken.
+    # Aitken secant must reach the same physical solution as classical
+    # relaxation and the Aitken-recursive Irons-Tuck form.
     min_disp_x_fine = minimum(model_fine.displacement[1, :])
     min_disp_y_fine = minimum(model_fine.displacement[2, :])
     max_disp_z_fine = maximum(model_fine.displacement[3, :])

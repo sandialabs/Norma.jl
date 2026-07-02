@@ -30,16 +30,16 @@ self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsim
 const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
 
 # Returns the relaxation factor θ applied to interp_disp for this Schwarz
-# iterate. Fixed mode returns the user-configured constant; Aitken mode uses
-# Irons–Tuck with the previous residual stored on the controller.
-function relaxation_theta!(
+# iterate. Fixed mode returns the user-configured constant; Aitken-recursive
+# mode uses Irons–Tuck with the previous residual stored on the controller.
+function relaxation_aitken_recursive_theta!(
     controller::MultiDomainTimeController,
     slot::Int,
     iter::Int,
     interp_disp::AbstractVector{Float64},
     lambda_prev::AbstractVector{Float64},
 )
-    if controller.relaxation_method !== :aitken
+    if controller.relaxation_method !== :aitken_recursive
         return controller.relaxation_parameter
     end
     aitken_N0 = controller.aitken_N0
@@ -63,11 +63,11 @@ function relaxation_theta!(
     end
     controller.aitken_prev_residual_disp[slot] = residual
     controller.aitken_theta_disp[slot] = θ
-    norma_logf(1, :schwarz, "Aitken θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
+    norma_logf(1, :schwarz, "Aitken-recursive θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
     return θ
 end
 
-# Non-recursive secant Aitken factor (the original-paper form):
+# Aitken-secant factor (non-recursive, the original-paper form):
 # Sambataro-Tezaur eq. (9), equivalently Deparis-Discacciati-Quarteroni:
 #
 #   ρ^(n) = - (d^(n) · δ^(n)) / ‖δ^(n)‖²,
@@ -75,9 +75,10 @@ end
 # with the interface jump (fixed-point residual) r^(n) = E^(n) = T(g^(n)) - g^(n),
 # δ^(n) = r^(n) - r^(n-1), and d^(n) = g^(n) - g^(n-1) formed directly from the
 # stored interface iterates. This minimizes ‖d^(n) + ρ δ^(n)‖² and, unlike the
-# recursive Irons-Tuck form in `relaxation_theta!`, does not carry θ^(n-1), so it
-# is immune to the init/N0 bookkeeping required for the recursion to stay exact.
-function relaxation_secant_theta!(
+# Aitken-recursive Irons-Tuck form in `relaxation_aitken_recursive_theta!`, does
+# not carry θ^(n-1), so it is immune to the init/N0 bookkeeping required for the
+# recursion to stay exact.
+function relaxation_aitken_secant_theta!(
     controller::MultiDomainTimeController,
     slot::Int,
     iter::Int,
@@ -96,7 +97,7 @@ function relaxation_secant_theta!(
         d = lambda_prev .- prev_lambda                    # d^(n) = g^(n) - g^(n-1)
         δ_sq = dot(δ, δ)
         if δ_sq > AITKEN_DELTA_SQ_FLOOR
-            # Pure secant factor, paper eq. (9): no value clamp, so the factor is
+            # Pure Aitken-secant factor, paper eq. (9): no value clamp, so the factor is
             # free to take the large/negative excursions that accelerate (or
             # damp) convergence. The δ_sq floor above is kept only to guard the
             # division when successive residuals are essentially identical.
@@ -193,7 +194,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
         # the impedance RHS stored in lambda_disp; its unrelaxed (theta = 1)
         # candidate is T(g) = boundary_force + impedance coupling term, from which
         # the residual r = T(g) - g is formed. The fixed-theta blend is unchanged.
-        if controller.relaxation_method === :aitken || controller.relaxation_method === :aitken_secant
+        if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
             candidate = copy(model.boundary_force)
             for comp in 1:3
                 Z_W_vdot = Z * (W * dst_velo[comp, :])
@@ -204,8 +205,8 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwa
                 end
             end
             theta = controller.relaxation_method === :aitken_secant ?
-                relaxation_secant_theta!(controller, coupled_index, iter, candidate, g) :
-                relaxation_theta!(controller, coupled_index, iter, candidate, g)
+                relaxation_aitken_secant_theta!(controller, coupled_index, iter, candidate, g) :
+                relaxation_aitken_recursive_theta!(controller, coupled_index, iter, candidate, g)
         end
         controller.lambda_disp[coupled_index] = copy(model.boundary_force)
         for comp in 1:3
@@ -523,7 +524,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
       # Robin RHS stored in lambda_disp; its unrelaxed (theta = 1) candidate is
       # T(g) = boundary_force + coupling term, from which the residual r = T(g) - g
       # is formed. The fixed-theta blend below is otherwise unchanged.
-      if controller.relaxation_method === :aitken || controller.relaxation_method === :aitken_secant
+      if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
           candidate = copy(model.boundary_force)
           for comp in 1:3
               alpha_W_u = α * (W * dst_disp[comp, :])
@@ -533,8 +534,8 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBo
               end
           end
           theta = controller.relaxation_method === :aitken_secant ?
-              relaxation_secant_theta!(controller, coupled_index, iter, candidate, g) :
-              relaxation_theta!(controller, coupled_index, iter, candidate, g)
+              relaxation_aitken_secant_theta!(controller, coupled_index, iter, candidate, g) :
+              relaxation_aitken_recursive_theta!(controller, coupled_index, iter, candidate, g)
       end
       #initialize lambda_disp  = model.boundary_force
       controller.lambda_disp[coupled_index] = copy(model.boundary_force)
@@ -724,11 +725,11 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         if controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
-            θ = relaxation_secant_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+            θ = relaxation_aitken_secant_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
             controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
             recover_interface_kinematics!(controller, coupled_index, coupled_integrator, interp_velo, interp_acce)
         else
-            θ = relaxation_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+            θ = relaxation_aitken_recursive_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
 
             controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
             controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev

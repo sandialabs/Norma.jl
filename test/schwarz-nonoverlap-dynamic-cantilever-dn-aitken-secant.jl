@@ -48,15 +48,15 @@ end
     num_steps = 10
     sim_ref = run_cantilever_single_secant(num_steps)
     sim_secant = run_cantilever_dn_secant(num_steps, "aitken secant")
-    sim_aitken = run_cantilever_dn_secant(num_steps, "aitken")
+    sim_aitken = run_cantilever_dn_secant(num_steps, "aitken recursive")
 
     @test sim_secant.controller.relaxation_method == :aitken_secant
     @test sim_secant.failed == false
 
-    # Physical correctness: the secant DN tip displacement matches the monolithic
-    # single-domain reference. This validates the d-form recovery path
+    # Physical correctness: the Aitken-secant DN tip displacement matches the
+    # monolithic single-domain reference. This validates the d-form recovery path
     # (recover_interface_kinematics! Newmark branch), which the static test does
-    # not reach. (Note: secant and the recursive :aitken legitimately differ in
+    # not reach. (Note: Aitken secant and Aitken recursive legitimately differ in
     # the transient interior because they impose different interface velocity /
     # acceleration — recovered-consistent vs independently relaxed — so they are
     # compared to the monolithic reference, not to each other.)
@@ -75,8 +75,8 @@ end
     avg_clamped = sum(m_clamped.displacement[2, iface_clamped]) / length(iface_clamped)
     @test avg_free ≈ avg_clamped rtol = 1.0e-02
 
-    # The pure (unclamped) secant Aitken should accelerate at least as well as
-    # the recursive Irons-Tuck form on this problem.
+    # The pure (unclamped) Aitken secant should accelerate at least as well as
+    # the Aitken-recursive Irons-Tuck form on this problem.
     iters_secant = sim_secant.controller.schwarz_iters[1:num_steps]
     iters_aitken = sim_aitken.controller.schwarz_iters[1:num_steps]
     @test all(iters_secant .≤ 10)

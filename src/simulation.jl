@@ -250,20 +250,21 @@ function SolidMultiDomainTimeController(params::Parameters)
     if has_relaxation_key
         relaxation_value = params["relaxation"]
         relaxation_string = relaxation_value isa AbstractString ? lowercase(relaxation_value) : ""
-        if relaxation_string == "aitken"
-            relaxation_method = :aitken
+        if relaxation_string == "aitken recursive"
+            # Recursive Irons-Tuck Aitken, carrying θ^(n-1) forward.
+            relaxation_method = :aitken_recursive
             if has_aitken_N0_parameter
                 aitken_N0 = Int(params["aitken N0 parameter"])
             end
         elseif relaxation_string == "aitken secant"
-            # Non-recursive secant Aitken (Sambataro-Tezaur eq. 9 / Deparis-
+            # Aitken secant, non-recursive (Sambataro-Tezaur eq. 9 / Deparis-
             # Discacciati-Quarteroni), the original-paper relaxation factor.
             relaxation_method = :aitken_secant
             if has_aitken_N0_parameter
                 aitken_N0 = Int(params["aitken N0 parameter"])
             end
         else
-            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken` and `aitken secant` are recognized).")
+            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken recursive` and `aitken secant` are recognized).")
         end
     end
     if has_relaxation_parameter

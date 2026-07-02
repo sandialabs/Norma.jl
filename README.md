@@ -107,7 +107,7 @@ capabilities currently implemented are:
 - Overlapping and non-overlapping (Dirichlet–Neumann) Schwarz
 - Robin–Robin and impedance-matching (absorbing) Schwarz
 - Frictionless/tied contact via Schwarz
-- Fixed and Aitken (Irons–Tuck) adaptive relaxation, with interface predictor acceleration
+- Fixed and adaptive Aitken relaxation — Aitken recursive (Irons–Tuck) and Aitken secant — with interface predictor acceleration
 
 **Boundary conditions**
 - Dirichlet (time-dependent displacement/velocity/acceleration)

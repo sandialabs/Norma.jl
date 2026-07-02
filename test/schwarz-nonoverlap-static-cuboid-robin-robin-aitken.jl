@@ -43,11 +43,11 @@ end
 
 @testset "Schwarz Nonoverlap Static Cuboid Hex8 Robin-Robin Aitken" begin
     sim_fixed = run_robin_robin(nothing)
-    sim_aitken = run_robin_robin("aitken")
+    sim_aitken = run_robin_robin("aitken recursive")
     sim_secant = run_robin_robin("aitken secant")
 
     @test sim_fixed.controller.relaxation_method == :fixed
-    @test sim_aitken.controller.relaxation_method == :aitken
+    @test sim_aitken.controller.relaxation_method == :aitken_recursive
     @test sim_secant.controller.relaxation_method == :aitken_secant
 
     # Dynamic Aitken relaxation of the Robin RHS must not change the converged

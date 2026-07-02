@@ -29,11 +29,11 @@ end
 
 @testset "Schwarz Nonoverlap Dynamic Cantilever Robin-Robin Aitken" begin
     sim_fixed = run_cantilever_rr_aitken(nothing)
-    sim_aitken = run_cantilever_rr_aitken("aitken")
+    sim_aitken = run_cantilever_rr_aitken("aitken recursive")
     sim_secant = run_cantilever_rr_aitken("aitken secant")
 
     @test sim_fixed.controller.relaxation_method == :fixed
-    @test sim_aitken.controller.relaxation_method == :aitken
+    @test sim_aitken.controller.relaxation_method == :aitken_recursive
     @test sim_secant.controller.relaxation_method == :aitken_secant
     @test sim_aitken.failed == false
     @test sim_secant.failed == false

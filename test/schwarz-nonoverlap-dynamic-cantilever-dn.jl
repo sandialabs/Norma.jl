@@ -87,7 +87,7 @@ end
     m_free_aitken = sim_aitken.subsims[1].model
     uy_aitken = m_free_aitken.displacement[2, tip_free]
     @test uy_aitken ≈ uy_ref rtol = 1.0e-02
-    @test sim_aitken.controller.relaxation_method == :aitken
+    @test sim_aitken.controller.relaxation_method == :aitken_recursive
 
     # Aitken should reduce Schwarz iterations vs classical θ=0.5 on this problem.
     iters_aitken = sim_aitken.controller.schwarz_iters[1:num_steps]
