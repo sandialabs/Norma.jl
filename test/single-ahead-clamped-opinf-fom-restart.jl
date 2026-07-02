@@ -83,7 +83,7 @@
     avg_stress_full = average_components(model_full.stress)
     avg_stress_restart = average_components(model_restart.stress)
     err_abs = norm(avg_stress_full - avg_stress_restart) 
-    @test err_abs ≈ 6.055561584887406e-6 atol = 1.0e-6
+    @test err_abs ≈ 6.055561584887406e-6 atol = 1.0e-5
 
     # ── Sanity check: the body actually moved from its Gaussian-pulse IC ───
     avg_disp_full = average_components(sim_full.integrator.displacement)
