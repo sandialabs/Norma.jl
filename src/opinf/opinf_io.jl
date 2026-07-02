@@ -8,7 +8,7 @@ function write_stop_csv(sim::SingleDomainSimulation, model::RomModel)
     stop = sim.controller.stop
     index_string = "-" * string(stop; pad=4)
     prefix = sim.name * "-"
-    reduced_states_filename = prefix * "reduced_states" * index_string * ".csv"
+    reduced_states_filename = prefix * "reduced-states" * index_string * ".csv"
     writedlm(reduced_states_filename, model.reduced_state)
     write_stop_csv(sim, model.fom_model)
     return nothing

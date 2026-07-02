@@ -236,7 +236,7 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
         refe_filename = prefix * "refe" * ".csv"
         writedlm_nodal_array(refe_filename, model.reference)
     end
-    free_dofs_filename = prefix * "free_dofs" * index_string * ".csv"
+    free_dofs_filename = prefix * "free-dofs" * index_string * ".csv"
     writedlm(free_dofs_filename, model.free_dofs)
     curr_filename = prefix * "curr" * index_string * ".csv"
     writedlm_nodal_array(curr_filename, model.reference .+ model.displacement)
@@ -253,7 +253,7 @@ function write_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
         writedlm_nodal_array(acce_filename, model.acceleration)
         kinetic_filename = prefix * "kinetic" * index_string * ".csv"
         writedlm(kinetic_filename, integrator.kinetic_energy, '\n')
-        total_filename = prefix * "total_energy" * index_string * ".csv"
+        total_filename = prefix * "total-energy" * index_string * ".csv"
         writedlm(total_filename, integrator.stored_energy + integrator.kinetic_energy, '\n')
     end
     return nothing
