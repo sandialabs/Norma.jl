@@ -1,7 +1,7 @@
 type: multi
 domains: ["clamped-1.yaml", "clamped-2.yaml"]
 restart: 
-  index: 30
+  index: -11
 Exodus output interval: 1.0e-5
 CSV output interval: 1.0e-5
 CSV write sidesets: true
