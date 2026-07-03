@@ -112,6 +112,22 @@ end
 # Impedance-matching overlap Schwarz: replaces DBC-DBC with absorbing
 # conditions on the overlap boundaries. Same strong interpolation as
 # regular overlap, but applies t + Z u̇ = g as a force (not a constraint).
+# Setup data for variationally consistent partner-traction extraction on a
+# node-aligned (conforming) impedance-overlap interface. The weak partner
+# traction ∫_Γ t_p·φ_i is obtained by partial assembly of the partner's
+# discrete momentum residual (internal force + inertia) over the single layer
+# of partner elements on the exterior side of the interface — the exact
+# discrete flux, including mesh-scale content that nodal stress recovery
+# cannot represent. Built in compute_impedance_overlap_schwarz_projectors!.
+struct FluxTractionPatch
+    element_nodes::Vector{Vector{Int64}}              # global partner node indices per patch element
+    element_block::Vector{Int64}                      # partner block index per patch element
+    element_index::Vector{Int64}                      # block-local element index (for material state)
+    element_rows::Vector{Vector{Tuple{Int64,Int64}}}  # (element-local node, BC-local destination) pairs
+    block_element_type::Vector{ElementType}           # indexed by partner block index
+    lumped_mass::Bool                                 # partner integrator uses lumped mass (explicit)
+end
+
 mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
@@ -130,6 +146,11 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     impedance_shear::Float64     # Z_s = ρ c_s = √(ρμ) of the neighbor
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
     impedance_scale::Vector{Float64}  # multiplier on Z per step (default [1.0])
+    # Partner-traction evaluation: "auto" (consistent flux when the interface
+    # is node-aligned, recovered stress otherwise), "consistent flux", or
+    # "recovered stress". flux_patch is nothing when recovered stress is used.
+    partner_traction_mode::String
+    flux_patch::Union{FluxTractionPatch,Nothing}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle

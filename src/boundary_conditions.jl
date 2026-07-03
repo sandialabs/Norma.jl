@@ -215,6 +215,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     impedance_shear::Float64,
     robin_parameter::Float64,
     impedance_scale::Vector{Float64},
+    partner_traction_mode::String,
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
@@ -255,6 +256,8 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         impedance_shear,
         robin_parameter,
         impedance_scale,
+        partner_traction_mode,
+        nothing,
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,
@@ -528,6 +531,13 @@ function SMCouplingSchwarzBC(
         else
             coupled_block_name = bc_params["source block"]
             tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
+            partner_traction_mode = get(bc_params, "partner traction", "auto")
+            if partner_traction_mode ∉ ("auto", "consistent flux", "recovered stress")
+                norma_abort(
+                    "Invalid `partner traction: $partner_traction_mode`. Valid values are " *
+                    "\"auto\", \"consistent flux\", and \"recovered stress\".",
+                )
+            end
             SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
                 coupled_block_name,
                 tol,
@@ -542,6 +552,7 @@ function SMCouplingSchwarzBC(
                 impedance_s_coupled,
                 robin_parameter,
                 impedance_scale,
+                partner_traction_mode,
             )
         end
     else

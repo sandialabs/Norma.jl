@@ -145,4 +145,8 @@
     # Consistent stress recovery is force-enabled on both sides.
     @test model_clamped.recovery_data isa Norma.ConsistentRecovery
     @test model_free.recovery_data isa Norma.ConsistentRecovery
+
+    # Node-aligned interface: the consistent-flux partner traction is active.
+    @test imp_bc(model_clamped).flux_patch isa Norma.FluxTractionPatch
+    @test imp_bc(model_free).flux_patch isa Norma.FluxTractionPatch
 end
