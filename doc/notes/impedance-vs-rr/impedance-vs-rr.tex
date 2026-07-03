@@ -328,15 +328,51 @@ conforming benchmark; see Section~\ref{sec:findings}).
 
 Because $\Gamma_k$ is an interior surface of the partner mesh, the
 partner's assembled internal force cannot supply $~t_j$ there (interior
-rows carry the inertia residual, not $~\sigma ~n$).  Instead, $~t_j$ is
-obtained by interpolating the partner's nodal-recovered stress with the
-same shape-function data used for $\dot{~u}_j$ and $~u_j$, and
-contracting with $\Omega_k$'s outward surface normals.  \emph{Consistent}
-(L$^2$-projected, Cholesky-factorized) nodal recovery is force-enabled
-for any model that carries this BC type; lumped recovery's $O(h)$
-nodal-stress error feeds directly into the transmission condition and
-was measured to dominate the residual energy error (13.6\% vs.\ 1.5\%
-with consistent recovery; Section~\ref{sec:findings}).
+rows carry the inertia residual, not $~\sigma ~n$).  Norma.jl evaluates
+$~t_j$ in one of two ways, selected by the \texttt{partner traction}
+option of the BC (default \texttt{auto}).
+
+\paragraph{Variationally consistent traction (node-aligned
+interfaces).}  When every node of $\Gamma_k$ coincides with a partner
+node (detected automatically from the interpolation weights), the weak
+partner traction is extracted as a \emph{consistent boundary flux}
+(Wheeler; Hughes): for each interface node $i$,
+\begin{equation}
+  \bigl[ ~W\, ~t_j \bigr]_i
+  \;=\; \int_{\Gamma_k} ~t_j\, \varphi_i \,\dd\Gamma
+  \;=\; -\sum_{e \,\in\, \mathcal{E}_i^{\mathrm{ext}}}
+     \bigl( ~f^{\mathrm{int}}_e + ~M_e\, \ddot{~u}_e \bigr)_i,
+  \label{eq:flux-traction}
+\end{equation}
+where $\mathcal{E}_i^{\mathrm{ext}}$ is the single layer of partner
+elements adjacent to $\Gamma_k$ on its \emph{exterior} side --- the side
+$\Omega_k$'s outward normal points toward, i.e.\ precisely the elements
+$\Omega_k$ is missing from the monodomain assembly --- and $~M_e$ is
+the partner's element mass (consistent or lumped, matching the
+partner's integrator).  With this definition the monodomain solution
+satisfies $\Omega_k$'s coupled discrete equations \emph{identically}:
+the transmission condition transmits all discrete content, including
+the mesh-scale part that nodal stress recovery misrepresents.  Since
+the interface is node-aligned, the surface operators of the two meshes
+coincide on $\Gamma_k$ and \eqref{eq:flux-traction} enters the
+right-hand side directly, with no mass-matrix inversion and no
+recovery solve.  Implemented by \texttt{build\_flux\_traction\_patch!}
+(setup; rebuilt on BC swaps) and
+\texttt{impedance\_flux\_partner\_traction} (\texttt{schwarz.jl}).
+
+\paragraph{Recovered-stress traction (fallback).}  On non-conforming
+interfaces $~t_j$ is obtained by interpolating the partner's
+nodal-recovered stress with the same shape-function data used for
+$\dot{~u}_j$ and $~u_j$, and contracting with $\Omega_k$'s outward
+surface normals.  \emph{Consistent} (L$^2$-projected,
+Cholesky-factorized) nodal recovery is force-enabled for any model that
+carries this BC type; lumped recovery's $O(h)$ nodal-stress error feeds
+directly into the transmission condition and was measured to dominate
+the residual energy error (13.6\% vs.\ 1.5\% with consistent recovery;
+Section~\ref{sec:findings}).  Even consistent recovery cannot represent
+the traction carried by mesh-scale field content, which leaves a
+first-order-in-$h$ interface dissipation that the consistent-flux
+extraction removes (Section~\ref{sec:findings}).
 
 The discrete assembly:
 \begin{itemize}
@@ -351,11 +387,13 @@ The discrete assembly:
       with $~Z$ applied nodally before the surface weighting, assembled
       by \texttt{build\_impedance\_schwarz\_force}.
 \item \textbf{Partner right-hand side.}
-      $~f_\Gamma \leftarrow ~f_\Gamma + ~W\,\bigl(~t_j
-      + ~Z\, \dot{~u}_j + \alpha\, ~u_j\bigr)$, where $~t_j$,
-      $\dot{~u}_j$, and $~u_j$ are obtained by strong interpolation from
-      the partner element containing each overlap node
-      (\texttt{apply\_bc\_detail} for
+      $~f_\Gamma \leftarrow ~f_\Gamma + ~W\, ~t_j
+      + ~W\,\bigl(~Z\, \dot{~u}_j + \alpha\, ~u_j\bigr)$, where
+      $\dot{~u}_j$ and $~u_j$ are obtained by strong interpolation from
+      the partner element containing each overlap node, and $~W ~t_j$
+      is the consistent-flux weak traction \eqref{eq:flux-traction} on
+      node-aligned interfaces or $~W$ applied to the recovered-stress
+      traction otherwise (\texttt{apply\_bc\_detail} for
       \texttt{SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition}).
 \end{itemize}
 At the Schwarz fixed point all three jumps in \eqref{eq:imp-overlap}
@@ -601,17 +639,48 @@ the fine-to-coarse information loss of the interface transfer, not by
 the enforcement or nestedness.
 
 \paragraph{Impedance overlap: the error ladder.}  On the conforming
-control (II, PU metric, physical impedance, $\alpha = 0$), the maximum
-energy deviation over 1\,ms was
+control (II, PU metric, physical impedance, $\alpha = 0$), the energy
+error over 1\,ms was
 \[
   \underbrace{59\%}_{\text{missing } ~t_j}
   \;\longrightarrow\;
   \underbrace{14\%}_{+\,\text{traction term (lumped recovery)}}
   \;\longrightarrow\;
   \underbrace{1.5\%}_{+\,\text{consistent recovery}}
+  \;\longrightarrow\;
+  \underbrace{0.08\%}_{+\,\text{consistent-flux traction}}
 \]
-against the $0.1$\% exact-DBC reference.  Both corrections are
-parameter-free.
+against the $0.1$\% exact-DBC reference, which the final rung matches.
+All corrections are parameter-free.
+
+\paragraph{Residual-dissipation diagnosis.}  The $1.5$--$4$\% residual
+of the recovered-stress rung was isolated with an interface-work
+instrumentation (\texttt{report\_impedance\_interface\_work},
+env-gated) that decomposes the interface power into partner-traction,
+dashpot, and Robin parts; the dashpot and Robin powers vanish
+identically for the exact solution, so their integrated work measures
+the spurious dissipation directly.  Three experiments discriminated
+the candidate mechanisms:
+(i) sweeping the Schwarz tolerance from $10^{-8}$ to $10^{-11}$ leaves
+$E/E_0$ \emph{bit-identical} --- the Gauss--Seidel iteration reaches
+machine precision in two passes at every step, ruling out iteration
+lag; (ii) the loss is invariant under $\Delta t \in
+\{2, 1, 0.5\} \times 10^{-6}$\,s, ruling out the Newmark time level;
+(iii) the loss halves when $h$ is halved ($3.9\% \to 1.9\%$):
+first order in mesh size.  The measured velocity jump satisfies
+$~Z(\dot{~u}_k - \dot{~u}_j) \approx ~t_j - ~t_k$ throughout ---
+exactly what the converged transmission condition dictates --- so the
+mechanism is: the recovered-stress traction error on mesh-scale field
+content is converted by the Robin condition into an interface velocity
+jump ${\sim}\,\delta t / Z$, which the dashpot dissipates at rate
+$\lvert \delta t \rvert^2 / Z$, steadily over the whole run.  Replacing
+the recovered traction with the consistent flux
+\eqref{eq:flux-traction} eliminates it: energy loss
+$3.93\% \to 0.076\%$ and integrated dashpot work
+$-42.6\,\mathrm{J} \to +0.1\,\mathrm{J}$ on the same benchmark (tensor
+impedance).  This also explains why the classical DBC overlap is exact
+on conforming meshes --- nodal injection transmits all discrete content
+with no recovery step --- and closes the gap between the two.
 
 \paragraph{Impedance scale.}  With the traction term missing, a swept
 constant multiplier on $Z$ interpolates Neumann-like (over-absorbing)
@@ -628,26 +697,33 @@ corrected parameter-free condition on the same meshes).
 
 \paragraph{P/S tensor split.}  The tensor impedance
 \eqref{eq:imp-tensor} is exact for body waves at normal incidence and
-is the theoretically correct operator for bimaterial interfaces.  On
-this homogeneous, flexure-dominated benchmark it is slightly
-\emph{detrimental} (conforming: 4.1\% vs.\ 1.5\% scalar; the tangential
-channels of a flexural interface empirically prefer an impedance near
-$Z_p$, not $Z_s$).  Its apparent advantage on the non-conforming pair
-(3.9\% vs.\ 4.4\%) is another cancellation against transfer injection.
+is the theoretically correct operator for bimaterial interfaces.  With
+the recovered-stress traction it appeared slightly \emph{detrimental}
+on this homogeneous, flexure-dominated benchmark (conforming: 4.1\%
+vs.\ 1.5\% scalar), and its apparent advantage on the non-conforming
+pair (3.9\% vs.\ 4.4\%) was a cancellation against transfer injection.
+The diagnosis above resolves this: the penalty was never a property of
+the impedance split --- the tangential traction (recovery) error, which
+dominates in flexure, is dissipated at rate
+$\lvert \delta t \rvert^2 / Z_s$, and $Z_s = Z_p/\sqrt{3}$ amplifies
+it.  With the consistent-flux traction the error term is gone and the
+tensor impedance conserves to 0.076\% on the same benchmark.
 Transmission conditions should be benchmarked on conforming meshes;
 non-conforming results flatter the scheme.
 
-\paragraph{Open items.}  (i) The ${\sim}1.5$\% conforming residual
-(candidates: Gauss--Seidel lag, the Newmark time level at which the
-Robin terms are enforced).  (ii) The ${\sim}4$\% non-conforming
-transfer injection (a variationally consistent mortar transfer is the
-candidate fix).  (iii) Pairings with an explicit subdomain lose
+\paragraph{Open items.}  (i) Non-conforming interfaces still use the
+recovered-stress traction and pointwise interpolation; the ${\sim}4$\%
+transfer injection remains (a mortar transfer with a flux-consistent
+pairing, in the spirit of \eqref{eq:flux-traction}, is the candidate
+fix).  (ii) Pairings with an explicit subdomain lose
 ${\sim}8$--$10$\% of the PU energy within the first few steps and
-oscillate per step thereafter (${\sim}20$\% overall), before and after
-the corrections alike: the discrete treatment of the impedance terms
-under central difference is the suspect, consistent with the
-literature's warnings about discretizing absorbing boundary operators
-explicitly.
+oscillate per step thereafter (${\sim}15$\% overall with consistent
+recovery), before and after the corrections alike: the discrete
+treatment of the impedance terms under central difference is the
+suspect, consistent with the literature's warnings about discretizing
+absorbing boundary operators explicitly.  (iii) A bimaterial benchmark
+to exercise the tensor impedance and cross-scaling where they should
+pay off.
 
 \section{Summary}
 
@@ -679,18 +755,22 @@ explicitly.
       and enforces the full transmission condition
       $~t_k - ~t_j + ~Z(\dot{~u}_k - \dot{~u}_j)
       + \alpha(~u_k - ~u_j) = ~0$, with the partner traction obtained
-      from consistently recovered nodal stress and the tensor impedance
+      as the variationally consistent boundary flux
+      \eqref{eq:flux-traction} on node-aligned interfaces (consistently
+      recovered nodal stress otherwise) and the tensor impedance
       $~Z$ built from the partner's P- and S-wave impedances.
-\item The partner-traction term and consistent stress recovery are what
-      make the impedance overlap condition consistent with the
-      monodomain solution: on the conforming cantilever benchmark they
-      reduce the maximum PU-energy deviation from 59\% to 1.5\% over
-      1\,ms, parameter-free (physical impedance, $\alpha = 0$), against
-      a 0.1\% exact-conservation reference for converged conforming DBC
-      coupling.  Converged DBC coupling on \emph{non-conforming} meshes
-      is exponentially unstable (transfer-induced); the impedance
-      variant's velocity-jump dissipation is what keeps it bounded
-      there.
+\item The partner-traction term is what makes the impedance overlap
+      condition consistent with the monodomain solution, and the
+      \emph{quality} of the traction sets the energy error: on the
+      conforming cantilever benchmark the ladder runs 59\% (missing
+      $~t_j$) $\to$ 14\% (lumped recovery) $\to$ 1.5\% (consistent
+      recovery) $\to$ 0.08\% (consistent flux) over 1\,ms,
+      parameter-free (physical impedance, $\alpha = 0$), the final rung
+      matching the 0.1\% exact-conservation reference of converged
+      conforming DBC coupling.  Converged DBC coupling on
+      \emph{non-conforming} meshes is exponentially unstable
+      (transfer-induced); the impedance variant's velocity-jump
+      dissipation is what keeps it bounded there.
 \end{itemize}
 
 \end{document}
