@@ -1147,6 +1147,7 @@ function schwarz(sim::MultiDomainSimulation)
         save_schwarz_state(sim)
         restore_stop_state(sim)
     end
+    report_impedance_interface_work(sim)
 end
 
 function report_overlap_l2_errors(sim::MultiDomainSimulation)

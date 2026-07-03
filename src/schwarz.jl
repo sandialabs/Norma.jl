@@ -502,6 +502,116 @@ function build_impedance_schwarz_force(model::SolidMechanics)
     return f
 end
 
+# --- Interface work instrumentation (diagnosis; enabled via env var) --------
+#
+# When NORMA_IMPEDANCE_WORK_CSV is set, a row is appended per impedance-overlap
+# BC after each converged Schwarz stop, decomposing the instantaneous interface
+# power into partner-traction, dashpot, and Robin parts:
+#
+#   P = Σ_i u̇_i · [ W (t_p + T(n)(u̇_p − u̇) + α (u_p − u)) ]_i
+#
+# The exact (monodomain) solution satisfies u̇_p = u̇ and u_p = u on the
+# overlap boundary, so the dashpot and Robin powers vanish identically for it:
+# their measured work is purely spurious interface dissipation. The RMS
+# velocity jump |u̇_p − u̇| and traction mismatch |t_p − t_own| (both from
+# recovered stress) are recorded to attribute the residual: recovery error
+# shows up as traction mismatch, Schwarz iteration lag and time-level error as
+# velocity jump that shrinks (or does not) with the Schwarz tolerance.
+
+function report_impedance_interface_work(sim)
+    csv_path = get(ENV, "NORMA_IMPEDANCE_WORK_CSV", "")
+    isempty(csv_path) && return nothing
+    if isfile(csv_path) == false
+        open(csv_path, "w") do io
+            println(
+                io,
+                "time,subdomain,side_set,P_total,P_traction,P_dashpot,P_robin," *
+                "velocity_jump_rms,traction_mismatch_rms",
+            )
+        end
+    end
+    t = sim.controller.time
+    for (subsim_index, subsim) in enumerate(sim.subsims)
+        model = subsim.model
+        model isa SolidMechanics || continue
+        for bc in model.boundary_conditions
+            bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
+            scale = _get_impedance_scale(bc)
+            Z_p = bc.impedance * scale
+            Z_s = bc.impedance_shear * scale
+            α = bc.robin_parameter
+            W = bc.square_projector
+            coupled_model_obj = coupled_subsim_of(bc).model
+            coupled_solid =
+                coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
+            recover_stress!(coupled_solid)
+            recover_stress!(model)
+            nodal_stress(m) =
+                size(m.recovered_stress, 1) > 0 ? m.recovered_stress : m.consistent_recovered_stress
+            coupled_nodal_stress = nodal_stress(coupled_solid)
+            own_nodal_stress = nodal_stress(model)
+            normals = compute_normal(model.mesh, bc.side_set_id, model)
+            unique_node_indices = unique(bc.side_set_node_indices)
+            num_nodes = length(unique_node_indices)
+            trac_p = zeros(3, num_nodes)
+            dash = zeros(3, num_nodes)
+            robin = zeros(3, num_nodes)
+            velo = zeros(3, num_nodes)
+            vjump2 = 0.0
+            tmis2 = 0.0
+            for (i, node_index) in enumerate(unique_node_indices)
+                coupled_node_indices = bc.coupled_nodes_indices[i]
+                N = bc.interpolation_function_values[i]
+                n = normals[:, i]
+                v = model.velocity[:, node_index]
+                u = model.displacement[:, node_index]
+                v_p = [sum(coupled_solid.velocity[c, coupled_node_indices] .* N) for c in 1:3]
+                u_p = [sum(coupled_solid.displacement[c, coupled_node_indices] .* N) for c in 1:3]
+                # Voigt order of recovered stress: xx, yy, zz, yz, xz, xy.
+                σ = coupled_nodal_stress[:, coupled_node_indices] * N
+                σ_o = own_nodal_stress[:, node_index]
+                t_p = [
+                    σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3],
+                    σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3],
+                    σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3],
+                ]
+                t_o = [
+                    σ_o[1] * n[1] + σ_o[6] * n[2] + σ_o[5] * n[3],
+                    σ_o[6] * n[1] + σ_o[2] * n[2] + σ_o[4] * n[3],
+                    σ_o[5] * n[1] + σ_o[4] * n[2] + σ_o[3] * n[3],
+                ]
+                dv = v_p .- v
+                dvn = n[1] * dv[1] + n[2] * dv[2] + n[3] * dv[3]
+                trac_p[:, i] = t_p
+                dash[:, i] = (Z_p * dvn) .* n .+ Z_s .* (dv .- dvn .* n)
+                robin[:, i] = α .* (u_p .- u)
+                velo[:, i] = v
+                vjump2 += dot(dv, dv)
+                tmis2 += dot(t_p - t_o, t_p - t_o)
+            end
+            P_trac = 0.0
+            P_dash = 0.0
+            P_robin = 0.0
+            for comp in 1:3
+                P_trac += dot(velo[comp, :], W * trac_p[comp, :])
+                P_dash += dot(velo[comp, :], W * dash[comp, :])
+                P_robin += dot(velo[comp, :], W * robin[comp, :])
+            end
+            P_total = P_trac + P_dash + P_robin
+            vjump_rms = sqrt(vjump2 / num_nodes)
+            tmis_rms = sqrt(tmis2 / num_nodes)
+            open(csv_path, "a") do io
+                println(
+                    io,
+                    "$t,$subsim_index,$(bc.side_set_id),$P_total,$P_trac,$P_dash,$P_robin," *
+                    "$vjump_rms,$tmis_rms",
+                )
+            end
+        end
+    end
+    return nothing
+end
+
 # ---------------------------------------------------------------------------
 
 function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block_id::Int, tol::Float64)
