@@ -187,7 +187,7 @@ function SolidMechanics(params::Parameters)
     bc_params = get(params, "boundary conditions", nothing)
     if bc_params !== nothing && haskey(bc_params, "Schwarz impedance overlap")
         if recovery_kind === :none
-            recovery_kind = :lumped
+            recovery_kind = :consistent
         end
         rec_stress = true
     end
