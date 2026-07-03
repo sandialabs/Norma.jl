@@ -114,17 +114,22 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # (shared restart index/time, no per-subdomain `restart:` blocks).
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
-    restart_index = Int64(restart_params["index"])
+    requested_restart_index = Int64(restart_params["index"])
     num_steps = Exodus.read_number_of_time_steps(input_mesh)
     if num_steps < 1
         norma_abort("Restart mesh '$(input_mesh.file_name)' contains no time steps.")
     end
+    # Negative indices count back from the last snapshot, Python-style:
+    # -1 is the final snapshot, -2 the one before it, and so on.
+    restart_index =
+        requested_restart_index < 0 ? num_steps + requested_restart_index + 1 : requested_restart_index
     if restart_index < 1 || restart_index > num_steps
         norma_abortf(
             "Restart index %d is out of range for mesh '%s', which has %d time step(s) " *
-            "(valid range is 1:%d).",
-            restart_index,
+            "(valid range is 1:%d, or -1:-%d counting back from the last snapshot).",
+            requested_restart_index,
             input_mesh.file_name,
+            num_steps,
             num_steps,
             num_steps,
         )
@@ -273,18 +278,27 @@ function process_multidomain_restart!(params::Parameters)
             if num_steps < 1
                 norma_abort("Restart mesh '$input_mesh_file' (subdomain '$domain_path') contains no time steps.")
             end
-            if restart_index < 1 || restart_index > num_steps
+            # Negative indices count back from the last snapshot, Python-style:
+            # -1 is the final snapshot, -2 the one before it, and so on. Resolved
+            # per subdomain against that subdomain's own checkpoint mesh, since
+            # `restart_index` (possibly negative) is what gets propagated to each
+            # subdomain's own `restart:` block later — see the comment on
+            # `_multidomain_restart_index` below.
+            domain_restart_index = restart_index < 0 ? num_steps + restart_index + 1 : restart_index
+            if domain_restart_index < 1 || domain_restart_index > num_steps
                 norma_abortf(
                     "Restart index %d is out of range for mesh '%s' (subdomain '%s'), " *
-                    "which has %d time step(s) (valid range is 1:%d).",
+                    "which has %d time step(s) (valid range is 1:%d, or -1:-%d counting " *
+                    "back from the last snapshot).",
                     restart_index,
                     input_mesh_file,
                     domain_path,
                     num_steps,
                     num_steps,
+                    num_steps,
                 )
             end
-            Exodus.read_time(input_mesh, restart_index)
+            Exodus.read_time(input_mesh, domain_restart_index)
         finally
             Exodus.close(input_mesh)
         end
