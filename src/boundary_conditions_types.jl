@@ -122,7 +122,12 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     local_from_global_map::Dict{Int64,Int64}
     global_from_local_map::Vector{Int64}
     square_projector::Matrix{Float64}
-    impedance::Float64
+    # P/S-split tensor impedance Z = Z_p n⊗n + Z_s (I - n⊗n), with n the
+    # interface normal. Both impedances are the NEIGHBOR subdomain's
+    # characteristic values (optimized-Schwarz cross-scaling: the optimal
+    # transmission operator approximates the neighbor's DtN map).
+    impedance::Float64           # Z_p = ρ c_p = √(ρ(λ + 2μ)) of the neighbor
+    impedance_shear::Float64     # Z_s = ρ c_s = √(ρμ) of the neighbor
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
     impedance_scale::Vector{Float64}  # multiplier on Z per step (default [1.0])
     parent::Simulation

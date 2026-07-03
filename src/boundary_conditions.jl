@@ -212,6 +212,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     subsim::Simulation,
     impedance::Float64,
+    impedance_shear::Float64,
     robin_parameter::Float64,
     impedance_scale::Vector{Float64},
 )
@@ -251,6 +252,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         global_from_local_map,
         square_projector,
         impedance,
+        impedance_shear,
         robin_parameter,
         impedance_scale,
         subsim.parent,
@@ -484,18 +486,25 @@ function SMCouplingSchwarzBC(
             robin_parameter,
         )
     elseif bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
-        # Impedance Z = √(ρ(λ + 2μ)), computed from material properties
-        model_params = subsim.params["model"]
-        mat_params = model_params["material"]
-        mat_blocks = mat_params["blocks"]
-        mat_name = first(values(mat_blocks))
-        mat_props = mat_params[mat_name]
-        E = Float64(mat_props["elastic modulus"])
-        ν = Float64(mat_props["Poisson's ratio"])
-        ρ = Float64(mat_props["density"])
-        λ_lame = E * ν / ((1 + ν) * (1 - 2ν))
-        μ = E / (2 * (1 + ν))
-        impedance = sqrt(ρ * (λ_lame + 2μ))
+        # Characteristic impedances Z_p = √(ρ(λ + 2μ)) = ρ c_p and
+        # Z_s = √(ρμ) = ρ c_s, computed from material properties.
+        function _ps_impedances(sim)
+            mat_params = sim.params["model"]["material"]
+            mat_props = mat_params[first(values(mat_params["blocks"]))]
+            E = Float64(mat_props["elastic modulus"])
+            ν = Float64(mat_props["Poisson's ratio"])
+            ρ = Float64(mat_props["density"])
+            λ_lame = E * ν / ((1 + ν) * (1 - 2ν))
+            μ = E / (2 * (1 + ν))
+            return sqrt(ρ * (λ_lame + 2μ)), sqrt(ρ * μ)
+        end
+        # Nonoverlap variant: scalar P-impedance from this subdomain's own
+        # material (unchanged legacy behavior). Overlap variant: P/S-split
+        # tensor impedance from the NEIGHBOR's material, per the
+        # optimized-Schwarz cross-scaling principle (each side's optimal
+        # transmission operator approximates the neighbor's DtN map).
+        impedance, _ = _ps_impedances(subsim)
+        impedance_p_coupled, impedance_s_coupled = _ps_impedances(coupled_subsim)
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
         raw_scale = get(bc_params, "impedance scale", 1.0)
         if raw_scale isa AbstractVector
@@ -529,7 +538,8 @@ function SMCouplingSchwarzBC(
                 num_nodes_sides,
                 coupled_subsim,
                 subsim,
-                impedance,
+                impedance_p_coupled,
+                impedance_s_coupled,
                 robin_parameter,
                 impedance_scale,
             )

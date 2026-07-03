@@ -311,7 +311,9 @@ function _get_impedance_scale(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryC
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
-    Z = bc.impedance * _get_impedance_scale(bc)
+    scale = _get_impedance_scale(bc)
+    Z_p = bc.impedance * scale
+    Z_s = bc.impedance_shear * scale
     α = bc.robin_parameter
     W = bc.square_projector
 
@@ -353,6 +355,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     partner_velo = zeros(3, num_dst_nodes)
     partner_disp = zeros(3, num_dst_nodes)
     partner_trac = zeros(3, num_dst_nodes)
+    partner_Zvdot = zeros(3, num_dst_nodes)
 
     for (i, node_index) in enumerate(unique_node_indices)
         coupled_node_indices = bc.coupled_nodes_indices[i]
@@ -367,15 +370,19 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
         partner_trac[1, i] = σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3]
         partner_trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
         partner_trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
+        # P/S-split tensor impedance: Z_p on the normal velocity component,
+        # Z_s on the tangential components (Lysmer-Kuhlemeyer split).
+        v = partner_velo[:, i]
+        vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
+        partner_Zvdot[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
     end
 
-    # RHS (partner contribution only): f = W * (t_partner + Z * u̇_partner + α * u_partner)
-    # The self terms (Z*W*u̇_self + α*W*u_self) are handled by
+    # RHS (partner contribution only): f = W * (t_partner + Z·u̇_partner + α * u_partner)
+    # The self terms (W*(Z·u̇_self + α*u_self)) are handled by
     # apply_impedance_bcs_internal_force! called at each Newton iteration.
     for comp in 1:3
-        Z_vdot = Z * partner_velo[comp, :]
         alpha_u = α * partner_disp[comp, :]
-        rhs = W * (partner_trac[comp, :] + Z_vdot + alpha_u)
+        rhs = W * (partner_trac[comp, :] + partner_Zvdot[comp, :] + alpha_u)
         for (i_local, i_global) in enumerate(global_from_local_map)
             dof_i = 3 * (i_global - 1) + comp
             model.boundary_force[dof_i] += rhs[i_local]
@@ -390,7 +397,9 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
     K_io = spzeros(num_dofs, num_dofs)
     for bc in model.boundary_conditions
         bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
-        Z = bc.impedance * _get_impedance_scale(bc)
+        scale = _get_impedance_scale(bc)
+        Z_p = bc.impedance * scale
+        Z_s = bc.impedance_shear * scale
         α = bc.robin_parameter
         W = bc.square_projector
         c_v = if integrator isa Newmark
@@ -398,15 +407,24 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
         else
             0.0
         end
-        coeff = Z * c_v + α
         global_from_local_map = bc.global_from_local_map
-        for (i_local, i_global) in enumerate(global_from_local_map)
-            for (j_local, j_global) in enumerate(global_from_local_map)
-                w_ij = coeff * W[i_local, j_local]
-                for comp in 1:3
-                    dof_i = 3 * (i_global - 1) + comp
-                    dof_j = 3 * (j_global - 1) + comp
-                    K_io[dof_i, dof_j] += w_ij
+        normals = compute_normal(model.mesh, bc.side_set_id, model)
+        # Tangent of the self term Σ_j W_ij (T(n_j) u̇_j + α u_j) with the
+        # tensor impedance T(n) = Z_p n⊗n + Z_s (I - n⊗n) applied at the
+        # source node j: 3x3 block W_ij (c_v T(n_j) + α I).
+        for (j_local, j_global) in enumerate(global_from_local_map)
+            n = normals[:, j_local]
+            T = zeros(3, 3)
+            for a in 1:3, b in 1:3
+                T[a, b] = c_v * ((Z_p - Z_s) * n[a] * n[b] + (a == b ? Z_s : 0.0)) + (a == b ? α : 0.0)
+            end
+            for (i_local, i_global) in enumerate(global_from_local_map)
+                w_ij = W[i_local, j_local]
+                for a in 1:3, b in 1:3
+                    T[a, b] == 0.0 && continue
+                    dof_i = 3 * (i_global - 1) + a
+                    dof_j = 3 * (j_global - 1) + b
+                    K_io[dof_i, dof_j] += w_ij * T[a, b]
                 end
             end
         end
@@ -434,8 +452,33 @@ function build_impedance_schwarz_force(model::SolidMechanics)
     num_dofs = 3 * size(model.reference, 2)
     f = zeros(num_dofs)
     for bc in model.boundary_conditions
-        if bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition ||
-           bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+        if bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+            # P/S-split tensor impedance, matching the partner terms in
+            # apply_bc_detail (same scale, same tensor, same W weighting).
+            scale = _get_impedance_scale(bc)
+            Z_p = bc.impedance * scale
+            Z_s = bc.impedance_shear * scale
+            α = bc.robin_parameter
+            W = bc.square_projector
+            global_from_local_map = bc.global_from_local_map
+            num_nodes = length(global_from_local_map)
+            normals = compute_normal(model.mesh, bc.side_set_id, model)
+            Zv = zeros(3, num_nodes)
+            for (i_local, i_global) in enumerate(global_from_local_map)
+                n = normals[:, i_local]
+                v = model.velocity[:, i_global]
+                u = model.displacement[:, i_global]
+                vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
+                Zv[:, i_local] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n) .+ α .* u
+            end
+            for comp in 1:3
+                f_imp = W * Zv[comp, :]
+                for (i_local, i_global) in enumerate(global_from_local_map)
+                    dof_i = 3 * (i_global - 1) + comp
+                    f[dof_i] += f_imp[i_local]
+                end
+            end
+        elseif bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
             Z = bc.impedance
             α = bc.robin_parameter
             W = bc.square_projector
