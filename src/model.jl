@@ -179,6 +179,18 @@ function SolidMechanics(params::Parameters)
         rec_iv = Bool(get(recovery_params, "internal variables", false))
         rec_F = Bool(get(recovery_params, "deformation gradient", false))
     end
+    # The impedance-overlap Schwarz BC evaluates the partner's traction at its
+    # Schwarz boundary by interpolating nodal-recovered stress (see
+    # apply_bc_detail in schwarz.jl), so a model that participates in such a
+    # coupling must carry a recovered stress field even if the input file does
+    # not request nodal recovery for output.
+    bc_params = get(params, "boundary conditions", nothing)
+    if bc_params !== nothing && haskey(bc_params, "Schwarz impedance overlap")
+        if recovery_kind === :none
+            recovery_kind = :lumped
+        end
+        rec_stress = true
+    end
     recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
     is_both = recovery_kind === :both
     n_iv = rec_iv ? length(collect_internal_variable_names(materials)) : 0
