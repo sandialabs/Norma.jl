@@ -416,6 +416,63 @@ with a dissipative integrator (Newmark $\gamma > 1/2$ or HHT-$\alpha$)
 to confirm the churn is carried by the high-frequency band that
 subdomain-level damping removes.
 
+\section{Content-aware absorption and the closing diagnostic
+(2026-07-03)}
+
+The content-aware absorbing term was implemented (BC option
+\texttt{content aware absorption}): an additional dissipative self
+term $~W ~Z (~I - \Pi)\,\dot{~u}_k$ with its Newmark tangent, where
+$\Pi$ is the $~W$-orthogonal projection onto the span of the
+variational projector's columns --- the \emph{transferable} space at
+the boundary.  The filter has exactly the designed structure: it
+annihilates constants ($~P\mathbf{1} = \mathbf{1}$ puts rigid motions
+in the span), vanishes identically on node-aligned interfaces and on
+the coarse side of the study pair (everything a coarse trace holds is
+representable by the fine partner), is nonzero only on the fine side
+($\lVert ~F \rVert = 0.44$), and is provably dissipative
+($v^\top ~W ~F\, v \ge 0$ per scalar channel; asserted in test 105).
+
+\textbf{The measured effect is null}: the absorber drains $4.6$\,J
+over 1\,ms while the channels and the net remain identical to the
+pointwise baseline.  Because the operator is verified, the null is
+informative: \emph{the reverberating content lives inside the
+transferable space}.  Both grids can represent the mesh-scale content
+that churns; they disagree about it because their discrete dispersion
+relations differ.  No transfer-side construction can remove a
+dispersion disagreement, by construction --- which retroactively
+explains the entire fidelity ladder.
+
+The closing diagnostic confirms the mechanism: rerunning the pointwise
+baseline with a dissipative integrator (Newmark $\gamma = 0.6$,
+$\beta = 0.3025$) collapses the churn from $-607$ to $-231$\,J and,
+decisively, the velocity jumps \emph{decay} ($11.8 \to 5.6$\,m/s
+between run halves) instead of growing ($33 \to 47$): the
+reverberation loop is dead.  The churn is carried by the
+high-frequency band that subdomain-level damping removes.  ($\gamma =
+0.6$ is a blunt instrument --- it also removed 87\% of the physical
+energy on this broadband benchmark; production should use mild
+HHT-$\alpha$-class damping concentrated near the grid Nyquist.)
+
+\paragraph{Final recommendations.}
+(i) \textbf{Conforming interfaces}: consistent traction ---
+0.08\%, exact-DBC class.
+(ii) \textbf{Non-conforming production runs}: pointwise transfer +
+recovered-stress traction with the physical impedance (parameter-free),
+paired with mild high-frequency integrator damping; quantify the
+damping trade-off with a dissipation sweep.
+(iii) The variational machinery (projector, subdivided quadrature,
+offset-surface flux, characteristic transfer, content filter) is
+retained: it provides the conforming-limit exactness, the quadrature
+control, the instrumentation-grade diagnostics that produced these
+conclusions, and patch-test-verified building blocks for future
+transmission-condition work.
+(iv) The OSM-level lesson: the non-conforming overlap interface error
+is dominated by the discrete dispersion disagreement of high-frequency
+content between the subdomain discretizations --- a property of the
+grids, not of the transmission condition.  The impedance dashpot is
+the correct interface-level treatment and is already in place; the
+remaining energy budget belongs to the time integrator.
+
 \section{Summary}
 
 Stage 1 is a low-risk, high-information change that reuses the square

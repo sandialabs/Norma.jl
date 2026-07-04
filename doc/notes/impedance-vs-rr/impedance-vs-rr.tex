@@ -713,11 +713,23 @@ tensor impedance conserves to 0.076\% on the same benchmark.
 Transmission conditions should be benchmarked on conforming meshes;
 non-conforming results flatter the scheme.
 
-\paragraph{Open items.}  (i) Non-conforming interfaces still use the
-recovered-stress traction and pointwise interpolation; the ${\sim}4$\%
-transfer injection remains (a mortar transfer with a traction-consistent
-pairing, in the spirit of \eqref{eq:consistent-traction}, is the candidate
-fix).  (ii) Pairings with an explicit subdomain lose
+\paragraph{Open items.}  (i) Non-conforming interfaces are now
+understood rather than open: the small net error is a knife-edge
+cancellation of two ${\sim}40\%$-of-$E_0$ error channels (interface
+dashpot dissipation versus traction-channel injection), carried by
+mesh-scale content that reverberates between the two grids because
+their discrete dispersion disagrees.  A systematic campaign
+(variational $L^2$ transfer, subdivided quadrature, consistent traction
+across the interface via an offset facet surface, single-operator
+characteristic transfer, and a content-aware absorbing term --- all
+verified by patch tests) showed that every increase in transfer
+fidelity pumps the churn, while a dissipative integrator kills the
+reverberation loop; the pointwise + recovered-stress transmission with
+the physical impedance remains the production default, ideally paired
+with mild high-frequency integrator damping.  See the companion note
+\emph{Variational Transfer for Impedance-Overlap Schwarz on
+Non-Conforming Meshes} for the measurements.  (ii) Pairings with an
+explicit subdomain lose
 ${\sim}8$--$10$\% of the PU energy within the first few steps and
 oscillate per step thereafter (${\sim}15$\% overall with consistent
 recovery), before and after the corrections alike: the discrete
