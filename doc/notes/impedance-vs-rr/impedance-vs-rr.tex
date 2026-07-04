@@ -335,14 +335,16 @@ option of the BC (default \texttt{auto}).
 \paragraph{Variationally consistent traction (node-aligned
 interfaces).}  When every node of $\Gamma_k$ coincides with a partner
 node (detected automatically from the interpolation weights), the weak
-partner traction is extracted as a \emph{consistent boundary flux}
-(Wheeler; Hughes): for each interface node $i$,
+partner traction is extracted as the \emph{consistent traction} (the
+solid-mechanics counterpart of the consistent boundary flux of Wheeler
+and of Hughes, i.e.\ consistent nodal reactions): for each interface
+node $i$,
 \begin{equation}
   \bigl[ ~W\, ~t_j \bigr]_i
   \;=\; \int_{\Gamma_k} ~t_j\, \varphi_i \,\dd\Gamma
   \;=\; -\sum_{e \,\in\, \mathcal{E}_i^{\mathrm{ext}}}
      \bigl( ~f^{\mathrm{int}}_e + ~M_e\, \ddot{~u}_e \bigr)_i,
-  \label{eq:flux-traction}
+  \label{eq:consistent-traction}
 \end{equation}
 where $\mathcal{E}_i^{\mathrm{ext}}$ is the single layer of partner
 elements adjacent to $\Gamma_k$ on its \emph{exterior} side --- the side
@@ -354,11 +356,11 @@ satisfies $\Omega_k$'s coupled discrete equations \emph{identically}:
 the transmission condition transmits all discrete content, including
 the mesh-scale part that nodal stress recovery misrepresents.  Since
 the interface is node-aligned, the surface operators of the two meshes
-coincide on $\Gamma_k$ and \eqref{eq:flux-traction} enters the
+coincide on $\Gamma_k$ and \eqref{eq:consistent-traction} enters the
 right-hand side directly, with no mass-matrix inversion and no
-recovery solve.  Implemented by \texttt{build\_flux\_traction\_patch!}
+recovery solve.  Implemented by \texttt{build\_consistent\_traction\_patch!}
 (setup; rebuilt on BC swaps) and
-\texttt{impedance\_flux\_partner\_traction} (\texttt{schwarz.jl}).
+\texttt{consistent\_partner\_traction} (\texttt{schwarz.jl}).
 
 \paragraph{Recovered-stress traction (fallback).}  On non-conforming
 interfaces $~t_j$ is obtained by interpolating the partner's
@@ -371,7 +373,7 @@ directly into the transmission condition and was measured to dominate
 the residual energy error (13.6\% vs.\ 1.5\% with consistent recovery;
 Section~\ref{sec:findings}).  Even consistent recovery cannot represent
 the traction carried by mesh-scale field content, which leaves a
-first-order-in-$h$ interface dissipation that the consistent-flux
+first-order-in-$h$ interface dissipation that the consistent-traction
 extraction removes (Section~\ref{sec:findings}).
 
 The discrete assembly:
@@ -391,7 +393,7 @@ The discrete assembly:
       + ~W\,\bigl(~Z\, \dot{~u}_j + \alpha\, ~u_j\bigr)$, where
       $\dot{~u}_j$ and $~u_j$ are obtained by strong interpolation from
       the partner element containing each overlap node, and $~W ~t_j$
-      is the consistent-flux weak traction \eqref{eq:flux-traction} on
+      is the consistent-traction weak form \eqref{eq:consistent-traction} on
       node-aligned interfaces or $~W$ applied to the recovered-stress
       traction otherwise (\texttt{apply\_bc\_detail} for
       \texttt{SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition}).
@@ -648,7 +650,7 @@ error over 1\,ms was
   \;\longrightarrow\;
   \underbrace{1.5\%}_{+\,\text{consistent recovery}}
   \;\longrightarrow\;
-  \underbrace{0.08\%}_{+\,\text{consistent-flux traction}}
+  \underbrace{0.08\%}_{+\,\text{consistent traction}}
 \]
 against the $0.1$\% exact-DBC reference, which the final rung matches.
 All corrections are parameter-free.
@@ -674,8 +676,8 @@ mechanism is: the recovered-stress traction error on mesh-scale field
 content is converted by the Robin condition into an interface velocity
 jump ${\sim}\,\delta t / Z$, which the dashpot dissipates at rate
 $\lvert \delta t \rvert^2 / Z$, steadily over the whole run.  Replacing
-the recovered traction with the consistent flux
-\eqref{eq:flux-traction} eliminates it: energy loss
+the recovered traction with the consistent traction
+\eqref{eq:consistent-traction} eliminates it: energy loss
 $3.93\% \to 0.076\%$ and integrated dashpot work
 $-42.6\,\mathrm{J} \to +0.1\,\mathrm{J}$ on the same benchmark (tensor
 impedance).  This also explains why the classical DBC overlap is exact
@@ -706,15 +708,15 @@ The diagnosis above resolves this: the penalty was never a property of
 the impedance split --- the tangential traction (recovery) error, which
 dominates in flexure, is dissipated at rate
 $\lvert \delta t \rvert^2 / Z_s$, and $Z_s = Z_p/\sqrt{3}$ amplifies
-it.  With the consistent-flux traction the error term is gone and the
+it.  With the consistent traction the error term is gone and the
 tensor impedance conserves to 0.076\% on the same benchmark.
 Transmission conditions should be benchmarked on conforming meshes;
 non-conforming results flatter the scheme.
 
 \paragraph{Open items.}  (i) Non-conforming interfaces still use the
 recovered-stress traction and pointwise interpolation; the ${\sim}4$\%
-transfer injection remains (a mortar transfer with a flux-consistent
-pairing, in the spirit of \eqref{eq:flux-traction}, is the candidate
+transfer injection remains (a mortar transfer with a traction-consistent
+pairing, in the spirit of \eqref{eq:consistent-traction}, is the candidate
 fix).  (ii) Pairings with an explicit subdomain lose
 ${\sim}8$--$10$\% of the PU energy within the first few steps and
 oscillate per step thereafter (${\sim}15$\% overall with consistent
@@ -755,8 +757,8 @@ pay off.
       and enforces the full transmission condition
       $~t_k - ~t_j + ~Z(\dot{~u}_k - \dot{~u}_j)
       + \alpha(~u_k - ~u_j) = ~0$, with the partner traction obtained
-      as the variationally consistent boundary flux
-      \eqref{eq:flux-traction} on node-aligned interfaces (consistently
+      as the variationally consistent traction
+      \eqref{eq:consistent-traction} on node-aligned interfaces (consistently
       recovered nodal stress otherwise) and the tensor impedance
       $~Z$ built from the partner's P- and S-wave impedances.
 \item The partner-traction term is what makes the impedance overlap
@@ -764,7 +766,7 @@ pay off.
       \emph{quality} of the traction sets the energy error: on the
       conforming cantilever benchmark the ladder runs 59\% (missing
       $~t_j$) $\to$ 14\% (lumped recovery) $\to$ 1.5\% (consistent
-      recovery) $\to$ 0.08\% (consistent flux) over 1\,ms,
+      recovery) $\to$ 0.08\% (consistent traction) over 1\,ms,
       parameter-free (physical impedance, $\alpha = 0$), the final rung
       matching the 0.1\% exact-conservation reference of converged
       conforming DBC coupling.  Converged DBC coupling on
