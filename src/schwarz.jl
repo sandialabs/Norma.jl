@@ -320,8 +320,6 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     coupled_model_obj = coupled_subsim_of(bc).model
     coupled_solid =
         coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
-    coupled_displacement = coupled_solid.displacement
-    coupled_velocity = coupled_solid.velocity
 
     # Partner traction t_partner = σ_partner · n at this subdomain's Schwarz
     # boundary. That boundary is an interior surface of the partner mesh, so
@@ -357,33 +355,17 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     normals = compute_normal(model.mesh, bc.side_set_id, model)
 
     global_from_local_map = bc.global_from_local_map
-    unique_node_indices = unique(bc.side_set_node_indices)
 
-    # Interpolate partner traction, displacement, and velocity at each overlap
-    # boundary node
-    num_dst_nodes = length(unique_node_indices)
-    partner_velo = zeros(3, num_dst_nodes)
-    partner_disp = zeros(3, num_dst_nodes)
-    partner_trac = zeros(3, num_dst_nodes)
+    # Partner traction, displacement, and velocity at each overlap boundary
+    # node, by mortar projection or pointwise interpolation.
+    partner_velo, partner_disp, partner_trac =
+        impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
+    num_dst_nodes = size(partner_velo, 2)
     partner_Zvdot = zeros(3, num_dst_nodes)
-
-    for (i, node_index) in enumerate(unique_node_indices)
-        coupled_node_indices = bc.coupled_nodes_indices[i]
-        N = bc.interpolation_function_values[i]
-        for comp in 1:3
-            partner_velo[comp, i] = sum(coupled_velocity[comp, coupled_node_indices] .* N)
-            partner_disp[comp, i] = sum(coupled_displacement[comp, coupled_node_indices] .* N)
-        end
-        n = normals[:, i]
-        if use_consistent_traction == false
-            # Voigt order of recovered stress: xx, yy, zz, yz, xz, xy.
-            σ = coupled_nodal_stress[:, coupled_node_indices] * N
-            partner_trac[1, i] = σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3]
-            partner_trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
-            partner_trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
-        end
+    for i in 1:num_dst_nodes
         # P/S-split tensor impedance: Z_p on the normal velocity component,
         # Z_s on the tangential components (Lysmer-Kuhlemeyer split).
+        n = normals[:, i]
         v = partner_velo[:, i]
         vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
         partner_Zvdot[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
@@ -457,7 +439,71 @@ function compute_impedance_overlap_schwarz_projectors!(
 )
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     build_consistent_traction_patch!(dst_model, dst_bc)
+    if dst_bc.transfer_mode == "mortar"
+        # Mortar transfer: P = W \\ L is the L2(Γ)-orthogonal projection of
+        # the partner fields onto this side's trace space — non-expansive in
+        # L2 for any quadrature, and constants transfer exactly (partner
+        # partition of unity gives L·1 = W·1). On a node-aligned interface
+        # L = W row-permuted and P reduces to the identity selection.
+        coupled_solid = get_fom_model(coupled_subsim_of(dst_bc))
+        L = get_overlap_rectangular_projection_matrix(
+            dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance
+        )
+        dst_bc.mortar_projector = dst_bc.square_projector \ L
+    else
+        dst_bc.mortar_projector = Matrix{Float64}(undef, 0, 0)
+    end
     return nothing
+end
+
+# Partner kinematic fields (and, when nodal stress is supplied, the partner
+# traction) sampled at this BC's boundary nodes: mortar L2 projection when
+# the projector is present, pointwise interpolation otherwise. Voigt order
+# of the nodal stress: xx, yy, zz, yz, xz, xy. Used by apply_bc_detail and
+# by the interface-work instrumentation so that the reported powers reflect
+# the transfer the BC actually applies.
+function impedance_partner_fields(
+    bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition,
+    coupled_solid::SolidMechanics,
+    coupled_nodal_stress::Matrix{Float64},
+    normals::Matrix{Float64},
+)
+    num_dst_nodes = length(bc.global_from_local_map)
+    partner_velo = zeros(3, num_dst_nodes)
+    partner_disp = zeros(3, num_dst_nodes)
+    partner_trac = zeros(3, num_dst_nodes)
+    want_traction = size(coupled_nodal_stress, 1) > 0
+    traction_from_stress! = (trac, σ, n, i) -> begin
+        trac[1, i] = σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3]
+        trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
+        trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
+    end
+    if size(bc.mortar_projector, 1) > 0
+        P = bc.mortar_projector
+        partner_velo .= coupled_solid.velocity * P'
+        partner_disp .= coupled_solid.displacement * P'
+        if want_traction
+            projected_stress = coupled_nodal_stress * P'
+            for i in 1:num_dst_nodes
+                traction_from_stress!(partner_trac, projected_stress[:, i], normals[:, i], i)
+            end
+        end
+    else
+        unique_node_indices = unique(bc.side_set_node_indices)
+        for i in eachindex(unique_node_indices)
+            coupled_node_indices = bc.coupled_nodes_indices[i]
+            N = bc.interpolation_function_values[i]
+            for comp in 1:3
+                partner_velo[comp, i] = sum(coupled_solid.velocity[comp, coupled_node_indices] .* N)
+                partner_disp[comp, i] = sum(coupled_solid.displacement[comp, coupled_node_indices] .* N)
+            end
+            if want_traction
+                σ = coupled_nodal_stress[:, coupled_node_indices] * N
+                traction_from_stress!(partner_trac, σ, normals[:, i], i)
+            end
+        end
+    end
+    return partner_velo, partner_disp, partner_trac
 end
 
 # Variationally consistent partner traction (i.e. consistent nodal reactions;
@@ -732,41 +778,30 @@ function report_impedance_interface_work(sim)
             normals = compute_normal(model.mesh, bc.side_set_id, model)
             unique_node_indices = unique(bc.side_set_node_indices)
             num_nodes = length(unique_node_indices)
-            trac_p = zeros(3, num_nodes)
+            partner_velo, partner_disp, trac_p =
+                impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
             dash = zeros(3, num_nodes)
             robin = zeros(3, num_nodes)
             velo = zeros(3, num_nodes)
             vjump2 = 0.0
             tmis2 = 0.0
             for (i, node_index) in enumerate(unique_node_indices)
-                coupled_node_indices = bc.coupled_nodes_indices[i]
-                N = bc.interpolation_function_values[i]
                 n = normals[:, i]
                 v = model.velocity[:, node_index]
                 u = model.displacement[:, node_index]
-                v_p = [sum(coupled_solid.velocity[c, coupled_node_indices] .* N) for c in 1:3]
-                u_p = [sum(coupled_solid.displacement[c, coupled_node_indices] .* N) for c in 1:3]
-                # Voigt order of recovered stress: xx, yy, zz, yz, xz, xy.
-                σ = coupled_nodal_stress[:, coupled_node_indices] * N
                 σ_o = own_nodal_stress[:, node_index]
-                t_p = [
-                    σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3],
-                    σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3],
-                    σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3],
-                ]
                 t_o = [
                     σ_o[1] * n[1] + σ_o[6] * n[2] + σ_o[5] * n[3],
                     σ_o[6] * n[1] + σ_o[2] * n[2] + σ_o[4] * n[3],
                     σ_o[5] * n[1] + σ_o[4] * n[2] + σ_o[3] * n[3],
                 ]
-                dv = v_p .- v
+                dv = partner_velo[:, i] .- v
                 dvn = n[1] * dv[1] + n[2] * dv[2] + n[3] * dv[3]
-                trac_p[:, i] = t_p
                 dash[:, i] = (Z_p * dvn) .* n .+ Z_s .* (dv .- dvn .* n)
-                robin[:, i] = α .* (u_p .- u)
+                robin[:, i] = α .* (partner_disp[:, i] .- u)
                 velo[:, i] = v
                 vjump2 += dot(dv, dv)
-                tmis2 += dot(t_p - t_o, t_p - t_o)
+                tmis2 += dot(trac_p[:, i] - t_o, trac_p[:, i] - t_o)
             end
             P_trac = 0.0
             P_dash = 0.0

@@ -695,7 +695,10 @@ end
 
 function get_overlap_rectangular_projection_matrix(
     dst_model::SolidMechanics,
-    dst_bc::SolidMechanicsOverlapSchwarzBoundaryCondition,
+    dst_bc::Union{
+        SolidMechanicsOverlapSchwarzBoundaryCondition,
+        SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition,
+    },
     src_model::SolidMechanics,
     coupled_block_name::String,
     tol::Float64,
