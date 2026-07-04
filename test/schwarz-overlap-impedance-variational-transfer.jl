@@ -4,9 +4,10 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Mortar (L2-projection) transfer for the impedance-overlap Schwarz BC on a
+# Variational (L2-projection) transfer for the impedance-overlap Schwarz BC on a
 # NON-CONFORMING mesh pair (h = 8.47 vs 6.35 mm, 4:3, non-nested — the
-# instability-study benchmark). The mortar projector P = W \ L projects the
+# instability-study benchmark). The variational projector P = W \ L (mortar,
+# in the domain-decomposition literature) projects the
 # partner fields onto this side's trace space; it is non-expansive in L2 for
 # any quadrature, reproduces constants exactly (partner partition of unity),
 # and reproduces linear fields exactly on the flat interface facets. Those
@@ -14,7 +15,7 @@
 # with the recovered-stress fallback for the partner traction (the
 # consistent-traction patch requires node alignment, absent here).
 
-@testset "Schwarz Overlap Impedance Mortar Transfer" begin
+@testset "Schwarz Overlap Impedance Variational Transfer" begin
     example = "../examples/overlap/dynamic-same-step/cantilever-nonconforming"
     for f in ("cantilever-clamped.g", "cantilever-free.g", "cantilever-impedance.yaml")
         cp(joinpath(example, f), f; force=true)
@@ -22,7 +23,7 @@
     for f in ("cantilever-clamped-impedance.yaml", "cantilever-free-impedance.yaml")
         y = read(joinpath(example, f), String)
         y = replace(y, r"(source side set: [\w+-]+)" => s"\1
-      transfer: mortar")
+      transfer: variational")
         write(f, y)
     end
     multi = read("cantilever-impedance.yaml", String)
@@ -54,8 +55,8 @@
         # Non-conforming: the consistent-traction patch must NOT be active
         # (the partner traction falls back to recovered stress).
         @test bc.traction_patch === nothing
-        # Mortar projector present with the right shape.
-        P = bc.mortar_projector
+        # Variational projector present with the right shape.
+        P = bc.variational_projector
         num_boundary_nodes = length(bc.global_from_local_map)
         coupled = Norma.get_fom_model(Norma.coupled_subsim_of(bc))
         @test size(P) == (num_boundary_nodes, size(coupled.reference, 2))

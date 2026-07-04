@@ -357,7 +357,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     global_from_local_map = bc.global_from_local_map
 
     # Partner traction, displacement, and velocity at each overlap boundary
-    # node, by mortar projection or pointwise interpolation.
+    # node, by variational projection or pointwise interpolation.
     partner_velo, partner_disp, partner_trac =
         impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
     num_dst_nodes = size(partner_velo, 2)
@@ -439,8 +439,8 @@ function compute_impedance_overlap_schwarz_projectors!(
 )
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     build_consistent_traction_patch!(dst_model, dst_bc)
-    if dst_bc.transfer_mode == "mortar"
-        # Mortar transfer: P = W \\ L is the L2(Γ)-orthogonal projection of
+    if dst_bc.transfer_mode == "variational"
+        # Variational transfer: P = W \\ L is the L2(Γ)-orthogonal projection of
         # the partner fields onto this side's trace space — non-expansive in
         # L2 for any quadrature, and constants transfer exactly (partner
         # partition of unity gives L·1 = W·1). On a node-aligned interface
@@ -449,15 +449,15 @@ function compute_impedance_overlap_schwarz_projectors!(
         L = get_overlap_rectangular_projection_matrix(
             dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance
         )
-        dst_bc.mortar_projector = dst_bc.square_projector \ L
+        dst_bc.variational_projector = dst_bc.square_projector \ L
     else
-        dst_bc.mortar_projector = Matrix{Float64}(undef, 0, 0)
+        dst_bc.variational_projector = Matrix{Float64}(undef, 0, 0)
     end
     return nothing
 end
 
 # Partner kinematic fields (and, when nodal stress is supplied, the partner
-# traction) sampled at this BC's boundary nodes: mortar L2 projection when
+# traction) sampled at this BC's boundary nodes: variational L2 projection when
 # the projector is present, pointwise interpolation otherwise. Voigt order
 # of the nodal stress: xx, yy, zz, yz, xz, xy. Used by apply_bc_detail and
 # by the interface-work instrumentation so that the reported powers reflect
@@ -478,8 +478,8 @@ function impedance_partner_fields(
         trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
         trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
     end
-    if size(bc.mortar_projector, 1) > 0
-        P = bc.mortar_projector
+    if size(bc.variational_projector, 1) > 0
+        P = bc.variational_projector
         partner_velo .= coupled_solid.velocity * P'
         partner_disp .= coupled_solid.displacement * P'
         if want_traction

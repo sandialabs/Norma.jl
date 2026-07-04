@@ -544,10 +544,10 @@ function SMCouplingSchwarzBC(
                 )
             end
             transfer_mode = get(bc_params, "transfer", "pointwise")
-            if transfer_mode ∉ ("pointwise", "mortar")
+            if transfer_mode ∉ ("pointwise", "variational")
                 norma_abort(
                     "Invalid `transfer: $transfer_mode`. Valid values are " *
-                    "\"pointwise\" and \"mortar\".",
+                    "\"pointwise\" and \"variational\".",
                 )
             end
             SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(

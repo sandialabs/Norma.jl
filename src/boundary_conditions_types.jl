@@ -152,13 +152,14 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     partner_traction_mode::String
     traction_patch::Union{ConsistentTractionPatch,Nothing}
     # Transfer of the partner fields to this boundary: "pointwise"
-    # interpolation (default) or "mortar" L2 projection onto this side's
-    # trace space, which is non-expansive in L2 (the contractivity that
-    # pointwise interpolation lacks on non-conforming interfaces).
-    # mortar_projector is (num boundary nodes) x (num partner nodes),
+    # interpolation (default) or "variational" L2 projection onto this side's
+    # trace space (mortar, in the domain-decomposition literature), which is
+    # non-expansive in L2 (the contractivity that pointwise interpolation
+    # lacks on non-conforming interfaces).
+    # variational_projector is (num boundary nodes) x (num partner nodes),
     # empty when pointwise.
     transfer_mode::String
-    mortar_projector::Matrix{Float64}
+    variational_projector::Matrix{Float64}
     coupled_block_name::String
     search_tolerance::Float64
     parent::Simulation

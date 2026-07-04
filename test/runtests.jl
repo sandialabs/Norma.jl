@@ -151,7 +151,7 @@ const indexed_test_files = [
     (102, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-opinf-rom-restart.jl"),
     (103, "schwarz-overlap-dynamic-cantilever-impedance-energy.jl"),
     (104, "schwarz-overlap-impedance-tensor-crossscale.jl"),
-    (105, "schwarz-overlap-impedance-mortar-transfer.jl"),
+    (105, "schwarz-overlap-impedance-variational-transfer.jl"),
 ]
 
 # Extract test file names
