@@ -136,6 +136,15 @@ struct ConsistentTractionPatch
     # transfer; stage 2a of the variational-transfer design note).
     num_targets::Int64
     transfer::Matrix{Float64}                         # (BC-local nodes) x (Γ̃ nodes); empty if identity
+    # Stage 2c (characteristic transfer) data, empty on node-aligned
+    # interfaces: the partner's full Robin datum g̃ = t̃ + Z u̇ + α u is
+    # assembled on Γ̃ from the partner's own nodal trace values and carried
+    # over by the single operator `transfer`, so the mesh-scale cancellation
+    # between traction and velocity happens on the partner side, before
+    # transfer.
+    tilde_mass::Matrix{Float64}                       # W̃, surface mass on Γ̃
+    tilde_nodes::Vector{Int64}                        # Γ̃ global partner node indices (target order)
+    tilde_normals::Matrix{Float64}                    # 3 x (Γ̃ nodes), receiving-side normals
 end
 
 mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition

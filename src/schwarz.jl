@@ -332,6 +332,21 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     # force-enabled for coupled models when this BC type is present (see
     # SolidMechanics() in model.jl).
     use_consistent_traction = bc.traction_patch !== nothing
+    if use_consistent_traction && size(bc.traction_patch.transfer, 1) > 0
+        # Stage 2c (non-aligned interface): the whole partner right-hand side
+        # comes through the single-operator characteristic transfer; the
+        # kinematic projector is bypassed for the RHS.
+        traction_term, impedance_term, robin_term =
+            characteristic_partner_terms(coupled_solid, bc, Z_p, Z_s, α)
+        partner_rhs = traction_term .+ impedance_term .+ robin_term
+        for comp in 1:3
+            for (i_local, i_global) in enumerate(bc.global_from_local_map)
+                dof_i = 3 * (i_global - 1) + comp
+                model.boundary_force[dof_i] += partner_rhs[comp, i_local]
+            end
+        end
+        return nothing
+    end
     coupled_nodal_stress = Matrix{Float64}(undef, 0, 0)
     weak_traction = Matrix{Float64}(undef, 0, 0)
     if use_consistent_traction
@@ -613,6 +628,9 @@ function build_consistent_traction_patch!(
         lumped_mass,
         length(unique_node_indices),
         Matrix{Float64}(undef, 0, 0),
+        Matrix{Float64}(undef, 0, 0),
+        Int64[],
+        Matrix{Float64}(undef, 3, 0),
     )
     norma_log(
         0,
@@ -811,9 +829,27 @@ function build_offset_traction_patch!(
         push!(element_rows, rows)
     end
     lumped_mass = coupled_subsim.integrator isa CentralDifference
+    tilde_nodes = Vector{Int64}(undef, num_tilde)
+    for (g_, idx) in tilde_index
+        tilde_nodes[idx] = g_
+    end
+    tilde_normals = zeros(3, num_tilde)
+    for idx in 1:num_tilde
+        p = coupled_solid.reference[:, tilde_nodes[idx]]
+        best_i = 1
+        best_d2 = Inf
+        for i in 1:num_dst_nodes
+            d2 = sum((p .- own_points[:, i]) .^ 2)
+            if d2 < best_d2
+                best_d2 = d2
+                best_i = i
+            end
+        end
+        tilde_normals[:, idx] = normals[:, best_i]
+    end
     bc.traction_patch = ConsistentTractionPatch(
         element_nodes, element_block, element_index, element_rows, block_element_type,
-        lumped_mass, num_tilde, transfer,
+        lumped_mass, num_tilde, transfer, W̃, tilde_nodes, tilde_normals,
     )
     norma_log(
         0,
@@ -886,6 +922,41 @@ function consistent_partner_traction(
         weak_traction = weak_traction * patch.transfer'
     end
     return weak_traction
+end
+
+# Stage 2c: the partner's complete Robin datum, assembled on the offset
+# surface Γ̃ from the partner's OWN nodal trace values (no interpolation)
+# and carried over by the single operator T = R W̃⁻¹. Returned as the three
+# channels (traction, impedance, Robin), each weak on this side's trace
+# space, so callers can sum them for the right-hand side and the
+# instrumentation can report them separately. Transferring the combined
+# datum through one operator preserves the characteristic cancellation
+# between traction and velocity at mesh scale, which separate transfers
+# through different operators destroy.
+function characteristic_partner_terms(
+    coupled_solid::SolidMechanics,
+    bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition,
+    Z_p::Float64,
+    Z_s::Float64,
+    α::Float64,
+)
+    patch = bc.traction_patch
+    traction_term = consistent_partner_traction(coupled_solid, bc)
+    num_tilde = patch.num_targets
+    zv = zeros(3, num_tilde)
+    au = zeros(3, num_tilde)
+    for m in 1:num_tilde
+        n = patch.tilde_normals[:, m]
+        g_ = patch.tilde_nodes[m]
+        v = coupled_solid.velocity[:, g_]
+        u = coupled_solid.displacement[:, g_]
+        vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
+        zv[:, m] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
+        au[:, m] = α .* u
+    end
+    impedance_term = (zv * patch.tilde_mass) * patch.transfer'
+    robin_term = (au * patch.tilde_mass) * patch.transfer'
+    return traction_term, impedance_term, robin_term
 end
 
 # Compute the self-impedance internal force: W*(Z*u̇_self + α*u_self)
@@ -1025,23 +1096,45 @@ function report_impedance_interface_work(sim)
             P_trac = 0.0
             P_dash = 0.0
             P_robin = 0.0
-            # Traction power from the traction the BC actually applies: the
-            # consistent-traction weak traction when the patch is active, the
-            # recovered-stress interpolant otherwise. The recovered-stress
-            # traction mismatch below stays informational in both modes.
-            if bc.traction_patch !== nothing
-                weak_traction = consistent_partner_traction(coupled_solid, bc)
+            # Channel powers from the terms the BC actually applies. With the
+            # stage-2c characteristic transfer, each channel of the partner
+            # datum passes through the same operator; the self parts of the
+            # dashpot and Robin channels are subtracted at this side's nodes.
+            # The recovered-stress traction mismatch below stays informational
+            # in all modes.
+            patch = bc.traction_patch
+            if patch !== nothing && size(patch.transfer, 1) > 0
+                traction_term, impedance_term, robin_term =
+                    characteristic_partner_terms(coupled_solid, bc, Z_p, Z_s, α)
+                self_zv = zeros(3, num_nodes)
+                self_au = zeros(3, num_nodes)
+                for (i, node_index) in enumerate(unique_node_indices)
+                    n = normals[:, i]
+                    v = model.velocity[:, node_index]
+                    vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
+                    self_zv[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
+                    self_au[:, i] = α .* model.displacement[:, node_index]
+                end
                 for comp in 1:3
-                    P_trac += dot(velo[comp, :], weak_traction[comp, :])
+                    P_trac += dot(velo[comp, :], traction_term[comp, :])
+                    P_dash += dot(velo[comp, :], impedance_term[comp, :] - W * self_zv[comp, :])
+                    P_robin += dot(velo[comp, :], robin_term[comp, :] - W * self_au[comp, :])
                 end
             else
-                for comp in 1:3
-                    P_trac += dot(velo[comp, :], W * trac_p[comp, :])
+                if patch !== nothing
+                    weak_traction = consistent_partner_traction(coupled_solid, bc)
+                    for comp in 1:3
+                        P_trac += dot(velo[comp, :], weak_traction[comp, :])
+                    end
+                else
+                    for comp in 1:3
+                        P_trac += dot(velo[comp, :], W * trac_p[comp, :])
+                    end
                 end
-            end
-            for comp in 1:3
-                P_dash += dot(velo[comp, :], W * dash[comp, :])
-                P_robin += dot(velo[comp, :], W * robin[comp, :])
+                for comp in 1:3
+                    P_dash += dot(velo[comp, :], W * dash[comp, :])
+                    P_robin += dot(velo[comp, :], W * robin[comp, :])
+                end
             end
             P_total = P_trac + P_dash + P_robin
             vjump_rms = sqrt(vjump2 / num_nodes)
