@@ -38,6 +38,13 @@ mutable struct Newmark <: DynamicTimeIntegrator
     increase_factor::Float64
     β::Float64
     γ::Float64
+    # HHT-α numerical dissipation: ᾱ ∈ [0, 1/3] (0 = plain Newmark). The
+    # internal force is evaluated at the blended state
+    # (1-ᾱ) u_{n+1} + ᾱ u_n, with γ = 1/2 + ᾱ and β = (1+ᾱ)²/4, giving
+    # high-frequency dissipation ρ∞ = (1-ᾱ)/(1+ᾱ) with second-order
+    # accuracy. External and interface forces are not blended.
+    hht_alpha::Float64
+    hht_disp_prev::Vector{Float64}
     displacement::Vector{Float64}
     velocity::Vector{Float64}
     acceleration::Vector{Float64}

@@ -231,7 +231,20 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
 end
 
 function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics)
-    evaluate(model, integrator, solver)
+    # HHT-α: assemble the internal force and stiffness at the blended state
+    # (1-ᾱ) u_{n+1} + ᾱ u_n (for linear kinematics this is the classical HHT
+    # blend (1-ᾱ) f_int(u_{n+1}) + ᾱ f_int(u_n)); the inertial term stays at
+    # n+1 and external/interface forces are not blended. The displacement
+    # vector aliases the model field, so blend in place and restore.
+    ᾱ = integrator.hht_alpha
+    if ᾱ > 0.0
+        u_full = copy(integrator.displacement)
+        integrator.displacement .= (1.0 - ᾱ) .* u_full .+ ᾱ .* integrator.hht_disp_prev
+        evaluate(model, integrator, solver)
+        integrator.displacement .= u_full
+    else
+        evaluate(model, integrator, solver)
+    end
     if model.failed == true
         return nothing
     end
@@ -248,7 +261,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     K_rs = build_robin_schwarz_stiffness(model)
     K_is = build_impedance_schwarz_stiffness(model, integrator)
     K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
-    stiffness = model.stiffness
+    stiffness = ᾱ > 0.0 ? (1.0 - ᾱ) * model.stiffness : model.stiffness
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
     stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
     stiffness = nnz(K_is) > 0 ? stiffness + K_is : stiffness

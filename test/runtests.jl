@@ -152,6 +152,7 @@ const indexed_test_files = [
     (103, "schwarz-overlap-dynamic-cantilever-impedance-energy.jl"),
     (104, "schwarz-overlap-impedance-tensor-crossscale.jl"),
     (105, "schwarz-overlap-impedance-variational-transfer.jl"),
+    (106, "newmark-hht-alpha.jl"),
 ]
 
 # Extract test file names

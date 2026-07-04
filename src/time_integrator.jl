@@ -84,6 +84,20 @@ function Newmark(params::Parameters, model::Model)
     time = prev_time = -Inf
     β = integrator_params["β"]
     γ = integrator_params["γ"]
+    hht_alpha = Float64(get(integrator_params, "HHT α", get(integrator_params, "HHT alpha", 0.0)))
+    if hht_alpha < 0.0 || hht_alpha > 1.0 / 3.0
+        norma_abort("`HHT alpha` must be in [0, 1/3]; got $hht_alpha.")
+    end
+    if hht_alpha > 0.0
+        γ = 0.5 + hht_alpha
+        β = 0.25 * (1.0 + hht_alpha)^2
+        norma_logf(
+            0,
+            :setup,
+            "HHT-α dissipation: α = %.4g, overriding γ = %.4g, β = %.4g (ρ∞ = %.3f)",
+            hht_alpha, γ, β, (1.0 - hht_alpha) / (1.0 + hht_alpha),
+        )
+    end
     num_dof = length(model.free_dofs)
     displacement = zeros(num_dof)
     velocity = zeros(num_dof)
@@ -106,6 +120,8 @@ function Newmark(params::Parameters, model::Model)
         increase_factor,
         β,
         γ,
+        hht_alpha,
+        zeros(num_dof),
         displacement,
         velocity,
         acceleration,
@@ -206,6 +222,8 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
     free = model.free_dofs
     fixed = .!free
+    # HHT-α: make the blend a no-op until the first predictor runs.
+    integrator.hht_alpha > 0.0 && (integrator.hht_disp_prev .= integrator.displacement)
     evaluate(model, integrator, solver)
     if model.failed == true
         norma_abort("Finite element model failed to initialize")
@@ -281,6 +299,9 @@ function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     β = integrator.β
     γ = integrator.γ
     u = integrator.displacement
+    # HHT-α: the internal force is evaluated at (1-ᾱ) u_{n+1} + ᾱ u_n;
+    # capture u_n before the predictor overwrites it.
+    integrator.hht_alpha > 0.0 && (integrator.hht_disp_prev .= u)
     v = integrator.velocity
     a = integrator.acceleration
     u_pre = integrator.disp_pre
