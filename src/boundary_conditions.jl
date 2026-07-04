@@ -532,10 +532,10 @@ function SMCouplingSchwarzBC(
             coupled_block_name = bc_params["source block"]
             tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
             partner_traction_mode = get(bc_params, "partner traction", "auto")
-            if partner_traction_mode ∉ ("auto", "consistent flux", "recovered stress")
+            if partner_traction_mode ∉ ("auto", "consistent traction", "recovered stress")
                 norma_abort(
                     "Invalid `partner traction: $partner_traction_mode`. Valid values are " *
-                    "\"auto\", \"consistent flux\", and \"recovered stress\".",
+                    "\"auto\", \"consistent traction\", and \"recovered stress\".",
                 )
             end
             SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(

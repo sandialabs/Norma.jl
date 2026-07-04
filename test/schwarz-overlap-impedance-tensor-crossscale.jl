@@ -146,7 +146,7 @@
     @test model_clamped.recovery_data isa Norma.ConsistentRecovery
     @test model_free.recovery_data isa Norma.ConsistentRecovery
 
-    # Node-aligned interface: the consistent-flux partner traction is active.
-    @test imp_bc(model_clamped).flux_patch isa Norma.FluxTractionPatch
-    @test imp_bc(model_free).flux_patch isa Norma.FluxTractionPatch
+    # Node-aligned interface: the consistent-traction partner traction is active.
+    @test imp_bc(model_clamped).traction_patch isa Norma.ConsistentTractionPatch
+    @test imp_bc(model_free).traction_patch isa Norma.ConsistentTractionPatch
 end

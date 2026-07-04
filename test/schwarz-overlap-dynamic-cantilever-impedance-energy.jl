@@ -26,13 +26,13 @@ using Exodus
 #
 # Discrimination at t = 3.0e-4 (300 steps), PU energy relative to the initial
 # strain energy of the release:
-#   - current formulation (consistent-flux t_p):  E/E0 ≈ 1.00 (0.08% at 1 ms)
+#   - current formulation (consistent-traction t_p):  E/E0 ≈ 1.00 (0.08% at 1 ms)
 #   - recovered-stress t_p (consistent recovery): E/E0 ≈ 0.99
 #   - lumped instead of consistent recovery:      E/E0 ≈ 0.95
 #   - missing partner-traction term (pre-fix):    E/E0 ≈ 0.67
 # The 3% assertion below fails both historical defects. A converged classical
 # DBC overlap run on these meshes conserves the PU energy to 0.1% (exact
-# reference); with the consistent-flux partner traction the impedance
+# reference); with the consistent-traction partner traction the impedance
 # condition matches that reference.
 
 # PU-weighted total mechanical energy of the two-subdomain state. Strain
@@ -139,9 +139,9 @@ end
         @test length(bcs) == 1
         @test bcs[1].impedance ≈ sqrt(ρ * (λ_lame + 2μ_lame)) rtol = 1.0e-12
         @test bcs[1].impedance_shear ≈ sqrt(ρ * μ_lame) rtol = 1.0e-12
-        # Node-aligned interface: the consistent-flux partner traction must
+        # Node-aligned interface: the consistent-traction partner traction must
         # be active (the O(h) recovered-stress dissipation is not).
-        @test bcs[1].flux_patch isa Norma.FluxTractionPatch
+        @test bcs[1].traction_patch isa Norma.ConsistentTractionPatch
     end
 
     # PU energy at the final time vs. the initial strain energy of the

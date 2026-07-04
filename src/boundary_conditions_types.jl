@@ -117,9 +117,9 @@ end
 # traction ∫_Γ t_p·φ_i is obtained by partial assembly of the partner's
 # discrete momentum residual (internal force + inertia) over the single layer
 # of partner elements on the exterior side of the interface — the exact
-# discrete flux, including mesh-scale content that nodal stress recovery
+# discrete traction, including mesh-scale content that nodal stress recovery
 # cannot represent. Built in compute_impedance_overlap_schwarz_projectors!.
-struct FluxTractionPatch
+struct ConsistentTractionPatch
     element_nodes::Vector{Vector{Int64}}              # global partner node indices per patch element
     element_block::Vector{Int64}                      # partner block index per patch element
     element_index::Vector{Int64}                      # block-local element index (for material state)
@@ -146,11 +146,11 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     impedance_shear::Float64     # Z_s = ρ c_s = √(ρμ) of the neighbor
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
     impedance_scale::Vector{Float64}  # multiplier on Z per step (default [1.0])
-    # Partner-traction evaluation: "auto" (consistent flux when the interface
-    # is node-aligned, recovered stress otherwise), "consistent flux", or
-    # "recovered stress". flux_patch is nothing when recovered stress is used.
+    # Partner-traction evaluation: "auto" (consistent traction when the interface
+    # is node-aligned, recovered stress otherwise), "consistent traction", or
+    # "recovered stress". traction_patch is nothing when recovered stress is used.
     partner_traction_mode::String
-    flux_patch::Union{FluxTractionPatch,Nothing}
+    traction_patch::Union{ConsistentTractionPatch,Nothing}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle

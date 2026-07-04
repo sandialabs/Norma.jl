@@ -327,17 +327,17 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     # boundary. That boundary is an interior surface of the partner mesh, so
     # the partner's assembled internal force cannot supply the traction there
     # (interior rows carry the inertia residual, not σ·n). On node-aligned
-    # interfaces the weak traction W·t_p comes from the consistent-flux patch
-    # (exact discrete flux; see build_flux_traction_patch!). Otherwise
+    # interfaces the weak traction W·t_p comes from the consistent-traction patch
+    # (exact discrete traction; see build_consistent_traction_patch!). Otherwise
     # interpolate the partner's nodal-recovered stress with the same
     # shape-function data used for u̇ and u below; stress recovery is
     # force-enabled for coupled models when this BC type is present (see
     # SolidMechanics() in model.jl).
-    use_flux = bc.flux_patch !== nothing
+    use_consistent_traction = bc.traction_patch !== nothing
     coupled_nodal_stress = Matrix{Float64}(undef, 0, 0)
     weak_traction = Matrix{Float64}(undef, 0, 0)
-    if use_flux
-        weak_traction = impedance_flux_partner_traction(coupled_solid, bc)
+    if use_consistent_traction
+        weak_traction = consistent_partner_traction(coupled_solid, bc)
     else
         recover_stress!(coupled_solid)
         coupled_nodal_stress = if size(coupled_solid.recovered_stress, 1) > 0
@@ -375,7 +375,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
             partner_disp[comp, i] = sum(coupled_displacement[comp, coupled_node_indices] .* N)
         end
         n = normals[:, i]
-        if use_flux == false
+        if use_consistent_traction == false
             # Voigt order of recovered stress: xx, yy, zz, yz, xz, xy.
             σ = coupled_nodal_stress[:, coupled_node_indices] * N
             partner_trac[1, i] = σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3]
@@ -392,12 +392,12 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     # RHS (partner contribution only): f = W * (t_partner + Z·u̇_partner + α * u_partner)
     # The self terms (W*(Z·u̇_self + α*u_self)) are handled by
     # apply_impedance_bcs_internal_force! called at each Newton iteration.
-    # With the consistent-flux patch, W·t_partner is available directly as
+    # With the consistent-traction patch, W·t_partner is available directly as
     # the weak traction (no separate W application).
     for comp in 1:3
         alpha_u = α * partner_disp[comp, :]
         rhs = W * (partner_Zvdot[comp, :] + alpha_u)
-        rhs += use_flux ? weak_traction[comp, :] : W * partner_trac[comp, :]
+        rhs += use_consistent_traction ? weak_traction[comp, :] : W * partner_trac[comp, :]
         for (i_local, i_global) in enumerate(global_from_local_map)
             dof_i = 3 * (i_global - 1) + comp
             model.boundary_force[dof_i] += rhs[i_local]
@@ -456,12 +456,13 @@ function compute_impedance_overlap_schwarz_projectors!(
     dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
 )
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
-    build_flux_traction_patch!(dst_model, dst_bc)
+    build_consistent_traction_patch!(dst_model, dst_bc)
     return nothing
 end
 
-# Variationally consistent partner traction (a.k.a. consistent boundary flux,
-# Hughes et al.): on a node-aligned interface, the weak partner traction
+# Variationally consistent partner traction (i.e. consistent nodal reactions;
+# the solid-mechanics counterpart of the consistent-boundary-flux method of
+# Wheeler and of Hughes et al.): on a node-aligned interface, the weak partner traction
 # ∫_Γ t_p·φ_i is exactly the partial assembly of the partner's discrete
 # momentum residual (internal force + inertia; body force is not modeled)
 # over the partner elements on the EXTERIOR side of Γ — the side this
@@ -471,10 +472,10 @@ end
 # transmits ALL discrete content, including the mesh-scale part that nodal
 # stress recovery misrepresents (measured as O(h) interface dissipation:
 # 3.9% → 1.9% per halving of h on the conforming cantilever benchmark).
-function build_flux_traction_patch!(
+function build_consistent_traction_patch!(
     model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
 )
-    bc.flux_patch = nothing
+    bc.traction_patch = nothing
     bc.partner_traction_mode == "recovered stress" && return nothing
     coupled_subsim = coupled_subsim_of(bc)
     coupled_solid = get_fom_model(coupled_subsim)
@@ -493,9 +494,9 @@ function build_flux_traction_patch!(
         dst_of_coupled[bc.coupled_nodes_indices[i][a]] = i
     end
     if conforming == false
-        if bc.partner_traction_mode == "consistent flux"
+        if bc.partner_traction_mode == "consistent traction"
             norma_abort(
-                "`partner traction: consistent flux` requires a node-aligned (conforming) " *
+                "`partner traction: consistent traction` requires a node-aligned (conforming) " *
                 "interface, but boundary nodes of side set \"$(bc.name)\" do not coincide " *
                 "with partner mesh nodes. Use \"auto\" or \"recovered stress\".",
             )
@@ -534,13 +535,13 @@ function build_flux_traction_patch!(
                 end
             end
             if num_exterior > 0 && num_interior > 0
-                if bc.partner_traction_mode == "consistent flux"
+                if bc.partner_traction_mode == "consistent traction"
                     norma_abort(
                         "Ambiguous interface-side classification of a partner element for " *
-                        "the consistent-flux traction of side set \"$(bc.name)\".",
+                        "the consistent traction of side set \"$(bc.name)\".",
                     )
                 end
-                bc.flux_patch = nothing
+                bc.traction_patch = nothing
                 return nothing  # auto: geometry too irregular, fall back
             end
             num_exterior > 0 || continue
@@ -551,28 +552,28 @@ function build_flux_traction_patch!(
         end
     end
     lumped_mass = coupled_subsim.integrator isa CentralDifference
-    bc.flux_patch = FluxTractionPatch(
+    bc.traction_patch = ConsistentTractionPatch(
         element_nodes, element_block, element_index, element_rows, block_element_type, lumped_mass
     )
     norma_log(
         0,
         :schwarz,
         "Impedance overlap side set \"$(bc.name)\": node-aligned interface, using " *
-        "consistent-flux partner traction ($(length(element_nodes)) partner elements).",
+        "consistent partner traction ($(length(element_nodes)) partner elements).",
     )
     return nothing
 end
 
 # Weak partner traction W·t_p (3 × num boundary nodes) by partial assembly
-# over the flux patch: -(internal force + inertia) of the exterior-side
+# over the consistent-traction patch: -(internal force + inertia) of the exterior-side
 # partner elements, restricted to the interface rows. The element kernels
 # mirror evaluate() in model.jl (total Lagrangian, first Piola against
 # reference gradients); the inertia uses the partner's mass discretization
 # (consistent for implicit, lumped for explicit).
-function impedance_flux_partner_traction(
+function consistent_partner_traction(
     coupled_solid::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
 )
-    patch = bc.flux_patch
+    patch = bc.traction_patch
     num_dst_nodes = length(bc.global_from_local_map)
     weak_traction = zeros(3, num_dst_nodes)
     for element in eachindex(patch.element_nodes)
@@ -771,11 +772,11 @@ function report_impedance_interface_work(sim)
             P_dash = 0.0
             P_robin = 0.0
             # Traction power from the traction the BC actually applies: the
-            # consistent-flux weak traction when the patch is active, the
+            # consistent-traction weak traction when the patch is active, the
             # recovered-stress interpolant otherwise. The recovered-stress
             # traction mismatch below stays informational in both modes.
-            if bc.flux_patch !== nothing
-                weak_traction = impedance_flux_partner_traction(coupled_solid, bc)
+            if bc.traction_patch !== nothing
+                weak_traction = consistent_partner_traction(coupled_solid, bc)
                 for comp in 1:3
                     P_trac += dot(velo[comp, :], weak_traction[comp, :])
                 end
