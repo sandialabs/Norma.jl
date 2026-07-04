@@ -1,0 +1,274 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{boldtensors}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+\newcommand{\dd}{\mathrm{d}}
+
+\title{Design: Mortar Transfer for Impedance-Overlap Schwarz \\
+on Non-Conforming Meshes}
+\author{Alejandro Mota}
+
+\begin{document}
+\maketitle
+
+\section{Problem statement}
+
+The impedance-overlap transmission condition
+\begin{equation}
+  ~t_k - ~t_j
+  + ~Z\,\bigl(\dot{~u}_k - \dot{~u}_j\bigr)
+  + \alpha\,\bigl(~u_k - ~u_j\bigr) = ~0
+  \qquad \text{on } \Gamma_k
+  \label{eq:tc}
+\end{equation}
+is now exactly conservative on conforming meshes (0.08\% PU-energy error
+over 1\,ms with the consistent partner traction, matching the
+exact-DBC reference).  On the non-conforming cantilever pair
+($h = 8.47$ vs.\ $6.35$\,mm, 4:3) the net error also looks small
+($\pm 1$\%), but the interface-work instrumentation shows that this is
+a cancellation of two error channels, each of which moves roughly
+\emph{half the system energy per millisecond}:
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+1\,ms, II, PU metric & conforming & non-conforming $h$ & non-conforming $h/2$ \\
+\midrule
+dashpot (spurious) work & $-42.6$\,J \,(2.8\%) & $-606.5$\,J \,(40\%) & $-598.5$\,J \,(40\%) \\
+traction-channel work & --- & $+677$\,J \,(45\%) & $+768$\,J \,(51\%) \\
+net PU-energy error & $1.5$\% $\to$ 0.08\% & $-0.75$\% (growth) & $+1.5$\% (loss) \\
+mean velocity jump (RMS) & 8.9\,m/s & 40\,m/s (growing 15$\to$60) & 27\,m/s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three facts drive the design.  (i) The channels do \emph{not} shrink
+under mesh refinement (dashpot work unchanged at $h/2$), so resolution
+cannot fix the interface; the pointwise-interpolation transfer feeds
+the condition an $O(1)$ error on mesh-scale content.  (ii) The net
+error is the difference of two large channels and even flips sign
+between $h$ and $h/2$ --- it is not robust, which is the production
+fragility.  (iii) The velocity jumps grow through the run: each
+interface pass leaves mesh-scale residue that reverberates, a bounded
+version of the same feedback that makes DBC overlap coupling
+exponentially unstable.
+
+The theoretical requirements are Gander--Halpern--Nataf's three
+conditions for discrete energy convergence of waveform-relaxation
+coupling on nonmatching grids: (i) Robin (not Dirichlet) transmission,
+(ii) consistent boundary-cell discretization of the transmission
+operator, (iii) an $L^2$-contractive intergrid transfer.  The
+impedance-overlap BC satisfies (i); its weak (surface-mass-weighted)
+assembly satisfies (ii); pointwise interpolation violates (iii).
+Replacing the transfer with the $L^2$ (mortar) projection onto the
+receiving trace space satisfies all three simultaneously.  Note that
+weak-$L^2$ enforcement of \emph{Dirichlet} overlap coupling did not
+remove the DBC instability --- consistent with the theory, since DBC
+violates (i) regardless of the transfer; the combination proposed here
+is the first that meets all three conditions.
+
+\section{Operator inventory (existing machinery)}
+
+All operators needed for the first stage already exist:
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+operator & code & status \\
+\midrule
+$~W_k = \int_{\Gamma_k} ~N_k ~N_k^\top \dd\Gamma$ &
+  \texttt{get\_square\_projection\_matrix} &
+  already on the BC \\[0.3em]
+$~L_{kj} = \int_{\Gamma_k} ~N_k(~x)\, ~N_j^{\mathrm{vol}}(~x)^\top \dd\Gamma$ &
+  \texttt{get\_overlap\_rectangular\_projection\_matrix} &
+  exists (weak-DBC path); \\
+  & & needs signature relaxed \\[0.3em]
+$~P_{kj} = ~W_k^{-1} ~L_{kj}$ &
+  weak-DBC \texttt{dirichlet\_projector} &
+  same construction \\[0.3em]
+surface-to-surface $~R_{kj}$ &
+  \texttt{get\_rectangular\_projection\_matrix} &
+  exists (nonoverlap path); \\
+  & (\texttt{project\_point\_to\_side\_set}) & needed in stage 2 \\[0.3em]
+partner one-sided weak flux &
+  \texttt{build\_consistent\_traction\_patch!}, &
+  exists (conforming); \\
+  & \texttt{consistent\_partner\_traction} & generalized in stage 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$~L_{kj}$ is assembled by quadrature over $\Omega_k$'s boundary facets;
+at each quadrature point the partner \emph{volume} element is located
+(\texttt{find\_point\_in\_mesh}) and its shape functions evaluated ---
+exactly the mortar cross-mass for an overlap boundary, which is
+interior to the partner and therefore has no partner surface mesh.
+
+Two structural properties come for free.  First,
+$~P_{kj} = ~W_k^{-1} ~L_{kj}$ is the $L^2(\Gamma_k)$-orthogonal
+(Galerkin) projection onto $\Omega_k$'s trace space, hence
+non-expansive in $L^2$: GHN condition (iii) holds by construction,
+for any quadrature, because it is a projection.  Second, partition of
+unity of the partner shape functions gives
+$~L_{kj} \mathbf{1} = ~W_k \mathbf{1}$ for \emph{any} quadrature rule,
+so constants (rigid translations) transfer exactly regardless of
+quadrature accuracy.
+
+\section{Design}
+
+\subsection{Stage 1: mortar projection of the transferred fields}
+
+Replace pointwise interpolation of the three partner fields with the
+mortar projection, leaving everything downstream of the nodal values
+unchanged:
+\begin{equation}
+  \hat{\dot{~u}}_j = ~P_{kj}\, \dot{~u}_j, \qquad
+  \hat{~u}_j = ~P_{kj}\, ~u_j, \qquad
+  \hat{~\sigma}_j = ~P_{kj}\, ~\sigma_j^{\mathrm{rec}}
+  \quad \text{(six Voigt components),}
+  \label{eq:stage1}
+\end{equation}
+then form the traction $\hat{~t}_j = \hat{~\sigma}_j\, ~n_k$ and the
+tensor-impedance term nodally exactly as the current code does.  This
+is a drop-in change: \texttt{apply\_bc\_detail}'s per-node
+interpolation loop becomes three (or nine, per component) small dense
+matrix--vector products with a projector precomputed at setup.  The
+P/S-split tensor $~Z(~n)$ continues to act at the receiving nodes, so
+no re-derivation of the self terms or the tangent is needed; the
+variational crime of nodal application is unchanged from the current
+scheme and identical on both branches.
+
+Implementation touch points:
+\begin{itemize}
+\item \textbf{YAML}: new BC option \texttt{transfer:} with values
+      \texttt{pointwise} (current behavior, initial default) and
+      \texttt{mortar}.
+\item \textbf{Types}: field \texttt{mortar\_projector::Matrix\{Float64\}}
+      ($n_k \times N_j$, dense; boundary node count times partner node
+      count, small for realistic interfaces) on
+      \texttt{SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition}.
+\item \textbf{Setup} (\texttt{compute\_impedance\_overlap\_schwarz\_projectors!}):
+      relax \texttt{get\_overlap\_rectangular\_projection\_matrix}'s
+      signature to accept the impedance BC (it only touches fields both
+      BC types share), build $~L_{kj}$, factorize the existing
+      $~W_k$ (Cholesky) once, store $~P_{kj}$.  Rebuilt on BC swaps,
+      like the consistent-traction patch.
+\item \textbf{Evaluation}: factor the partner-field sampling shared by
+      \texttt{apply\_bc\_detail} and
+      \texttt{report\_impedance\_interface\_work} into one helper that
+      dispatches on the transfer mode, so the instrumentation always
+      measures what the BC actually applies.
+\item \textbf{Precedence}: on node-aligned interfaces $~L_{kj}$ has a
+      single unit entry per row and $~P_{kj}$ reduces to the identity;
+      the consistent-traction patch (\texttt{partner traction: auto})
+      continues to take priority for the traction, and the kinematic
+      projection becomes a no-op.  The conforming limit is therefore
+      automatic.
+\end{itemize}
+
+Quadrature note: the integrand of $~L_{kj}$ is only piecewise smooth
+on $\Gamma_k$ (partner elements change within a receiving facet), so
+the default facet rule carries a consistency error.  Because
+contractivity and constant-transfer hold for any rule, this error
+degrades accuracy, not stability.  The cheap knob is an elevated or
+subdivided facet rule for the $~L_{kj}$ assembly only (setup cost);
+a true common-refinement (2D polygon overlay on the flat interface)
+is the exact alternative and is deferred until measurements justify
+it.
+
+What stage 1 answers: how much of the 600\,J churn is the
+\emph{transfer} (interpolation aliasing of mesh-scale content) versus
+the \emph{recovered-stress traction}.  The conforming ladder bounds
+what recovery-quality traction can achieve ($\approx$1.5\%-class); if
+mortar transfer restores $O(h)$ scaling of the channels, refinement
+plus stage 2 closes the rest.
+
+\subsection{Stage 2: consistent traction across the interface}
+
+The conforming analysis showed the traction channel is the dominant
+residual once transfer is clean, and that nodal recovery cannot
+represent the traction carried by mesh-scale content.  The consistent
+(one-sided partial assembly) traction requires a partner facet surface
+bounding a one-sided element patch; on a non-conforming interface
+$\Gamma_k$ cuts through partner elements, so the patch does not exist
+on $\Gamma_k$ itself.  Two generalizations, in order of increasing
+cost:
+
+\paragraph{2a: offset facet surface + surface mortar.}  Take
+$\tilde\Gamma_j$ = the partner facet surface immediately exterior to
+$\Gamma_k$ (the boundary between the first exterior element layer and
+the rest; the patch-construction logic already classifies these
+elements).  The consistent flux is exact on $\tilde\Gamma_j$ by the
+same partial assembly as the conforming case, tested with partner
+surface functions.  Transfer the resulting weak traction to
+$\Gamma_k$'s trace space with the surface-to-surface mortar
+($\texttt{get\_rectangular\_projection\_matrix}$ generalized to accept
+the internal surface in place of a side set, or an equivalent
+assembled operator), i.e.\
+$~W_k \hat{~t}_j = ~R_{k\tilde\jmath}\, ~W_{\tilde\jmath}^{-1}
+\lambda_{\tilde\jmath}$.
+The surface offset introduces an $O(h_j)$ modeling error
+($\tilde\Gamma_j$ is within one partner element of $\Gamma_k$), but it
+acts on the \emph{exact discrete flux} rather than on recovered
+stress; whether that trade wins is an experiment, not a theorem ---
+measure before committing further.
+
+\paragraph{2b: cut-cell partial assembly (flat interfaces).}  For a
+planar $\Gamma_k$ (the common production configuration), integrate the
+partner's momentum residual over the plane-clipped parts of the cut
+elements, testing with $\Omega_k$'s surface functions extended
+constant along the interface normal.  This reproduces the
+conforming construction exactly in the limit and removes the offset
+error of 2a, at the cost of new machinery (hexahedron--half-space
+clipping and quadrature on the clipped polyhedra).  Deferred unless 2a
+measures short of the target.
+
+\subsection{Validation and targets}
+
+The metric is the instrumentation's channel decomposition, not the net
+energy: success is driving the churn itself down, since the current
+scheme already fakes a small net by cancellation.
+
+\begin{enumerate}
+\item \textbf{Conforming regression}: mortar transfer on the
+      node-aligned pair must reproduce the pointwise results exactly
+      ($~P = ~I$); the consistent-traction 0.08\% result must be
+      unaffected.  Extend test 103/104 asserts with the projector
+      identity check.
+\item \textbf{Non-conforming, stage 1}: dashpot work
+      $\ll 600$\,J at $h$, and restored $O(h)$ decay at $h/2$;
+      velocity-jump growth curve flattened.  Expected end state
+      $\approx$ conforming recovered-stress class (few percent), now
+      robust rather than cancellation-balanced.
+\item \textbf{Non-conforming, stage 2}: traction channel reduced
+      toward the consistent-traction class; net PU error
+      $\lesssim 1$\% with both channels individually small; sign and
+      magnitude stable under refinement.
+\item \textbf{Stability margin}: rerun the impedance-scale sweep ---
+      with contractive transfer the growth branch above scale 1 should
+      soften, and the DBC-limit blow-up should set in later; this is
+      the direct measure of production robustness.
+\item \textbf{Cost}: setup $O(n_{\mathrm{facets}} \times n_{\mathrm{qp}})$
+      point locations (same as the weak-DBC path); per-iteration cost
+      \emph{decreases} (dense mat-vec replaces per-node interpolation
+      loops; no recovery solve once stage 2 lands).
+\end{enumerate}
+
+\section{Summary}
+
+Stage 1 is a low-risk, high-information change that reuses the square
+($~W_k$) and rectangular ($~L_{kj}$) projection machinery verbatim:
+mortar-project $\dot{~u}_j$, $~u_j$, and $~\sigma_j^{\mathrm{rec}}$
+onto the receiving trace space and keep the rest of the impedance
+pipeline unchanged.  It makes the transfer $L^2$-contractive by
+construction, completing GHN's three conditions for the first time in
+this code, and its measurements decide between the two stage-2
+traction designs.  The conforming limit and the consistent-traction
+path are preserved automatically.
+
+\end{document}
