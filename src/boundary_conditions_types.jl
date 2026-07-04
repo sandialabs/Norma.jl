@@ -159,6 +159,7 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     # variational_projector is (num boundary nodes) x (num partner nodes),
     # empty when pointwise.
     transfer_mode::String
+    transfer_subdivisions::Int64  # facet-quadrature subdivisions for the L assembly
     variational_projector::Matrix{Float64}
     coupled_block_name::String
     search_tolerance::Float64

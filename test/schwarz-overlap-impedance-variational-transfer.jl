@@ -22,8 +22,11 @@
     end
     for f in ("cantilever-clamped-impedance.yaml", "cantilever-free-impedance.yaml")
         y = read(joinpath(example, f), String)
+        # Subdivided facet quadrature exercises the piecewise-integrand rule;
+        # the reproduction invariants below hold for any rule.
         y = replace(y, r"(source side set: [\w+-]+)" => s"\1
-      transfer: variational")
+      transfer: variational
+      transfer quadrature subdivisions: 3")
         write(f, y)
     end
     multi = read("cantilever-impedance.yaml", String)

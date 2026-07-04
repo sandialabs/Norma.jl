@@ -701,7 +701,8 @@ function get_overlap_rectangular_projection_matrix(
     },
     src_model::SolidMechanics,
     coupled_block_name::String,
-    tol::Float64,
+    tol::Float64;
+    subdivisions::Int64=1,
 )
     src_mesh = src_model.mesh
     src_block_id = block_id_from_name(coupled_block_name, src_mesh)
@@ -720,14 +721,37 @@ function get_overlap_rectangular_projection_matrix(
         dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
         dst_side_coordinates = dst_coords[:, dst_side_nodes]
         dst_element_type = get_element_type(2, Int64(dst_num_nodes_side))
-        dst_num_int_points = default_num_int_pts(dst_element_type)
-        dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
-        for dst_point in 1:dst_num_int_points
-            dst_Nₚ = dst_N[:, dst_point]
-            dst_dNdξₚ = dst_dNdξ[:, :, dst_point]
+        # Facet quadrature samples (shape values, shape gradients, weight).
+        # The integrand is only piecewise smooth (the source elements change
+        # within a receiving facet), so an optional subdivided rule places a
+        # 2x2 Gauss rule in each of subdivisions^2 sub-cells of the facet.
+        samples = Vector{Tuple{Vector{Float64},Matrix{Float64},Float64}}()
+        if subdivisions == 1
+            dst_num_int_points = default_num_int_pts(dst_element_type)
+            dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
+            for dst_point in 1:dst_num_int_points
+                push!(
+                    samples,
+                    (Vector(dst_N[:, dst_point]), Matrix(dst_dNdξ[:, :, dst_point]), dst_w[dst_point]),
+                )
+            end
+        else
+            if dst_element_type != QUAD4
+                norma_abort(
+                    "`transfer quadrature subdivisions` > 1 requires quadrilateral interface facets.",
+                )
+            end
+            g = 1.0 / sqrt(3.0)
+            m = subdivisions
+            for i in 1:m, j in 1:m, (η₁, η₂) in ((-g, -g), (g, -g), (g, g), (-g, g))
+                ξ_sub = [-1.0 + (2 * i - 1) / m + η₁ / m, -1.0 + (2 * j - 1) / m + η₂ / m]
+                N_sub, dN_sub, _ = interpolate(dst_element_type, ξ_sub)
+                push!(samples, (Vector(N_sub), Matrix(dN_sub), 1.0 / m^2))
+            end
+        end
+        for (dst_Nₚ, dst_dNdξₚ, dst_wₚ) in samples
             dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
             dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
-            dst_wₚ = dst_w[dst_point]
             dst_int_point_coord = dst_side_coordinates * dst_Nₚ
             src_node_indices, ξ, found = find_point_in_mesh(
                 dst_int_point_coord, src_model, src_block_id, tol

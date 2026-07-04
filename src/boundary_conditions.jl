@@ -217,6 +217,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
     impedance_scale::Vector{Float64},
     partner_traction_mode::String,
     transfer_mode::String,
+    transfer_subdivisions::Int64,
 )
     # Pointwise interpolation infrastructure (same as regular overlap)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
@@ -260,6 +261,7 @@ function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
         partner_traction_mode,
         nothing,
         transfer_mode,
+        transfer_subdivisions,
         Matrix{Float64}(undef, 0, 0),
         coupled_block_name,
         tol,
@@ -550,6 +552,10 @@ function SMCouplingSchwarzBC(
                     "\"pointwise\" and \"variational\".",
                 )
             end
+            transfer_subdivisions = Int64(get(bc_params, "transfer quadrature subdivisions", 1))
+            if transfer_subdivisions < 1
+                norma_abort("`transfer quadrature subdivisions` must be a positive integer.")
+            end
             SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
                 coupled_block_name,
                 tol,
@@ -566,6 +572,7 @@ function SMCouplingSchwarzBC(
                 impedance_scale,
                 partner_traction_mode,
                 transfer_mode,
+                transfer_subdivisions,
             )
         end
     else

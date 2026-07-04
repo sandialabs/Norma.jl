@@ -447,7 +447,8 @@ function compute_impedance_overlap_schwarz_projectors!(
         # L = W row-permuted and P reduces to the identity selection.
         coupled_solid = get_fom_model(coupled_subsim_of(dst_bc))
         L = get_overlap_rectangular_projection_matrix(
-            dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance
+            dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance;
+            subdivisions=dst_bc.transfer_subdivisions,
         )
         dst_bc.variational_projector = dst_bc.square_projector \ L
     else
