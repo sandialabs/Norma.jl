@@ -26,3 +26,13 @@ CLAUDE.md
 *.csv
 # ROM training data (intentionally tracked)
 !examples/ahead/overlap/cuboid/dynamic-cubic-opinf-rom/*.csv
+
+# LaTeX build artifacts
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
