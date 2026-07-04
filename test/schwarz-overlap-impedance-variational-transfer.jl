@@ -12,8 +12,10 @@
 # any quadrature, reproduces constants exactly (partner partition of unity),
 # and reproduces linear fields exactly on the flat interface facets. Those
 # two reproduction properties are asserted here to machine precision, along
-# with the recovered-stress fallback for the partner traction (the
-# consistent-traction patch requires node alignment, absent here).
+# with the stage-2a consistent traction: on a non-aligned interface with
+# variational transfer, the partner traction is the one-sided weak flux on
+# the offset partner facet surface, carried over by the surface-to-surface
+# variational operator.
 
 @testset "Schwarz Overlap Impedance Variational Transfer" begin
     example = "../examples/overlap/dynamic-same-step/cantilever-nonconforming"
@@ -55,9 +57,13 @@
             b for b in model.boundary_conditions if
             b isa Norma.SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
         )
-        # Non-conforming: the consistent-traction patch must NOT be active
-        # (the partner traction falls back to recovered stress).
-        @test bc.traction_patch === nothing
+        # Non-conforming + variational transfer: the consistent traction is
+        # active through the offset-surface patch (stage 2a), with a
+        # surface-to-surface transfer onto this side's boundary nodes.
+        patch = bc.traction_patch
+        @test patch isa Norma.ConsistentTractionPatch
+        @test patch.num_targets > 0
+        @test size(patch.transfer) == (length(bc.global_from_local_map), patch.num_targets)
         # Variational projector present with the right shape.
         P = bc.variational_projector
         num_boundary_nodes = length(bc.global_from_local_map)

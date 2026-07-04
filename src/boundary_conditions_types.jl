@@ -123,9 +123,19 @@ struct ConsistentTractionPatch
     element_nodes::Vector{Vector{Int64}}              # global partner node indices per patch element
     element_block::Vector{Int64}                      # partner block index per patch element
     element_index::Vector{Int64}                      # block-local element index (for material state)
-    element_rows::Vector{Vector{Tuple{Int64,Int64}}}  # (element-local node, BC-local destination) pairs
+    element_rows::Vector{Vector{Tuple{Int64,Int64}}}  # (element-local node, target-index) pairs
     block_element_type::Vector{ElementType}           # indexed by partner block index
     lumped_mass::Bool                                 # partner integrator uses lumped mass (explicit)
+    # Target space of the accumulated weak flux. On a node-aligned interface
+    # the targets are the BC-local boundary nodes and transfer is empty (the
+    # weak flux lands on this side's trace space directly). On a
+    # non-conforming interface the targets are the nodes of the offset
+    # partner facet surface Γ̃ (the exterior/interior element boundary within
+    # one partner element of Γ), and transfer = R W̃⁻¹ carries the weak flux
+    # from Γ̃ to this side's trace space (surface-to-surface variational
+    # transfer; stage 2a of the variational-transfer design note).
+    num_targets::Int64
+    transfer::Matrix{Float64}                         # (BC-local nodes) x (Γ̃ nodes); empty if identity
 end
 
 mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition

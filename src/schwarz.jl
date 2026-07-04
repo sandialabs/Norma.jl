@@ -541,14 +541,19 @@ function build_consistent_traction_patch!(
         dst_of_coupled[bc.coupled_nodes_indices[i][a]] = i
     end
     if conforming == false
-        if bc.partner_traction_mode == "consistent traction"
+        # Non-conforming: the consistent traction is available through the
+        # offset partner facet surface, which requires the variational
+        # transfer machinery (stage 2a). With pointwise transfer, fall back
+        # to recovered stress (legacy behavior) unless explicitly requested.
+        if bc.transfer_mode == "variational"
+            build_offset_traction_patch!(model, bc)
+        elseif bc.partner_traction_mode == "consistent traction"
             norma_abort(
-                "`partner traction: consistent traction` requires a node-aligned (conforming) " *
-                "interface, but boundary nodes of side set \"$(bc.name)\" do not coincide " *
-                "with partner mesh nodes. Use \"auto\" or \"recovered stress\".",
+                "`partner traction: consistent traction` on a non-aligned interface " *
+                "(side set \"$(bc.name)\") requires `transfer: variational`.",
             )
         end
-        return nothing  # auto: fall back to recovered stress
+        return nothing
     end
     normals = compute_normal(model.mesh, bc.side_set_id, model)
     element_nodes = Vector{Vector{Int64}}()
@@ -600,13 +605,222 @@ function build_consistent_traction_patch!(
     end
     lumped_mass = coupled_subsim.integrator isa CentralDifference
     bc.traction_patch = ConsistentTractionPatch(
-        element_nodes, element_block, element_index, element_rows, block_element_type, lumped_mass
+        element_nodes,
+        element_block,
+        element_index,
+        element_rows,
+        block_element_type,
+        lumped_mass,
+        length(unique_node_indices),
+        Matrix{Float64}(undef, 0, 0),
     )
     norma_log(
         0,
         :schwarz,
         "Impedance overlap side set \"$(bc.name)\": node-aligned interface, using " *
         "consistent partner traction ($(length(element_nodes)) partner elements).",
+    )
+    return nothing
+end
+
+# Exodus HEX8 local face connectivity (node orderings; orientation is
+# irrelevant here — faces are matched between elements by sorted node sets
+# and used only for surface quadrature).
+const _hex8_faces = (
+    (1, 2, 6, 5), (2, 3, 7, 6), (3, 4, 8, 7), (1, 5, 8, 4), (1, 4, 3, 2), (5, 6, 7, 8)
+)
+
+# Closest point on a bilinear quadrilateral (columns of X, 3x4) to point p:
+# Gauss-Newton on the tangent-orthogonality conditions, clamped to the
+# reference square. Returns the reference coordinates and the distance.
+function _closest_point_quad4(X::Matrix{Float64}, p::AbstractVector{Float64})
+    ξ = zeros(2)
+    for _ in 1:20
+        N, dN, _ = interpolate(QUAD4, ξ)
+        x = X * Vector(N)
+        J = X * Matrix(dN)'
+        r = J' * (x - p)
+        Δ = (J' * J) \ r
+        ξ -= Δ
+        norm(Δ) < 1.0e-12 && break
+    end
+    ξ = clamp.(ξ, -1.0, 1.0)
+    N, _, _ = interpolate(QUAD4, ξ)
+    return ξ, norm(X * Vector(N) - p)
+end
+
+# Stage 2a of the variational-transfer design: consistent partner traction
+# across a NON-conforming interface. Γ_k cuts through partner elements, so
+# the one-sided partial assembly is performed on the offset partner facet
+# surface Γ̃ — the boundary between the partner elements exterior to Γ_k
+# (centroid on the side this BC's outward normal points toward) and the
+# rest, a staircase within one partner element of Γ_k. The weak flux there
+# is the exact discrete traction of the partner scheme; it is converted to
+# a traction field with W̃⁻¹ and carried to this side's trace space with the
+# surface-to-surface variational operator R, precomposed as transfer = R W̃⁻¹.
+# The surface offset introduces an O(h_partner) modeling error that acts on
+# the exact discrete flux instead of recovered stress.
+function build_offset_traction_patch!(
+    model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
+)
+    coupled_subsim = coupled_subsim_of(bc)
+    coupled_solid = get_fom_model(coupled_subsim)
+    unique_node_indices = unique(bc.side_set_node_indices)
+    num_dst_nodes = length(unique_node_indices)
+    normals = compute_normal(model.mesh, bc.side_set_id, model)
+    own_points = model.reference[:, unique_node_indices]
+
+    # Classify every partner element by the side of Γ_k its centroid lies on,
+    # using the outward normal at the nearest boundary node of this side.
+    struct_record = Vector{Tuple{Int64,Int64,Vector{Int64},Bool}}()  # (block, elem, nodes, exterior)
+    blocks = Exodus.read_sets(coupled_solid.mesh, Block)
+    block_element_type = Vector{ElementType}(undef, length(blocks))
+    for (block_index, block) in enumerate(blocks)
+        element_type_string = Exodus.read_block_parameters(coupled_solid.mesh, block.id)[1]
+        block_element_type[block_index] = element_type_from_string(element_type_string)
+        connectivity = get_block_connectivity(coupled_solid.mesh, block.id)
+        num_block_elements, num_element_nodes = size(connectivity)
+        if num_element_nodes != 8
+            if bc.partner_traction_mode == "consistent traction"
+                norma_abort(
+                    "Consistent traction across a non-aligned interface currently requires " *
+                    "hexahedral partner elements (side set \"$(bc.name)\").",
+                )
+            end
+            return nothing  # auto: fall back to recovered stress
+        end
+        for e in 1:num_block_elements
+            nodes = [connectivity[(e - 1) * num_element_nodes + n] for n in 1:num_element_nodes]
+            centroid = vec(sum(coupled_solid.reference[:, nodes]; dims=2)) ./ num_element_nodes
+            best_i = 1
+            best_d2 = Inf
+            for i in 1:num_dst_nodes
+                d2 = sum((centroid .- own_points[:, i]) .^ 2)
+                if d2 < best_d2
+                    best_d2 = d2
+                    best_i = i
+                end
+            end
+            exterior = dot(centroid - own_points[:, best_i], normals[:, best_i]) > 0.0
+            push!(struct_record, (block_index, e, nodes, exterior))
+        end
+    end
+
+    # Γ̃ faces: partner element faces shared by an exterior and an interior
+    # element, found by matching sorted node quadruples.
+    face_owner = Dict{NTuple{4,Int64},Vector{Tuple{Bool,NTuple{4,Int64}}}}()
+    for (_, _, nodes, exterior) in struct_record
+        for f in _hex8_faces
+            fn = (nodes[f[1]], nodes[f[2]], nodes[f[3]], nodes[f[4]])
+            key = NTuple{4,Int64}(sort(collect(fn)))
+            push!(get!(face_owner, key, Vector{Tuple{Bool,NTuple{4,Int64}}}()), (exterior, fn))
+        end
+    end
+    tilde_faces = Vector{NTuple{4,Int64}}()
+    for (_, owners) in face_owner
+        if length(owners) == 2 && owners[1][1] != owners[2][1]
+            push!(tilde_faces, owners[1][2])
+        end
+    end
+    if isempty(tilde_faces)
+        if bc.partner_traction_mode == "consistent traction"
+            norma_abort(
+                "Could not construct the offset partner facet surface for side set " *
+                "\"$(bc.name)\" (no exterior/interior partner element boundary found).",
+            )
+        end
+        return nothing
+    end
+    tilde_index = Dict{Int64,Int64}()
+    for fn in tilde_faces, g in fn
+        haskey(tilde_index, g) || (tilde_index[g] = length(tilde_index) + 1)
+    end
+    num_tilde = length(tilde_index)
+
+    # Surface mass matrix W̃ on Γ̃ (2x2 Gauss per quadrilateral face).
+    N_q, dN_q, w_q, _ = isoparametric(QUAD4, 4)
+    W̃ = zeros(num_tilde, num_tilde)
+    for fn in tilde_faces
+        face_nodes = collect(fn)
+        Xf = coupled_solid.reference[:, face_nodes]
+        rows = [tilde_index[g] for g in face_nodes]
+        for point in 1:4
+            Np = Vector(N_q[:, point])
+            dNp = Matrix(dN_q[:, :, point])
+            dXdξ = dNp * Xf'
+            j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
+            W̃[rows, rows] += Np * Np' * j * w_q[point]
+        end
+    end
+
+    # Surface-to-surface variational operator R = ∫_Γ N_k Ñᵀ dΓ, assembled
+    # with this BC's (optionally subdivided) facet quadrature; at each
+    # quadrature point the closest Γ̃ face provides the source values.
+    local_from_global_map = bc.local_from_global_map
+    R = zeros(num_dst_nodes, num_tilde)
+    coords = model.reference
+    side_set_node_index = 1
+    m = bc.transfer_subdivisions
+    g = 1.0 / sqrt(3.0)
+    for num_side in bc.num_nodes_sides
+        side_nodes = bc.side_set_node_indices[side_set_node_index:(side_set_node_index + num_side - 1)]
+        side_set_node_index += num_side
+        num_side == 4 || norma_abort(
+            "Consistent traction across a non-aligned interface requires quadrilateral " *
+            "boundary facets (side set \"$(bc.name)\").",
+        )
+        Xs = coords[:, side_nodes]
+        dst_rows = [local_from_global_map[g_] for g_ in side_nodes]
+        for i in 1:m, j_ in 1:m, (η₁, η₂) in ((-g, -g), (g, -g), (g, g), (-g, g))
+            ξ_sub = [-1.0 + (2 * i - 1) / m + η₁ / m, -1.0 + (2 * j_ - 1) / m + η₂ / m]
+            Np, dNp, _ = interpolate(QUAD4, ξ_sub)
+            Np = Vector(Np)
+            dNp = Matrix(dNp)
+            dXdξ = dNp * Xs'
+            jac = norm(cross(dXdξ[1, :], dXdξ[2, :]))
+            x_qp = Xs * Np
+            best = (Inf, zeros(2), tilde_faces[1])
+            for fn in tilde_faces
+                Xf = coupled_solid.reference[:, collect(fn)]
+                ξ_f, dist = _closest_point_quad4(Xf, x_qp)
+                dist < best[1] && (best = (dist, ξ_f, fn))
+            end
+            Ñ, _, _ = interpolate(QUAD4, best[2])
+            src_rows = [tilde_index[g_] for g_ in best[3]]
+            R[dst_rows, src_rows] += Np * Vector(Ñ)' * jac / m^2
+        end
+    end
+    transfer = Matrix((W̃ \ R')')
+
+    # One-sided patch: exterior partner elements touching any Γ̃ node.
+    element_nodes = Vector{Vector{Int64}}()
+    element_block = Vector{Int64}()
+    element_index = Vector{Int64}()
+    element_rows = Vector{Vector{Tuple{Int64,Int64}}}()
+    for (block_index, e, nodes, exterior) in struct_record
+        exterior || continue
+        rows = Vector{Tuple{Int64,Int64}}()
+        for (a, g_) in enumerate(nodes)
+            idx = get(tilde_index, g_, 0)
+            idx > 0 && push!(rows, (a, idx))
+        end
+        isempty(rows) && continue
+        push!(element_nodes, nodes)
+        push!(element_block, block_index)
+        push!(element_index, e)
+        push!(element_rows, rows)
+    end
+    lumped_mass = coupled_subsim.integrator isa CentralDifference
+    bc.traction_patch = ConsistentTractionPatch(
+        element_nodes, element_block, element_index, element_rows, block_element_type,
+        lumped_mass, num_tilde, transfer,
+    )
+    norma_log(
+        0,
+        :schwarz,
+        "Impedance overlap side set \"$(bc.name)\": non-aligned interface, using " *
+        "consistent partner traction via the offset facet surface " *
+        "($(length(element_nodes)) patch elements, $(length(tilde_faces)) offset faces).",
     )
     return nothing
 end
@@ -621,8 +835,7 @@ function consistent_partner_traction(
     coupled_solid::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
 )
     patch = bc.traction_patch
-    num_dst_nodes = length(bc.global_from_local_map)
-    weak_traction = zeros(3, num_dst_nodes)
+    weak_traction = zeros(3, patch.num_targets)
     for element in eachindex(patch.element_nodes)
         nodes = patch.element_nodes[element]
         block_index = patch.element_block[element]
@@ -666,6 +879,11 @@ function consistent_partner_traction(
             weak_traction[2, i] -= λ[2, a]
             weak_traction[3, i] -= λ[3, a]
         end
+    end
+    # Non-conforming (offset-surface) patch: carry the weak flux from the
+    # offset surface Γ̃ to this side's trace space.
+    if size(patch.transfer, 1) > 0
+        weak_traction = weak_traction * patch.transfer'
     end
     return weak_traction
 end
