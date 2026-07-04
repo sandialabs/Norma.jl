@@ -440,6 +440,30 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
                 end
             end
         end
+        # Content-aware absorption tangent: c_v Σ_l W_il T(n_l) F_lj blocks.
+        F = bc.content_filter
+        if size(F, 1) > 0 && c_v != 0.0
+            num_nodes = length(global_from_local_map)
+            for (l_local, _) in enumerate(global_from_local_map)
+                n = normals[:, l_local]
+                Tl = zeros(3, 3)
+                for a in 1:3, b in 1:3
+                    Tl[a, b] = c_v * ((Z_p - Z_s) * n[a] * n[b] + (a == b ? Z_s : 0.0))
+                end
+                for i_local in 1:num_nodes, j_local in 1:num_nodes
+                    coeff = W[i_local, l_local] * F[l_local, j_local]
+                    coeff == 0.0 && continue
+                    i_global = global_from_local_map[i_local]
+                    j_global = global_from_local_map[j_local]
+                    for a in 1:3, b in 1:3
+                        Tl[a, b] == 0.0 && continue
+                        dof_i = 3 * (i_global - 1) + a
+                        dof_j = 3 * (j_global - 1) + b
+                        K_io[dof_i, dof_j] += coeff * Tl[a, b]
+                    end
+                end
+            end
+        end
     end
     return K_io
 end
@@ -454,12 +478,14 @@ function compute_impedance_overlap_schwarz_projectors!(
 )
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     build_consistent_traction_patch!(dst_model, dst_bc)
-    if dst_bc.transfer_mode == "variational"
-        # Variational transfer: P = W \\ L is the L2(Γ)-orthogonal projection of
-        # the partner fields onto this side's trace space — non-expansive in
-        # L2 for any quadrature, and constants transfer exactly (partner
+    if dst_bc.transfer_mode == "variational" || dst_bc.content_absorption
+        # Variational projector: P = W \\ L is the L2(Γ)-orthogonal projection
+        # of the partner fields onto this side's trace space — non-expansive
+        # in L2 for any quadrature, and constants transfer exactly (partner
         # partition of unity gives L·1 = W·1). On a node-aligned interface
-        # L = W row-permuted and P reduces to the identity selection.
+        # L = W row-permuted and P reduces to the identity selection. Also
+        # built (without being used for the transfer) when the content-aware
+        # absorption needs its column span.
         coupled_solid = get_fom_model(coupled_subsim_of(dst_bc))
         L = get_overlap_rectangular_projection_matrix(
             dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance;
@@ -468,6 +494,24 @@ function compute_impedance_overlap_schwarz_projectors!(
         dst_bc.variational_projector = dst_bc.square_projector \ L
     else
         dst_bc.variational_projector = Matrix{Float64}(undef, 0, 0)
+    end
+    if dst_bc.content_absorption
+        # Content filter I - Π: Π is the W-orthogonal projection onto the
+        # transferable space at this boundary — the span of the variational
+        # projector's columns (one column per partner node with support on
+        # the interface). What Π keeps can be represented by the partner and
+        # crosses the interface; what I - Π keeps cannot, and is dissipated
+        # by the content-aware LK term. P·1 = 1 puts constants in the span,
+        # and on node-aligned interfaces the span is everything (filter = 0).
+        P = dst_bc.variational_projector
+        W = dst_bc.square_projector
+        cols = [j for j in 1:size(P, 2) if maximum(abs.(P[:, j])) > 1.0e-12]
+        B = P[:, cols]
+        G = B' * W * B
+        Π = B * (pinv(G; rtol=1.0e-10) * (B' * W))
+        dst_bc.content_filter = Matrix{Float64}(I, size(Π)...) - Π
+    else
+        dst_bc.content_filter = Matrix{Float64}(undef, 0, 0)
     end
     return nothing
 end
@@ -494,7 +538,7 @@ function impedance_partner_fields(
         trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
         trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
     end
-    if size(bc.variational_projector, 1) > 0
+    if bc.transfer_mode == "variational"
         P = bc.variational_projector
         partner_velo .= coupled_solid.velocity * P'
         partner_disp .= coupled_solid.displacement * P'
@@ -978,13 +1022,22 @@ function build_impedance_schwarz_force(model::SolidMechanics)
             global_from_local_map = bc.global_from_local_map
             num_nodes = length(global_from_local_map)
             normals = compute_normal(model.mesh, bc.side_set_id, model)
+            velo = model.velocity[:, global_from_local_map]
+            # Content-aware absorption: LK-dissipate the non-transferable
+            # component (I - Π) u̇ of this side's boundary velocity.
+            filtered = size(bc.content_filter, 1) > 0 ? velo * bc.content_filter' : zeros(3, 0)
             Zv = zeros(3, num_nodes)
             for (i_local, i_global) in enumerate(global_from_local_map)
                 n = normals[:, i_local]
-                v = model.velocity[:, i_global]
+                v = velo[:, i_local]
                 u = model.displacement[:, i_global]
                 vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
                 Zv[:, i_local] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n) .+ α .* u
+                if size(filtered, 2) > 0
+                    vf = filtered[:, i_local]
+                    vfn = n[1] * vf[1] + n[2] * vf[2] + n[3] * vf[3]
+                    Zv[:, i_local] .+= (Z_p * vfn) .* n .+ Z_s .* (vf .- vfn .* n)
+                end
             end
             for comp in 1:3
                 f_imp = W * Zv[comp, :]
@@ -1041,7 +1094,7 @@ function report_impedance_interface_work(sim)
             println(
                 io,
                 "time,subdomain,side_set,P_total,P_traction,P_dashpot,P_robin," *
-                "velocity_jump_rms,traction_mismatch_rms",
+                "velocity_jump_rms,traction_mismatch_rms,P_absorb",
             )
         end
     end
@@ -1136,14 +1189,29 @@ function report_impedance_interface_work(sim)
                     P_robin += dot(velo[comp, :], W * robin[comp, :])
                 end
             end
-            P_total = P_trac + P_dash + P_robin
+            # Content-aware absorption drain (self term; ≤ 0 by construction).
+            P_absorb = 0.0
+            if size(bc.content_filter, 1) > 0
+                filtered = velo * bc.content_filter'
+                zvf = zeros(3, num_nodes)
+                for i in 1:num_nodes
+                    n = normals[:, i]
+                    vf = filtered[:, i]
+                    vfn = n[1] * vf[1] + n[2] * vf[2] + n[3] * vf[3]
+                    zvf[:, i] = (Z_p * vfn) .* n .+ Z_s .* (vf .- vfn .* n)
+                end
+                for comp in 1:3
+                    P_absorb -= dot(velo[comp, :], W * zvf[comp, :])
+                end
+            end
+            P_total = P_trac + P_dash + P_robin + P_absorb
             vjump_rms = sqrt(vjump2 / num_nodes)
             tmis_rms = sqrt(tmis2 / num_nodes)
             open(csv_path, "a") do io
                 println(
                     io,
                     "$t,$subsim_index,$(bc.side_set_id),$P_total,$P_trac,$P_dash,$P_robin," *
-                    "$vjump_rms,$tmis_rms",
+                    "$vjump_rms,$tmis_rms,$P_absorb",
                 )
             end
         end

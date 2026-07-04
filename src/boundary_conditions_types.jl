@@ -180,6 +180,14 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     transfer_mode::String
     transfer_subdivisions::Int64  # facet-quadrature subdivisions for the L assembly
     variational_projector::Matrix{Float64}
+    # Content-aware absorption: LK-dissipate the component of this side's
+    # boundary velocity that the partner's trace space cannot represent,
+    # (I - Π) u̇ with Π the W-orthogonal projection onto the span of the
+    # variational projector's columns. Constants are transferable (P·1 = 1),
+    # so rigid motions are untouched; on node-aligned interfaces the filter
+    # vanishes identically. content_filter = I - Π, empty when disabled.
+    content_absorption::Bool
+    content_filter::Matrix{Float64}
     coupled_block_name::String
     search_tolerance::Float64
     parent::Simulation

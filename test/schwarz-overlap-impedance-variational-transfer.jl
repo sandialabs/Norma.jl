@@ -28,7 +28,8 @@
         # the reproduction invariants below hold for any rule.
         y = replace(y, r"(source side set: [\w+-]+)" => s"\1
       transfer: variational
-      transfer quadrature subdivisions: 3")
+      transfer quadrature subdivisions: 3
+      content aware absorption: true")
         write(f, y)
     end
     multi = read("cantilever-impedance.yaml", String)
@@ -76,5 +77,16 @@
         # coordinates, even though the meshes do not align.
         own = model.reference[:, unique(bc.side_set_node_indices)]
         @test maximum(abs.(coupled.reference * P' - own)) < 1.0e-12
+        # Content-aware absorption filter: annihilates constants (rigid
+        # motions are transferable) and is dissipative in the W inner
+        # product per scalar channel.
+        F = bc.content_filter
+        W = bc.square_projector
+        @test size(F) == (num_boundary_nodes, num_boundary_nodes)
+        @test maximum(abs.(F * ones(num_boundary_nodes))) < 1.0e-10
+        for _ in 1:20
+            v = randn(num_boundary_nodes)
+            @test dot(v, W * (F * v)) > -1.0e-10
+        end
     end
 end
