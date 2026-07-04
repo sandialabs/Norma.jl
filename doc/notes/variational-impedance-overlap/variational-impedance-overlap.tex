@@ -7,7 +7,7 @@
 
 \newcommand{\dd}{\mathrm{d}}
 
-\title{Design: Mortar Transfer for Impedance-Overlap Schwarz \\
+\title{Design: Variational Transfer for Impedance-Overlap Schwarz \\
 on Non-Conforming Meshes}
 \author{Alejandro Mota}
 
@@ -64,7 +64,8 @@ coupling on nonmatching grids: (i) Robin (not Dirichlet) transmission,
 operator, (iii) an $L^2$-contractive intergrid transfer.  The
 impedance-overlap BC satisfies (i); its weak (surface-mass-weighted)
 assembly satisfies (ii); pointwise interpolation violates (iii).
-Replacing the transfer with the $L^2$ (mortar) projection onto the
+Replacing the transfer with the variational ($L^2$-projection, known as
+mortar in the domain-decomposition literature) transfer onto the
 receiving trace space satisfies all three simultaneously.  Note that
 weak-$L^2$ enforcement of \emph{Dirichlet} overlap coupling did not
 remove the DBC instability --- consistent with the theory, since DBC
@@ -106,7 +107,7 @@ partner one-sided weak flux &
 $~L_{kj}$ is assembled by quadrature over $\Omega_k$'s boundary facets;
 at each quadrature point the partner \emph{volume} element is located
 (\texttt{find\_point\_in\_mesh}) and its shape functions evaluated ---
-exactly the mortar cross-mass for an overlap boundary, which is
+exactly the variational cross-mass for an overlap boundary, which is
 interior to the partner and therefore has no partner surface mesh.
 
 Two structural properties come for free.  First,
@@ -121,10 +122,10 @@ quadrature accuracy.
 
 \section{Design}
 
-\subsection{Stage 1: mortar projection of the transferred fields}
+\subsection{Stage 1: variational projection of the transferred fields}
 
 Replace pointwise interpolation of the three partner fields with the
-mortar projection, leaving everything downstream of the nodal values
+variational projection, leaving everything downstream of the nodal values
 unchanged:
 \begin{equation}
   \hat{\dot{~u}}_j = ~P_{kj}\, \dot{~u}_j, \qquad
@@ -147,8 +148,8 @@ Implementation touch points:
 \begin{itemize}
 \item \textbf{YAML}: new BC option \texttt{transfer:} with values
       \texttt{pointwise} (current behavior, initial default) and
-      \texttt{mortar}.
-\item \textbf{Types}: field \texttt{mortar\_projector::Matrix\{Float64\}}
+      \texttt{variational}.
+\item \textbf{Types}: field \texttt{variational\_projector::Matrix\{Float64\}}
       ($n_k \times N_j$, dense; boundary node count times partner node
       count, small for realistic interfaces) on
       \texttt{SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition}.
@@ -185,7 +186,7 @@ What stage 1 answers: how much of the 600\,J churn is the
 \emph{transfer} (interpolation aliasing of mesh-scale content) versus
 the \emph{recovered-stress traction}.  The conforming ladder bounds
 what recovery-quality traction can achieve ($\approx$1.5\%-class); if
-mortar transfer restores $O(h)$ scaling of the channels, refinement
+variational transfer restores $O(h)$ scaling of the channels, refinement
 plus stage 2 closes the rest.
 
 \subsection{Stage 2: consistent traction across the interface}
@@ -199,14 +200,14 @@ $\Gamma_k$ cuts through partner elements, so the patch does not exist
 on $\Gamma_k$ itself.  Two generalizations, in order of increasing
 cost:
 
-\paragraph{2a: offset facet surface + surface mortar.}  Take
+\paragraph{2a: offset facet surface + surface variational.}  Take
 $\tilde\Gamma_j$ = the partner facet surface immediately exterior to
 $\Gamma_k$ (the boundary between the first exterior element layer and
 the rest; the patch-construction logic already classifies these
 elements).  The consistent flux is exact on $\tilde\Gamma_j$ by the
 same partial assembly as the conforming case, tested with partner
 surface functions.  Transfer the resulting weak traction to
-$\Gamma_k$'s trace space with the surface-to-surface mortar
+$\Gamma_k$'s trace space with the surface-to-surface variational transfer
 ($\texttt{get\_rectangular\_projection\_matrix}$ generalized to accept
 the internal surface in place of a side set, or an equivalent
 assembled operator), i.e.\
@@ -235,7 +236,7 @@ energy: success is driving the churn itself down, since the current
 scheme already fakes a small net by cancellation.
 
 \begin{enumerate}
-\item \textbf{Conforming regression}: mortar transfer on the
+\item \textbf{Conforming regression}: variational transfer on the
       node-aligned pair must reproduce the pointwise results exactly
       ($~P = ~I$); the consistent-traction 0.08\% result must be
       unaffected.  Extend test 103/104 asserts with the projector
@@ -259,16 +260,60 @@ scheme already fakes a small net by cancellation.
       loops; no recovery solve once stage 2 lands).
 \end{enumerate}
 
+\section{Stage 1 measurements (2026-07-03)}
+
+Stage 1 was implemented (\texttt{transfer: variational}, commit-level
+detail in the repository) and measured on the instrumented 1\,ms
+non-conforming benchmark:
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+1\,ms, II, PU metric & pointwise $h$ & pointwise $h/2$ &
+  variational $h$ & variational $h/2$ \\
+\midrule
+dashpot work [J] & $-606.5$ & $-598.5$ & $-726.1$ & $-483.9$ \\
+traction-channel work [J] & $+677$ & $+768$ & $+880$ & $+700$ \\
+net PU-energy error & $-0.75$\% & $+1.5$\% & $+6.2$\% (growth) & $+0.7$\% (growth) \\
+mean velocity jump [m/s] & 40.0 & 27.0 & 37.8 & 28.0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three conclusions.  First, the variational transfer restores an
+$h$-dependence that pointwise interpolation lacks (dashpot churn
+$726 \to 484$\,J under refinement, versus unchanged), but the decay is
+slow and the channel magnitudes remain in the hundreds of joules ---
+the error class is unchanged.  Second, at the coarse resolution the
+net error \emph{worsens} (6.2\% growth versus 0.75\%): under pointwise
+interpolation the kinematic-transfer error and the recovered-traction
+error come from the same interpolant and partially cancel inside the
+transmission condition; projecting the kinematics decorrelates them,
+and the interface becomes net-injecting.  Third, the traction channel
+is transfer-dependent and did not improve ($+880$\,J at $h$): the
+recovered-stress traction remains the dominant polluter.
+
+The design consequence: \textbf{stage 2 is not optional}.  The
+kinematic variational transfer should land \emph{together} with a
+variational (consistent) traction --- shipping stage 1 alone is
+counterproductive at production resolutions.  A cheap secondary
+experiment before stage 2: elevate the facet quadrature of
+$~L_{kj}$ to separate its consistency error from the traction-channel
+error at the 4:3 mesh ratio.
+
 \section{Summary}
 
 Stage 1 is a low-risk, high-information change that reuses the square
 ($~W_k$) and rectangular ($~L_{kj}$) projection machinery verbatim:
-mortar-project $\dot{~u}_j$, $~u_j$, and $~\sigma_j^{\mathrm{rec}}$
+variationally project $\dot{~u}_j$, $~u_j$, and $~\sigma_j^{\mathrm{rec}}$
 onto the receiving trace space and keep the rest of the impedance
-pipeline unchanged.  It makes the transfer $L^2$-contractive by
-construction, completing GHN's three conditions for the first time in
-this code, and its measurements decide between the two stage-2
-traction designs.  The conforming limit and the consistent-traction
-path are preserved automatically.
+pipeline unchanged.  The conforming limit and the consistent-traction
+path are preserved automatically.  The stage-1 measurements show that
+contractive kinematics alone do not reduce the interface churn ---
+they restore $h$-decay but break the error cancellation that kept the
+pointwise scheme's net small --- so the variational transfer and the
+stage-2 variational traction must ship together, with the channel
+decomposition (not the net energy) as the acceptance metric.
 
 \end{document}
