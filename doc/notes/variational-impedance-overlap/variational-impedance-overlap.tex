@@ -297,10 +297,22 @@ recovered-stress traction remains the dominant polluter.
 The design consequence: \textbf{stage 2 is not optional}.  The
 kinematic variational transfer should land \emph{together} with a
 variational (consistent) traction --- shipping stage 1 alone is
-counterproductive at production resolutions.  A cheap secondary
-experiment before stage 2: elevate the facet quadrature of
-$~L_{kj}$ to separate its consistency error from the traction-channel
-error at the 4:3 mesh ratio.
+counterproductive at production resolutions.
+
+\paragraph{Quadrature experiment.}  Elevating the facet quadrature of
+$~L_{kj}$ (a $4\times4$ sub-cell rule via the new
+\texttt{transfer quadrature subdivisions} option, sub-cells of
+2.1\,mm against 6.35\,mm partner elements) separates the quadrature
+consistency error from the traction-channel error at $h$: the net
+error improves from $+6.2$\% to $+2.4$\% growth --- so the default
+rule's consistency error was a material contributor to the stage-1 net
+degradation and the subdivided rule should be used whenever the
+facet-size ratio is coarse --- while the channel magnitudes grow
+(dashpot $-726 \to -857$\,J, traction $+880 \to +941$\,J): the more
+faithful projection captures more of the partner's mesh-scale content,
+which the dashpot must then dissipate.  Accurate transfer quadrature
+therefore does not change the conclusion: the recovered-stress
+traction channel dominates, and stage 2 remains the required fix.
 
 \section{Summary}
 
