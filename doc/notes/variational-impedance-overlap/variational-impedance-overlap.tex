@@ -473,6 +473,58 @@ grids, not of the transmission condition.  The impedance dashpot is
 the correct interface-level treatment and is already in place; the
 remaining energy budget belongs to the time integrator.
 
+\section{HHT-$\alpha$ and the damping trade-off (2026-07-03)}
+
+HHT-$\alpha$ numerical dissipation was added to the Newmark integrator
+(\texttt{HHT alpha:} $\bar\alpha \in [0, 1/3]$; internal force
+assembled at the blended state $(1-\bar\alpha) u_{n+1} +
+\bar\alpha u_n$, $\gamma = 1/2 + \bar\alpha$ and $\beta =
+(1+\bar\alpha)^2/4$ derived, $\rho_\infty =
+(1-\bar\alpha)/(1+\bar\alpha)$) and swept on both mesh pairs at
+1\,ms, $\Delta t = 10^{-6}$\,s:
+
+\begin{center}
+\small
+\begin{tabular}{lccccc}
+\toprule
+$\bar\alpha$ & 0 & 0.02 & 0.05 & 0.1 & 0.2 \\
+\midrule
+non-conforming $E/E_0$ & 1.007 & 0.952 & 0.892 & 0.833 & 0.781 \\
+conforming $E/E_0$ (damping cost) & 0.999 & 0.969 & 0.938 & 0.905 & 0.873 \\
+interface-specific extra loss & $\pm 1$\% & 1.7\% & 4.9\% & 8.0\% & 10.5\% \\
+dashpot churn [J] & $-607$ & $-595$ & $-580$ & $-561$ & $-540$ \\
+jump growth (halves, m/s) & $33\to47$ & $32\to44$ & $31\to41$ & $30\to37$ & $29\to32$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three findings.  First, mild HHT barely touches the churn even though
+$\bar\alpha = 0.1$ has the \emph{same} $\rho_\infty = 0.818$ as the
+Newmark $\gamma = 0.6$ diagnostic that killed the loop: at $\Delta t =
+10^{-6}$\,s the mesh-frequency band sits at $\omega\Delta t \approx
+0.3$--$0.7$, which the time step resolves and HHT (by design)
+preserves, while Newmark-$\gamma$'s broadband first-order damping
+reaches it --- and the physics with it (87\% loss vs 17\% at the same
+$\rho_\infty$).  Second, pushing the band into HHT's damped range with
+$\Delta t = 4\times10^{-6}$\,s does not help \emph{on this
+benchmark}: the conforming cost balloons to 31\%, because the
+parabolic release has \textbf{no scale separation} --- its physical
+content extends to the grid scale, so any damping strategy bills real
+energy.  Third, the interface-specific extra loss \emph{grows} with
+damping (1.7 to 10.5\%): the interface keeps regenerating band content
+that the integrator then removes.
+
+\paragraph{Reading.}  Damping converts the knife-edge $\pm 1$\%
+(sign-indefinite, growth-capable) into monotone, bounded decay ---
+robustness --- at a cost proportional to how much of the problem's
+energy lives in the reverberating band.  On this benchmark that
+fraction is large by construction; on production problems with scale
+separation (smooth loading, mesh resolving the physics with margin),
+$\bar\alpha \approx 0.02$--$0.05$ with a physics-sized $\Delta t$
+buys the robustness at near-zero cost.  Demonstrating that
+quantitatively needs a smooth-content benchmark --- the natural
+companion to the bimaterial test in the open items.
+
 \section{Summary}
 
 Stage 1 is a low-risk, high-information change that reuses the square
