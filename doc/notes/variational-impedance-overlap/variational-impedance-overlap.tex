@@ -314,6 +314,66 @@ which the dashpot must then dissipate.  Accurate transfer quadrature
 therefore does not change the conclusion: the recovered-stress
 traction channel dominates, and stage 2 remains the required fix.
 
+\section{Stage 2a measurements (2026-07-03)}
+
+Stage 2a was implemented (offset-surface consistent traction with the
+surface-to-surface transfer $~T = ~R \tilde{~W}^{-1}$) and verified
+against a manufactured uniform uniaxial-stress state: the transferred
+weak traction reproduces $~W (\sigma ~n)$ to $10^{-11}$ relative error
+on the non-conforming pair, confirming the construction.  (A uniform
+uniaxial-\emph{strain} state fails the same test by design: its
+lateral confinement tractions are correctly picked up by the one-sided
+assembly on the patch's lateral boundary strips.)  The instrumented
+benchmark, however, is decisively negative, completing a fidelity
+ladder at $h$:
+
+\begin{center}
+\small
+\begin{tabular}{lcc}
+\toprule
+1\,ms, II, PU metric, $h$ & dashpot work & net PU error \\
+\midrule
+pointwise + recovered stress & $-607$\,J & $-0.75$\% \\
+variational + recovered stress & $-726$\,J & $+6.2$\% (growth) \\
+variational, subdivided + recovered stress & $-857$\,J & $+2.4$\% (growth) \\
+variational, subdivided + consistent traction (2a) & $-1129$\,J & $+9.3$\% (growth) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each fidelity increase makes the interface churn \emph{worse}.  The
+reading: on non-matching grids the round trip cannot be the identity;
+whatever content cannot be represented across the interface must be
+dissipated, or it aliases and reverberates.  Nodal stress recovery had
+been acting as a beneficial low-pass filter; the exact discrete flux
+transmits the partner's full mesh-scale content into a trace space
+that cannot carry it, and the feedback loop (growing velocity jumps)
+is pumped harder.  Fidelity without a mechanism that removes
+non-transferable content is anti-stabilizing.
+
+A second structural defect is now visible: the traction arrives
+through $~T$ (built on the offset surface) while the velocity arrives
+through $~P$ (built from volume interpolation) --- two different
+filters.  The impedance condition has characteristic structure,
+$t_k - Z \dot u_k = -(t_j + Z \dot u_j)$ up to signs: for outgoing
+waves the combination $g_j = ~t_j + ~Z \dot{~u}_j + \alpha ~u_j$ is
+smooth even when $~t_j$ and $\dot{~u}_j$ separately carry mesh-scale
+standing content, because that content cancels \emph{within} $g_j$.
+Transferring the two pieces through different operators destroys the
+cancellation at exactly the mesh scale where it matters.
+
+\paragraph{Proposed stage 2c: single-operator characteristic
+transfer.}  Assemble the partner's full Robin datum on the offset
+surface --- $\tilde{~g} = -\tilde{\lambda} + \tilde{~W}\,
+(~Z\,\dot{~u}_j + \alpha\,~u_j)\big|_{\tilde\Gamma}$, using the
+partner's own nodal trace values on $\tilde\Gamma$ (no interpolation
+at all) --- and transfer it with the single operator $~T$.  The
+mesh-scale cancellation then happens on the partner side, before
+transfer.  Implementation cost is small: keep $\tilde{~W}$ and the
+$\tilde\Gamma$ node list in the patch, and bypass $~P$ in the
+right-hand side.  This, not higher-fidelity separate transfers, is the
+natural next experiment.
+
 \section{Summary}
 
 Stage 1 is a low-risk, high-information change that reuses the square
