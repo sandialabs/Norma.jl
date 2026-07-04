@@ -371,8 +371,50 @@ at all) --- and transfer it with the single operator $~T$.  The
 mesh-scale cancellation then happens on the partner side, before
 transfer.  Implementation cost is small: keep $\tilde{~W}$ and the
 $\tilde\Gamma$ node list in the patch, and bypass $~P$ in the
-right-hand side.  This, not higher-fidelity separate transfers, is the
-natural next experiment.
+right-hand side.  This was implemented and measured; see the
+following section --- the hypothesis did not survive.
+
+\section{Stage 2c measurements and revised conclusions (2026-07-03)}
+
+Stage 2c was implemented (single-operator characteristic transfer of
+the complete Robin datum, assembled on $\tilde\Gamma$ from the
+partner's own nodal trace values) and benchmarked identically.  The
+result is statistically indistinguishable from stage 2a: dashpot work
+$-1084$ vs $-1129$\,J, net $+9.8$ vs $+9.3$\% growth, the same
+velocity-jump growth.  The characteristic-cancellation hypothesis is
+refuted: the operator pairing between traction and velocity is not the
+driver.
+
+The complete five-variant ladder at $h$ now reads: pointwise +
+recovered $-607$\,J / $-0.75$\%; variational + recovered $-726$\,J /
+$+6.2$\%; + subdivided quadrature $-857$\,J / $+2.4$\%; + consistent
+traction (2a) $-1129$\,J / $+9.3$\%; characteristic (2c) $-1084$\,J /
+$+9.8$\%.  Every fidelity increase pumps the churn.  The conclusion is
+structural, not implementational (both stages pass the uniform-stress
+patch test to $10^{-11}$): \textbf{on non-matching grids, content that
+cannot be represented across the interface must be dissipated, and
+smoothing the transferred data is beneficial --- the recovered-stress
+low-pass filter was doing load-bearing stabilization work.}  The
+parameter-free pointwise + recovered-stress scheme (with the partner
+traction term and consistent recovery) is empirically the best of the
+five variants at production resolution.
+
+\paragraph{Where this leaves the design.}
+(i) For production non-conforming runs, keep \texttt{transfer:
+pointwise} with recovered stress as the default; the variational
+machinery remains valuable for its conforming-limit exactness, the
+quadrature knob, and as diagnostic infrastructure.
+(ii) The principled next idea is a \emph{content-aware absorbing
+term}: dissipate exactly the non-transferable component by penalizing
+$(~I - \Pi)\,\dot{~u}_k$ with the characteristic impedance, where
+$\Pi$ is the round-trip transfer operator --- absorb what cannot
+cross, transmit what can.  This turns the accidental stabilization of
+the recovery filter into a designed mechanism with a conforming limit
+of zero.
+(iii) A cheap discriminating diagnostic first: rerun the benchmark
+with a dissipative integrator (Newmark $\gamma > 1/2$ or HHT-$\alpha$)
+to confirm the churn is carried by the high-frequency band that
+subdomain-level damping removes.
 
 \section{Summary}
 
