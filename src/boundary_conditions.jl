@@ -324,42 +324,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     )
 end
 
-function SolidMechanicsRobinSchwarzBoundaryCondition(
-    mesh::ExodusDatabase,
-    side_set_name::String,
-    coupled_side_set_name::String,
-    side_set_id::Int64,
-    side_set_node_indices::Vector{Int64},
-    num_nodes_sides::Vector{Int64},
-    coupled_subsim::Simulation,
-    subsim::Simulation,
-    robin_parameter::Float64,
-)
-    dirichlet_projector = Matrix{Float64}(undef, 0, 0)
-    neumann_projector = Matrix{Float64}(undef, 0, 0)
-    square_projector = Matrix{Float64}(undef, 0, 0)
-    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
-    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
-    coupled_bc_index = 0
-    return SolidMechanicsRobinSchwarzBoundaryCondition(
-        side_set_name,
-        side_set_id,
-        side_set_node_indices,
-        num_nodes_sides,
-        local_from_global_map,
-        global_from_local_map,
-        coupled_side_set_name,
-        coupled_bc_index,
-        dirichlet_projector,
-        neumann_projector,
-        square_projector,
-        robin_parameter,
-        subsim.parent,
-        subsim.handle,
-        coupled_subsim.handle,
-    )
-end
-
 function SolidMechanicsImpedanceSchwarzBoundaryCondition(
     mesh::ExodusDatabase,
     side_set_name::String,
@@ -485,20 +449,9 @@ function SMCouplingSchwarzBC(
             is_dirichlet,
             swap_bcs,
         )
-    elseif bc_type == "Schwarz RR nonoverlap"
-        robin_parameter = Float64(bc_params["robin parameter"])
-        SolidMechanicsRobinSchwarzBoundaryCondition(
-            input_mesh,
-            side_set_name,
-            coupled_side_set_name,
-            side_set_id,
-            side_set_node_indices,
-            num_nodes_sides,
-            coupled_subsim,
-            subsim,
-            robin_parameter,
-        )
-    elseif bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
+    elseif bc_type == "Schwarz RR nonoverlap" ||
+           bc_type == "Schwarz impedance nonoverlap" ||
+           bc_type == "Schwarz impedance overlap"
         # Characteristic impedances Z_p = √(ρ(λ + 2μ)) = ρ c_p and
         # Z_s = √(ρμ) = ρ c_s, computed from material properties.
         function _ps_impedances(sim)
@@ -525,7 +478,23 @@ function SMCouplingSchwarzBC(
         else
             impedance_scale = [Float64(raw_scale)]
         end
-        if bc_type == "Schwarz impedance nonoverlap"
+        if bc_type == "Schwarz RR nonoverlap"
+            # The displacement-Robin transmission condition (t + α u = g) has no
+            # impedance interpretation in elastodynamics and pumps energy at the
+            # interface (issue #176: growing interface mode, lateral kink of the
+            # bar axis under pure torsion). It is retained as an input alias that
+            # maps onto the impedance condition t + Z u̇ + α W u = g, which is
+            # dissipative in the interface jump for any Z > 0 and reduces to the
+            # old Robin condition for quasi-statics (u̇ = 0).
+            norma_log(
+                0,
+                :warning,
+                "`Schwarz RR nonoverlap` now applies the impedance transmission " *
+                "condition t + Z u̇ + α W u = g (Z from this subdomain's material); " *
+                "prefer `Schwarz impedance nonoverlap`.",
+            )
+        end
+        if bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz RR nonoverlap"
             SolidMechanicsImpedanceSchwarzBoundaryCondition(
                 input_mesh,
                 side_set_name,

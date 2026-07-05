@@ -214,24 +214,6 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     coupled_handle::DomainHandle
 end
 
-mutable struct SolidMechanicsRobinSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
-    name::String
-    side_set_id::Int64
-    side_set_node_indices::Vector{Int64}
-    num_nodes_sides::Vector{Int64}
-    local_from_global_map::Dict{Int64,Int64}
-    global_from_local_map::Vector{Int64}
-    coupled_bc_name::String
-    coupled_bc_index::Int64
-    dirichlet_projector::Matrix{Float64}
-    neumann_projector::Matrix{Float64}
-    square_projector::Matrix{Float64}
-    robin_parameter::Float64
-    parent::Simulation
-    self_handle::DomainHandle
-    coupled_handle::DomainHandle
-end
-
 # Impedance-matching Robin-Robin Schwarz: t + Z u̇ + α W u = g
 # Z = ρ c_p (characteristic impedance) absorbs outgoing waves at the interface,
 # preventing reflections that cause energy growth with mixed integrators.

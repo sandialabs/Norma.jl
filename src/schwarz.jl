@@ -1268,86 +1268,6 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchw
     end
 end
 
-function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinSchwarzBoundaryCondition)
-    α = bc.robin_parameter
-    W = bc.square_projector
-    parent_sim = bc.parent
-    num_domains = parent_sim.num_domains
-    controller = parent_sim.controller
-    iter = controller.iteration_number
-    coupled_index = bc.coupled_handle.id
-    this_index = bc.self_handle.id
-    # Neumann part of Robin RHS: -t_src projected (= get_dst_force which negates internal_force)
-    neumann_force = get_dst_force(bc)
-    # Displacement part of Robin RHS: α * W * u_src_projected
-    # Compute source displacement (current - reference) and project to destination
-    src_sim = coupled_subsim_of(bc)
-    src_model = get_fom_model(src_sim)
-    src_bc_index = bc.coupled_bc_index
-    src_bc = src_model.boundary_conditions[src_bc_index]
-    src_global_from_local_map = src_bc.global_from_local_map
-    num_src_nodes = length(src_global_from_local_map)
-    src_disp = zeros(3, num_src_nodes)
-    for (i_local, i_global) in enumerate(src_global_from_local_map)
-        src_disp[:, i_local] = src_model.displacement[:, i_global]
-    end
-    dirichlet_projector = bc.dirichlet_projector
-    num_dst_nodes = size(dirichlet_projector, 1)
-    dst_disp = zeros(3, num_dst_nodes)
-    for i in 1:3
-        dst_disp[i, :] = dirichlet_projector * src_disp[i, :]
-    end
-    global_from_local_map = bc.global_from_local_map
-    #Get relaxation parameter from input file
-    theta = controller.relaxation_parameter
-    if (this_index < coupled_index) #right subdomain
-      for comp in 1:3
-          alpha_W_u = α * (W * dst_disp[comp, :])
-          for (i_local, i_global) in enumerate(global_from_local_map)
-              dof_i = 3 * (i_global - 1) + comp
-              model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
-          end
-      end
-    else #left subdomain (relaxation applied on this side)
-      #Set g and lambda to 0 for iter = 0
-      if (iter == 0)
-        n = length(model.boundary_force)
-        g = zeros(n)
-      else
-        #this plays role of g_1.  hijack lambda_disp to store it.
-        #In particular, we set g to past lambda_disp
-        g = controller.lambda_disp[coupled_index]
-      end
-      # Optional dynamic Aitken relaxation factor. The fixed-point iterate is the
-      # Robin RHS stored in lambda_disp; its unrelaxed (theta = 1) candidate is
-      # T(g) = boundary_force + coupling term, from which the residual r = T(g) - g
-      # is formed. The fixed-theta blend below is otherwise unchanged.
-      if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
-          candidate = copy(model.boundary_force)
-          for comp in 1:3
-              alpha_W_u = α * (W * dst_disp[comp, :])
-              for (i_local, i_global) in enumerate(global_from_local_map)
-                  dof_i = 3 * (i_global - 1) + comp
-                  candidate[dof_i] += neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local]
-              end
-          end
-          theta = controller.relaxation_method === :aitken_secant ?
-              relaxation_aitken_secant_theta!(controller, coupled_index, iter, candidate, g) :
-              relaxation_aitken_recursive_theta!(controller, coupled_index, iter, candidate, g)
-      end
-      #initialize lambda_disp  = model.boundary_force
-      controller.lambda_disp[coupled_index] = copy(model.boundary_force)
-      for comp in 1:3
-          alpha_W_u = α * (W * dst_disp[comp, :])
-          for (i_local, i_global) in enumerate(global_from_local_map)
-              dof_i = 3 * (i_global - 1) + comp
-              controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * (neumann_force[3 * (i_local - 1) + comp] + alpha_W_u[i_local])
-              model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][dof_i]
-          end
-      end
-    end
-end
-
 function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
     coupled_model_obj = coupled_subsim_of(bc).model
     get_coupled_field = if coupled_model_obj isa SolidMechanics
@@ -1481,7 +1401,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     # Interpolate or use fallback
     use_predictor = (
         bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
-        bc isa SolidMechanicsRobinSchwarzBoundaryCondition
+        bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
     ) &&
     controller.use_interface_predictor &&
     controller.iteration_number == 0 &&
@@ -1961,47 +1881,3 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     return nothing
 end
 
-function pair_bc(bc::SolidMechanicsRobinSchwarzBoundaryCondition, bc_index::Int64)
-    coupled_bc_name = bc.coupled_bc_name
-    coupled_model = coupled_subsim_of(bc).model
-    coupled_bcs = coupled_model.boundary_conditions
-    for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
-        if coupled_bc_name == coupled_bc.name
-            bc.coupled_bc_index = coupled_bc_index
-            coupled_bc.coupled_bc_index = bc_index
-        end
-    end
-    return nothing
-end
-
-function compute_robin_schwarz_projectors!(
-    dst_model::SolidMechanics, dst_bc::SolidMechanicsRobinSchwarzBoundaryCondition
-)
-    compute_dirichlet_projector(dst_model, dst_bc)
-    compute_neumann_projector(dst_model, dst_bc)
-    dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
-    return nothing
-end
-
-function build_robin_schwarz_stiffness(model::SolidMechanics)
-    num_nodes = size(model.reference, 2)
-    num_dofs = 3 * num_nodes
-    K_rs = spzeros(num_dofs, num_dofs)
-    for bc in model.boundary_conditions
-        bc isa SolidMechanicsRobinSchwarzBoundaryCondition || continue
-        α = bc.robin_parameter
-        W = bc.square_projector
-        global_from_local_map = bc.global_from_local_map
-        for (i_local, i_global) in enumerate(global_from_local_map)
-            for (j_local, j_global) in enumerate(global_from_local_map)
-                w_ij = α * W[i_local, j_local]
-                for comp in 1:3
-                    dof_i = 3 * (i_global - 1) + comp
-                    dof_j = 3 * (j_global - 1) + comp
-                    K_rs[dof_i, dof_j] += w_ij
-                end
-            end
-        end
-    end
-    return K_rs
-end

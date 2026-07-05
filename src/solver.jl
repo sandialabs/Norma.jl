@@ -199,17 +199,14 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
-    K_rs = build_robin_schwarz_stiffness(model)
     K_is = build_impedance_schwarz_stiffness(model, integrator)
     K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
     K_total = model.stiffness
     K_total = nnz(K_robin) > 0 ? K_total + K_robin : K_total
-    K_total = nnz(K_rs) > 0 ? K_total + K_rs : K_total
     K_total = nnz(K_is) > 0 ? K_total + K_is : K_total
     K_total = nnz(K_io) > 0 ? K_total + K_io : K_total
-    rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
-    solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
+    solver.gradient = model.internal_force + is_internal_force - external_force
     solver.hessian = K_total
     return nothing
 end
@@ -223,10 +220,8 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
-    K_rs = build_robin_schwarz_stiffness(model)
-    rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(model.internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
-    solver.gradient = model.internal_force + rs_internal_force + is_internal_force - external_force
+    solver.gradient = model.internal_force + is_internal_force - external_force
     return nothing
 end
 
@@ -258,17 +253,14 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
-    K_rs = build_robin_schwarz_stiffness(model)
     K_is = build_impedance_schwarz_stiffness(model, integrator)
     K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
     stiffness = ᾱ > 0.0 ? (1.0 - ᾱ) * model.stiffness : model.stiffness
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
-    stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
     stiffness = nnz(K_is) > 0 ? stiffness + K_is : stiffness
     stiffness = nnz(K_io) > 0 ? stiffness + K_io : stiffness
-    rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
-    internal_force = internal_force + rs_internal_force + is_internal_force
+    internal_force = internal_force + is_internal_force
     solver.hessian = stiffness + model.mass / β / Δt / Δt
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
@@ -290,10 +282,8 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     # Model boundary force -> global
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
-    K_rs = build_robin_schwarz_stiffness(model)
-    rs_internal_force = nnz(K_rs) > 0 ? K_rs * integrator.displacement : zeros(length(internal_force))
     is_internal_force = build_impedance_schwarz_force(model)
-    internal_force = internal_force + rs_internal_force + is_internal_force
+    internal_force = internal_force + is_internal_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     # Gradient -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
