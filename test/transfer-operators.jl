@@ -49,6 +49,20 @@
     rel_er_disp = norm(dst_U - dst_U_real) / norm(dst_U_real)
     Norma.norma_logf(0, :summary, "Relative error (displacement): %.4e", rel_er_disp)
     @test norm(dst_U - dst_U_real) / norm(dst_U_real) ≈ 0.0 atol = 1.0e-08
+    # Entry-level invariants that smooth-field transfers cannot detect: the
+    # destination-integrated Dirichlet projector reproduces constants
+    # (partition of unity) for any quadrature, and the source-integrated
+    # Neumann transfer L * H^-1 conserves the total of any nodal force —
+    # including a point load, for which the nearest-node facet search used to
+    # corrupt the transfer on this non-conforming 2:1 mesh pair.
+    L_dst = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    L_src = Norma.get_src_integrated_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    @test (W \ L_dst) * ones(size(L_dst, 2)) ≈ ones(size(L_dst, 1)) atol = 1.0e-10
+    point_load = zeros(size(L_src, 2))
+    point_load[1] = 1.0
+    dst_point_load = L_src * (H \ point_load)
+    Norma.norma_logf(0, :summary, "Point load total after transfer:  %.4e", sum(dst_point_load))
+    @test sum(dst_point_load) ≈ 1.0 atol = 1.0e-10
     Exodus.close(src_sim.params["input_mesh"])
     Exodus.close(src_sim.params["output_mesh"])
     Exodus.close(dst_sim.params["input_mesh"])

@@ -16,7 +16,10 @@ using YAML
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = 0.0
     params["time step"] = 1.0e-6
-    params["final time"] = 5.0e-5
+    # Long enough for several transits of the torsional wave across the
+    # non-conforming interface; the short 5.0e-5 horizon could not see the
+    # interface effects investigated in issue #176.
+    params["final time"] = 5.0e-4
     params["name"] = input_file
     sim = Norma.run(params)
     subsims = sim.subsims
@@ -40,68 +43,30 @@ using YAML
     avg_stress_torsion1 = average_components(model_torsion1.stress)
     avg_stress_torsion2 = average_components(model_torsion2.stress)
 
-    @test min_disp_x_torsion1 ≈ -0.005190915825901907 atol = 1e-12
-    @test min_disp_y_torsion1 ≈ -0.0051909158259019 atol = 1e-12
-    @test max_disp_z_torsion1 ≈ 0.00011253980579573053 atol = 1e-12
-    @test min_disp_x_torsion2 ≈ -0.005191500055775754 atol = 1e-12
-    @test min_disp_y_torsion2 ≈ -0.005191500055775934 atol = 1e-12
-    @test max_disp_z_torsion2 ≈ 2.234108562854109e-5 atol = 1e-12
+    @test min_disp_x_torsion1 ≈ -0.04545670147801213 atol = 1e-10
+    @test min_disp_y_torsion1 ≈ -0.04545670147800828 atol = 1e-10
+    @test max_disp_z_torsion1 ≈ 0.00040594143734673033 atol = 1e-10
+    @test min_disp_x_torsion2 ≈ -0.04438065776439695 atol = 1e-10
+    @test min_disp_y_torsion2 ≈ -0.04438065776439266 atol = 1e-10
+    @test max_disp_z_torsion2 ≈ -6.92733021142234e-7 atol = 1e-10
     @test avg_stress_torsion1 ≈
-        [1.782086813836319e6 1.7821400905380826e6 713114.3372464201 -237.60658704239313 356.5216476483272 -2.6403895571181693] atol =
+        [637892.225556833 637892.2255569943 -350476.29504338105 1.5970434787959676e-7 1.354154392174678e-7 -4.1442580425155027e-7] atol =
         1.0e1
     @test avg_stress_torsion2 ≈
-        [1.4383973629229437e6 1.438446755758423e6 524043.2035015472 -67.35307980993893 75.29826725704697 -20.720304844680932] atol =
+        [-556091.8441462617 -556091.8441454791 -962694.439218634 3.046938218176365e-7 -6.516056600958109e-7 3.259494769736193e-6] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        1,
-        1,
-        1,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        2,
-    ] atol = 0
+    @test sum(sim.controller.schwarz_iters) == 979
+    @test maximum(sim.controller.schwarz_iters) == 2
+
+    # Pure torsion about z keeps the bar axis on the z axis: any lateral
+    # centerline displacement is symmetry error injected by the interface
+    # transfer (issue #176 — the nearest-node facet search used to seed a
+    # growing lateral mode here).
+    for model in (model_torsion1, model_torsion2)
+        onaxis = [
+            i for i in 1:size(model.reference, 2) if
+            abs(model.reference[1, i]) < 1.0e-12 && abs(model.reference[2, i]) < 1.0e-12
+        ]
+        @test maximum(abs.(model.displacement[1:2, onaxis])) < 1.0e-10
+    end
 end

@@ -1656,7 +1656,19 @@ function compute_neumann_projector(dst_model::Model, dst_bc::SolidMechanicsSchwa
     src_fom = src_model isa RomModel ? src_model.fom_model : src_model
     dst_fom = dst_model isa RomModel ? dst_model.fom_model : dst_model
     H = get_square_projection_matrix(src_fom, src_bc)
+    # Prefer the destination-integrated L: where the destination facets
+    # resolve the source trace mesh (nested refinement), it is exactly
+    # integrated, hence also conservative. Conservation of the transferred
+    # force totals is the certificate of that exactness — its column sums
+    # must match the source mass row sums — and when it fails (coarser
+    # destination facets, non-nested interfaces), fall back to the
+    # source-integrated L, which is conservative by construction.
     L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+    src_lumped = H * ones(size(H, 2))
+    conservation_error = maximum(abs.(vec(sum(L; dims=1)) - src_lumped)) / maximum(abs.(src_lumped))
+    if conservation_error > 1.0e-10
+        L = get_src_integrated_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+    end
     dst_bc.neumann_projector = L * (H \ I)
     return nothing
 end
@@ -1668,8 +1680,21 @@ function compute_dirichlet_projector(dst_model::Model, dst_bc::SolidMechanicsSch
     src_fom = src_model isa RomModel ? src_model.fom_model : src_model
     dst_fom = dst_model isa RomModel ? dst_model.fom_model : dst_model
     W = get_square_projection_matrix(dst_fom, dst_bc)
-    L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
-    dst_bc.dirichlet_projector = (W \ I) * L
+    # Prefer the source-integrated L: on interfaces where the source trace
+    # mesh resolves the destination facets (nested refinement), it is exactly
+    # integrated, so the transferred kinematics are exact. Its partition of
+    # unity is the certificate of that exactness — verify it numerically, and
+    # when it fails (non-nested facets, partial coverage), fall back to the
+    # destination-integrated L, whose Dirichlet projector reproduces constants
+    # for any quadrature by construction.
+    L = get_src_integrated_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+    P = (W \ I) * L
+    pu_error = maximum(abs.(P * ones(size(P, 2)) .- 1.0))
+    if pu_error > 1.0e-10
+        L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+        P = (W \ I) * L
+    end
+    dst_bc.dirichlet_projector = P
     return nothing
 end
 

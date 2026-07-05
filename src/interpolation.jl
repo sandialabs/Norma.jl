@@ -598,6 +598,57 @@ function get_minimum_distance_to_nodes(nodes::Matrix{Float64}, point::Vector{Flo
     return minimum(distances)
 end
 
+# How far outside the parametric domain a projected point landed (0 = inside).
+function parametric_overshoot(element_type::ElementType, ξ::AbstractVector{Float64})
+    if element_type == BAR2
+        return max(0.0, abs(ξ[1]) - 1.0)
+    elseif element_type == TRI3 || element_type == TRI6
+        return max(0.0, -ξ[1], -ξ[2], ξ[1] + ξ[2] - 1.0)
+    elseif element_type == QUAD4
+        return max(0.0, abs(ξ[1]) - 1.0, abs(ξ[2]) - 1.0)
+    else
+        norma_abort("Unsupported side element type: $element_type")
+    end
+end
+
+# Containing-facet projection for interface transfer assembly. The
+# nearest-node heuristic of closest_face_to_point can select a facet that
+# does not contain the point whenever the two side sets are refined
+# differently: near a shared corner the nearest node's facet is frequently
+# the wrong one (with exact ties broken by traversal order), and the
+# unclamped Newton projection then extrapolates that facet's shape functions
+# (values outside [0, 1]), silently corrupting the transfer matrix. Constants
+# and linear fields hide the corruption on flat interfaces because their
+# extrapolation is still exact. Here every facet of the side set is scanned:
+# facets whose parametric projection lies inside are preferred, with the true
+# surface distance as tie-breaker; if no facet contains the point (gapped or
+# strongly deformed interfaces), the facet with least parametric overshoot is
+# used, which is the closest facet region.
+function project_point_to_containing_facet(point::Vector{Float64}, model::SolidMechanics, side_set_id::Integer)
+    mesh = model.mesh
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
+    coords = model.reference + model.displacement
+    inside_tol = 1.0e-06
+    best_key = (Inf, Inf)
+    local best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance
+    ss_node_index = 1
+    for num_nodes_side in num_nodes_sides
+        face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
+        ss_node_index += num_nodes_side
+        face_nodes = coords[:, face_node_indices]
+        new_point, ξ, distance, normal = closest_point_projection(face_nodes, point)
+        element_type = get_element_type(2, Int64(num_nodes_side))
+        overshoot = parametric_overshoot(element_type, ξ)
+        key = (overshoot ≤ inside_tol ? 0.0 : overshoot, abs(distance))
+        if key < best_key
+            best_key = key
+            best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance =
+                new_point, ξ, face_nodes, face_node_indices, normal, distance
+        end
+    end
+    return best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance
+end
+
 function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::Integer)
     side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)[2]
     unique_node_indices = unique(side_set_node_indices)
@@ -650,6 +701,33 @@ function get_square_projection_matrix(model::SolidMechanics, bc::SolidMechanicsS
     return square_projection_matrix
 end
 
+# Rectangular interface projection matrix L_ij = ∫ N_dst_i N_src_j dΓ,
+# integrated over the SOURCE side's facets. The facet quadrature is exact
+# only where the integrand is smooth, and the two integration directions
+# protect different invariants of the transfer on non-conforming interfaces:
+# - Integrating over the destination facets (get_rectangular_projection_matrix)
+#   makes the Dirichlet projector W⁻¹L reproduce constants exactly for any
+#   quadrature, because the source partition of unity Σ_j N_src_j = 1 holds
+#   pointwise at every quadrature point. Use it for Dirichlet transfers.
+# - Integrating over the source facets (this function) makes the Neumann
+#   projector LH⁻¹ exactly conservative — the total of any transferred nodal
+#   force is preserved, since column sums ∫ N_src_j are then integrated
+#   exactly while Σ_i N_dst_i = 1 holds pointwise. Use it for Neumann
+#   (traction/reaction) transfers.
+# When the source trace mesh is nested inside the destination facets, the
+# source-side integration here is also pointwise exact. The destination-side
+# rule always keeps its partition-of-unity invariant, but its entries carry
+# facet-quadrature error wherever the source basis kinks inside a destination
+# facet (the integrand is only piecewise smooth there).
+function get_src_integrated_rectangular_projection_matrix(
+    dst_model::SolidMechanics,
+    dst_bc::SolidMechanicsSchwarzBoundaryCondition,
+    src_model::SolidMechanics,
+    src_bc::SolidMechanicsSchwarzBoundaryCondition,
+)
+    return Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
+end
+
 function get_rectangular_projection_matrix(
     dst_model::SolidMechanics,
     dst_bc::SolidMechanicsSchwarzBoundaryCondition,
@@ -680,7 +758,7 @@ function get_rectangular_projection_matrix(
             dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
             dst_wₚ = dst_w[dst_point]
             dst_int_point_coord = dst_side_coordinates * dst_Nₚ
-            _, ξ, src_side_coordinates, src_side_nodes, _, _ = project_point_to_side_set(
+            _, ξ, src_side_coordinates, src_side_nodes, _, _ = project_point_to_containing_facet(
                 dst_int_point_coord, src_model, src_side_set_id
             )
             src_side_element_type = get_element_type(2, size(src_side_coordinates)[2])
