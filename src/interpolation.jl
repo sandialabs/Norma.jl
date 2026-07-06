@@ -632,25 +632,33 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
     best_key = (Inf, Inf)
     local best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance
     found = false
+    # Distance from the point to the nearest side-set node. The closest-point
+    # projection onto the containing facet lands no farther than its nearest
+    # node, so this upper-bounds the projection distance and lets the prefilter
+    # below prune facets that cannot possibly contain the point without ever
+    # discarding the one that does — even across a wide tied-contact gap, where
+    # the destination node sits a full facet-width off the source surface.
+    node_gap = minimum(norm(point - coords[:, i]) for i in side_set_node_indices)
     ss_node_index = 1
     for num_nodes_side in num_nodes_sides
         face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
         ss_node_index += num_nodes_side
         face_nodes = coords[:, face_node_indices]
-        # A facet can only contain the point's projection if the point lies
-        # near its bounding box; on curved side sets this also skips distant,
-        # badly oriented facets on which the unclamped Newton projection can
-        # diverge (a diverging candidate is likewise just disqualified). The
-        # margin scales with the facet diagonal — a per-axis margin would be
-        # zero in the flat dimension of a planar facet and floating-point
-        # fuzz in quadrature-point coordinates would exclude containing
-        # facets arbitrarily.
-        margin = 0.5 * norm([maximum(face_nodes[i, :]) - minimum(face_nodes[i, :]) for i in 1:3])
+        # A facet can contain the point's projection only if the point lies
+        # within (nearest-node distance + half the facet diagonal) of its
+        # bounding box. The node-gap term admits legitimately distant tied and
+        # gapped interfaces; the diagonal term keeps the flat dimension of a
+        # planar facet from being pinched to zero by floating-point fuzz. On
+        # curved side sets this also skips distant, badly oriented facets on
+        # which the unclamped Newton projection can diverge.
+        margin = node_gap + 0.5 * norm([maximum(face_nodes[i, :]) - minimum(face_nodes[i, :]) for i in 1:3])
         outside = any(
             point[i] < minimum(face_nodes[i, :]) - margin || point[i] > maximum(face_nodes[i, :]) + margin for
             i in 1:3
         )
         outside && continue
+        # strict=false reports a diverging Newton iteration as an infinite
+        # distance so the candidate is disqualified instead of aborting the run.
         new_point, ξ, distance, normal = closest_point_projection(face_nodes, point; strict=false)
         isfinite(distance) || continue
         element_type = get_element_type(2, Int64(num_nodes_side))
@@ -664,8 +672,8 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
         end
     end
     if found == false
-        # No candidate survived the prefilter (isolated point or strongly
-        # deformed interface): fall back to the nearest-node facet search.
+        # Every facet's projection diverged (strongly deformed interface):
+        # fall back to the nearest-node facet search.
         face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
         new_point, ξ, distance, normal = closest_point_projection(face_nodes, point)
         return new_point, ξ, face_nodes, face_node_indices, normal, distance
