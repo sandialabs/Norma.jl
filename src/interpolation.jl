@@ -631,12 +631,28 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
     inside_tol = 1.0e-06
     best_key = (Inf, Inf)
     local best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance
+    found = false
     ss_node_index = 1
     for num_nodes_side in num_nodes_sides
         face_node_indices = side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)]
         ss_node_index += num_nodes_side
         face_nodes = coords[:, face_node_indices]
-        new_point, ξ, distance, normal = closest_point_projection(face_nodes, point)
+        # A facet can only contain the point's projection if the point lies
+        # near its bounding box; on curved side sets this also skips distant,
+        # badly oriented facets on which the unclamped Newton projection can
+        # diverge (a diverging candidate is likewise just disqualified). The
+        # margin scales with the facet diagonal — a per-axis margin would be
+        # zero in the flat dimension of a planar facet and floating-point
+        # fuzz in quadrature-point coordinates would exclude containing
+        # facets arbitrarily.
+        margin = 0.5 * norm([maximum(face_nodes[i, :]) - minimum(face_nodes[i, :]) for i in 1:3])
+        outside = any(
+            point[i] < minimum(face_nodes[i, :]) - margin || point[i] > maximum(face_nodes[i, :]) + margin for
+            i in 1:3
+        )
+        outside && continue
+        new_point, ξ, distance, normal = closest_point_projection(face_nodes, point; strict=false)
+        isfinite(distance) || continue
         element_type = get_element_type(2, Int64(num_nodes_side))
         overshoot = parametric_overshoot(element_type, ξ)
         key = (overshoot ≤ inside_tol ? 0.0 : overshoot, abs(distance))
@@ -644,7 +660,15 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
             best_key = key
             best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance =
                 new_point, ξ, face_nodes, face_node_indices, normal, distance
+            found = true
         end
+    end
+    if found == false
+        # No candidate survived the prefilter (isolated point or strongly
+        # deformed interface): fall back to the nearest-node facet search.
+        face_nodes, face_node_indices, _ = closest_face_to_point(point, model, side_set_id)
+        new_point, ξ, distance, normal = closest_point_projection(face_nodes, point)
+        return new_point, ξ, face_nodes, face_node_indices, normal, distance
     end
     return best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance
 end
@@ -913,7 +937,7 @@ end
 
 using Einsum
 
-function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
+function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64}; strict::Bool=true)
     num_nodes = size(nodes, 2)
     element_type = get_element_type(2, num_nodes)
     ξ = @MVector zeros(Float64, 2)
@@ -926,6 +950,7 @@ function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
     tol = 1.0e-10
     iteration = 1
     max_iterations = 64
+    converged = false
     while true
         N, dN, ddN = interpolate(element_type, SVector(ξ))
         y = nodes * N
@@ -939,12 +964,21 @@ function closest_point_projection(nodes::Matrix{Float64}, x::Vector{Float64})
         ξ = ξ + δ
         err = norm(δ)
         if err <= tol
+            converged = true
             break
         end
         iteration += 1
         if iteration > max_iterations
+            break
+        end
+    end
+    if converged == false
+        if strict == true
             norma_abort("Closest point projection failed to converge")
         end
+        # Non-strict callers scan many candidate facets; a diverging Newton on
+        # a distant or badly oriented facet just disqualifies that candidate.
+        return y, ξ, Inf, zeros(3)
     end
     _, dN, _ = interpolate(element_type, ξ)
     dxdξ = dN * nodes'

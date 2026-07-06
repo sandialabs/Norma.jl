@@ -153,6 +153,7 @@ const indexed_test_files = [
     (104, "schwarz-overlap-impedance-tensor-crossscale.jl"),
     (105, "schwarz-overlap-impedance-variational-transfer.jl"),
     (106, "newmark-hht-alpha.jl"),
+    (107, "schwarz-ahead-nonoverlap-dynamic-notched-cylinder.jl"),
 ]
 
 # Extract test file names
@@ -169,7 +170,8 @@ const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopi
 # - 84     schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap
 # - 85     schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-fom-multi-swap
 # - 86     schwarz-ahead-overlap-dynamic-notched-cylinder-opinf-swap-rom-fom
-const optional_test_indices = Int[27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 51, 54, 77, 79, 80, 83, 84, 85, 86, 88, 89, 96, 97, 99, 101, 102, 103]
+# - 107    schwarz-ahead-nonoverlap-dynamic-notched-cylinder
+const optional_test_indices = Int[27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 51, 54, 77, 79, 80, 83, 84, 85, 86, 88, 89, 96, 97, 99, 101, 102, 103, 107]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]

@@ -52,17 +52,17 @@ using YAML
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 
-    @test min_disp_x_1 ≈ -1.6007099461888552e-5 atol = 1e-12
-    @test min_disp_y_1 ≈ -1.6007073405502337e-5 atol = 1e-12
-    @test max_disp_z_1 ≈ 0.00011007952600178977 atol = 1e-12
-    @test min_disp_x_2 ≈ -1.6186344441136702e-5 atol = 1e-12
-    @test min_disp_y_2 ≈ -1.618628933883204e-5 atol = 1e-12
-    @test min_disp_z_2 ≈ 5.1726659805836905e-5 atol = 1e-12
+    @test min_disp_x_1 ≈ -4.037470161949048e-6 atol = 1e-12
+    @test min_disp_y_1 ≈ -4.0374652743727105e-6 atol = 1e-12
+    @test max_disp_z_1 ≈ 2.8125101839471256e-5 atol = 1e-12
+    @test min_disp_x_2 ≈ -3.9155928465825706e-6 atol = 1e-12
+    @test min_disp_y_2 ≈ -3.915589896008824e-6 atol = 1e-12
+    @test min_disp_z_2 ≈ 2.5053561481486768e-5 atol = 1e-12
     @test avg_stress_1 ≈
-        [119658.24151708037 119759.96550264646 2.105505961105632e6 280369.0355588143 281504.50820556487 57168.0765508701] atol =
+        [32439.05762287872 32465.61490606161 540278.4092679358 72018.91185980223 72309.93048014899 14488.221920501783] atol =
         1.0e1
     @test avg_stress_2 ≈
-        [-101340.89672529901 -101446.28712096746 1.5977255795638144e6 121800.33493609141 122483.30918545111 37064.478126464295] atol =
+        [-20448.838840349512 -20470.797065627095 377569.57314743317 14471.770489157607 14562.262796808678 5106.555522648798] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [0, 0, 0, 0, 3, 3, 3, 3, 4, 4] atol = 0
+    @test sim.controller.schwarz_iters ≈ [7, 9, 10, 10, 11] atol = 0
 end
