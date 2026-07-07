@@ -2,6 +2,15 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{boldtensors}
+% boldtensors declares a `cmbboard' symbol font from the bbold family
+% (bbold10/bbold12/...), which is not in a base TeX Live install and cannot be
+% auto-generated here.  TeX instantiates every declared symbol font when math
+% starts, so the missing bbold12 aborts the build even though this note never
+% uses the blackboard-bold tensor glyphs (the active-" syntax) --- only the
+% bold-italic tensors (active-~), which come from cmmib and are always present.
+% Redirect the unused cmbboard font to the AMS blackboard font (msb, loaded by
+% amssymb) so the note builds on any base TeX Live without the bbold package.
+\DeclareSymbolFont{cmbboard}{U}{msb}{m}{n}
 \usepackage{hyperref}
 \usepackage{booktabs}
 
