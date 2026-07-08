@@ -222,11 +222,30 @@ function get_arlequin_weights(subsim::SingleDomainSimulation)
     return get!(() -> compute_arlequin_weights(subsim), ARLEQUIN_WEIGHT_CACHE, subsim.model)
 end
 
+# Strain-energy density W(F) at a single point, recomputed exactly as evaluate()
+# does: the same constitutive call, branching on the material family and passing
+# the old internal state for history-dependent (inelastic) materials.  Only W is
+# needed here, so the tangent is skipped and the returned stress/new state are
+# discarded (this is a read-only re-integration, it must not advance state).
+function strain_energy_density(material::Material, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
+    if material isa Elastic
+        W, _, _ = constitutive(material, F; need_tangent=false)
+    else
+        W, _, _, _ = constitutive(material, F, state_old; need_tangent=false)
+    end
+    return W
+end
+
 # Blended stored (strain) and kinetic energy of one subdomain, using the cached
-# Arlequin weights.  Stored energy reuses the solver's authoritative per-element
-# strain energy with a volume-averaged element weight; kinetic energy is
-# re-integrated per quadrature point with the consistent mass.  With unit
-# weights this returns exactly (model.strain_energy, 0.5 vᵀ M v).
+# Arlequin weights.  Both energies are re-integrated per quadrature point with
+# the weight applied inside the integrand — exact regardless of mesh conformity:
+#
+#     stored = Σ_qp w(x_qp) W(F_qp) dV_qp,   kinetic = Σ_qp w(x_qp) ½ρ|v_qp|² dV_qp.
+#
+# The strain-energy density W is recomputed from the deformation gradient with
+# the same kinematics and constitutive model as evaluate(), so with unit weights
+# stored reduces to model.strain_energy and kinetic to 0.5 vᵀ M v (consistent
+# mass) to machine precision.
 function blended_subdomain_energy(subsim::SingleDomainSimulation)
     model = subsim.model
     aw = get_arlequin_weights(subsim)
@@ -250,27 +269,26 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
                 ((element_index - 1) * num_element_nodes + 1):(element_index * num_element_nodes)
             node_indices = conn[connectivity_indices]
             element_reference = model.reference[:, node_indices]
+            element_current = element_reference + model.displacement[:, node_indices]
             element_velocity = model.velocity[:, node_indices]
             element_weights = aw.weights[block_index][element_index]
-            element_volume = 0.0
-            weighted_volume = 0.0
             for point in 1:num_points
                 w = element_weights[point]
                 dNdξ = dN[:, :, point]
                 dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference')
                 dvol = det(dXdξ) * ip_weights[point]
-                element_volume += dvol
-                weighted_volume += w * dvol
+                # Deformation gradient and strain-energy density, exactly as
+                # evaluate() computes them.
+                dNdX = dXdξ \ dNdξ
+                F = SMatrix{3,3,Float64,9}(element_current * dNdX')
+                state_old = model.state_old[block_index][element_index][point]
+                W = strain_energy_density(material, F, state_old)
+                stored += w * W * dvol
                 if dynamic
                     v = element_velocity * N[:, point]
                     kinetic += w * 0.5 * density * dot(v, v) * dvol
                 end
             end
-            # Volume-averaged element weight applied to the solver's authoritative
-            # per-element strain energy: reuses model.stored_energy exactly and
-            # reduces to model.strain_energy when every weight is 1.
-            effective_weight = element_volume > 0.0 ? weighted_volume / element_volume : 0.0
-            stored += effective_weight * model.stored_energy[block_index][element_index]
         end
     end
     return stored, kinetic
