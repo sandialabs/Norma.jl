@@ -130,6 +130,7 @@ capabilities currently implemented are:
 - YAML input configuration
 - Exodus II output (nodal, element, and global variables)
 - CSV output of nodal and side-set quantities
+- Overlap-corrected (Arlequin-blended) kinetic/stored/total energy CSV for multidomain runs (`blended energy output: true`), removing the double count of overlapping Schwarz regions
 
 ---
 

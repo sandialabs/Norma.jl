@@ -142,18 +142,18 @@ end
 end
 
 @testset "Overlap Blended Energy: Double Count Removed" begin
-    cp("../examples/overlap/static-same-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
+    # Exercises the shipped example that enables `blended energy output`.
+    cp("../examples/overlap/static-same-step/cuboids/cuboids-blended.yaml", "cuboids-blended.yaml"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-1.g", "cuboid-1.g"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-2.g", "cuboid-2.g"; force=true)
-    write("cuboids.yaml", read("cuboids.yaml", String) * "\nblended energy output: true\n")
-    sim = Norma.run("cuboids.yaml")
+    sim = Norma.run("cuboids-blended.yaml")
     # Naive sum double-counts the shared overlap region.
     naive_stored = sim.subsims[1].model.strain_energy + sim.subsims[2].model.strain_energy
 
-    @test isfile("cuboids-energy.csv")
-    rows = readlines("cuboids-energy.csv")
+    @test isfile("cuboids-blended-energy.csv")
+    rows = readlines("cuboids-blended-energy.csv")
     @test rows[1] == "time,stored_energy,kinetic_energy,total_energy"
     fields = split(rows[end], ",")
     stored = parse(Float64, fields[2])
@@ -166,12 +166,12 @@ end
     @test stored ≈ 2.496168897869401e8 rtol = 1.0e-3
 
     empty!(Norma.ARLEQUIN_WEIGHT_CACHE)
-    rm("cuboids.yaml"; force=true)
+    rm("cuboids-blended.yaml"; force=true)
     rm("cuboid-1.yaml"; force=true)
     rm("cuboid-2.yaml"; force=true)
     rm("cuboid-1.g"; force=true)
     rm("cuboid-2.g"; force=true)
     rm("cuboid-1.e"; force=true)
     rm("cuboid-2.e"; force=true)
-    rm("cuboids-energy.csv"; force=true)
+    rm("cuboids-blended-energy.csv"; force=true)
 end
