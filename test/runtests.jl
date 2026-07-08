@@ -154,6 +154,7 @@ const indexed_test_files = [
     (105, "schwarz-overlap-impedance-variational-transfer.jl"),
     (106, "newmark-hht-alpha.jl"),
     (107, "schwarz-ahead-nonoverlap-dynamic-notched-cylinder.jl"),
+    (108, "schwarz-overlap-blended-energy.jl"),
 ]
 
 # Extract test file names
