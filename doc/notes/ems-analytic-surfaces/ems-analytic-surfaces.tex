@@ -432,11 +432,21 @@ and geometry-agnostic.
 \label{sec:phasing}
 
 \begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
-  \item[Phase 1.] Level-set input (Section~\ref{sec:input}) plus the penalty
-  enforcement (Section~\ref{sec:penalty}) and the cylinder test. This
-  derisks the input parsing, the \code{Symbolics} gradient path, and the
-  membership/normal evaluation with the smallest possible code change, and
-  produces visible ``nodes hug the surface'' behavior early.
+  \item[Phase 1 \emph{(implemented)}.] Level-set input
+  (Section~\ref{sec:input}) plus the penalty enforcement
+  (Section~\ref{sec:penalty}) and the cylinder test. A \code{Surface} boundary
+  condition binds a side set to a symbolic $g$; its penalty force $\kappa\,g\,
+  \grad g$ (Gauss--Newton tangent $\kappa\,\grad g\,\grad g^{\top}$) is assembled
+  after \code{evaluate} exactly as the Robin BC is, with $\grad g$ from
+  \code{Symbolics.gradient}, and a node on two side sets accumulates both
+  penalties (the edge case) for free. Validated on a perturbed tet cylinder
+  (\code{examples/\allowbreak ems/\allowbreak cylinder/}): every boundary node
+  starts off its surface, and after smoothing the lateral residual
+  $\max|x^2+y^2-1|$ drops from $1.2\times10^{-1}$ to $9\times10^{-4}$ at
+  $\kappa=10^6$, scaling as $1/\kappa$ (the penalty signature), with no inverted
+  elements and reduced element-volume spread. This derisked the input parsing,
+  the \code{Symbolics} gradient path, and the membership/normal evaluation with
+  the smallest possible code change.
   \item[Phase 2.] The exact local-frame constraint
   (Section~\ref{sec:exact})---projected-gradient/return-to-surface for the
   matrix-free solvers first, then the Newton nodal rotation---and the

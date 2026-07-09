@@ -1,0 +1,48 @@
+type: single
+input mesh file: cylinder-awful.g
+output mesh file: cylinder.e
+model:
+  type: mesh smoothing
+  smooth reference: max
+  material:
+    blocks:
+      cylinder: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 10.0
+  time step: 1.0
+boundary conditions:
+  # Analytic level-set surface constraints (Phase 1: penalty enforcement).
+  # Each side set's nodes are held to its surface g(x) = 0; a node on both the
+  # lateral surface and an end cap accumulates both level sets and is pinned to
+  # the rim circle (the m = 2 edge case) automatically.
+  Surface:
+    - side set: lateral          # curved lateral surface x^2 + y^2 = 1
+      function: "x^2 + y^2 - 1.0"
+      penalty: 1.0e+6
+    - side set: top              # end cap at z = -1
+      function: "z + 1.0"
+      penalty: 1.0e+6
+    - side set: bottom           # end cap at z = +1
+      function: "z - 1.0"
+      penalty: 1.0e+6
+solver:
+  type: steepest descent
+  step:  steepest descent
+  minimum iterations: 1
+  maximum iterations: 64
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16

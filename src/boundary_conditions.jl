@@ -70,6 +70,41 @@ function SolidMechanicsSideSetDirichletBoundaryCondition(input_mesh::ExodusDatab
     )
 end
 
+function SolidMechanicsSurfaceBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
+    side_set_name = bc_params["side set"]
+    expression = string(bc_params["function"])
+    penalty = Float64(get(bc_params, "penalty", 1.0e6))
+    if penalty ≤ 0.0
+        norma_abort("A Surface boundary condition requires a positive \"penalty\" (got $penalty).")
+    end
+    side_set_id = side_set_id_from_name(side_set_name, input_mesh)
+    # read_side_set_node_list repeats a node once per side it touches; the unique
+    # node list is the set of DOFs the surface constraint acts on.
+    _, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
+    node_indices = unique(Int64.(side_set_node_indices))
+
+    # Compile g and its exact, automatic gradient ∇g from the symbolic surface
+    # expression (constants are substituted into the string, exactly as for the
+    # other analytic expressions).  Num() coerces a constant expression so the
+    # degeneracy guard below still runs.
+    g_num = Num(eval(Meta.parse(expression)))
+    grad_num = Symbolics.gradient(g_num, [x, y, z])
+    if all(iszero, grad_num)
+        norma_abort(
+            "Surface boundary condition on side set \"$side_set_name\" has a constant " *
+            "level-set function \"$expression\" (∇g ≡ 0); it defines no surface to slide on.",
+        )
+    end
+    level_set_fun = eval(build_function(g_num, [t, x, y, z]; expression=Val(false)))
+    # build_function on a vector expression returns (out-of-place, in-place); the
+    # out-of-place form returns ∇g as a 3-vector.
+    level_set_grad = eval(build_function(grad_num, [t, x, y, z]; expression=Val(false))[1])
+
+    return SolidMechanicsSurfaceBoundaryCondition(
+        side_set_name, side_set_id, node_indices, level_set_fun, level_set_grad, penalty
+    )
+end
+
 function SolidMechanicsNeumannBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = bc_params["function"]
@@ -635,6 +670,14 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
     end
 end
 
+# The surface constraint neither prescribes DOFs nor sets a boundary force in the
+# apply_bcs sweep: it enters the residual as a penalty force built in
+# apply_surface_penalty_internal_force! during evaluate().  The nodes remain free
+# to slide, so nothing is done here.
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsSurfaceBoundaryCondition)
+    return nothing
+end
+
 function apply_robin_bcs_internal_force!(model::SolidMechanics)
     for bc in model.boundary_conditions
         bc isa SolidMechanicsRobinBoundaryCondition || continue
@@ -677,6 +720,55 @@ function build_robin_stiffness(model::SolidMechanics)
         end
     end
     return K_robin
+end
+
+# Add the analytic surface penalty force ∂P/∂x = κ g ∇g (of the constraint
+# P = ½ κ g²) to the internal force at each constrained node, with g and ∇g
+# evaluated at the node's current position X = reference + displacement.  Being
+# the gradient of ½ κ g², the force drives g → 0 (the node onto the surface)
+# while leaving tangential motion free — a soft inclined roller.  Mirrors
+# apply_robin_bcs_internal_force!: called after evaluate() has assembled the
+# smoothing internal force.
+function apply_surface_penalty_internal_force!(model::SolidMechanics)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsSurfaceBoundaryCondition || continue
+        for node_index in bc.node_indices
+            X = model.reference[:, node_index] + model.displacement[:, node_index]
+            # A Vector argument (not a tuple) so the compiled vector-valued
+            # gradient infers an Array output container rather than an NTuple.
+            args = [model.time, X[1], X[2], X[3]]
+            g = bc.level_set_fun(args)
+            grad = bc.level_set_grad(args)
+            factor = bc.penalty * g
+            base = 3 * (node_index - 1)
+            model.internal_force[base + 1] += factor * grad[1]
+            model.internal_force[base + 2] += factor * grad[2]
+            model.internal_force[base + 3] += factor * grad[3]
+        end
+    end
+    return nothing
+end
+
+# Gauss–Newton tangent of the surface penalty, κ ∇g ∇gᵀ per constrained node
+# (the g ∇²g term is dropped: it vanishes as g → 0).  Used by the Newton
+# (HessianMinimizer) solver; the matrix-free EMS solvers need only the force.
+function build_surface_penalty_stiffness(model::SolidMechanics)
+    num_dofs = 3 * size(model.reference, 2)
+    K_surface = spzeros(num_dofs, num_dofs)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsSurfaceBoundaryCondition || continue
+        for node_index in bc.node_indices
+            X = model.reference[:, node_index] + model.displacement[:, node_index]
+            grad = bc.level_set_grad([model.time, X[1], X[2], X[3]])
+            base = 3 * (node_index - 1)
+            for a in 1:3
+                for b in 1:3
+                    K_surface[base + a, base + b] += bc.penalty * grad[a] * grad[b]
+                end
+            end
+        end
+    end
+    return K_surface
 end
 
 

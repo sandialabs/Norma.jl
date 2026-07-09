@@ -195,16 +195,19 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
         return nothing
     end
     apply_robin_bcs_internal_force!(model)
+    apply_surface_penalty_internal_force!(model)
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
     K_is = build_impedance_schwarz_stiffness(model, integrator)
     K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
+    K_surface = build_surface_penalty_stiffness(model)
     K_total = model.stiffness
     K_total = nnz(K_robin) > 0 ? K_total + K_robin : K_total
     K_total = nnz(K_is) > 0 ? K_total + K_is : K_total
     K_total = nnz(K_io) > 0 ? K_total + K_io : K_total
+    K_total = nnz(K_surface) > 0 ? K_total + K_surface : K_total
     is_internal_force = build_impedance_schwarz_force(model)
     solver.gradient = model.internal_force + is_internal_force - external_force
     solver.hessian = K_total
@@ -217,6 +220,7 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
         return nothing
     end
     apply_robin_bcs_internal_force!(model)
+    apply_surface_penalty_internal_force!(model)
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force

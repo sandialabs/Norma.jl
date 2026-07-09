@@ -575,6 +575,91 @@ end
     end
 end
 
+@testset "surface_constraint_cylinder" begin
+    # Phase 1 of energetic mesh smoothing on a general (non-box) geometry:
+    # analytic level-set surface constraints enforced by penalty.  A perturbed
+    # tet cylinder (radius 1, height 2) is smoothed with its lateral surface held
+    # to x^2 + y^2 = 1 and its end caps to z = ∓1 by `Surface` boundary
+    # conditions.  Every boundary node starts off its surface (the mesh was
+    # jittered), so the penalty must both pull it back onto the surface and let
+    # it slide within it.  We check that the lateral surface residual
+    # max|x^2 + y^2 - 1| collapses, the mesh stays valid, and the pseudo-energy
+    # drops — the box case (axis-aligned faces) is already covered by the
+    # Dirichlet-based smoothing tests above; this exercises a curved surface no
+    # Cartesian component can express.
+    mesh = joinpath(@__DIR__, "..", "examples", "ems", "cylinder", "cylinder-awful.g")
+    out = joinpath(@__DIR__, "surface_cylinder.e")
+    params = Dict{String,Any}(
+        "name" => "surface_cylinder", "type" => "single",
+        "input mesh file" => mesh, "output mesh file" => out,
+        "Exodus output interval" => 0, "CSV output interval" => 0,
+        "model" => Dict{String,Any}(
+            "type" => "mesh smoothing", "smooth reference" => "max",
+            "material" => Dict{String,Any}(
+                "blocks" => Dict{String,Any}("cylinder" => "elastic"),
+                "elastic" => Dict{String,Any}(
+                    "model" => "seth-hill", "m" => 2, "n" => 2,
+                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                ),
+            ),
+        ),
+        "time integrator" => Dict{String,Any}(
+            "type" => "quasi static", "initial time" => 0.0, "final time" => 5.0, "time step" => 1.0
+        ),
+        "boundary conditions" => Dict{String,Any}(
+            "Surface" => [
+                Dict{String,Any}("side set" => "lateral", "function" => "x^2 + y^2 - 1.0", "penalty" => 1.0e6),
+                Dict{String,Any}("side set" => "top", "function" => "z + 1.0", "penalty" => 1.0e6),
+                Dict{String,Any}("side set" => "bottom", "function" => "z - 1.0", "penalty" => 1.0e6),
+            ],
+        ),
+        "solver" => Dict{String,Any}(
+            "type" => "steepest descent", "step" => "steepest descent",
+            "minimum iterations" => 1, "maximum iterations" => 64,
+            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3, "use line search" => true,
+            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "line search maximum iterations" => 16,
+        ),
+    )
+
+    try
+        rm(out; force=true)
+        sim = Norma.create_simulation(params)
+        # Read the constrained node list straight off the lateral Surface BC —
+        # this also checks the BC was created and resolved its side set's nodes.
+        lateral_bc = nothing
+        for bc in sim.model.boundary_conditions
+            if bc isa Norma.SolidMechanicsSurfaceBoundaryCondition && bc.name == "lateral"
+                lateral_bc = bc
+            end
+        end
+        @test lateral_bc !== nothing
+        lat = lateral_bc.node_indices
+        surf(x, y) = x^2 + y^2 - 1.0
+        ref = sim.model.reference
+        g0 = maximum(abs(surf(ref[1, n], ref[2, n])) for n in lat)  # off-surface start
+
+        Norma.initialize(sim)
+        Norma.evaluate(sim.integrator, sim.solver, sim.model)
+        e0 = sim.model.strain_energy
+        Norma.evolve(sim)
+        ef = sim.model.strain_energy
+
+        cur = sim.model.reference .+ sim.model.displacement
+        gf = maximum(abs(surf(cur[1, n], cur[2, n])) for n in lat)
+        Norma.finalize_writing(sim)
+
+        @test !sim.model.failed        # no inverted elements: min det(F) > 0
+        @test g0 > 1.0e-2              # the boundary really started off the surface
+        @test gf < 2.0e-2             # the penalty pulls it back onto the surface
+        @test gf < 0.2 * g0           # a sharp reduction in surface residual (>5x)
+        @test ef < e0                 # and the mesh is smoothed
+    finally
+        rm(out; force=true)
+    end
+end
+
 # Structured cube of n^3 hex cells, each split into 6 tets (Kuhn split on the
 # v0-v6 diagonal).  Returns coordinates, connectivity (num_elems x 4), and the
 # boundary / interior node-id lists.

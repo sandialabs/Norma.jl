@@ -1,0 +1,17 @@
+reset
+create cylinder height 2 radius 1
+volume 1 scheme tetmesh
+volume 1 size 0.4
+mesh volume 1
+block 1 volume 1
+block 1 element type tetra4
+block 1 name "cylinder"
+# Surface 1 is the lateral (curved) surface; 2 and 3 are the end caps.
+sideset 1 surface 1
+sideset 1 name "lateral"
+sideset 2 surface 2
+sideset 2 name "top"
+sideset 3 surface 3
+sideset 3 name "bottom"
+set large exodus file off
+export mesh "cylinder.g" overwrite

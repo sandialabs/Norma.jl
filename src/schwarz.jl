@@ -1722,6 +1722,9 @@ function _create_bcs(subsim::SingleDomainSimulation)
             elseif bc_type == "Neumann pressure"
                 boundary_condition = SolidMechanicsNeumannPressureBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "Surface"
+                boundary_condition = SolidMechanicsSurfaceBoundaryCondition(input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Robin"
                 boundary_condition = SolidMechanicsRobinBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
