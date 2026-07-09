@@ -1289,8 +1289,7 @@ end
 
 function swap_swappable_bcs(sim::SingleDomainSimulation)
     for bc in sim.model.boundary_conditions
-        if bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
-            bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+        if is_swappable_dn_schwarz(bc)
             if (bc.swap_bcs == true)
                 bc.is_dirichlet = !bc.is_dirichlet
             end
@@ -1500,8 +1499,7 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                     fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
                 )
                 bc.dirichlet_projector = (W \ I) * L
-            elseif bc isa SolidMechanicsContactSchwarzBoundaryCondition ||
-                   bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+            elseif is_swappable_dn_schwarz(bc)
                 compute_dirichlet_projector(subsim.model, bc)
                 compute_neumann_projector(subsim.model, bc)
                 if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition

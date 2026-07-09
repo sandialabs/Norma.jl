@@ -1431,7 +1431,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     set_internal_force!(coupled_model, interp_∂Ω_f)
 
     # Apply relaxed update if needed
-    if bc isa SolidMechanicsContactSchwarzBoundaryCondition || bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+    if is_swappable_dn_schwarz(bc)
         iter = controller.iteration_number
         λ_u_prev = iter < 1 ? interp_disp : controller.lambda_disp[coupled_index]
         λ_v_prev = iter < 1 ? interp_velo : controller.lambda_velo[coupled_index]

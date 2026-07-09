@@ -10,6 +10,19 @@ using Exodus
 @variables t x y z
 D = Differential(t)
 
+# Swappable Dirichlet-Neumann Schwarz couplings.  Contact and non-overlap (DN)
+# Schwarz are the couplings whose two sides carry complementary Dirichlet and
+# Neumann roles (fields is_dirichlet / swap_bcs / dirichlet_projector /
+# neumann_projector) and can exchange those roles; impedance (Robin) and overlap
+# (pure Dirichlet) couplings cannot.  Contact sits outside the CouplingSchwarz
+# subtree, so this capability cuts across the single-inheritance hierarchy and is
+# expressed as a trait predicate rather than a shared supertype: it is the one
+# place the {contact, non-overlap} pairing is defined, so the DN-swap, projector,
+# and relaxation call sites test the trait instead of re-enumerating the types.
+is_swappable_dn_schwarz(::SolidMechanicsBoundaryCondition) = false
+is_swappable_dn_schwarz(::SolidMechanicsContactSchwarzBoundaryCondition) = true
+is_swappable_dn_schwarz(::SolidMechanicsNonOverlapSchwarzBoundaryCondition) = true
+
 function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
