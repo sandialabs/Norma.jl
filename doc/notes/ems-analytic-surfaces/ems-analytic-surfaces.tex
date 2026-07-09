@@ -1,0 +1,380 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{boldtensors}
+% boldtensors declares the symbol font `cmbboard` from the bbold family, which
+% is not present in every TeX installation (it aborts at the start of math
+% mode). Redirect it to the always-available AMS `msb` family; the `"`-syntax
+% that would actually render a cmbboard glyph is unused here, so this only
+% removes the missing-font dependency.
+\DeclareSymbolFont{cmbboard}{U}{msb}{m}{n}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\grad}{\nabla}
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+\newcommand{\code}[1]{\texttt{#1}}
+% Long monospace file paths cannot hyphenate; give TeX room to avoid margin
+% overruns and let paths break after slashes where marked with \allowbreak.
+\emergencystretch=3em
+
+\title{Design: Energetic Mesh Smoothing on General Geometries\\
+via Analytic Surface Constraints}
+\author{Alejandro Mota}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Energetic mesh smoothing (EMS) drives each element toward an ideal reference
+shape by solving a quasi-static problem in which nodes relax to minimize a
+stored-energy functional. Interior nodes move freely; boundary nodes must
+remain on the domain boundary, sliding within it. Today this boundary
+restriction is imposed with axis-aligned Dirichlet conditions on the faces of a
+cube, which works only because a cube face's outward normal coincides with a
+Cartesian basis vector. This note generalizes the boundary restriction to any
+boundary that can be described analytically as a level set $g(~x)=0$, using the
+same symbolic-expression pipeline already used for initial and boundary
+conditions. It states the constraint model (tangential slip with a
+return-to-surface correction, and a dimensional hierarchy for faces, edges, and
+vertices), two enforcement routes (a soft penalty and an exact local-frame
+constraint), the robustness guards, and a test plan that includes exact
+reduction to the current cube behavior.
+\end{abstract}
+
+\section{Problem statement}
+
+EMS treats the mesh as a hyperelastic body. For each element a target
+(``ideal'') reference configuration is constructed from a size criterion
+(equal-volume, average-edge-length, \code{max}, or a user size field; see
+\code{create\_smooth\_reference} in \code{model.jl}), and a quasi-static solve
+lets the nodal positions $~x$ relax so that elements adopt shapes as close as
+possible to their targets, minimizing a stored-energy functional $W(~x)$.
+
+Interior nodes are free in $\Real^3$. Boundary nodes are \emph{not}: a node on
+the domain boundary $\partial\Omega$ must stay on $\partial\Omega$, or the
+smoothing would change the geometry. Physically:
+\begin{itemize}[nosep]
+  \item a node on a boundary \emph{face} may slide anywhere on that face
+        (2 degrees of freedom);
+  \item a node on a boundary \emph{edge} (where two faces meet) may slide only
+        along the edge (1 degree of freedom);
+  \item a node on a boundary \emph{vertex} must stay put (0 degrees of freedom).
+\end{itemize}
+
+For a cube, all of this is imposed trivially. Each face is axis-aligned, so
+``stay on the face $x=\text{const}$'' is exactly ``hold the $x$ component
+fixed, leave $y,z$ free.'' The current EMS examples do precisely that with six
+Dirichlet conditions, one Cartesian component per face
+(\code{examples/\allowbreak ems/\allowbreak awful-cube/\allowbreak awful-cube.yaml}):
+edges and vertices need no special treatment because a node belonging to two or
+three faces inherits two or three component constraints automatically.
+
+This is a coincidence of alignment. The moment the boundary is not
+axis-aligned---a cylinder's lateral surface, a sphere, a fillet---there is no
+Cartesian component to fix, and the current mechanism cannot express the
+constraint at all. The goal of this note is to lift EMS to any boundary whose
+faces admit an analytic description, so that the method can be explored on
+realistic geometries.
+
+\section{Geometric constraint model}
+\label{sec:model}
+
+\subsection{A boundary face as a level set}
+
+Assume each smooth boundary face is given as the zero level set of a scalar
+field,
+\begin{equation}
+  g(~x) = 0, \qquad ~x \in \Real^3,
+  \label{eq:levelset}
+\end{equation}
+with $g$ smooth and $\grad g \ne ~0$ on the face (a regular level set). The
+outward normal direction is
+\begin{equation}
+  ~n(~x) = \frac{\grad g(~x)}{\norm{\grad g(~x)}}.
+  \label{eq:normal}
+\end{equation}
+A node constrained to this face may move only tangentially. To first order in
+an increment $\delta~x$,
+\begin{equation}
+  g(~x + \delta~x) \approx g(~x) + \grad g(~x)\cdot\delta~x,
+\end{equation}
+so requiring the node to remain on the face, $g(~x+\delta~x)=0$, gives the
+linearized constraint
+\begin{equation}
+  \grad g(~x)\cdot\delta~x \;=\; -\,g(~x).
+  \label{eq:linconstraint}
+\end{equation}
+The right-hand side is a \emph{return-to-surface} (drift) correction: it
+vanishes when the node lies exactly on the face and otherwise pulls it back
+onto the face as the quasi-static iteration proceeds. On a curved face, where a
+tangential step necessarily leaves the surface at second order, this term is
+what keeps the node on the true geometry rather than on the tangent plane.
+
+Dividing by $\norm{\grad g}$ writes the same constraint in terms of the unit
+normal and the signed distance-like residual,
+\begin{equation}
+  ~n(~x)\cdot\delta~x \;=\; -\,\frac{g(~x)}{\norm{\grad g(~x)}}.
+  \label{eq:normalconstraint}
+\end{equation}
+When the face is axis-aligned, $\grad g = \pm~e_k$, and
+\eqref{eq:normalconstraint} reduces to ``fix the $k$-th Cartesian
+component''---exactly the present cube behavior. The general case is the
+classical \emph{inclined (skew) roller support}: the node is free to slide in
+the plane tangent to the surface and pinned in the normal direction.
+
+\subsection{Edges and vertices: the dimensional hierarchy}
+
+A boundary edge is the intersection of two faces, and a vertex the intersection
+of three. A node is therefore constrained by \emph{all} the faces it belongs
+to. If it satisfies $m$ independent level sets $g_1,\dots,g_m$ (with
+$m\in\{1,2,3\}$), it must satisfy \eqref{eq:linconstraint} for each:
+\begin{equation}
+  \grad g_i(~x)\cdot\delta~x = -\,g_i(~x), \qquad i = 1,\dots,m.
+  \label{eq:multiconstraint}
+\end{equation}
+The constraint gradients $~a_i = \grad g_i(~x)$ span the \emph{constrained
+subspace} $\mathcal{C} = \mathrm{span}\{~a_1,\dots,~a_m\}$, of dimension $m$;
+the admissible motions are its orthogonal complement, the \emph{tangent
+subspace} $\mathcal{T} = \mathcal{C}^\perp$, of dimension $3-m$:
+
+\begin{center}
+\begin{tabular}{lccl}
+\toprule
+feature & level sets $m$ & free DOF $3-m$ & admissible motion \\
+\midrule
+face   & 1 & 2 & slide in the tangent plane \\
+edge   & 2 & 1 & slide along the edge tangent \\
+vertex & 3 & 0 & pinned \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This recovers, with no special cases, the cube behavior in which membership in
+one/two/three faces leaves two/one/zero free components. The user declares
+which level sets apply to which boundary node set; the feature dimension is
+simply the number of level sets listed (or an explicit
+\code{surface}/\code{curve}/\code{vertex} tag).
+
+\section{Analytic input and exact gradients}
+\label{sec:input}
+
+Norma already compiles analytic expressions of $(t,x,y,z)$ for initial and
+boundary conditions and for the EMS size field: the string is parsed with
+\code{Meta.parse}, turned into a \code{Symbolics} expression, and compiled to a
+fast closure by \code{build\_function} (see
+\code{SolidMechanicsDirichletBoundaryCondition} in \code{boundary\_conditions.jl}
+and \code{create\_size\_field} in \code{model.jl}). The surface field $g$ is
+compiled by the identical path.
+
+The key economy is that the gradient need not be supplied or approximated. From
+the symbolic $g$,
+\begin{equation}
+  \grad g = \code{Symbolics.gradient}(g,\,[x,y,z])
+\end{equation}
+is obtained \emph{exactly and automatically} and compiled the same way; the
+Hessian $\grad^2 g$ is available identically if a full penalty tangent is
+wanted. The user writes only the surface, e.g.\ \code{"x\^{}2 + y\^{}2 - R\^{}2"}
+for a cylinder of radius $R$ about the $z$-axis; the normal field follows
+without finite differencing.
+
+\paragraph{Proposed YAML schema.} Mirroring the initial/boundary-condition
+style, each constrained node set lists one or more surfaces; the count sets the
+feature dimension.
+\begin{verbatim}
+model:
+  type: mesh smoothing
+  smooth reference: max
+  boundary surfaces:
+    - node set: lateral          # face: 1 level set, 2 free DOF
+      surfaces: ["x^2 + y^2 - R^2"]
+    - node set: top_rim          # edge: 2 level sets, 1 free DOF
+      surfaces: ["x^2 + y^2 - R^2", "z - H"]
+    - node set: mount_corner     # vertex: 3 level sets, pinned
+      surfaces: ["x", "y", "z - H"]
+\end{verbatim}
+Constants such as \code{R} and \code{H} are substituted into the string as they
+already are for other expressions. A node set with no listed surface is left
+free (interior-like), and any Cartesian face can still be written as a linear
+level set (e.g.\ \code{"x"}), so the cube case is a special case of the schema.
+
+\section{Enforcement}
+\label{sec:enforcement}
+
+The EMS examples solve with matrix-free descent (steepest descent or L-BFGS;
+see \code{examples/\allowbreak ems/\allowbreak awful-cube/}), which uses the gradient of $W$ and, for
+Newton, its Hessian. Both enforcement routes below fit that machinery; they
+differ in invasiveness and in how exactly the surface is honored. Recall the
+solver reduces the system to the free DOF: for Newton,
+$~A = \code{hessian}[\text{free},\text{free}]$,
+$~b = \code{gradient}[\text{free}]$, step $= -~A^{-1}~b$; for matrix-free
+descent, the step is taken along the (projected) negative gradient over the
+free DOF (\code{solver.jl}).
+
+\subsection{Route A --- penalty (prototype)}
+\label{sec:penalty}
+
+Augment the smoothing energy with a quadratic penalty on each constrained
+node's surface residuals,
+\begin{equation}
+  P(~x) = \sum_{\text{nodes}} \; \sum_{i=1}^{m}
+          \tfrac12\,\kappa_i\, g_i(~x)^2 .
+  \label{eq:penalty}
+\end{equation}
+Its contributions to the residual (gradient) and tangent (Hessian) at a
+constrained node are
+\begin{align}
+  \frac{\partial P}{\partial ~x}
+    &= \sum_i \kappa_i\, g_i\, \grad g_i,
+    \label{eq:penaltygrad}\\
+  \frac{\partial^2 P}{\partial ~x^2}
+    &= \sum_i \kappa_i\bigl(\grad g_i\,\grad g_i^{\top}
+       + g_i\,\grad^2 g_i\bigr)
+     \;\approx\; \sum_i \kappa_i\,\grad g_i\,\grad g_i^{\top},
+    \label{eq:penaltyhess}
+\end{align}
+the last a Gauss--Newton approximation (drop the $g_i\grad^2 g_i$ term, which
+vanishes as $g_i\to0$). Each term is a rank-one operator
+$\kappa_i\,\grad g_i\grad g_i^{\top}$ that penalizes motion \emph{along the
+normal} while leaving tangential motion governed by $W$---a soft version of the
+exact roller. For the matrix-free solvers EMS actually uses, only
+\eqref{eq:penaltygrad} is needed; it is added to \code{solver.gradient} at the
+node's three DOF after \code{evaluate}. No \code{free\_dofs} manipulation and no
+change of basis are required.
+
+\emph{Trade-offs.} Trivial to implement and the fastest way to exercise the
+level-set and gradient plumbing on a curved mesh. But the surface is satisfied
+only approximately---the residual scales like (smoothing force)$/\kappa$---and
+large $\kappa$ ill-conditions the system. $\kappa_i$ must be scaled to the
+element stiffness and mesh size (e.g.\ $\kappa \sim c\,\mu/h^2$). It is a
+derisking and validation tool, not the production mechanism.
+
+\subsection{Route B --- exact local-frame (inclined roller)}
+\label{sec:exact}
+
+Enforce \eqref{eq:multiconstraint} exactly by a change of basis at each
+constrained node. Orthonormalize the constraint gradients
+$\{~a_1,\dots,~a_m\}$ (Gram--Schmidt / thin QR) into $~q_1,\dots,~q_m$ spanning
+$\mathcal{C}$, and complete them to an orthonormal frame
+\begin{equation}
+  ~Q = [\,\underbrace{~q_1 \cdots ~q_m}_{\text{normal}}
+        \mid \underbrace{~q_{m+1}\cdots ~q_3}_{\text{tangent}}\,]
+        \in \Real^{3\times3},
+\end{equation}
+whose first $m$ columns span the constrained (normal) directions and last $3-m$
+span the tangent. In the rotated coordinates $\widetilde{\delta~x} = ~Q^\top
+\delta~x$, the tangential components are free and the normal components are
+prescribed by the drift correction. For a single face ($m=1$),
+$\widetilde{\delta x}_1 = -g_1/\norm{~a_1}$ from \eqref{eq:normalconstraint};
+for $m>1$ the $m$ normal components follow from the small linear system
+$~A_{\mathcal C}\,\widetilde{\delta~x}_{1:m} = -~g$ with
+$(~A_{\mathcal C})_{ij} = ~a_i\cdot~q_j$.
+
+\paragraph{Two ways to carry this through the solver.}
+\begin{itemize}
+  \item \emph{Matrix-free descent (the EMS default).} The exact constraint is a
+  \emph{projected gradient with return to surface}: (i) project the node's
+  gradient onto the tangent subspace, $~g^{\mathrm{tan}} = ( ~I - \sum_i
+  ~q_i~q_i^\top)\,~g^{\mathrm{node}}$, so the descent direction has no normal
+  component; (ii) after the step, restore the node to the surface by a few
+  Newton iterations of $g_i(~x)=0$ along the normal (a closest-point
+  projection). This keeps every constrained node on the manifold to tolerance
+  at each iteration and needs no assembled operator---the least invasive exact
+  route and the natural fit for steepest descent / L-BFGS.
+  \item \emph{Newton (\code{HessianMinimizer}).} Apply the nodal rotation to the
+  assembled system: left-multiply the constrained node's rows of the residual
+  and Hessian by $~Q^\top$ and right-multiply its columns by $~Q$ (a congruence
+  transform that preserves symmetry), mark the $m$ normal DOF as fixed in
+  \code{free\_dofs} with prescribed increment equal to the drift correction,
+  leave $3-m$ tangential DOF free, solve the reduced system, and rotate the
+  increment back, $\delta~x = ~Q\,\widetilde{\delta~x}$.
+\end{itemize}
+
+Both variants reduce \emph{exactly} to the present behavior when the faces are
+axis-aligned: then $~Q$ is a signed permutation, the projection zeroes a
+Cartesian component, and the fixed normal DOF is a Cartesian component---the
+cube DBCs, recovered as a special case. This is the production mechanism:
+variationally consistent, surface-exact up to the return-to-surface tolerance,
+and geometry-agnostic.
+
+\section{Robustness and degeneracy guards}
+\label{sec:robustness}
+
+\begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
+  \item[Vanishing gradient.] $\norm{\grad g}\to0$ marks a critical point of the
+  level set (e.g.\ the center of a sphere), where the normal
+  \eqref{eq:normal} is undefined. Abort with a diagnostic, consistent with the
+  degeneracy policy already adopted for the overlap-energy blending (reject, do
+  not regularize).
+  \item[Node off the declared surface.] The node set is asserted by the user to
+  lie on the surface. If $|g(~x_0)|$ exceeds a tolerance scaled by the local
+  element size at setup, warn (or abort): the mesh does not match the declared
+  geometry, which is almost always an input error.
+  \item[Rank-deficient feature.] At an edge or vertex the gradients
+  $\{~a_i\}$ must be linearly independent; two nearly parallel surfaces make the
+  frame system $~A_{\mathcal C}$ ill-conditioned (a near-tangential
+  intersection). Detect via the smallest singular value and abort as a
+  degenerate feature.
+  \item[Return-to-surface convergence.] On strongly curved faces the drift
+  correction is only first order; cap the per-iteration normal correction and,
+  if the closest-point Newton fails to converge, fall back to a bisection along
+  the normal so a node never leaves its surface.
+\end{description}
+
+\section{Test plan}
+\label{sec:tests}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Reduction to the cube (regression).} Re-express the six cube
+  faces of \code{awful-cube} as linear level sets ($x$, $x-L$, $y$, \dots) and
+  verify EMS produces the same smoothed mesh (to solver tolerance) as the
+  current axis-aligned Dirichlet conditions. This pins backward compatibility:
+  the general path must contain the special one.
+  \item \textbf{Cylinder (the motivating case).} Use an existing cylindrical
+  mesh (e.g.\ \code{examples/\allowbreak ahead/\allowbreak \dots/torsion/\allowbreak torsion.g}), perturb the
+  interior nodes, constrain the lateral boundary to
+  $g=x^2+y^2-R^2=0$, and check that (a) the smoothing energy decreases
+  monotonically, (b) every boundary node satisfies $|g|<\text{tol}$ after the
+  solve, and (c) boundary nodes moved tangentially (the surface did not
+  shrink or bulge). Include the top/bottom rims as edges
+  ($\{x^2+y^2-R^2,\; z\mp H\}$) to exercise $m=2$.
+  \item \textbf{Penalty vs.\ exact.} On the cylinder, confirm the penalty
+  surface residual scales as $1/\kappa$ while the exact route holds
+  $|g|$ at the return-to-surface tolerance independent of any penalty
+  parameter.
+  \item \textbf{Sphere / quarter-annulus.} A doubly curved face
+  ($x^2+y^2+z^2-R^2$) and a mixed straight/curved boundary to check that the
+  normal field and the dimensional hierarchy behave at genuinely
+  non-axis-aligned edges and vertices.
+\end{enumerate}
+
+\section{Recommendation and phasing}
+\label{sec:phasing}
+
+\begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
+  \item[Phase 1.] Level-set input (Section~\ref{sec:input}) plus the penalty
+  enforcement (Section~\ref{sec:penalty}) and the cylinder test. This
+  derisks the input parsing, the \code{Symbolics} gradient path, and the
+  membership/normal evaluation with the smallest possible code change, and
+  produces visible ``nodes hug the surface'' behavior early.
+  \item[Phase 2.] The exact local-frame constraint
+  (Section~\ref{sec:exact})---projected-gradient/return-to-surface for the
+  matrix-free solvers first, then the Newton nodal rotation---and the
+  reduce-to-cube regression. This is the production mechanism.
+  \item[Phase 3 (optional).] Edges and vertices ($m>1$) end-to-end, plus
+  refinements: a symmetric smoothstep or harmonic weighting if a $C^1$ ramp is
+  ever wanted, and caching of the compiled $g,\grad g$ per node set alongside
+  the existing size-field closure.
+\end{description}
+
+The construction reuses machinery already in the tree---the symbolic-expression
+compiler, \code{Symbolics.gradient}, the \code{free\_dofs} reduced solve, and
+the \code{compute\_rotation\_matrix} helper in
+\code{boundary\_conditions.jl}---and degrades exactly to the current cube
+behavior, so the present EMS examples remain a regression test of the general
+path.
+
+\end{document}
