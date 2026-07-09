@@ -42,7 +42,12 @@ conditions. It states the constraint model (tangential slip with a
 return-to-surface correction, and a dimensional hierarchy for faces, edges, and
 vertices), two enforcement routes (a soft penalty and an exact local-frame
 constraint), the robustness guards, and a test plan that includes exact
-reduction to the current cube behavior.
+reduction to the current cube behavior. Because a Genesis/Exodus file carries no
+analytic geometry---a curved boundary is stored only as a soup of flat element
+facets, verified below---the note treats two interchangeable surface sources
+feeding a common constraint: the user-supplied analytic level set (exact but
+requires a formula) and the mesh's own boundary facets (general but only as
+smooth as the input mesh).
 \end{abstract}
 
 \section{Problem statement}
@@ -159,8 +164,35 @@ which level sets apply to which boundary node set; the feature dimension is
 simply the number of level sets listed (or an explicit
 \code{surface}/\code{curve}/\code{vertex} tag).
 
-\section{Analytic input and exact gradients}
+\section{Surface representation and evaluation}
 \label{sec:input}
+
+The constraint model of Section~\ref{sec:model} needs only two quantities at
+each constrained node: the signed surface residual $g(~x)$ and the unit normal
+$~n=\grad g/\norm{\grad g}$ (one such pair per incident face at an edge or
+vertex). Everything downstream is agnostic to \emph{how} they are produced.
+There are two sources, and which applies is dictated by what the mesh file
+actually carries.
+
+\subsection{What a Genesis/Exodus file stores}
+\label{sec:genesis}
+
+A Genesis file records no analytic geometry. Cubit-generated primitives confirm
+it: a curved boundary exported as a side set is stored as two integer arrays,
+\code{elem\_ss} (element numbers) and \code{side\_ss} (local face index on each
+element), with unit distribution factors---a list of (element, local-face)
+pairs, that is, a soup of flat element facets. For a meshed sphere the
+``spherical'' side set is just the outward hexahedral faces (\code{elem\_ss} the
+24 surface elements, \code{side\_ss} all equal to the same local face); nothing
+records that it is a sphere, its radius, or its normals. The curvature lives
+\emph{only} in the nodal coordinates, and node sets are plain node lists. Two
+consequences follow: the true smooth surface must be supplied by the user if it
+is wanted, because the file cannot provide it; yet the mesh already carries a
+usable---if piecewise-flat---representation of the boundary in the side-set
+facets themselves.
+
+\subsection{Analytic level sets}
+\label{sec:analytic}
 
 Norma already compiles analytic expressions of $(t,x,y,z)$ for initial and
 boundary conditions and for the EMS size field: the string is parsed with
@@ -200,6 +232,36 @@ Constants such as \code{R} and \code{H} are substituted into the string as they
 already are for other expressions. A node set with no listed surface is left
 free (interior-like), and any Cartesian face can still be written as a linear
 level set (e.g.\ \code{"x"}), so the cube case is a special case of the schema.
+
+\subsection{Discrete boundary facets}
+\label{sec:discrete}
+
+When no analytic form is available---an imported or otherwise formless
+geometry---the boundary side set supplies the surface directly. Constrain each
+boundary node to the union of its side-set facets in the reference
+configuration by closest-point projection: the foot point is the drift target,
+the facet normal is $~n$, and the signed distance to the facet is the residual
+$g$ in \eqref{eq:normalconstraint}. Norma already has this machinery---
+\code{closest\_point\_projection} and the containing-facet scan used by the
+overlap-energy blending---so the discrete evaluator is largely an assembly of
+existing parts and requires no new user input beyond naming the boundary side
+set.
+
+Faces, edges, and vertices are recovered by a feature-angle test on the facet
+normals incident to a node: a single cluster of normals is a smooth face
+($m=1$, project onto the boundary); two clusters mark an edge ($m=2$, constrain
+to the ridge where the groups meet); three or more mark a corner ($m=3$,
+pinned). This is the discrete analogue of the level-set count of
+Section~\ref{sec:model}.
+
+\emph{Trade-off.} The discrete surface is only as smooth as the input faceting:
+nodes slide on the piecewise-flat boundary and cannot recover a surface smoother
+than the mesh already resolves. For quality-driven smoothing---which
+redistributes nodes without refining the boundary---that is usually the intent,
+and it is the only option when the geometry has no closed form. The analytic
+route is preferable when the smooth surface is known and sub-faceting fidelity
+on the boundary matters. The two are combinable: analytic where a formula is
+known (primitive faces), discrete elsewhere.
 
 \section{Enforcement}
 \label{sec:enforcement}
@@ -349,6 +411,12 @@ and geometry-agnostic.
   ($x^2+y^2+z^2-R^2$) and a mixed straight/curved boundary to check that the
   normal field and the dimensional hierarchy behave at genuinely
   non-axis-aligned edges and vertices.
+  \item \textbf{Discrete evaluator (formula-free).} Smooth the same sphere using
+  only its boundary side-set facets (Section~\ref{sec:discrete})---no analytic
+  surface---and confirm the result matches the analytic-sphere run to the
+  faceting scale, and that the feature-angle test tags the smooth surface as a
+  face (no spurious edges). This validates the general-geometry path on a
+  geometry whose analytic form is, in this case, known for comparison.
 \end{enumerate}
 
 \section{Recommendation and phasing}
@@ -364,10 +432,16 @@ and geometry-agnostic.
   (Section~\ref{sec:exact})---projected-gradient/return-to-surface for the
   matrix-free solvers first, then the Newton nodal rotation---and the
   reduce-to-cube regression. This is the production mechanism.
-  \item[Phase 3 (optional).] Edges and vertices ($m>1$) end-to-end, plus
-  refinements: a symmetric smoothstep or harmonic weighting if a $C^1$ ramp is
-  ever wanted, and caching of the compiled $g,\grad g$ per node set alongside
-  the existing size-field closure.
+  \item[Phase 3.] The discrete-facet evaluator
+  (Section~\ref{sec:discrete}) as the general-geometry surface source, sharing
+  Phase~2's enforcement and adding the feature-angle detection of edges and
+  vertices. This is the path for imported meshes with no closed form, and it is
+  what the Genesis representation makes the natural default; validate on the
+  sphere against its analytic counterpart.
+  \item[Phase 4 (optional).] Edges and vertices ($m>1$) end-to-end for the
+  analytic route, plus refinements: a symmetric smoothstep or harmonic weighting
+  if a $C^1$ ramp is ever wanted, and caching of the compiled $g,\grad g$ per
+  node set alongside the existing size-field closure.
 \end{description}
 
 The construction reuses machinery already in the tree---the symbolic-expression
