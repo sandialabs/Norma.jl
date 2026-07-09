@@ -160,9 +160,9 @@ vertex & 3 & 0 & pinned \\
 
 This recovers, with no special cases, the cube behavior in which membership in
 one/two/three faces leaves two/one/zero free components. The user declares
-which level sets apply to which boundary node set; the feature dimension is
-simply the number of level sets listed (or an explicit
-\code{surface}/\code{curve}/\code{vertex} tag).
+which level sets apply to which boundary side set; a node's feature dimension is
+the number of level sets it accumulates across the side sets it belongs to
+(one per smooth face, two along a shared edge, three at a corner).
 
 \section{Surface representation and evaluation}
 \label{sec:input}
@@ -214,24 +214,33 @@ for a cylinder of radius $R$ about the $z$-axis; the normal field follows
 without finite differencing.
 
 \paragraph{Proposed YAML schema.} Mirroring the initial/boundary-condition
-style, each constrained node set lists one or more surfaces; the count sets the
-feature dimension.
+style, each entry binds a boundary \emph{side set} to one or more surfaces $g$;
+the constraint applies to exactly the nodes of that side set, and the surface
+count sets the feature dimension. A side set is the natural anchor because it is
+already the boundary-face entity in the mesh: the same side set names the
+constrained nodes for the analytic route \emph{and}, for the discrete route of
+Section~\ref{sec:discrete}, supplies the facets---so one key serves both surface
+sources.
 \begin{verbatim}
 model:
   type: mesh smoothing
   smooth reference: max
   boundary surfaces:
-    - node set: lateral          # face: 1 level set, 2 free DOF
+    - side set: lateral          # face: 1 level set, 2 free DOF
       surfaces: ["x^2 + y^2 - R^2"]
-    - node set: top_rim          # edge: 2 level sets, 1 free DOF
+    - side set: top_rim          # edge: 2 level sets, 1 free DOF
       surfaces: ["x^2 + y^2 - R^2", "z - H"]
-    - node set: mount_corner     # vertex: 3 level sets, pinned
+    - side set: mount_corner     # vertex: 3 level sets, pinned
       surfaces: ["x", "y", "z - H"]
 \end{verbatim}
 Constants such as \code{R} and \code{H} are substituted into the string as they
-already are for other expressions. A node set with no listed surface is left
-free (interior-like), and any Cartesian face can still be written as a linear
-level set (e.g.\ \code{"x"}), so the cube case is a special case of the schema.
+already are for other expressions. A boundary side set with no listed surface is
+left free (interior-like), and any Cartesian face can still be written as a
+linear level set (e.g.\ \code{"x"}), so the cube case is a special case of the
+schema. A node shared by two side sets (a common edge) accumulates both level
+sets and is thereby constrained to their intersection, realizing the
+$m=2$ hierarchy of Section~\ref{sec:model} directly from the side-set
+membership.
 
 \subsection{Discrete boundary facets}
 \label{sec:discrete}
