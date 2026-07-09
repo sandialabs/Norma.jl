@@ -3,7 +3,14 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-mutable struct SolidMechanicsOpInfOverlapSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition
+# An overlapping coupling, so it belongs under the overlap-coupling abstract
+# alongside the FOM overlap BCs (it previously subtyped the grandparent
+# SolidMechanicsSchwarzBoundaryCondition directly, so `isa CouplingSchwarz`
+# checks silently skipped it).  apply_bc_detail for the neural-network ROM is
+# dispatched on the concrete type in ext/NormaPyTorchExt.jl and stays strictly
+# more specific than the OpInfModel/CouplingSchwarz fallback, so this reparenting
+# does not change method resolution for it.
+mutable struct SolidMechanicsOpInfOverlapSchwarzBoundaryCondition <: SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}

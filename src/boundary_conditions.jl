@@ -324,7 +324,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     )
 end
 
-function SolidMechanicsImpedanceSchwarzBoundaryCondition(
+function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
     mesh::ExodusDatabase,
     side_set_name::String,
     coupled_side_set_name::String,
@@ -342,7 +342,7 @@ function SolidMechanicsImpedanceSchwarzBoundaryCondition(
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
-    return SolidMechanicsImpedanceSchwarzBoundaryCondition(
+    return SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
         side_set_name,
         side_set_id,
         side_set_node_indices,
@@ -495,7 +495,7 @@ function SMCouplingSchwarzBC(
             )
         end
         if bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz RR nonoverlap"
-            SolidMechanicsImpedanceSchwarzBoundaryCondition(
+            SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
                 input_mesh,
                 side_set_name,
                 coupled_side_set_name,

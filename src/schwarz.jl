@@ -135,7 +135,7 @@ function recover_interface_kinematics!(controller, slot, integrator, interp_velo
     return nothing
 end
 
-function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceSchwarzBoundaryCondition)
+function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition)
     Z = bc.impedance
     α = bc.robin_parameter
     W = bc.square_projector
@@ -232,7 +232,7 @@ function build_impedance_schwarz_stiffness(model::SolidMechanics, integrator::Ti
     num_dofs = 3 * num_nodes
     K_is = spzeros(num_dofs, num_dofs)
     for bc in model.boundary_conditions
-        bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition || continue
+        bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
         Z = bc.impedance
         α = bc.robin_parameter
         W = bc.square_projector
@@ -258,7 +258,7 @@ function build_impedance_schwarz_stiffness(model::SolidMechanics, integrator::Ti
     return K_is
 end
 
-function pair_bc(bc::SolidMechanicsImpedanceSchwarzBoundaryCondition, bc_index::Int64)
+function pair_bc(bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
     coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
@@ -272,7 +272,7 @@ function pair_bc(bc::SolidMechanicsImpedanceSchwarzBoundaryCondition, bc_index::
 end
 
 function compute_impedance_schwarz_projectors!(
-    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceSchwarzBoundaryCondition
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
 )
     compute_dirichlet_projector(dst_model, dst_bc)
     compute_neumann_projector(dst_model, dst_bc)
@@ -1046,7 +1046,7 @@ function build_impedance_schwarz_force(model::SolidMechanics)
                     f[dof_i] += f_imp[i_local]
                 end
             end
-        elseif bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+        elseif bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
             Z = bc.impedance
             α = bc.robin_parameter
             W = bc.square_projector
@@ -1399,10 +1399,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
 
     # Interpolate or use fallback
-    use_predictor = (
-        bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
-        bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
-    ) &&
+    use_predictor = bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition &&
     controller.use_interface_predictor &&
     controller.iteration_number == 0 &&
     !isempty(controller.predictor_disp[coupled_index])
@@ -1859,7 +1856,7 @@ end
 function pair_bc(_::SolidMechanicsRegularBoundaryCondition, _::Int64) end
 
 function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
-    if bc isa SolidMechanicsOverlapSchwarzBoundaryCondition || bc isa SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
+    if bc isa SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
         return nothing
     end
     coupled_bc_name = bc.coupled_bc_name

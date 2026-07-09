@@ -47,15 +47,6 @@ end
 # SolidMechanics and its constructors.
 const ARLEQUIN_WEIGHT_CACHE = IdDict{SolidMechanics,ArlequinWeights}()
 
-# Overlapping-Schwarz couplings that mesh a shared volume twice, so their energy
-# must be blended: the DBC-driven variant and the impedance (Robin) variant.
-# Non-overlap and contact Schwarz partition the domain across a measure-zero
-# interface and need no correction, so they are deliberately excluded and their
-# subdomains keep unit weights.
-const OverlapSchwarzBC = Union{
-    SolidMechanicsOverlapSchwarzBoundaryCondition,SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-}
-
 # One overlapping-Schwarz coupling of a subdomain: this subdomain's own Schwarz
 # side set, the partner model, and the partner's Schwarz side set.
 struct OverlapPartner
@@ -111,7 +102,11 @@ function overlap_partners(subsim::SingleDomainSimulation)
         norma_abort("Blended overlap energy is only implemented for SolidMechanics subdomains.")
     partners = OverlapPartner[]
     for bc in model.boundary_conditions
-        bc isa OverlapSchwarzBC || continue
+        # Every overlapping coupling (DBC or impedance) subtypes this abstract, so
+        # new overlap variants are picked up automatically; non-overlap and
+        # contact Schwarz partition across a measure-zero interface and keep unit
+        # weights.
+        bc isa SolidMechanicsOverlapCouplingSchwarzBoundaryCondition || continue
         partner_subsim = coupled_subsim_of(bc)
         partner_model = partner_subsim.model
         partner_model isa SolidMechanics || norma_abort(
@@ -126,9 +121,11 @@ end
 
 # The partner's Schwarz boundary side set is carried by the partner's overlap BC
 # that couples back to this subdomain (its coupled_handle points at us).
-function partner_schwarz_side_set(bc::OverlapSchwarzBC, partner_model::SolidMechanics)
+function partner_schwarz_side_set(
+    bc::SolidMechanicsOverlapCouplingSchwarzBoundaryCondition, partner_model::SolidMechanics
+)
     for partner_bc in partner_model.boundary_conditions
-        if partner_bc isa OverlapSchwarzBC &&
+        if partner_bc isa SolidMechanicsOverlapCouplingSchwarzBoundaryCondition &&
             partner_bc.coupled_handle.id == bc.self_handle.id
             return partner_bc.side_set_id
         end

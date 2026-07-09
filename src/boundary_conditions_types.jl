@@ -11,6 +11,16 @@ abstract type SolidMechanicsRegularBoundaryCondition <: SolidMechanicsBoundaryCo
 abstract type SolidMechanicsNeumannRobinBoundaryCondition <: SolidMechanicsRegularBoundaryCondition end
 abstract type SolidMechanicsSchwarzBoundaryCondition <: SolidMechanicsBoundaryCondition end
 abstract type SolidMechanicsCouplingSchwarzBoundaryCondition <: SolidMechanicsSchwarzBoundaryCondition end
+# Coupling Schwarz BCs split along two orthogonal axes: geometry (overlap vs.
+# non-overlap) and transmission condition (Dirichlet vs. impedance/Robin).  The
+# geometry axis is captured here so "is this an overlapping coupling?" is a
+# single `isa` on the abstract type rather than an enumeration of concretes that
+# every call site must keep in sync (the omission of one concrete from such an
+# enumeration is exactly what double-counted the overlap energy).  An overlapping
+# coupling meshes a shared volume twice; a non-overlapping one partitions the
+# domain across a measure-zero interface.
+abstract type SolidMechanicsOverlapCouplingSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition end
+abstract type SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition end
 
 using Symbolics
 
@@ -86,7 +96,7 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     coupled_handle::DomainHandle
 end
 
-mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
@@ -147,7 +157,7 @@ struct ConsistentTractionPatch
     tilde_normals::Matrix{Float64}                    # 3 x (Γ̃ nodes), receiving-side normals
 end
 
-mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
@@ -195,7 +205,7 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     coupled_handle::DomainHandle
 end
 
-mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
@@ -218,7 +228,7 @@ end
 # Z = ρ c_p (characteristic impedance) absorbs outgoing waves at the interface,
 # preventing reflections that cause energy growth with mixed integrators.
 # The displacement penalty α W u provides quasi-static stability.
-mutable struct SolidMechanicsImpedanceSchwarzBoundaryCondition <: SolidMechanicsCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition <: SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}

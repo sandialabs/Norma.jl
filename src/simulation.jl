@@ -1488,7 +1488,7 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if bc isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+            if bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
                 compute_impedance_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
                 compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
@@ -1605,8 +1605,7 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
 
     for (dom_k, subsim_k) in enumerate(sim.subsims)
         for bc_k in subsim_k.model.boundary_conditions
-            bc_k isa SolidMechanicsNonOverlapSchwarzBoundaryCondition ||
-            bc_k isa SolidMechanicsImpedanceSchwarzBoundaryCondition || continue
+            bc_k isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition || continue
 
             dom_j = bc_k.coupled_handle.id
             pair = minmax(dom_k, dom_j)
@@ -1724,7 +1723,7 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
             #   - Non-overlap Neumann (is_dirichlet == false) reads force FROM the coupled domain.
             #   - Robin reads force from BOTH coupled domains.
             # So set predictor_∂Ω_f[x] when domain x's force is read by the other domain.
-            is_robin = bc_k isa SolidMechanicsImpedanceSchwarzBoundaryCondition
+            is_robin = bc_k isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
 
             pred_∂Ω_f_k = copy(controller.stop_∂Ω_f[dom_k])
             pred_∂Ω_f_j = copy(controller.stop_∂Ω_f[dom_j])
