@@ -20,20 +20,19 @@ time integrator:
   final time: 10.0
   time step: 1.0
 boundary conditions:
-  # Analytic level-set surface constraints (Phase 1: penalty enforcement).
-  # Each side set's nodes are held to its surface g(x) = 0; a node on both the
-  # lateral surface and an end cap accumulates both level sets and is pinned to
-  # the rim circle (the m = 2 edge case) automatically.
+  # Analytic level-set surface constraints, exact local-frame roller (the
+  # default; the alternative is enforcement: penalty).  Each side set's nodes
+  # slide on its surface g(x) = 0 and are closest-point-projected back onto it
+  # each iteration; a node on both the lateral surface and an end cap accumulates
+  # both level sets and is pinned to the rim circle (the m = 2 edge case)
+  # automatically.
   Surface:
     - side set: lateral          # curved lateral surface x^2 + y^2 = 1
       function: "x^2 + y^2 - 1.0"
-      penalty: 1.0e+6
     - side set: top              # end cap at z = -1
       function: "z + 1.0"
-      penalty: 1.0e+6
     - side set: bottom           # end cap at z = +1
       function: "z - 1.0"
-      penalty: 1.0e+6
 solver:
   type: steepest descent
   step:  steepest descent

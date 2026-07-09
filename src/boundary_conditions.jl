@@ -73,9 +73,20 @@ end
 function SolidMechanicsSurfaceBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     side_set_name = bc_params["side set"]
     expression = string(bc_params["function"])
+    enforcement_str = lowercase(string(get(bc_params, "enforcement", "exact")))
+    if enforcement_str == "exact"
+        enforcement = :exact
+    elseif enforcement_str == "penalty"
+        enforcement = :penalty
+    else
+        norma_abort(
+            "Surface boundary condition on side set \"$side_set_name\": \"enforcement\" must be " *
+            "\"exact\" or \"penalty\" (got \"$enforcement_str\").",
+        )
+    end
     penalty = Float64(get(bc_params, "penalty", 1.0e6))
-    if penalty ≤ 0.0
-        norma_abort("A Surface boundary condition requires a positive \"penalty\" (got $penalty).")
+    if enforcement == :penalty && penalty ≤ 0.0
+        norma_abort("A penalty Surface boundary condition requires a positive \"penalty\" (got $penalty).")
     end
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     # read_side_set_node_list repeats a node once per side it touches; the unique
@@ -101,7 +112,7 @@ function SolidMechanicsSurfaceBoundaryCondition(input_mesh::ExodusDatabase, bc_p
     level_set_grad = eval(build_function(grad_num, [t, x, y, z]; expression=Val(false))[1])
 
     return SolidMechanicsSurfaceBoundaryCondition(
-        side_set_name, side_set_id, node_indices, level_set_fun, level_set_grad, penalty
+        side_set_name, side_set_id, node_indices, level_set_fun, level_set_grad, enforcement, penalty
     )
 end
 
@@ -731,7 +742,7 @@ end
 # smoothing internal force.
 function apply_surface_penalty_internal_force!(model::SolidMechanics)
     for bc in model.boundary_conditions
-        bc isa SolidMechanicsSurfaceBoundaryCondition || continue
+        (bc isa SolidMechanicsSurfaceBoundaryCondition && bc.enforcement == :penalty) || continue
         for node_index in bc.node_indices
             X = model.reference[:, node_index] + model.displacement[:, node_index]
             # A Vector argument (not a tuple) so the compiled vector-valued
@@ -756,7 +767,7 @@ function build_surface_penalty_stiffness(model::SolidMechanics)
     num_dofs = 3 * size(model.reference, 2)
     K_surface = spzeros(num_dofs, num_dofs)
     for bc in model.boundary_conditions
-        bc isa SolidMechanicsSurfaceBoundaryCondition || continue
+        (bc isa SolidMechanicsSurfaceBoundaryCondition && bc.enforcement == :penalty) || continue
         for node_index in bc.node_indices
             X = model.reference[:, node_index] + model.displacement[:, node_index]
             grad = bc.level_set_grad([model.time, X[1], X[2], X[3]])
@@ -769,6 +780,126 @@ function build_surface_penalty_stiffness(model::SolidMechanics)
         end
     end
     return K_surface
+end
+
+# --- Exact local-frame roller (enforcement == :exact) --------------------------
+
+# Closest-point Newton for the return-to-surface drift correction: stop once
+# every constraint residual is below this, or after this many iterations.  On a
+# planar (linear) surface one step is exact; a curved one needs a handful.
+const SURFACE_RETURN_TOL = 1.0e-12
+const SURFACE_RETURN_MAX_ITERS = 20
+# Smallest singular value (∝ min |R| diagonal of the gradient QR) below which an
+# edge/vertex is treated as degenerate: two (near-)parallel surfaces meet at a
+# tangential, ill-posed intersection.
+const SURFACE_FRAME_MIN_SV = 1.0e-9
+
+# Gather, per constrained node, the (g, ∇g) closures of every exact-mode Surface
+# BC whose side set contains it.  A node on two surfaces (a shared edge) collects
+# both; three, a corner.  The joint set defines the node's normal subspace (the
+# span of the gradients) and its tangent complement.  Returns an empty dict when
+# no exact-mode surface BCs are present, so callers can early-return cheaply.
+function collect_exact_surface_constraints(model::SolidMechanics)
+    constraints = Dict{Int64,Vector{Tuple{Function,Function}}}()
+    for bc in model.boundary_conditions
+        (bc isa SolidMechanicsSurfaceBoundaryCondition && bc.enforcement == :exact) || continue
+        for node_index in bc.node_indices
+            push!(get!(constraints, node_index, Tuple{Function,Function}[]), (bc.level_set_fun, bc.level_set_grad))
+        end
+    end
+    return constraints
+end
+
+# Orthonormal basis (3 × m) of a node's normal subspace — the span of its
+# constraint gradients, evaluated at the current position — plus the constraint
+# residual vector g and the gradient matrix A (m × 3, rows are gradients).
+# Aborts if the gradients are (near-)linearly dependent (a degenerate edge or
+# vertex, an input error).
+function surface_normal_frame(cs::Vector{Tuple{Function,Function}}, x::AbstractVector{Float64}, time::Float64)
+    m = length(cs)
+    args = [time, x[1], x[2], x[3]]
+    g = Vector{Float64}(undef, m)
+    A = Matrix{Float64}(undef, m, 3)
+    for (i, (gfun, dgfun)) in enumerate(cs)
+        g[i] = gfun(args)
+        A[i, :] = dgfun(args)
+    end
+    F = qr(permutedims(A))                       # QR of Aᵀ (3 × m): columns span the normals
+    R = F.R
+    if m > 3 || any(k -> abs(R[k, k]) < SURFACE_FRAME_MIN_SV, 1:m)
+        norma_abort(
+            "Exact surface constraint: $m surface gradients at a node are linearly dependent " *
+            "(degenerate edge/vertex — nearly tangential surfaces). Check the surface definitions.",
+        )
+    end
+    Q = Matrix(F.Q)[:, 1:m]
+    return Q, g, A
+end
+
+# Closest-point-project each exact-constrained node back onto its surface(s):
+# Newton iterations of g_i(x) = 0 taken in the normal subspace only (the
+# minimum-norm step δx = -A⁺ g = -Aᵀ(A Aᵀ)⁻¹ g), so the node returns to the
+# manifold without tangential drift.  Operates on model.displacement in place
+# (x = reference + displacement).  Idempotent on an already-on-surface node.
+function return_to_surface!(model::SolidMechanics)
+    constraints = collect_exact_surface_constraints(model)
+    isempty(constraints) && return nothing
+    time = model.time
+    for (node_index, cs) in constraints
+        x = model.reference[:, node_index] + model.displacement[:, node_index]
+        converged = false
+        for _ in 1:SURFACE_RETURN_MAX_ITERS
+            _, g, A = surface_normal_frame(cs, x, time)
+            if maximum(abs, g) ≤ SURFACE_RETURN_TOL
+                converged = true
+                break
+            end
+            x .-= permutedims(A) * ((A * permutedims(A)) \ g)
+        end
+        if !converged
+            norma_logf(
+                4, :warning, "return_to_surface: node %d did not reach the surface tolerance", node_index
+            )
+        end
+        model.displacement[:, node_index] = x - model.reference[:, node_index]
+    end
+    return nothing
+end
+
+# Zero the normal-subspace component of the residual at each exact-constrained
+# node, so the matrix-free descent direction is purely tangential — the
+# inclined-roller reaction carries the normal force.  Convergence is then
+# measured on the tangential residual, the true first-order optimality condition
+# for sliding on the surface.
+function project_surface_gradient!(model::SolidMechanics, gradient::Vector{Float64})
+    constraints = collect_exact_surface_constraints(model)
+    isempty(constraints) && return nothing
+    time = model.time
+    for (node_index, cs) in constraints
+        x = model.reference[:, node_index] + model.displacement[:, node_index]
+        Q, _, _ = surface_normal_frame(cs, x, time)
+        base = 3 * (node_index - 1)
+        g_node = gradient[(base + 1):(base + 3)]
+        g_node -= Q * (permutedims(Q) * g_node)
+        gradient[(base + 1):(base + 3)] = g_node
+    end
+    return nothing
+end
+
+# Guard: exact enforcement is wired only through the matrix-free evaluate path
+# (projected gradient + return to surface).  Refuse it on solvers whose evaluate
+# path does not yet carry the projection, rather than silently ignore the
+# constraint.  Penalty enforcement works on every solver and is the fallback.
+function assert_no_exact_surface_bcs(model::SolidMechanics, solver_desc::String)
+    for bc in model.boundary_conditions
+        if bc isa SolidMechanicsSurfaceBoundaryCondition && bc.enforcement == :exact
+            norma_abort(
+                "Exact surface enforcement (enforcement: exact) requires a matrix-free solver " *
+                "(steepest descent or lbfgs); $solver_desc is not supported. Use enforcement: penalty instead.",
+            )
+        end
+    end
+    return nothing
 end
 
 

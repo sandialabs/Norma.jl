@@ -447,10 +447,20 @@ and geometry-agnostic.
   elements and reduced element-volume spread. This derisked the input parsing,
   the \code{Symbolics} gradient path, and the membership/normal evaluation with
   the smallest possible code change.
-  \item[Phase 2.] The exact local-frame constraint
-  (Section~\ref{sec:exact})---projected-gradient/return-to-surface for the
-  matrix-free solvers first, then the Newton nodal rotation---and the
-  reduce-to-cube regression. This is the production mechanism.
+  \item[Phase 2 \emph{(matrix-free implemented)}.] The exact local-frame
+  constraint (Section~\ref{sec:exact}), selected by \code{enforcement: exact}
+  (now the default; \code{enforcement: penalty} keeps Phase 1). For the
+  matrix-free solvers the residual is projected onto each constrained node's
+  tangent subspace (an orthonormal basis of the constraint gradients via a $3
+  \times m$ QR) and, at the top of every \code{evaluate}, each node is
+  closest-point-projected back onto its surface(s) by a normal-subspace Newton
+  ($\delta~x = -A^{+}~g$). On the cylinder this holds the lateral residual at
+  $\sim\!10^{-13}$ (return-to-surface tolerance), independent of any penalty
+  parameter; the reduce-to-cube regression reproduces the Dirichlet smoothing to
+  $\sim\!10^{-13}$ relative, confirming the axis-aligned special case. The Newton
+  (\code{HessianMinimizer}) nodal rotation is not yet wired---that solver aborts
+  on \code{enforcement: exact} with a message pointing to \code{penalty}---and is
+  the remaining Phase~2 piece.
   \item[Phase 3.] The discrete-facet evaluator
   (Section~\ref{sec:discrete}) as the general-geometry surface source, sharing
   Phase~2's enforcement and adding the feature-angle detection of edges and

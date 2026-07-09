@@ -190,6 +190,7 @@ function reset_step!(step::LBFGSStep)
 end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
+    assert_no_exact_surface_bcs(model, "Newton (HessianMinimizer)")
     evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
@@ -215,6 +216,10 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
 end
 
 function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMechanics)
+    # Exact roller, step 1: bring every exact-constrained node back onto its
+    # surface before assembling, so the physics is evaluated on the manifold.
+    # A no-op when no exact-mode surface BCs are present.
+    return_to_surface!(model)
     evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
@@ -226,6 +231,10 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     external_force = model.body_force + model.boundary_force
     is_internal_force = build_impedance_schwarz_force(model)
     solver.gradient = model.internal_force + is_internal_force - external_force
+    # Exact roller, step 2: project the residual onto the tangent subspace so the
+    # descent direction slides along the surface (the normal force is the roller
+    # reaction).  A no-op when no exact-mode surface BCs are present.
+    project_surface_gradient!(model, solver.gradient)
     return nothing
 end
 

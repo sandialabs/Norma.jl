@@ -1,0 +1,49 @@
+type: single
+input mesh file: cube.g
+output mesh file: cube-surface.e
+model:
+  type: mesh smoothing
+  smooth reference: max
+  material:
+    blocks:
+      cube: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0e-00
+  time step: 1.0e-02
+boundary conditions:
+  # The exact-roller equivalent of cube.yaml's six Dirichlet component fixes:
+  # each planar face as a linear level set g = coord - c.  Since ∇g is a
+  # Cartesian basis vector, the exact roller pins that component and frees the
+  # other two, reproducing the Dirichlet smoothing (see the reduce-to-cube
+  # regression test in test/smoothing.jl).  This is the axis-aligned special
+  # case of the general (e.g. cylindrical) surface constraint.
+  Surface:
+    - side set: ssx-
+      function: "x + 0.5"
+    - side set: ssx+
+      function: "x - 0.5"
+    - side set: ssy-
+      function: "y + 0.5"
+    - side set: ssy+
+      function: "y - 0.5"
+    - side set: ssz-
+      function: "z + 0.5"
+    - side set: ssz+
+      function: "z - 0.5"
+solver:
+  type: steepest descent
+  step: steepest descent
+  step length: 5.0e-04
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08

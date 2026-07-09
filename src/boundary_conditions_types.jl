@@ -58,24 +58,31 @@ mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsNeumannRo
 end
 
 # Analytic level-set surface constraint for energetic mesh smoothing.  The nodes
-# of a side set are held to a smooth boundary surface g(x) = 0 by a quadratic
-# penalty P = ½ κ g².  Its gradient κ g ∇g is added to the internal force — a
-# soft inclined roller that resists motion along ∇g (onto/off the surface) while
-# leaving the tangential motion governed by the smoothing energy — and its
-# Gauss–Newton Hessian κ ∇g ∇gᵀ to the stiffness.  The exact gradient ∇g is
-# obtained automatically from the symbolic g via Symbolics.gradient, so the user
-# supplies only g.  A node shared by two such side sets accumulates both
-# penalties, realizing the edge (curve) constraint; three, a pinned vertex —
-# the dimensional hierarchy falls out of side-set membership with no special
-# case.  (Phase 1: penalty enforcement.  The exact local-frame roller is Phase 2
-# and reuses this same YAML.)
+# of a side set are held to a smooth boundary surface g(x) = 0 while sliding
+# freely within it — an inclined roller.  The exact gradient ∇g is obtained
+# automatically from the symbolic g via Symbolics.gradient, so the user supplies
+# only g.  A node shared by two such side sets accumulates both constraints,
+# realizing the edge (curve) case; three, a pinned vertex — the dimensional
+# hierarchy falls out of side-set membership with no special case.
+#
+# Two enforcement modes share this type and its YAML (selected by `enforcement`):
+#   :exact   — local-frame roller (the production mechanism).  The residual is
+#              projected onto the tangent subspace (its normal component is the
+#              constraint reaction) and, after each step, the node is
+#              closest-point-projected back onto the surface.  Surface-exact up
+#              to the return-to-surface tolerance; needs a matrix-free solver.
+#   :penalty — a quadratic penalty P = ½ κ g² whose force κ g ∇g is added to the
+#              internal force and whose Gauss–Newton Hessian κ ∇g ∇gᵀ is added to
+#              the stiffness.  Approximate (residual ~ 1/κ) but works with the
+#              Newton solver too; a derisking/validation tool.
 mutable struct SolidMechanicsSurfaceBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
     name::String
     side_set_id::Int64
     node_indices::Vector{Int64}  # unique nodes belonging to the side set
     level_set_fun::Function      # g(t, x, y, z)
     level_set_grad::Function     # ∇g(t, x, y, z) -> 3-vector
-    penalty::Float64
+    enforcement::Symbol          # :exact or :penalty
+    penalty::Float64             # used only when enforcement == :penalty
 end
 
 mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition

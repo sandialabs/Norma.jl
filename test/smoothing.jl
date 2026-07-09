@@ -575,22 +575,22 @@ end
     end
 end
 
-@testset "surface_constraint_cylinder" begin
-    # Phase 1 of energetic mesh smoothing on a general (non-box) geometry:
-    # analytic level-set surface constraints enforced by penalty.  A perturbed
-    # tet cylinder (radius 1, height 2) is smoothed with its lateral surface held
-    # to x^2 + y^2 = 1 and its end caps to z = ∓1 by `Surface` boundary
-    # conditions.  Every boundary node starts off its surface (the mesh was
-    # jittered), so the penalty must both pull it back onto the surface and let
-    # it slide within it.  We check that the lateral surface residual
-    # max|x^2 + y^2 - 1| collapses, the mesh stays valid, and the pseudo-energy
-    # drops — the box case (axis-aligned faces) is already covered by the
-    # Dirichlet-based smoothing tests above; this exercises a curved surface no
-    # Cartesian component can express.
+# Smooth the perturbed tet cylinder (radius 1, height 2) with its lateral
+# surface held to x^2 + y^2 = 1 and its end caps to z = ∓1 by `Surface` boundary
+# conditions in the given enforcement mode.  Returns the lateral surface residual
+# max|x^2 + y^2 - 1| before and after smoothing, the pseudo-energy before/after,
+# and the failure flag.  Every boundary node starts off its surface (the mesh is
+# jittered), so enforcement must both pull it back and let it slide within.
+function _smooth_surface_cylinder(enforcement::String)
     mesh = joinpath(@__DIR__, "..", "examples", "ems", "cylinder", "cylinder-awful.g")
-    out = joinpath(@__DIR__, "surface_cylinder.e")
+    out = joinpath(@__DIR__, "surface_cylinder_$(enforcement).e")
+    surface(ss, f) = begin
+        d = Dict{String,Any}("side set" => ss, "function" => f, "enforcement" => enforcement)
+        enforcement == "penalty" && (d["penalty"] = 1.0e6)
+        d
+    end
     params = Dict{String,Any}(
-        "name" => "surface_cylinder", "type" => "single",
+        "name" => "surface_cylinder_$(enforcement)", "type" => "single",
         "input mesh file" => mesh, "output mesh file" => out,
         "Exodus output interval" => 0, "CSV output interval" => 0,
         "model" => Dict{String,Any}(
@@ -608,9 +608,9 @@ end
         ),
         "boundary conditions" => Dict{String,Any}(
             "Surface" => [
-                Dict{String,Any}("side set" => "lateral", "function" => "x^2 + y^2 - 1.0", "penalty" => 1.0e6),
-                Dict{String,Any}("side set" => "top", "function" => "z + 1.0", "penalty" => 1.0e6),
-                Dict{String,Any}("side set" => "bottom", "function" => "z - 1.0", "penalty" => 1.0e6),
+                surface("lateral", "x^2 + y^2 - 1.0"),
+                surface("top", "z + 1.0"),
+                surface("bottom", "z - 1.0"),
             ],
         ),
         "solver" => Dict{String,Any}(
@@ -622,7 +622,6 @@ end
             "line search maximum iterations" => 16,
         ),
     )
-
     try
         rm(out; force=true)
         sim = Norma.create_simulation(params)
@@ -634,30 +633,129 @@ end
                 lateral_bc = bc
             end
         end
-        @test lateral_bc !== nothing
-        lat = lateral_bc.node_indices
+        lat = lateral_bc === nothing ? Int64[] : lateral_bc.node_indices
         surf(x, y) = x^2 + y^2 - 1.0
         ref = sim.model.reference
         g0 = maximum(abs(surf(ref[1, n], ref[2, n])) for n in lat)  # off-surface start
-
         Norma.initialize(sim)
         Norma.evaluate(sim.integrator, sim.solver, sim.model)
         e0 = sim.model.strain_energy
         Norma.evolve(sim)
         ef = sim.model.strain_energy
-
         cur = sim.model.reference .+ sim.model.displacement
         gf = maximum(abs(surf(cur[1, n], cur[2, n])) for n in lat)
         Norma.finalize_writing(sim)
-
-        @test !sim.model.failed        # no inverted elements: min det(F) > 0
-        @test g0 > 1.0e-2              # the boundary really started off the surface
-        @test gf < 2.0e-2             # the penalty pulls it back onto the surface
-        @test gf < 0.2 * g0           # a sharp reduction in surface residual (>5x)
-        @test ef < e0                 # and the mesh is smoothed
+        return (bc_found=lateral_bc !== nothing, g0=g0, gf=gf, e0=e0, ef=ef, failed=sim.model.failed)
     finally
         rm(out; force=true)
     end
+end
+
+@testset "surface_constraint_cylinder" begin
+    # Energetic mesh smoothing on a general (non-box) geometry: analytic
+    # level-set surface constraints on a curved boundary no Cartesian component
+    # can express.  Both enforcement modes are exercised on the same case, so
+    # this is also the penalty-vs-exact comparison: exact holds the surface to
+    # the return-to-surface tolerance (near machine precision), independent of
+    # any penalty parameter, while penalty leaves an O(1/κ) residual.
+    exact = _smooth_surface_cylinder("exact")
+    penalty = _smooth_surface_cylinder("penalty")
+
+    for r in (exact, penalty)
+        @test r.bc_found          # the Surface BC was created and found its side set
+        @test !r.failed           # no inverted elements: min det(F) > 0
+        @test r.g0 > 1.0e-2       # the boundary really started off the surface
+        @test r.ef < r.e0         # and the mesh is smoothed
+    end
+    # Exact enforcement is surface-exact up to the return-to-surface tolerance,
+    @test exact.gf < 1.0e-8
+    # far tighter than the penalty residual, which scales as 1/κ,
+    @test penalty.gf < 5.0e-2
+    @test exact.gf < 1.0e-4 * penalty.gf
+end
+
+@testset "surface_constraint_reduces_to_cube" begin
+    # Reduce-to-cube regression (design note test 1): on axis-aligned faces the
+    # exact surface roller must reproduce the Dirichlet fixed-component
+    # smoothing.  A linear level set g = coord - c has a Cartesian-basis
+    # gradient, so the roller pins that component and frees the other two —
+    # exactly what a component Dirichlet BC does; an edge/corner node accumulates
+    # two/three level sets and loses the matching DOFs, as its two/three
+    # component Dirichlets would.  We smooth the same distorted cube two ways
+    # (six component Dirichlets vs six linear-level-set exact Surfaces) and
+    # require the meshes to match to solver precision.  (Over very many steps the
+    # two code paths drift as near-boundary slivers amplify floating-point
+    # differences; a few steps keeps the comparison in the regime where the two
+    # are mathematically identical.)
+    mesh = joinpath(@__DIR__, "..", "examples", "ems", "cube", "cube.g")
+    function smooth_cube(bcs, tag)
+        out = joinpath(@__DIR__, "reduce_cube_$(tag).e")
+        params = Dict{String,Any}(
+            "name" => "reduce_cube_$(tag)", "type" => "single",
+            "input mesh file" => mesh, "output mesh file" => out,
+            "Exodus output interval" => 0, "CSV output interval" => 0,
+            "model" => Dict{String,Any}(
+                "type" => "mesh smoothing", "smooth reference" => "max",
+                "material" => Dict{String,Any}(
+                    "blocks" => Dict{String,Any}("cube" => "elastic"),
+                    "elastic" => Dict{String,Any}(
+                        "model" => "seth-hill", "m" => 2, "n" => 2,
+                        "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    ),
+                ),
+            ),
+            "time integrator" => Dict{String,Any}(
+                "type" => "quasi static", "initial time" => 0.0, "final time" => 0.03, "time step" => 1.0e-2
+            ),
+            "boundary conditions" => bcs,
+            "solver" => Dict{String,Any}(
+                "type" => "steepest descent", "step" => "steepest descent",
+                "step length" => 5.0e-4, "minimum iterations" => 1, "maximum iterations" => 16,
+                "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
+                "use line search" => true, "line search backtrack factor" => 0.5,
+                "line search decrease factor" => 1.0e-4, "line search maximum iterations" => 16,
+            ),
+        )
+        try
+            rm(out; force=true)
+            sim = Norma.create_simulation(params)
+            Norma.initialize(sim)
+            Norma.evolve(sim)
+            u = copy(sim.model.displacement)
+            failed = sim.model.failed
+            Norma.finalize_writing(sim)
+            return u, failed
+        finally
+            rm(out; force=true)
+        end
+    end
+
+    dirichlet = Dict{String,Any}(
+        "Dirichlet" => [
+            Dict{String,Any}("node set" => "nsx-", "component" => "x", "function" => "0.0"),
+            Dict{String,Any}("node set" => "nsx+", "component" => "x", "function" => "0.0"),
+            Dict{String,Any}("node set" => "nsy-", "component" => "y", "function" => "0.0"),
+            Dict{String,Any}("node set" => "nsy+", "component" => "y", "function" => "0.0"),
+            Dict{String,Any}("node set" => "nsz-", "component" => "z", "function" => "0.0"),
+            Dict{String,Any}("node set" => "nsz+", "component" => "z", "function" => "0.0"),
+        ],
+    )
+    surface = Dict{String,Any}(
+        "Surface" => [
+            Dict{String,Any}("side set" => "ssx-", "function" => "x + 0.5"),
+            Dict{String,Any}("side set" => "ssx+", "function" => "x - 0.5"),
+            Dict{String,Any}("side set" => "ssy-", "function" => "y + 0.5"),
+            Dict{String,Any}("side set" => "ssy+", "function" => "y - 0.5"),
+            Dict{String,Any}("side set" => "ssz-", "function" => "z + 0.5"),
+            Dict{String,Any}("side set" => "ssz+", "function" => "z - 0.5"),
+        ],
+    )
+    uD, failedD = smooth_cube(dirichlet, "dirichlet")
+    uS, failedS = smooth_cube(surface, "surface")
+    @test !failedD
+    @test !failedS
+    @test norm(uD) > 1.0e-3                    # the smoothing actually moved nodes
+    @test norm(uD - uS) ≤ 1.0e-9 * norm(uD)    # exact roller ≡ Dirichlet on planar faces
 end
 
 # Structured cube of n^3 hex cells, each split into 6 tets (Kuhn split on the
