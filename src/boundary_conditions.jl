@@ -397,6 +397,7 @@ function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
     subsim::Simulation,
     impedance::Float64,
     robin_parameter::Float64,
+    adjoint_pairing::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -418,6 +419,7 @@ function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
         square_projector,
         impedance,
         robin_parameter,
+        adjoint_pairing,
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,
@@ -557,6 +559,7 @@ function SMCouplingSchwarzBC(
             )
         end
         if bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz RR nonoverlap"
+            adjoint_pairing = Bool(get(bc_params, "adjoint pairing", false))
             SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
                 input_mesh,
                 side_set_name,
@@ -568,6 +571,7 @@ function SMCouplingSchwarzBC(
                 subsim,
                 impedance,
                 robin_parameter,
+                adjoint_pairing,
             )
         else
             coupled_block_name = bc_params["source block"]

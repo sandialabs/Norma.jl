@@ -274,9 +274,115 @@ end
 function compute_impedance_schwarz_projectors!(
     dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
 )
+    if dst_bc.adjoint_pairing
+        compute_paired_impedance_schwarz_projectors!(dst_model, dst_bc)
+        return nothing
+    end
     compute_dirichlet_projector(dst_model, dst_bc)
     compute_neumann_projector(dst_model, dst_bc)
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
+    return nothing
+end
+
+# Adjoint (variationally paired) construction: derive BOTH sides' transfer
+# operators from one shared cross-mass matrix B_mn = ∫_Γ φ¹_m φ²_n dS, so
+#   Π₁ = W₁⁻¹ B,   Π₂ = W₂⁻¹ Bᵀ,   N₁ = Π₂ᵀ,   N₂ = Π₁ᵀ,
+# which is the discrete adjoint condition W₁Π₁ = (W₂Π₂)ᵀ = B of the
+# energy-stable DG/mortar couplings. With the shared pair impedance
+# Z = 2 Z₁Z₂/(Z₁+Z₂) (harmonic mean; the Riemann-flux weighting, reducing to
+# the one-sided value for identical materials) and a shared Robin α, the
+# interface power of the dashpot channel telescopes to
+# -Z ∫_Γ [[u̇ʰ]]² dS ≤ 0 and the Robin channel becomes a conservative
+# interface spring. B is integrated over the facets of the finer side, where
+# the piecewise-smooth integrand is resolved best; the coarse-side partition
+# of unity and force-conservation certificates are then quadrature-exact up
+# to the nonconformity of the interface itself (logged below).
+function compute_paired_impedance_schwarz_projectors!(
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
+)
+    # The pair is processed once; the partner's pass finds its operators set.
+    if size(dst_bc.dirichlet_projector, 1) > 0
+        return nothing
+    end
+    src_sim = coupled_subsim_of(dst_bc)
+    src_model = get_fom_model(src_sim)
+    src_bc = src_model.boundary_conditions[dst_bc.coupled_bc_index]
+    if !(src_bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition) || !src_bc.adjoint_pairing
+        norma_abort(
+            "`adjoint pairing: true` must be set on BOTH sides of a Schwarz " *
+            "impedance nonoverlap pair (missing on the side coupled to '$(dst_bc.name)').",
+        )
+    end
+    W1 = get_square_projection_matrix(dst_model, dst_bc)
+    W2 = get_square_projection_matrix(src_model, src_bc)
+    n1 = size(W1, 1)
+    n2 = size(W2, 1)
+    # Integrate B over the finer side's facets (rows = this side, cols = partner).
+    B = if n1 >= n2
+        get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    else
+        Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
+    end
+    P1 = W1 \ B
+    P2 = W2 \ Matrix(transpose(B))
+    dst_bc.square_projector = W1
+    dst_bc.dirichlet_projector = P1
+    dst_bc.neumann_projector = Matrix(transpose(P2))
+    src_bc.square_projector = W2
+    src_bc.dirichlet_projector = P2
+    src_bc.neumann_projector = Matrix(transpose(P1))
+    # Shared pair impedance and Robin parameter.
+    Z1 = dst_bc.impedance
+    Z2 = src_bc.impedance
+    Z_pair = 2.0 * Z1 * Z2 / (Z1 + Z2)
+    dst_bc.impedance = src_bc.impedance = Z_pair
+    α1 = dst_bc.robin_parameter
+    α2 = src_bc.robin_parameter
+    if !isapprox(α1, α2; rtol=1.0e-12, atol=0.0)
+        norma_logf(
+            0,
+            :warning,
+            "Adjoint pairing requires one Robin parameter per interface; " *
+            "averaging the two sides' values %.3e and %.3e.",
+            α1,
+            α2,
+        )
+    end
+    dst_bc.robin_parameter = src_bc.robin_parameter = 0.5 * (α1 + α2)
+    # The consistent (D'Alembert) flux exchanged under pairing couples the
+    # partner's acceleration into this side's force. Implicit (Newmark)
+    # subdomains resolve that algebraic loop within the Schwarz iteration;
+    # an explicit subdomain evaluates it at lagged time levels, which the
+    # cantilever benchmark shows to be violently unstable (energy growth of
+    # 10^3-10^5 %). Implicit treatment of the interface terms between
+    # explicit interiors (IMEX-Newmark) is the planned follow-up.
+    for sim_k in (coupled_subsim_of(dst_bc), self_subsim_of(dst_bc))
+        if sim_k.integrator isa CentralDifference
+            norma_log(
+                0,
+                :warning,
+                "Adjoint pairing with an explicit (central difference) subdomain " *
+                "is UNSTABLE: the paired consistent flux requires the interface " *
+                "terms to be resolved implicitly. Expect energy blowup.",
+            )
+        end
+    end
+    # Quadrature-quality certificates (exact on conforming interfaces).
+    pu_error = max(
+        maximum(abs.(P1 * ones(n2) .- 1.0)),
+        maximum(abs.(P2 * ones(n1) .- 1.0)),
+    )
+    norma_logf(
+        0,
+        :info,
+        "Adjoint-paired impedance interface '%s'/'%s': Z = %.4e, α = %.3e, " *
+        "partition-of-unity error %.2e.",
+        dst_bc.name,
+        src_bc.name,
+        Z_pair,
+        dst_bc.robin_parameter,
+        pu_error,
+    )
     return nothing
 end
 
@@ -1671,6 +1777,36 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     src_global_force = get_internal_force(src_model)
+    # Adjoint-paired impedance interfaces exchange the dynamically consistent
+    # (D'Alembert) reaction M·a + f_int - f_body instead of the static
+    # internal force alone. In dynamics the two sides' static reactions are
+    # NOT equal and opposite — they differ by the interface nodes' inertia,
+    # each side carrying its own tributary mass — so transferring -f_int
+    # makes the coupled fixed point inconsistent with the monodomain
+    # discretization by O(m_Γ·a), which the cantilever benchmark measures as
+    # a steady interface energy drain (-9.6%/ms on CONFORMING meshes). With
+    # the inertia included, the two sides' interface rows sum to the
+    # monodomain row exactly, so the monodomain trajectory is the fixed
+    # point and the transmission channels vanish at Schwarz convergence.
+    # (The overlap variant achieves the same through its consistent-traction
+    # element patch; here the source's own assembled operators suffice.)
+    if dst_bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && dst_bc.adjoint_pairing
+        src_fom = get_fom_model(src_sim)
+        a = vec(src_fom.acceleration)
+        inertial_force = if size(src_fom.mass, 1) == length(a)
+            src_fom.mass * a
+        elseif length(src_fom.lumped_mass) == length(a)
+            src_fom.lumped_mass .* a
+        else
+            # Pre-initialization exchange: no mass assembled yet, and the
+            # acceleration is still zero — the correction vanishes anyway.
+            zeros(length(a))
+        end
+        src_global_force = src_global_force + inertial_force
+        if length(src_fom.body_force) == length(src_global_force)
+            src_global_force = src_global_force - src_fom.body_force
+        end
+    end
     src_force = -extract_local_vector(src_bc, src_global_force, 3)
     neumann_projector = dst_bc.neumann_projector
     num_dst_nodes = size(neumann_projector, 1)

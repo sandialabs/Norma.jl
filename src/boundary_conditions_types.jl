@@ -286,6 +286,18 @@ mutable struct SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition <: Soli
     square_projector::Matrix{Float64}
     impedance::Float64           # Z = ρ c_p = √(ρ(λ + 2μ))
     robin_parameter::Float64     # α for displacement penalty (0 = pure impedance)
+    # Adjoint (variationally paired) transfer: both sides of the interface
+    # derive their transfer operators from ONE shared cross-mass matrix
+    # B_mn = ∫_Γ φ¹_m φ²_n dS, so that W₁ Π₁ = (W₂ Π₂)ᵀ = B and each side's
+    # force transfer is the adjoint of the partner's kinematic transfer
+    # (N₁ = Π₂ᵀ, N₂ = Π₁ᵀ). With a shared impedance Z and Robin α this makes
+    # the dashpot's interface power telescope to -Z ∫_Γ [[u̇ʰ]]² dS ≤ 0 and
+    # the Robin term a conservative interface spring — the discrete
+    # energy-stability condition of the DG/mortar literature (see
+    # doc/notes/schwarz-interface-energy, Eq. (adjoint)), available on this
+    # nonoverlap variant precisely because the two sides share a single
+    # interface Γ. Both sides of a pair must set it.
+    adjoint_pairing::Bool
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle
