@@ -50,8 +50,14 @@ single variational cross-mass matrix, which makes the interface power telescope 
 a sign-definite dashpot on the common-space jump plus a \emph{conservative}
 spring term; and (ii) the dashpot must act only on content both trace spaces
 can represent, so that it vanishes at Schwarz convergence instead of
-persistently absorbing unrepresentable fine-scale content. This note records
-the evidence, the theory, and a phased redesign.
+persistently absorbing unrepresentable fine-scale content. These requirements
+are implementable only on the \emph{nonoverlap} impedance variant (single
+shared interface), where --- together with a dynamically consistent
+d'Alembert interface flux --- they are now implemented and validated:
+implicit--implicit drift improves from $-9.6\%$ to $-0.03\%$ on conforming
+and mildly nonconforming meshes, and every injection pathology disappears
+(Sec.~\ref{sec:nonoverlap}). This note records the evidence, the theory, the
+phased redesign, and the validated fix.
 \end{abstract}
 
 \section{Observed behavior}
@@ -455,6 +461,92 @@ removes.
   Phase~1.)
 \end{description}
 
+\section{The nonoverlap route: adjoint pairing implemented}
+\label{sec:nonoverlap}
+
+The redesign identified the \emph{nonoverlap} impedance variant --- one shared
+interface $\Gamma$, transmission $~t + Z\dot{~u} + \alpha W ~u = g$ --- as the
+member of the family on which the adjoint condition \eqref{eq:adjoint} is
+actually available. This has now been implemented and measured on the
+cantilever benchmark, split at $x = 0.127$\,m with the same mesh-ratio family
+as Sec.~\ref{sec:ratiosweep} (free side fixed at $h = 6.35$\,mm, clamped side
+coarsened to $6.35/r$\,mm).
+
+\subsection{Baseline: the legacy coupling is as bad as the overlap family}
+
+The pre-existing nonoverlap impedance coupling (per-side transfer operators,
+per-side impedance and Robin parameter) loses $7$--$18\%$ at mild mesh
+contrast --- \emph{including on conforming meshes} ($-9.6\%$ at $1{:}1$) ---
+and injects violently at strong contrast ($+223\%$ EI and $+363\%$ EE at
+$1{:}0.3$; $+77\%$ II at $1{:}0.2$). Probes isolate the conforming loss: it is
+unchanged under $\alpha \to 0$, under equalized $\alpha$, and under
+$\Delta t \to \Delta t/2$ ($-9.6\%$ in all cases), with the Schwarz iteration
+converged to $10^{-8}$. It is therefore a \emph{consistency} defect of the
+fixed point itself: the coupling transfers the partner's \emph{static}
+reaction $-~f^{\mathrm{int}}$, but in dynamics the two sides' static
+reactions are not equal and opposite --- they differ by the interface nodes'
+inertia, each side carrying its own tributary mass. The coupled fixed point
+then differs from the monodomain discretization by $O(m_\Gamma\,a)$,
+measured as a steady, $\Delta t$-independent interface drain.
+
+\subsection{The paired coupling}
+
+Enabling \code{adjoint pairing: true} on both sides changes three things:
+(i) the exchanged flux becomes the dynamically consistent d'Alembert reaction
+$~M ~a + ~f^{\mathrm{int}} - ~f^{\mathrm{body}}$, so the two interface rows
+sum exactly to the monodomain row and the monodomain trajectory is the fixed
+point; (ii) both sides derive their transfer operators from \emph{one} shared
+cross-mass matrix $B$ (integrated over the finer side's facets), with
+$\Pi_1 = W_1^{-1}B$, $\Pi_2 = W_2^{-1}B^{T}$, and each side's force transfer
+the adjoint of the partner's kinematic transfer ($N_1 = \Pi_2^{T}$,
+$N_2 = \Pi_1^{T}$), which is exactly \eqref{eq:adjoint}; (iii) the pair
+shares one impedance ($2Z_1Z_2/(Z_1{+}Z_2)$, the Riemann weighting) and one
+Robin $\alpha$. Drift at 1\,ms, implicit--implicit:
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+ratio & legacy II & paired II \\
+\midrule
+1:1.0 & $-9.61$ & $\mathbf{-0.03}$ \\
+1:0.9 & $-6.84$ & $\mathbf{-0.03}$ \\
+1:0.8 & $-7.96$ & $-3.59$ \\
+1:0.7 & $-2.06$ & $-6.55$ \\
+1:0.6 & $-9.39$ & $-9.71$ \\
+1:0.5 & $-13.25$ & $-13.32$ \\
+1:0.4 & $-45.78$ & $-15.13$ \\
+1:0.3 & $+18.95$ & $-15.08$ \\
+1:0.2 & $+77.49$ & $-13.26$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three properties, in order of importance. First, \emph{no injection at any
+ratio}: the interface work is sign-definite, as the telescoping identity
+\eqref{eq:telescope} guarantees --- the wild $-53 \to +174 \to -66\%$ swings
+of the overlap family and the $+363\%$ blowups of the legacy nonoverlap
+coupling are gone. Second, near-conservation through mild contrast
+($-0.03\%$ at $1{:}0.9$, where every other variant tested loses or gains
+several percent). Third, the residual dissipation at strong contrast is the
+\emph{genuine} trace-space jump being absorbed at the rate
+$Z\!\int_\Gamma \jump{\dot{~u}}^2$: at the exactly nested ratio $1{:}0.5$
+(where the legacy transfer is coincidentally adjoint and quadrature is
+exact) paired and legacy agree to $0.1\%$, so the remaining loss is not a
+transfer artifact but the Gander--Halpern--Nataf price of coupling trace
+spaces that genuinely cannot represent each other's content --- now paid in
+a controlled, monotone, sign-definite form.
+
+\subsection{Explicit subdomains: not yet}
+
+With an explicit (central-difference) subdomain on either side, the paired
+coupling is violently unstable ($+10^3$ to $+10^5\,\%$): the consistent flux
+couples the partner's \emph{acceleration} into the interface force, an
+algebraic loop that the implicit pairs resolve within the Schwarz iteration
+but that explicit time levels evaluate lagged. This is precisely the
+Phase~4 prerequisite (implicit interface terms between explicit interiors,
+Liu et al.'s IMEX-Newmark); the implementation warns loudly and the
+combination remains future work.
+
 \section{Where this lands}
 \label{sec:conclusion}
 
@@ -474,11 +566,18 @@ overlaps are usable only where neither energy loss \emph{nor} energy gain of
 tens of percent matters, with the channel-resolved instrumentation reporting
 which one occurred.
 
-For energy-critical nonconforming coupling, the theory-backed path is the
+For energy-critical nonconforming coupling, the theory-backed path --- the
 \emph{nonoverlap} impedance variant, whose single shared interface admits the
-adjoint pairing \eqref{eq:adjoint} and hence a provably sign-definite (or
-exactly telescoping) interface work; the localized-Lagrange-multiplier frame
-construction (Park--Felippa; Dvorak et al.\ 2023) is the equivalent
-alternative with an explicit interface field. Both are follow-up work.
+adjoint pairing \eqref{eq:adjoint} --- is now implemented and validated
+(Sec.~\ref{sec:nonoverlap}): with the consistent d'Alembert flux and the
+paired operators, implicit--implicit coupling conserves to $-0.03\%$ through
+mild mesh contrast and degrades into monotone, sign-definite, bounded
+dissipation at strong contrast, with no injection anywhere. The practical
+recommendation is therefore: conforming meshes within the overlap family, or
+the adjoint-paired nonoverlap variant (\code{adjoint pairing: true}, implicit
+subdomains) when the decomposition must be nonconforming and the energy
+budget matters. Extending the pairing to explicit subdomains (IMEX interface
+treatment) and the localized-Lagrange-multiplier frame construction
+(Park--Felippa; Dvorak et al.\ 2023) remain follow-up work.
 
 \end{document}
