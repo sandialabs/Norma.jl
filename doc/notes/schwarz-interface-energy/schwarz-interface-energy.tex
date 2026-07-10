@@ -42,7 +42,7 @@ dashpot work is not even sign-definite. The optimized-Schwarz, multi-time-step,
 and discontinuous-Galerkin literatures converge on the same two structural
 requirements for an energy-consistent coupling: (i) the kinematic transfer and
 the force transfer between the two sides must be $L^2$-adjoints through a
-single mortar cross-mass matrix, which makes the interface power telescope to
+single variational cross-mass matrix, which makes the interface power telescope to
 a sign-definite dashpot on the common-space jump plus a \emph{conservative}
 spring term; and (ii) the dashpot must act only on content both trace spaces
 can represent, so that it vanishes at Schwarz convergence instead of
@@ -91,7 +91,7 @@ overlap & ratio & II & IE & EI & EE \\
 Three regimes: (a) conforming ($1{:}1$) implicit-free-subdomain runs conserve
 to $\le 0.1\%$ at every overlap; (b) nonconforming runs lose tens of percent,
 worse with mesh ratio and with smaller overlap; (c) a minority of cases,
-including II at max overlap $1{:}2$, \emph{gain} energy. Mortar
+including II at max overlap $1{:}2$, \emph{gain} energy. Variational
 (\code{transfer: variational}) rescues the small-overlap losses dramatically
 ($-44.5 \to -4.4\%$ at \textonequarter/3:4) but regresses elsewhere
 ($+12.5 \to -50.7\%$ at max/1:2): it improved 17 of 24 nonconforming cases,
@@ -137,7 +137,7 @@ form. Because each subdomain interpolates partner fields with its own,
 unrelated operator, the two sides' dashpot terms do not pair, and the total is
 sign-indefinite.
 
-The variational row explains why mortar transfer helps only sometimes: its
+The variational row explains why variational transfer helps only sometimes: its
 dashpot still drains $-864$\,J, but the consistent (characteristic-transfer)
 traction returns $+780$\,J. The rescue is an accidental near-cancellation of
 two large opposing channels, not a removal of either defect.
@@ -228,7 +228,7 @@ sides' weak forms; the interface power then telescopes to
 with the dissipation confined to the jump and vanishing under refinement and
 at convergence. The precise discrete requirement: if side $k$ receives partner
 kinematics through $\Pi_{j\to k}$, the transfers must be $L^2$-adjoints
-through the mortar cross-mass matrix,
+through the variational cross-mass matrix,
 \begin{equation}
   ~M_1 \Pi_{2\to1} \;=\; \bigl(~M_2\,\Pi_{1\to2}\bigr)^{T} \;=\; ~B,
   \qquad
@@ -265,7 +265,7 @@ removes.
   \item[Conforming, explicit free subdomain (IE/EE).] Time-level, not space,
   pairing failure: the dashpot force is evaluated explicitly at lagged partner
   velocity; central difference has no algorithmic damping to absorb the error.
-  \item[Variational rescue.] Mortar projection is a contraction and the
+  \item[Variational rescue.] The variational (L$^2$) projection is a contraction and the
   characteristic transfer restores much of the traction consistency, but the
   dashpot still sees the full jump; the outcome rides on near-cancellation of
   two large channels.
@@ -275,8 +275,8 @@ removes.
 \label{sec:redesign}
 
 \begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
-  \item[Phase 1 --- adjoint-paired mortar transfer.] Per Schwarz boundary,
-  assemble the mortar cross-mass $~B$ of \eqref{eq:adjoint} on the common
+  \item[Phase 1 --- adjoint-paired variational transfer.] Per Schwarz boundary,
+  assemble the variational cross-mass $~B$ of \eqref{eq:adjoint} on the common
   refinement of this side's boundary facets against the partner's trace
   (machinery largely present in
   \code{get\_overlap\_rectangular\_projection\_matrix}), and route \emph{all}
@@ -286,19 +286,30 @@ removes.
   mass matrices. This restores the pairing that makes the traction exchange
   cancel and the dashpot sign-definite \eqref{eq:telescope}, eliminating the
   growth regime.
-  \item[Phase 2 --- dashpot on the representable jump.] Replace
-  $~Z(\dot{~u}_p - \dot{~u})$ by
+  \item[Phase 2 --- dashpot on the representable jump
+  \emph{(implemented; falsified)}.] Replace $~Z(\dot{~u}_p - \dot{~u})$ by
   $~Z\,\widehat\Pi\,(\dot{~u}_p - \dot{~u})$, where $\widehat\Pi$ is the
   $W$-orthogonal projection onto the transferable span --- the projector
   already built by the content-absorption machinery
-  (\code{compute\_impedance\_overlap\_schwarz\_projectors!}). At Schwarz
-  convergence $\widehat\Pi(\dot{~u}_p - \dot{~u}) \to 0$, so the persistent
-  drain vanishes; the unrepresentable fine content sees traction-only
-  transmission and reflects (conserving) instead of being absorbed. Where
-  absorption of that content is \emph{wanted} (radiation-dominated problems),
-  the existing \code{content aware absorption} option remains the explicit,
-  sign-controlled way to request it --- absorption becomes a choice, not an
-  accident.
+  (\code{compute\_impedance\_overlap\_schwarz\_projectors!}); implemented as
+  \code{representable dashpot: true} on the BC (a strict no-op on node-aligned
+  interfaces). The premise was that the persistent jump is trace content the
+  coarse space cannot represent, so that filtering it would let it reflect
+  (conserving) instead of being absorbed. \emph{Measurement falsifies the
+  premise}: on the \textonequarter/3:4 case the fine side's $\widehat\Pi$ is a
+  genuine projection ($\norm{\widehat\Pi - I}/\sqrt{n} = 0.48$) yet the
+  dashpot work is unchanged ($-1066 \to -1065$\,J) --- the jump lies
+  \emph{inside} the representable subspace. The persistent jump is therefore
+  not a spatial-representability defect but a \emph{solution-content} defect:
+  coarse-grid dispersion phase-lags the transiting pulse, so at Schwarz
+  convergence the two discrete solutions disagree by a smooth, in-band field
+  no static spatial filter can remove. Where $\widehat\Pi$ does bite
+  (max/1:2), per-side filtering worsens the transfer asymmetry and the drift
+  ($+12.5 \to +45.6\%$). The option is retained (default off) as a diagnostic
+  of \emph{where} the jump lives, and the dimensional caveat stands: the
+  partner's volume-trace span on a boundary with few nodes is generically
+  onto, so trace-representability is the wrong notion of ``what the partner
+  can carry'' --- the right notion is dynamic (dispersion band), not static.
   \item[Phase 3 --- harmonic-mean impedance.] Use
   $Z = Z_1 Z_2/(Z_1 + Z_2)$ per wave family (the Riemann-solver weighting of
   Duru et al.\ and Liu et al.), reducing to $Z/2$ for identical materials and
@@ -316,7 +327,7 @@ removes.
 \end{description}
 
 The alternative structural cure --- a single independently discretized frame
-(mortar) field on each Schwarz boundary with both sides coupling to it
+(variational multiplier) field on each Schwarz boundary with both sides coupling to it
 adjointly (the localized-Lagrange-multiplier construction of Park--Felippa,
 applied in Dvorak et al.\ 2023) --- achieves the same pairing with an extra
 interface field, and is the natural fallback if the in-place adjoint retrofit

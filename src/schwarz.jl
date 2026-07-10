@@ -338,6 +338,15 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
         # kinematic projector is bypassed for the RHS.
         traction_term, impedance_term, robin_term =
             characteristic_partner_terms(coupled_solid, bc, Z_p, Z_s, α)
+        # Representable dashpot: restrict the impedance channel to the
+        # transferable subspace. The terms here are weak (W-weighted)
+        # vectors; since Π is W-orthogonal (W Π = Πᵀ W), the weak form of
+        # the filtered field is the right-multiplication f Π per component
+        # (fᵀ ← Πᵀ fᵀ). The matching self term is filtered identically in
+        # build_impedance_schwarz_force.
+        if size(bc.representable_projector, 1) > 0
+            impedance_term = impedance_term * bc.representable_projector
+        end
         partner_rhs = traction_term .+ impedance_term .+ robin_term
         for comp in 1:3
             for (i_local, i_global) in enumerate(bc.global_from_local_map)
@@ -376,12 +385,20 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverl
     partner_velo, partner_disp, partner_trac =
         impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
     num_dst_nodes = size(partner_velo, 2)
+    # Representable dashpot: project the partner velocity onto the
+    # transferable subspace before the impedance product, matching the
+    # filtered self term in build_impedance_schwarz_force, so the dashpot
+    # acts on Π(u̇_p − u̇) — the component of the jump both trace spaces can
+    # represent, which vanishes at Schwarz convergence. (Under variational
+    # transfer u̇_p already lies in the span and only the self side changes.)
+    dashpot_velo =
+        size(bc.representable_projector, 1) > 0 ? partner_velo * bc.representable_projector' : partner_velo
     partner_Zvdot = zeros(3, num_dst_nodes)
     for i in 1:num_dst_nodes
         # P/S-split tensor impedance: Z_p on the normal velocity component,
         # Z_s on the tangential components (Lysmer-Kuhlemeyer split).
         n = normals[:, i]
-        v = partner_velo[:, i]
+        v = dashpot_velo[:, i]
         vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
         partner_Zvdot[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
     end
@@ -423,12 +440,17 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
         normals = compute_normal(model.mesh, bc.side_set_id, model)
         # Tangent of the self term Σ_j W_ij (T(n_j) u̇_j + α u_j) with the
         # tensor impedance T(n) = Z_p n⊗n + Z_s (I - n⊗n) applied at the
-        # source node j: 3x3 block W_ij (c_v T(n_j) + α I).
+        # source node j: 3x3 block W_ij (c_v T(n_j) + α I). With the
+        # representable dashpot the velocity entering the impedance term is
+        # Π u̇, so the dashpot part moves into the Π-weighted block below and
+        # only the α-spring remains here.
+        representable = size(bc.representable_projector, 1) > 0
         for (j_local, j_global) in enumerate(global_from_local_map)
             n = normals[:, j_local]
             T = zeros(3, 3)
             for a in 1:3, b in 1:3
-                T[a, b] = c_v * ((Z_p - Z_s) * n[a] * n[b] + (a == b ? Z_s : 0.0)) + (a == b ? α : 0.0)
+                dash = representable ? 0.0 : c_v * ((Z_p - Z_s) * n[a] * n[b] + (a == b ? Z_s : 0.0))
+                T[a, b] = dash + (a == b ? α : 0.0)
             end
             for (i_local, i_global) in enumerate(global_from_local_map)
                 w_ij = W[i_local, j_local]
@@ -440,9 +462,11 @@ function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integr
                 end
             end
         end
-        # Content-aware absorption tangent: c_v Σ_l W_il T(n_l) F_lj blocks.
-        F = bc.content_filter
-        if size(F, 1) > 0 && c_v != 0.0
+        # Filter-weighted dashpot tangents, c_v Σ_l W_il T(n_l) F_lj blocks:
+        # F = content_filter for the content-aware absorption term, and
+        # F = representable_projector for the filtered self-impedance term.
+        for F in (bc.content_filter, bc.representable_projector)
+            (size(F, 1) > 0 && c_v != 0.0) || continue
             num_nodes = length(global_from_local_map)
             for (l_local, _) in enumerate(global_from_local_map)
                 n = normals[:, l_local]
@@ -478,14 +502,14 @@ function compute_impedance_overlap_schwarz_projectors!(
 )
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     build_consistent_traction_patch!(dst_model, dst_bc)
-    if dst_bc.transfer_mode == "variational" || dst_bc.content_absorption
+    if dst_bc.transfer_mode == "variational" || dst_bc.content_absorption || dst_bc.representable_dashpot
         # Variational projector: P = W \\ L is the L2(Γ)-orthogonal projection
         # of the partner fields onto this side's trace space — non-expansive
         # in L2 for any quadrature, and constants transfer exactly (partner
         # partition of unity gives L·1 = W·1). On a node-aligned interface
         # L = W row-permuted and P reduces to the identity selection. Also
         # built (without being used for the transfer) when the content-aware
-        # absorption needs its column span.
+        # absorption or the representable dashpot needs its column span.
         coupled_solid = get_fom_model(coupled_subsim_of(dst_bc))
         L = get_overlap_rectangular_projection_matrix(
             dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance;
@@ -495,23 +519,31 @@ function compute_impedance_overlap_schwarz_projectors!(
     else
         dst_bc.variational_projector = Matrix{Float64}(undef, 0, 0)
     end
-    if dst_bc.content_absorption
-        # Content filter I - Π: Π is the W-orthogonal projection onto the
-        # transferable space at this boundary — the span of the variational
-        # projector's columns (one column per partner node with support on
-        # the interface). What Π keeps can be represented by the partner and
-        # crosses the interface; what I - Π keeps cannot, and is dissipated
-        # by the content-aware LK term. P·1 = 1 puts constants in the span,
-        # and on node-aligned interfaces the span is everything (filter = 0).
+    if dst_bc.content_absorption || dst_bc.representable_dashpot
+        # W-orthogonal projection Π onto the transferable space at this
+        # boundary — the span of the variational projector's columns (one
+        # column per partner node with support on the interface). What Π
+        # keeps can be represented by the partner and crosses the interface;
+        # what I - Π keeps cannot. P·1 = 1 puts constants in the span, and on
+        # node-aligned interfaces the span is everything (Π = I).
+        # Two independent consumers:
+        #   content_filter = I - Π    (content-aware absorption: LK-dissipate
+        #                              the non-transferable self content)
+        #   representable_projector = Π  (representable dashpot: restrict the
+        #                              impedance term to the transferable jump
+        #                              so it vanishes at Schwarz convergence)
         P = dst_bc.variational_projector
         W = dst_bc.square_projector
         cols = [j for j in 1:size(P, 2) if maximum(abs.(P[:, j])) > 1.0e-12]
         B = P[:, cols]
         G = B' * W * B
         Π = B * (pinv(G; rtol=1.0e-10) * (B' * W))
-        dst_bc.content_filter = Matrix{Float64}(I, size(Π)...) - Π
+        dst_bc.content_filter =
+            dst_bc.content_absorption ? Matrix{Float64}(I, size(Π)...) - Π : Matrix{Float64}(undef, 0, 0)
+        dst_bc.representable_projector = dst_bc.representable_dashpot ? Π : Matrix{Float64}(undef, 0, 0)
     else
         dst_bc.content_filter = Matrix{Float64}(undef, 0, 0)
+        dst_bc.representable_projector = Matrix{Float64}(undef, 0, 0)
     end
     return nothing
 end
@@ -1023,13 +1055,19 @@ function build_impedance_schwarz_force(model::SolidMechanics)
             num_nodes = length(global_from_local_map)
             normals = compute_normal(model.mesh, bc.side_set_id, model)
             velo = model.velocity[:, global_from_local_map]
+            # Representable dashpot: the self velocity entering the impedance
+            # term is projected onto the transferable subspace, matching the
+            # filtered partner term in apply_bc_detail so the dashpot acts on
+            # Π(u̇_p − u̇). The α·u spring term stays unfiltered.
+            dashpot_velo =
+                size(bc.representable_projector, 1) > 0 ? velo * bc.representable_projector' : velo
             # Content-aware absorption: LK-dissipate the non-transferable
             # component (I - Π) u̇ of this side's boundary velocity.
             filtered = size(bc.content_filter, 1) > 0 ? velo * bc.content_filter' : zeros(3, 0)
             Zv = zeros(3, num_nodes)
             for (i_local, i_global) in enumerate(global_from_local_map)
                 n = normals[:, i_local]
-                v = velo[:, i_local]
+                v = dashpot_velo[:, i_local]
                 u = model.displacement[:, i_global]
                 vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
                 Zv[:, i_local] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n) .+ α .* u
@@ -1123,6 +1161,14 @@ function report_impedance_interface_work(sim)
             num_nodes = length(unique_node_indices)
             partner_velo, partner_disp, trac_p =
                 impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
+            # Mirror the representable-dashpot filter applied by the BC: the
+            # dashpot channel uses the Π-projected velocities. The reported
+            # velocity-jump RMS stays RAW so it keeps measuring the full
+            # (including unrepresentable) interface jump.
+            representable = size(bc.representable_projector, 1) > 0
+            self_velo = model.velocity[:, unique_node_indices]
+            dash_partner = representable ? partner_velo * bc.representable_projector' : partner_velo
+            dash_self = representable ? self_velo * bc.representable_projector' : self_velo
             dash = zeros(3, num_nodes)
             robin = zeros(3, num_nodes)
             velo = zeros(3, num_nodes)
@@ -1138,12 +1184,13 @@ function report_impedance_interface_work(sim)
                     σ_o[6] * n[1] + σ_o[2] * n[2] + σ_o[4] * n[3],
                     σ_o[5] * n[1] + σ_o[4] * n[2] + σ_o[3] * n[3],
                 ]
-                dv = partner_velo[:, i] .- v
+                dv = dash_partner[:, i] .- dash_self[:, i]
                 dvn = n[1] * dv[1] + n[2] * dv[2] + n[3] * dv[3]
                 dash[:, i] = (Z_p * dvn) .* n .+ Z_s .* (dv .- dvn .* n)
                 robin[:, i] = α .* (partner_disp[:, i] .- u)
                 velo[:, i] = v
-                vjump2 += dot(dv, dv)
+                dv_raw = partner_velo[:, i] .- v
+                vjump2 += dot(dv_raw, dv_raw)
                 tmis2 += dot(trac_p[:, i] - t_o, trac_p[:, i] - t_o)
             end
             P_trac = 0.0
@@ -1159,11 +1206,14 @@ function report_impedance_interface_work(sim)
             if patch !== nothing && size(patch.transfer, 1) > 0
                 traction_term, impedance_term, robin_term =
                     characteristic_partner_terms(coupled_solid, bc, Z_p, Z_s, α)
+                if representable
+                    impedance_term = impedance_term * bc.representable_projector
+                end
                 self_zv = zeros(3, num_nodes)
                 self_au = zeros(3, num_nodes)
                 for (i, node_index) in enumerate(unique_node_indices)
                     n = normals[:, i]
-                    v = model.velocity[:, node_index]
+                    v = dash_self[:, i]
                     vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
                     self_zv[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
                     self_au[:, i] = α .* model.displacement[:, node_index]

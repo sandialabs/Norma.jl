@@ -226,6 +226,22 @@ mutable struct SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition <: SolidMe
     # vanishes identically. content_filter = I - Π, empty when disabled.
     content_absorption::Bool
     content_filter::Matrix{Float64}
+    # Representable dashpot: restrict the impedance term to the component of
+    # the velocity jump that BOTH trace spaces can represent,
+    # Z Π (u̇_p − u̇), with the same W-orthogonal Π as above. On a
+    # nonconforming interface the unfiltered jump cannot vanish at Schwarz
+    # convergence (the coarse trace space cannot represent the fine side's
+    # content), so the full dashpot persistently absorbs that content —
+    # measured as the dominant spurious interface dissipation, and of
+    # indefinite sign under non-adjoint (pointwise) transfer. Filtered, the
+    # dashpot does zero work at convergence; the unrepresentable content sees
+    # traction-only transmission and reflects (conserving) instead of being
+    # silently absorbed. Absorption of that content remains available,
+    # explicitly and sign-controlled, via content_absorption. On node-aligned
+    # interfaces Π = I and this is a no-op. representable_projector = Π,
+    # empty when disabled.
+    representable_dashpot::Bool
+    representable_projector::Matrix{Float64}
     coupled_block_name::String
     search_tolerance::Float64
     parent::Simulation
