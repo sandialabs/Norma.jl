@@ -11,8 +11,10 @@ const cantilever_imp_nc_example = "../examples/nonoverlap/dynamic-same-step/cant
 
 # Run the nonconforming nonoverlap impedance cantilever for a few steps,
 # optionally with adjoint pairing (the example enables it; pass false to
-# strip the flag and get the legacy per-side transfer).
-function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5)
+# strip the flag and get the legacy per-side transfer). With
+# explicit_free=true the free subdomain runs central difference + explicit
+# solver, exercising the IMEX interface treatment.
+function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free=false)
     for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
               "cantilever-clamped.g", "cantilever-free.g"]
         cp("$cantilever_imp_nc_example/$f", f; force=true)
@@ -22,6 +24,20 @@ function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5)
             doc = read(f, String)
             write(f, replace(doc, r"\n *adjoint pairing: true" => ""))
         end
+    end
+    if explicit_free
+        doc = read("cantilever-free.yaml", String)
+        doc = replace(
+            doc,
+            "time integrator:\n  type: Newmark\n  β: 0.25\n  γ: 0.5\n  time step: 5.0e-07" =>
+                "time integrator:\n  type: central difference\n  time step: 5.0e-07\n  CFL: 1.0\n  γ: 0.5",
+        )
+        doc = replace(
+            doc,
+            r"solver:\n  type: Hessian minimizer(\n  [^\n]+)+" =>
+                "solver:\n  type: explicit solver\n  step: explicit",
+        )
+        write("cantilever-free.yaml", doc)
     end
     params = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
     params["name"] = "cantilever-multi.yaml"
@@ -87,6 +103,16 @@ end
     # (conservation certificate of the shared cross-mass): a uniform unit
     # traction integrates to the same total force through either side.
     @test sum(W1 * ones(size(W1, 1))) ≈ sum(W2 * ones(size(W2, 1))) rtol = 1.0e-9
+
+    # Explicit (central difference) free subdomain under pairing: the IMEX
+    # interface treatment (implicit interface rows in the acceleration
+    # update) keeps the paired consistent-traction exchange stable — it is
+    # violently unstable when the interface rows are updated explicitly.
+    sim_imex = run_cantilever_imp_nc(true; explicit_free=true, num_steps=20)
+    @test sim_imex.failed == false
+    u_imex = sim_imex.subsims[1].model.displacement
+    @test all(isfinite, u_imex)
+    @test maximum(abs.(u_imex)) < 0.1
 
     # Legacy per-side transfer still runs on the same meshes (opt-out path).
     # On this 2:1 NESTED interface the legacy heuristics happen to select

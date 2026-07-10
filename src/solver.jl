@@ -474,9 +474,20 @@ function backtrack_line_search_energy(
     return increment
 end
 
-function compute_step(_::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
+function compute_step(integrator::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
-    return -solver.gradient[free] ./ solver.lumped_hessian[free]
+    step = -solver.gradient[free] ./ solver.lumped_hessian[free]
+    if has_paired_impedance_bcs(model)
+        # Adjoint-paired impedance interfaces: replace the diagonal update on
+        # the interface rows with the small implicit (IMEX) solve so the
+        # dashpot acts on the end-of-step velocity. See
+        # imex_interface_acceleration! in schwarz.jl.
+        a_new = copy(solver.solution)
+        a_new[free] .+= step
+        imex_interface_acceleration!(a_new, integrator, model, solver)
+        step = a_new[free] .- solver.solution[free]
+    end
+    return step
 end
 
 function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)

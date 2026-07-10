@@ -258,6 +258,59 @@ function build_impedance_schwarz_stiffness(model::SolidMechanics, integrator::Ti
     return K_is
 end
 
+has_paired_impedance_bcs(model::SolidMechanics) = any(
+    bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && bc.adjoint_pairing for
+    bc in model.boundary_conditions
+)
+
+# IMEX treatment of the paired impedance interface for explicit (central
+# difference) subdomains. The interface dashpot must act on the END-of-step
+# velocity v_{n+1} = ṽ + γΔt·a_{n+1} — evaluating it at the predictor ṽ
+# leaves the acceleration loop of the consistent-traction exchange unresolved
+# and is violently unstable. Because the dashpot force is linear in the
+# unknown acceleration, the implicit treatment closes on the interface rows:
+#   (M + γΔt·Z·W)|_Γ a_{n+1} = M·a_expl|_Γ ,
+# where a_expl is the plain explicit update (whose right-hand side already
+# contains the dashpot at ṽ and the Robin spring at the known u_{n+1}).
+# The interior stays matrix-free explicit; only this small SPD system (one
+# per interface, reused for the three components) is solved per evaluation,
+# which is Liu et al.'s IMEX-Newmark structure. At the Schwarz fixed point
+# both sides then satisfy the transmission condition with synchronized
+# t_{n+1} velocities, exactly as in the implicit-implicit case.
+# Interface DOFs held by Dirichlet BCs keep their prescribed acceleration
+# and enter the free rows' right-hand side as data.
+function imex_interface_acceleration!(
+    a_new::Vector{Float64},
+    integrator::CentralDifference,
+    model::SolidMechanics,
+    solver::Solver,
+)
+    γΔt = integrator.γ * integrator.time_step
+    free = model.free_dofs
+    for bc in model.boundary_conditions
+        (bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && bc.adjoint_pairing) || continue
+        size(bc.square_projector, 1) > 0 || continue
+        Z = bc.impedance
+        W = bc.square_projector
+        gmap = bc.global_from_local_map
+        for comp in 1:3
+            dofs = [3 * (g - 1) + comp for g in gmap]
+            m = model.lumped_mass[dofs]
+            r = m .* a_new[dofs]
+            f_mask = free[dofs]
+            if all(f_mask)
+                a_new[dofs] = (Diagonal(m) + (γΔt * Z) .* W) \ r
+            else
+                ff = findall(f_mask)
+                fx = findall(!, f_mask)
+                rf = r[ff] .- (γΔt * Z) .* (W[ff, fx] * a_new[dofs[fx]])
+                a_new[dofs[ff]] = (Diagonal(m[ff]) + (γΔt * Z) .* W[ff, ff]) \ rf
+            end
+        end
+    end
+    return nothing
+end
+
 function pair_bc(bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
     coupled_model = coupled_subsim_of(bc).model
@@ -289,7 +342,7 @@ end
 #   Π₁ = W₁⁻¹ B,   Π₂ = W₂⁻¹ Bᵀ,   N₁ = Π₂ᵀ,   N₂ = Π₁ᵀ,
 # which is the discrete adjoint condition W₁Π₁ = (W₂Π₂)ᵀ = B of the
 # energy-stable DG/mortar couplings. With the shared pair impedance
-# Z = 2 Z₁Z₂/(Z₁+Z₂) (harmonic mean; the Riemann-flux weighting, reducing to
+# Z = 2 Z₁Z₂/(Z₁+Z₂) (harmonic mean; the Riemann-solver weighting, reducing to
 # the one-sided value for identical materials) and a shared Robin α, the
 # interface power of the dashpot channel telescopes to
 # -Z ∫_Γ [[u̇ʰ]]² dS ≤ 0 and the Robin channel becomes a conservative
@@ -349,21 +402,21 @@ function compute_paired_impedance_schwarz_projectors!(
         )
     end
     dst_bc.robin_parameter = src_bc.robin_parameter = 0.5 * (α1 + α2)
-    # The consistent (D'Alembert) flux exchanged under pairing couples the
+    # The consistent (D'Alembert) traction exchanged under pairing couples the
     # partner's acceleration into this side's force. Implicit (Newmark)
     # subdomains resolve that algebraic loop within the Schwarz iteration;
-    # an explicit subdomain evaluates it at lagged time levels, which the
-    # cantilever benchmark shows to be violently unstable (energy growth of
-    # 10^3-10^5 %). Implicit treatment of the interface terms between
-    # explicit interiors (IMEX-Newmark) is the planned follow-up.
+    # explicit (central difference) subdomains resolve it with the IMEX
+    # interface treatment (imex_interface_acceleration!): the interface rows
+    # of the acceleration update are solved implicitly so the dashpot acts on
+    # the end-of-step velocity, while the interior stays matrix-free explicit.
     for sim_k in (coupled_subsim_of(dst_bc), self_subsim_of(dst_bc))
         if sim_k.integrator isa CentralDifference
             norma_log(
                 0,
-                :warning,
-                "Adjoint pairing with an explicit (central difference) subdomain " *
-                "is UNSTABLE: the paired consistent flux requires the interface " *
-                "terms to be resolved implicitly. Expect energy blowup.",
+                :info,
+                "Adjoint pairing with an explicit (central difference) subdomain: " *
+                "IMEX interface treatment active (implicit interface rows in the " *
+                "acceleration update).",
             )
         end
     end
@@ -854,12 +907,12 @@ end
 # the one-sided partial assembly is performed on the offset partner facet
 # surface Γ̃ — the boundary between the partner elements exterior to Γ_k
 # (centroid on the side this BC's outward normal points toward) and the
-# rest, a staircase within one partner element of Γ_k. The weak flux there
+# rest, a staircase within one partner element of Γ_k. The weak traction there
 # is the exact discrete traction of the partner scheme; it is converted to
 # a traction field with W̃⁻¹ and carried to this side's trace space with the
 # surface-to-surface variational operator R, precomposed as transfer = R W̃⁻¹.
 # The surface offset introduces an O(h_partner) modeling error that acts on
-# the exact discrete flux instead of recovered stress.
+# the exact discrete traction instead of recovered stress.
 function build_offset_traction_patch!(
     model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
 )
@@ -1098,7 +1151,7 @@ function consistent_partner_traction(
             weak_traction[3, i] -= λ[3, a]
         end
     end
-    # Non-conforming (offset-surface) patch: carry the weak flux from the
+    # Non-conforming (offset-surface) patch: carry the weak traction from the
     # offset surface Γ̃ to this side's trace space.
     if size(patch.transfer, 1) > 0
         weak_traction = weak_traction * patch.transfer'
