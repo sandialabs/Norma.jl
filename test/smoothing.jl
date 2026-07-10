@@ -970,3 +970,83 @@ end
         rm(out; force=true)
     end
 end
+
+@testset "size_field_exodus_output" begin
+    # A size-field smoothing run must write the target edge-length field, sampled
+    # at each node, as a nodal variable "size" in the Exodus output — equal to the
+    # field evaluated at each node's current position (reference + displacement).
+    mesh = joinpath(@__DIR__, "size_field_out.g")
+    out = joinpath(@__DIR__, "size_field_out.e")
+    coords, conn, boundary, interior, h = _make_tet_grid(3)
+    _orient_tets!(coords, conn)
+    Random.seed!(11)
+    for p in interior
+        coords[:, p] .+= (2 .* Random.rand(3) .- 1) .* (0.2 * h)
+    end
+    params = Dict{String,Any}(
+        "name" => "size_field_out", "type" => "single",
+        "input mesh file" => mesh, "output mesh file" => out,
+        "Exodus output interval" => 1, "CSV output interval" => 0,
+        "model" => Dict{String,Any}(
+            "type" => "mesh smoothing", "smooth reference" => "size field",
+            "size field" => "0.3 + 0.1 * x",
+            "material" => Dict{String,Any}(
+                "blocks" => Dict{String,Any}("block" => "elastic"),
+                "elastic" => Dict{String,Any}(
+                    "model" => "seth-hill", "m" => 2, "n" => 2,
+                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                ),
+            ),
+        ),
+        "time integrator" => Dict{String,Any}(
+            "type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0
+        ),
+        "boundary conditions" => Dict{String,Any}(
+            "Dirichlet" => [
+                Dict{String,Any}("node set" => "boundary", "component" => "x", "function" => "0.0"),
+                Dict{String,Any}("node set" => "boundary", "component" => "y", "function" => "0.0"),
+                Dict{String,Any}("node set" => "boundary", "component" => "z", "function" => "0.0"),
+            ],
+        ),
+        "solver" => Dict{String,Any}(
+            "type" => "steepest descent", "step" => "lbfgs", "memory" => 10,
+            "minimum iterations" => 1, "maximum iterations" => 30,
+            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3, "use line search" => true,
+            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "line search maximum iterations" => 16,
+        ),
+    )
+    try
+        init = Initialization{Int32}(
+            Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
+        )
+        rm(mesh; force=true); rm(out; force=true)
+        exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
+        write_coordinates(exo, coords)
+        write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
+        write_name(exo, Block, 1, "block")
+        ns = NodeSet(1, Vector{Int32}(boundary))
+        write_set(exo, ns); write_name(exo, ns, "boundary")
+        close(exo)
+
+        Norma.run(params)
+
+        db = ExodusDatabase(out, "r")
+        try
+            names = Exodus.read_names(db, NodalVariable)
+            @test "size" in names                       # the field is written
+            last_step = Exodus.read_number_of_time_steps(db)
+            # "size" must equal 0.3 + 0.1*x at each node's current x (= refe_x)
+            for step in (1, last_step)
+                sz = Vector{Float64}(Exodus.read_values(db, NodalVariable, step, "size"))
+                rx = Vector{Float64}(Exodus.read_values(db, NodalVariable, step, "refe_x"))
+                @test maximum(abs.(sz .- (0.3 .+ 0.1 .* rx))) < 1.0e-10
+            end
+        finally
+            Exodus.close(db)
+        end
+    finally
+        rm(mesh; force=true); rm(out; force=true)
+    end
+end

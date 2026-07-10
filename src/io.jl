@@ -91,6 +91,13 @@ function initialize_writing(sim::SingleDomainSimulation)
             end
         end
     end
+    # Energetic mesh smoothing driven by a size field: expose the target
+    # edge-length field, sampled at each node, as a nodal variable so it can be
+    # visualized on the (smoothed) mesh.
+    if solid_model isa SolidMechanics && solid_model.mesh_smoothing == true && solid_model.size_field !== nothing
+        num_node_vars += 1
+        push!(node_var_names, "size")
+    end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
 
@@ -342,6 +349,14 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "disp_x", disp_x)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "disp_y", disp_y)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "disp_z", disp_z)
+    # Energetic mesh smoothing size field, sampled at each node's current
+    # position X = reference + displacement (see initialize_writing).
+    if model isa SolidMechanics && model.mesh_smoothing == true && model.size_field !== nothing
+        size_vals = [
+            model.size_field((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)
+        ]
+        Exodus.write_values(output_mesh, NodalVariable, time_index, "size", size_vals)
+    end
     if is_dynamic(integrator) == true
         velocity = model.velocity
         velo_x = velocity[1, :]
