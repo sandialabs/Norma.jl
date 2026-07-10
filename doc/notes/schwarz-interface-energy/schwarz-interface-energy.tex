@@ -33,7 +33,11 @@ overlap widths $\{0.0508, 0.0254, 0.0127\}$\,m $\times$ mesh ratios
 $\{1{:}1, 3{:}4, 1{:}2\}$, $1$\,ms at $\Delta t = 10^{-6}$\,s) shows the
 partition-of-unity energy conserved to $0.1\%$ on conforming meshes but losing
 $28$--$71\%$ --- and in one case \emph{gaining} $12\%$ --- on nonconforming
-ones. Channel-resolved interface-work instrumentation and an impedance-scale
+ones. A follow-up $108$-run sweep over mesh ratios $1{:}1.0$--$1{:}0.2$
+(Sec.~\ref{sec:ratiosweep}) shows the gain is generic, not exceptional: even
+with variational transfer, mild coarsening injects up to $+45\%$, one
+configuration pumps the beam to $+275\%$ of its initial energy, and the sign
+of the drift flips between adjacent mesh ratios. Channel-resolved interface-work instrumentation and an impedance-scale
 sweep identify the cause: the impedance dashpot $~Z(\dot{~u}_p - \dot{~u})$
 acts on an interface velocity jump that cannot vanish at Schwarz convergence
 when the two trace spaces differ, and because the two subdomains transfer
@@ -202,6 +206,80 @@ absorb. Second, the Dirichlet instability grows with overlap \emph{width}
 (opposite to the impedance losses), consistent with a feedback loop between
 the two interpolation surfaces through the overlap volume.
 
+\section{Mesh-ratio sweep: injection is generic}
+\label{sec:ratiosweep}
+
+An independent, finer-grained parametric study by our intern Lukas reported
+significant energy \emph{injection} at mesh ratios the original
+$\{1{:}1, 3{:}4, 1{:}2\}$ grid does not sample. The following sweep confirms
+and maps it: same beam, release, and symmetric subdomains
+$L_{\mathrm{sub}} = (0.254 + \mathrm{ov})/2$; free mesh fixed at
+$h = 6.35$\,mm; clamped mesh coarsened to $6.35/r$\,mm for
+$r = 1.0, 0.9, \dots, 0.2$ (clamped:free element-size ratio $1{:}r$;
+$1{:}0.1$ skipped); all three overlap widths; all four integrator pairs;
+variational transfer (now the default) throughout --- $108$ runs. The
+$1{:}1.0$ column reproduces the conforming baselines of
+Sec.~\ref{sec:observed} to all printed digits, and $1{:}0.5$ reproduces the
+earlier variational $1{:}2$ results exactly.
+
+\begin{center}
+\small\setlength{\tabcolsep}{3.6pt}
+\begin{tabular}{l rrrr rrrr rrrr}
+\toprule
+& \multicolumn{4}{c}{overlap 0.0508\,m} & \multicolumn{4}{c}{overlap 0.0254\,m}
+& \multicolumn{4}{c}{overlap 0.0127\,m} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+ratio & II & IE & EI & EE & II & IE & EI & EE & II & IE & EI & EE \\
+\midrule
+1:1.0 & $-0.1$ & $-8.9$ & $-0.2$ & $+8.7$ & $-0.1$ & $+5.0$ & $-0.4$ & $+10.2$ & $-0.0$ & $-15.7$ & $-6.1$ & $+3.6$ \\
+1:0.9 & $+7.6$ & $-11.7$ & $-5.5$ & $+8.5$ & $-4.4$ & $-8.1$ & $+4.4$ & $+9.1$ & $+0.1$ & $-14.8$ & $-1.0$ & $+4.3$ \\
+1:0.8 & $\mathbf{+29.8}$ & $-15.3$ & $+5.5$ & $-9.5$ & $+20.4$ & $\mathbf{+45.1}$ & $-2.4$ & $-1.9$ & $-3.1$ & $-20.3$ & $-5.4$ & $+4.7$ \\
+1:0.7 & $+19.2$ & $-12.8$ & $+2.7$ & $-11.6$ & $+11.8$ & $-18.6$ & $+0.7$ & $-5.4$ & $+11.1$ & $+7.3$ & $-9.8$ & $-17.9$ \\
+1:0.6 & $-61.1$ & $-54.0$ & $-57.7$ & $-40.4$ & $+2.1$ & $-18.6$ & $-63.9$ & $-53.4$ & $-4.5$ & $-34.2$ & $-57.1$ & $-52.7$ \\
+1:0.5 & $-50.6$ & $-32.3$ & $-36.4$ & $-56.8$ & $-11.0$ & $-17.6$ & $-55.7$ & $-54.3$ & $-29.2$ & $-54.0$ & $-56.8$ & $-52.0$ \\
+1:0.4 & $-12.4$ & $+3.9$ & $-43.1$ & $-53.1$ & $-52.7$ & $-50.2$ & $-57.0$ & $-63.8$ & $-36.6$ & $-52.4$ & $-78.2$ & $-76.2$ \\
+1:0.3 & $-65.0$ & $-44.5$ & $-78.3$ & $-57.4$ & $\mathbf{+173.7}$ & $\mathbf{+274.7}$ & $-81.2$ & $-78.8$ & $-30.5$ & $-58.6$ & $-79.5$ & $-79.4$ \\
+1:0.2 & $-79.1$ & $-76.8$ & $-80.8$ & $-78.9$ & $-66.5$ & $-66.2$ & $-86.3$ & $-87.4$ & $-22.2$ & $-45.8$ & $-91.2$ & $-90.3$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three observations sharpen the diagnosis.
+
+\begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
+  \item[Injection at mild coarsening is systematic, not exceptional.] The
+  implicit-clamped pairs (II, IE) inject at nearly every overlap for ratios
+  $1{:}0.9$--$1{:}0.7$: II $+29.8\%$ at max$/1{:}0.8$, IE $+45.1\%$ at
+  \textonehalf$/1{:}0.8$, and seven further cells above $+7\%$. This is with
+  the variational (contraction) transfer already in place: the contraction
+  property bounds the \emph{transfer} but not the sign of the dashpot work,
+  confirming that no per-side transfer improvement yields sign-definiteness on
+  the two-surface overlap coupling (cf.\ the reframed Phase~1).
+  \item[A violent injection resonance.] At \textonehalf$/1{:}0.3$ the coupling
+  pumps the beam to $+174\%$ (II) and $+275\%$ (IE) of $E(0)$. The energy
+  grows smoothly for ${\sim}0.7$\,ms and saturates near $3$--$4\times E(0)$
+  --- steady interface pumping, not a numerical explosion. At this ratio the
+  clamped mesh has degenerated to a single-element cross-section (seven
+  bricks in total; one element through the thickness from $1{:}0.7$ down), so
+  it cannot represent the bending wave at all. Degeneracy alone does not
+  decide the outcome, however: the \emph{same} clamped mesh at quarter
+  overlap dissipates $-30.5\%$ (II), and the explicit-clamped pairs on the
+  identical configuration dissipate $-81\%$. Whether the sign-indefinite
+  interface work pumps or absorbs is a property of the mesh \emph{pair} and
+  the overlap geometry together.
+  \item[The drift is violently non-monotone in the ratio.] At \textonehalf\
+  overlap, II moves $-52.7 \to +173.7 \to -66.5\%$ across the three adjacent
+  ratios $1{:}0.4 \to 1{:}0.3 \to 1{:}0.2$. There is no usable regime map
+  ``mild contrast $=$ small drift'': both the sign and the magnitude of the
+  energy defect are extremely sensitive to the discrete mesh pair.
+\end{description}
+
+Practically, this closes the question of whether the nonconforming overlap
+coupling can be trusted with a drift \emph{budget}: it cannot. The interface
+work is sign-indefinite (Sec.~\ref{sec:diagnosis}), and this sweep shows both
+signs realized at large amplitude across neighboring points of a smooth
+parameter family. Data: \code{ratio-sweep/} in the study bundle.
+
 \section{What the literature says}
 \label{sec:theory}
 
@@ -297,9 +375,12 @@ removes.
   shrinks with overlap width (the overlap buffers the boundary from the fine
   content, and a wider overlap gives the coarse subdomain more elements to
   express the transferred field).
-  \item[Nonconforming, growth minority.] Non-adjoint transfer makes the
-  dashpot term sign-indefinite; with the extreme 1:2 ratio at max overlap the
-  positive branch dominates. Not stochastic --- structural.
+  \item[Nonconforming, growth cases.] Non-adjoint pairing makes the
+  dashpot term sign-indefinite; wherever the positive branch dominates the
+  coupling pumps instead of absorbing. The ratio sweep
+  (Sec.~\ref{sec:ratiosweep}) shows this is generic --- systematic injection
+  at mild coarsening, $+275\%$ at the worst cell --- and that the sign flips
+  between adjacent mesh ratios. Not stochastic --- structural.
   \item[Conforming, explicit free subdomain (IE/EE).] Time-level, not space,
   pairing failure: the dashpot force is evaluated explicitly at lagged partner
   velocity; central difference has no algorithmic damping to absorb the error.
@@ -383,11 +464,15 @@ the tested coupling family is absorbing-or-unstable: hard Dirichlet matching
 stable precisely because its dashpot continually absorbs the inter-grid
 disagreement, whose dominant component is coarse-grid dispersion --- a smooth,
 in-band solution defect that neither spatial filtering (Phase~2, falsified)
-nor transfer improvements (Phase~1) can close at fixed $h$. Mesh conformity
-therefore remains the only route to energy conservation \emph{within the
-overlap family}; nonconforming overlaps buy geometric flexibility at the price
-of controlled, attributable interface dissipation, now reported by the
-channel-resolved instrumentation.
+nor transfer improvements (Phase~1) can close at fixed $h$. The ratio sweep
+(Sec.~\ref{sec:ratiosweep}) removes the remaining comfort: the interface work
+is sign-indefinite in practice as well as in principle, so the ``price'' is
+not a bounded, predictable dissipation --- neighboring mesh ratios swing from
+$-53\%$ to $+174\%$ to $-66\%$. Mesh conformity therefore remains the only
+route to energy conservation \emph{within the overlap family}; nonconforming
+overlaps are usable only where neither energy loss \emph{nor} energy gain of
+tens of percent matters, with the channel-resolved instrumentation reporting
+which one occurred.
 
 For energy-critical nonconforming coupling, the theory-backed path is the
 \emph{nonoverlap} impedance variant, whose single shared interface admits the
