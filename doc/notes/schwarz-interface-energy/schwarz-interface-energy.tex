@@ -164,6 +164,44 @@ $Z\,\jump{\dot{u}}^2$ and the jump itself grows as the absorber detunes
 $Z$. This is the signature of an absorbing-boundary mechanism rather than of a
 fixed damping force, consistent with the channel decomposition above.
 
+\subsection{Control experiment: hard Dirichlet matching}
+\label{sec:dbc}
+
+To separate ``defect of the impedance condition'' from ``price of
+nonconforming overlap coupling,'' the same nine mesh configurations were run
+with the classical Dirichlet-overlap coupling (II), in both transfer flavors
+--- pointwise interpolation and the weak (variational $L^2$-projection)
+Dirichlet option:
+
+\begin{center}
+\begin{tabular}{llrr}
+\toprule
+overlap & ratio & DBC pointwise & DBC weak \\
+\midrule
+0.0508 (max) & 1:1 & $+0.05\%$ & --- \\
+             & 3:4 & $+5507\%^{*}$ & $+2418\%$ \\
+             & 1:2 & $+2765\%^{*}$ & $+5752\%^{*}$ \\
+0.0254 (\textonehalf) & 1:1 & $-0.03\%$ & --- \\
+             & 3:4 & $+423\%$ & $+749\%$ \\
+             & 1:2 & $+5628\%^{*}$ & $+7765\%^{*}$ \\
+0.0127 (\textonequarter) & 1:1 & $+0.01\%$ & --- \\
+             & 3:4 & $+33\%$ & $+22\%$ \\
+             & 1:2 & $+3268\%^{*}$ & $+262\%$ \\
+\bottomrule
+\end{tabular}\\[2pt]
+{\footnotesize $^{*}$ run died (Newton failure) before 1\,ms; drift at last stop.}
+\end{center}
+
+Hard matching conserves essentially exactly on conforming meshes and is
+\emph{violently unstable} on every nonconforming one --- and the weak
+(contraction) transfer does \emph{not} rescue it. Two consequences. First, the
+impedance dashpot's dissipation is not merely a defect: it is what
+\emph{stabilizes} a coupling that hard kinematic exchange destabilizes; its
+magnitude is the energy in the inter-grid disagreement it must continually
+absorb. Second, the Dirichlet instability grows with overlap \emph{width}
+(opposite to the impedance losses), consistent with a feedback loop between
+the two interpolation surfaces through the overlap volume.
+
 \section{What the literature says}
 \label{sec:theory}
 
@@ -275,17 +313,25 @@ removes.
 \label{sec:redesign}
 
 \begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
-  \item[Phase 1 --- adjoint-paired variational transfer.] Per Schwarz boundary,
-  assemble the variational cross-mass $~B$ of \eqref{eq:adjoint} on the common
-  refinement of this side's boundary facets against the partner's trace
-  (machinery largely present in
-  \code{get\_overlap\_rectangular\_projection\_matrix}), and route \emph{all}
-  partner quantities --- traction, velocity, displacement --- through the
-  adjoint pair $\Pi_{2\to1} = ~M_1^{-1}~B$, $\Pi_{1\to2} = ~M_2^{-1}~B^{T}$.
-  Never form nodal interpolation operators (ill-conditioning); solve with the
-  mass matrices. This restores the pairing that makes the traction exchange
-  cancel and the dashpot sign-definite \eqref{eq:telescope}, eliminating the
-  growth regime.
+  \item[Phase 1 --- variational transfer by default
+  \emph{(implemented, reframed)}.] The full adjoint pairing of
+  \eqref{eq:adjoint} presumes a \emph{shared} interface on which the two
+  sides' works telescope. The overlap variant has none: data are exchanged on
+  two distinct surfaces $\Gamma_1, \Gamma_2$, so no pairing of their works
+  exists, and energy consistency can come only from agreement of the two
+  solutions in the overlap --- exactly what dispersion mismatch precludes at
+  fixed $h$. The implementable core of Phase~1 is therefore the contraction
+  requirement: \code{transfer: variational} is now the \emph{default} for the
+  impedance overlap BC (pointwise remains an explicit legacy opt-in; the two
+  coincide on node-aligned interfaces). Empirically this converts the worst
+  sign-indefinite case ($+554$\,J of positive dashpot work, $+12.5\%$ growth)
+  into sign-correct controlled dissipation, and improves 17 of 24
+  nonconforming cases --- but it cannot eliminate the dispersion-jump
+  dissipation, and isolated growth cells persist (max/3:4:
+  $+1.1 \to +14.6\%$). True sign-definiteness by adjoint pairing belongs to
+  the \emph{nonoverlap} impedance variant, which does have a shared
+  $\Gamma$; implementing \eqref{eq:adjoint} there is the natural follow-up
+  for energy-critical nonconforming coupling.
   \item[Phase 2 --- dashpot on the representable jump
   \emph{(implemented; falsified)}.] Replace $~Z(\dot{~u}_p - \dot{~u})$ by
   $~Z\,\widehat\Pi\,(\dot{~u}_p - \dot{~u})$, where $\widehat\Pi$ is the
@@ -321,16 +367,33 @@ removes.
   Karimi--Nakshatrala's velocity continuity at shared instants), targeting the
   conforming IE/EE growth.
   \item[Regression metric.] Keep the channel-resolved interface-work CSV as a
-  test: after Phase 1--2, the dashpot work must be $\le 0$ in every
-  configuration (sign test) and $\to 0$ with Schwarz tolerance on conforming
-  meshes; the study's 36-case drift table is the acceptance benchmark.
+  test: the dashpot work must be $\approx 0$ on conforming meshes at Schwarz
+  tolerance, and the study's drift table is the acceptance benchmark for any
+  future change to the transmission machinery. (A universal dashpot sign test
+  is \emph{not} attainable in the overlap variant --- see the reframed
+  Phase~1.)
 \end{description}
 
-The alternative structural cure --- a single independently discretized frame
-(variational multiplier) field on each Schwarz boundary with both sides coupling to it
-adjointly (the localized-Lagrange-multiplier construction of Park--Felippa,
-applied in Dvorak et al.\ 2023) --- achieves the same pairing with an extra
-interface field, and is the natural fallback if the in-place adjoint retrofit
-of Phase 1 proves intrusive.
+\section{Where this lands}
+\label{sec:conclusion}
+
+For wave-transit problems on \emph{nonconforming overlapping} decompositions,
+the tested coupling family is absorbing-or-unstable: hard Dirichlet matching
+(pointwise or weak) is violently unstable, and the impedance condition is
+stable precisely because its dashpot continually absorbs the inter-grid
+disagreement, whose dominant component is coarse-grid dispersion --- a smooth,
+in-band solution defect that neither spatial filtering (Phase~2, falsified)
+nor transfer improvements (Phase~1) can close at fixed $h$. Mesh conformity
+therefore remains the only route to energy conservation \emph{within the
+overlap family}; nonconforming overlaps buy geometric flexibility at the price
+of controlled, attributable interface dissipation, now reported by the
+channel-resolved instrumentation.
+
+For energy-critical nonconforming coupling, the theory-backed path is the
+\emph{nonoverlap} impedance variant, whose single shared interface admits the
+adjoint pairing \eqref{eq:adjoint} and hence a provably sign-definite (or
+exactly telescoping) interface work; the localized-Lagrange-multiplier frame
+construction (Park--Felippa; Dvorak et al.\ 2023) is the equivalent
+alternative with an explicit interface field. Both are follow-up work.
 
 \end{document}

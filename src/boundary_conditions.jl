@@ -579,7 +579,16 @@ function SMCouplingSchwarzBC(
                     "\"auto\", \"consistent traction\", and \"recovered stress\".",
                 )
             end
-            transfer_mode = get(bc_params, "transfer", "pointwise")
+            # Variational (L2-projection) transfer is the default: it is the
+            # contraction the nonmatching-grid Schwarz theory requires
+            # (Gander-Halpern-Nataf 2003, Thm 7.4), and the cantilever
+            # parametric study measured pointwise interpolation making the
+            # impedance dashpot's interface work sign-indefinite on
+            # nonconforming meshes (energy growth), where variational transfer
+            # restores controlled dissipation (see
+            # doc/notes/schwarz-interface-energy). On node-aligned interfaces
+            # the two coincide. Pointwise remains an explicit legacy opt-in.
+            transfer_mode = get(bc_params, "transfer", "variational")
             if transfer_mode ∉ ("pointwise", "variational")
                 norma_abort(
                     "Invalid `transfer: $transfer_mode`. Valid values are " *
