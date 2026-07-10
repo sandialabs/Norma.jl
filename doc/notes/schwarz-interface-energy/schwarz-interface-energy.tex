@@ -1,0 +1,325 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{boldtensors}
+% boldtensors declares the symbol font `cmbboard` from the bbold family, which
+% is not present in every TeX installation (it aborts at the start of math
+% mode). Redirect it to the always-available AMS `msb` family; the `"`-syntax
+% that would actually render a cmbboard glyph is unused here, so this only
+% removes the missing-font dependency.
+\DeclareSymbolFont{cmbboard}{U}{msb}{m}{n}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\jump}[1]{[\![#1]\!]}
+\emergencystretch=3em
+
+\title{Diagnosis: Interface Energy Loss of the Impedance-Overlap Schwarz\\
+Coupling on Nonconforming Meshes, and an Energy-Consistent Redesign}
+\author{Alejandro Mota}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A $4\times3\times3$ parametric study of the impedance-overlap Schwarz coupling
+on the bent-cantilever release problem (integrator pairs II/IE/EI/EE $\times$
+overlap widths $\{0.0508, 0.0254, 0.0127\}$\,m $\times$ mesh ratios
+$\{1{:}1, 3{:}4, 1{:}2\}$, $1$\,ms at $\Delta t = 10^{-6}$\,s) shows the
+partition-of-unity energy conserved to $0.1\%$ on conforming meshes but losing
+$28$--$71\%$ --- and in one case \emph{gaining} $12\%$ --- on nonconforming
+ones. Channel-resolved interface-work instrumentation and an impedance-scale
+sweep identify the cause: the impedance dashpot $~Z(\dot{~u}_p - \dot{~u})$
+acts on an interface velocity jump that cannot vanish at Schwarz convergence
+when the two trace spaces differ, and because the two subdomains transfer
+partner data through \emph{independent, non-adjoint} interpolations, the
+dashpot work is not even sign-definite. The optimized-Schwarz, multi-time-step,
+and discontinuous-Galerkin literatures converge on the same two structural
+requirements for an energy-consistent coupling: (i) the kinematic transfer and
+the force transfer between the two sides must be $L^2$-adjoints through a
+single mortar cross-mass matrix, which makes the interface power telescope to
+a sign-definite dashpot on the common-space jump plus a \emph{conservative}
+spring term; and (ii) the dashpot must act only on content both trace spaces
+can represent, so that it vanishes at Schwarz convergence instead of
+persistently absorbing unrepresentable fine-scale content. This note records
+the evidence, the theory, and a phased redesign.
+\end{abstract}
+
+\section{Observed behavior}
+\label{sec:observed}
+
+The benchmark is the bent 3D cantilever released from a parabolic initial
+displacement, split lengthwise into clamped and free subdomains that overlap,
+coupled by the impedance-overlap transmission condition
+\begin{equation}
+  ~t \;=\; ~t_p \;+\; ~Z\,(\dot{~u}_p - \dot{~u}) \;+\; \alpha\,(~u_p - ~u),
+  \qquad
+  ~Z = Z_p\,~n\otimes~n + Z_s\,(~I - ~n\otimes~n),
+  \label{eq:tc}
+\end{equation}
+with $Z_p = \rho c_p$, $Z_s = \rho c_s$ of the partner material
+(Lysmer--Kuhlemeyer split), $\alpha = 0$ throughout this study, and subscript
+$p$ denoting partner fields evaluated at this subdomain's Schwarz boundary.
+Energy is the Arlequin partition-of-unity total (overlap counted once),
+normalized by each run's own $E(0) \approx 1506$\,J.
+
+Drift $E(1\,\mathrm{ms})/E(0) - 1$, in percent, pointwise transfer:
+
+\begin{center}
+\begin{tabular}{llrrrr}
+\toprule
+overlap & ratio & II & IE & EI & EE \\
+\midrule
+0.0508 (max) & 1:1 & $-0.07$ & $-8.9$ & $-0.2$ & $+8.7$ \\
+             & 3:4 & $+1.1$  & $-8.7$ & $-0.9$ & $-12.0$ \\
+             & 1:2 & $+12.5$ & $-26.5$ & $-53.8$ & $-57.7$ \\
+0.0254 (\textonehalf) & 1:1 & $-0.07$ & $+5.0$ & $-0.4$ & $+10.2$ \\
+             & 3:4 & $-28.4$ & $-6.0$ & $-22.3$ & $-13.9$ \\
+             & 1:2 & $-17.3$ & $-18.5$ & $-58.9$ & $-45.7$ \\
+0.0127 (\textonequarter) & 1:1 & $-0.02$ & $-15.7$ & $-6.1$ & $+3.6$ \\
+             & 3:4 & $-44.5$ & $-40.6$ & $-41.1$ & $-31.4$ \\
+             & 1:2 & $-63.8$ & $-64.3$ & $-70.8$ & $-61.9$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three regimes: (a) conforming ($1{:}1$) implicit-free-subdomain runs conserve
+to $\le 0.1\%$ at every overlap; (b) nonconforming runs lose tens of percent,
+worse with mesh ratio and with smaller overlap; (c) a minority of cases,
+including II at max overlap $1{:}2$, \emph{gain} energy. Mortar
+(\code{transfer: variational}) rescues the small-overlap losses dramatically
+($-44.5 \to -4.4\%$ at \textonequarter/3:4) but regresses elsewhere
+($+12.5 \to -50.7\%$ at max/1:2): it improved 17 of 24 nonconforming cases,
+mean $|$drift$|$ $33.4 \to 25.4\%$ --- helpful, not structural.
+
+\section{Empirical diagnosis}
+\label{sec:diagnosis}
+
+\subsection{Channel-resolved interface work}
+
+The instrumentation (\code{NORMA\_IMPEDANCE\_WORK\_CSV}) decomposes each
+subdomain's interface power $P = \sum_i \dot{~u}_i \cdot ~f^{\mathrm{bc}}_i$
+into the traction, dashpot, and Robin channels of \eqref{eq:tc}. For the exact
+monodomain solution the dashpot and Robin channels vanish identically, so
+their work is purely spurious. Integrated over 1\,ms (II runs; work summed
+over both subdomains):
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+case & $\Delta E$ blended & dashpot work & traction work & jump RMS \\
+\midrule
+conforming (\textonehalf, 1:1)          & $-1$\,J    & $-1.8$\,J  & $+70$\,J  & $\sim 1$ \\
+nonconf.\ \textonehalf, 3:4 (pointwise) & $-428$\,J  & $-586$\,J  & $+92$\,J  & $\sim 20$ \\
+nonconf.\ \textonequarter, 3:4 (pointwise) & $-515$\,J & $-877$\,J & $+341$\,J & $\sim 16$ \\
+nonconf.\ max, 1:2 (pointwise)          & $+188$\,J  & $\mathbf{+554}$\,J & $-211$\,J & $\sim 80$ \\
+nonconf.\ \textonequarter, 3:4 (variational) & $-67$\,J & $-864$\,J & $+780$\,J & $\sim 26$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three facts follow. First, on conforming meshes the dashpot channel is
+negligible ($-1.8$\,J) and the coupling is conservative: the jump
+$\dot{~u}_p - \dot{~u}$ closes at Schwarz convergence. Second, on
+nonconforming meshes the dashpot channel carries the loss: the jump RMS is an
+order of magnitude larger and never closes --- the coarse trace space cannot
+represent the fine side's boundary velocity, and the dashpot persistently
+absorbs the difference, exactly as a Lysmer--Kuhlemeyer boundary absorbs
+outgoing content. Third, and decisively for the mechanism: in the max/1:2 case
+the ``dashpot'' does $+554$\,J of \emph{positive} work. A dissipator can never
+do positive work; this proves the discrete dashpot term is not a quadratic
+form. Because each subdomain interpolates partner fields with its own,
+unrelated operator, the two sides' dashpot terms do not pair, and the total is
+sign-indefinite.
+
+The variational row explains why mortar transfer helps only sometimes: its
+dashpot still drains $-864$\,J, but the consistent (characteristic-transfer)
+traction returns $+780$\,J. The rescue is an accidental near-cancellation of
+two large opposing channels, not a removal of either defect.
+
+\subsection{Impedance-scale sweep}
+
+Scaling both impedances by $s \in \{1, 0.5, 0.25\}$ on the
+\textonequarter/3:4 II case (pointwise):
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+impedance scale $s$ & 1.0 & 0.5 & 0.25 \\
+\midrule
+drift at 1 ms & $-44.5\%$ & $-40.5\%$ & $-29.2\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The loss decreases monotonically as the dashpot is weakened --- confirming the
+dashpot as the carrier of the loss --- but sublinearly: the dissipated power is
+$Z\,\jump{\dot{u}}^2$ and the jump itself grows as the absorber detunes
+(reflection increasing as $Z \to 0$), so the product falls more slowly than
+$Z$. This is the signature of an absorbing-boundary mechanism rather than of a
+fixed damping force, consistent with the channel decomposition above.
+
+\section{What the literature says}
+\label{sec:theory}
+
+Four independent lines of analysis (all in
+\code{\textasciitilde/Downloads/Optimized-Schwarz-Methods}) agree on the
+structure of the problem and of its solution.
+
+\subsection{The interface-work pairing identity}
+
+For Newmark-family subdomains coupled by interface tractions, the discrete
+energy balance over a step contains the interface term
+(Gravouil--Combescure 2001, Eq.~(34); Karimi--Nakshatrala 2014, Eq.~(84))
+\begin{equation}
+  E_{\mathrm{int}}
+  = \sum_{\text{sides }k} \frac{1}{\Delta t_k}\,
+    \jump{\dot{~u}_k}^{T} ~C_k^{T}\, \jump{\Lambda_k},
+  \label{eq:eint}
+\end{equation}
+the work of the transmitted tractions through the kinematic jump, each side on
+its own grid. It vanishes iff the traction is a \emph{single-valued} field
+acting equal-and-opposite on the two sides through \emph{adjoint} trace
+operators, with velocity continuity enforced at instants shared by both time
+grids. Gravouil--Combescure prove their subcycled coupling makes
+$E_{\mathrm{int}} \le 0$ (dissipative, never a source);
+Prakash--Hjelmstad restructure the intermediate tractions so it telescopes to
+exactly zero. Neither treats spatially nonconforming interfaces; both warn
+that breaking the pairing leaves $E_{\mathrm{int}}$ of indefinite sign ---
+precisely the $+554$\,J observation.
+
+\subsection{Representability: the converged nonconforming solution}
+
+Gander--Halpern--Nataf (SINUM 2003) analyze discrete Schwarz waveform
+relaxation with impedance transmission on nonmatching grids. Their key
+statements: the choice $Z = \rho c$ of the \emph{partner} side is the exact
+transparent operator in 1D and optimal-in-class generally (\S3, Eq.~(3.10)) ---
+so the impedance choice is not the problem; their nonmatching-grid convergence
+proof requires the intergrid transfer to be an $L^2$ \emph{contraction}
+(projection qualifies, Eq.~(5.24); pointwise interpolation does not); and, for
+nonconforming grids, ``the coupled system \emph{defines} the solution when
+converged'' (\S5.4) --- there is no monodomain scheme it equals. Continuity at
+the converged fixed point holds only \emph{through the projection}: the
+component of the fine trace orthogonal to the coarse trace space is invisible
+to the partner and never matched. The impedance dashpot then acts on that
+persistent component as a genuine absorbing boundary --- sign-definite
+dissipation that is the price of stability, not an iteration defect. The cure
+they and Achdou--Japhet--Maday--Nataf (Numer.\ Math.\ 2002) point to is not a
+better $Z$ but a \emph{common trace space} for the datum entering the dashpot.
+
+\subsection{The DG telescoping condition}
+
+Energy-stable discontinuous-Galerkin couplings (Appel\"o--Wang 2019;
+Duru et al.\ 2021; Liu et al.\ 2023) make the interface energy identity exact
+by construction: a single ``starred''/Riemann state is computed on a common
+description of the interface (the mesh intersection) and enters \emph{both}
+sides' weak forms; the interface power then telescopes to
+\begin{equation}
+  P \;=\; -\int_\Gamma \jump{\dot{~u}}^T ~Z \jump{\dot{~u}} \,\dd S
+  \;\le\; 0
+  \qquad\text{(or exactly } 0 \text{ for the central variant)},
+  \label{eq:telescope}
+\end{equation}
+with the dissipation confined to the jump and vanishing under refinement and
+at convergence. The precise discrete requirement: if side $k$ receives partner
+kinematics through $\Pi_{j\to k}$, the transfers must be $L^2$-adjoints
+through the mortar cross-mass matrix,
+\begin{equation}
+  ~M_1 \Pi_{2\to1} \;=\; \bigl(~M_2\,\Pi_{1\to2}\bigr)^{T} \;=\; ~B,
+  \qquad
+  B_{mn} = \int_\Gamma \varphi^1_m\,\varphi^2_n \,\dd S,
+  \label{eq:adjoint}
+\end{equation}
+with $~M_k$ the side-$k$ boundary mass matrices and the integrals evaluated on
+the common refinement. Two independent pointwise interpolations violate
+\eqref{eq:adjoint}, the cross terms do not cancel, and the interface term has
+no sign. Liu et al.\ additionally warn that nonconforming cross-interpolation
+matrices are catastrophically ill-conditioned and that interface unknowns may
+need implicit treatment even between explicit interiors (their IMEX-Newmark)
+--- directly relevant to the conforming IE/EE growth ($+5$ to $+10\%$), where
+the explicitly-evaluated dashpot at lagged time levels injects energy that
+central-difference ($\gamma = \tfrac12$, zero algorithmic damping) never
+removes.
+
+\section{Synthesis: why each observed regime occurs}
+\label{sec:synthesis}
+
+\begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
+  \item[Conforming, implicit.] Transfer is the identity (node-aligned), the
+  adjoint condition \eqref{eq:adjoint} holds trivially, the jump closes at
+  Schwarz convergence, the dashpot does no work: conserved.
+  \item[Nonconforming, dissipative majority.] The jump cannot close
+  (representability); the dashpot absorbs the unrepresentable content
+  persistently. Loss grows with mesh ratio (more unrepresentable content) and
+  shrinks with overlap width (the overlap buffers the boundary from the fine
+  content, and a wider overlap gives the coarse subdomain more elements to
+  express the transferred field).
+  \item[Nonconforming, growth minority.] Non-adjoint transfer makes the
+  dashpot term sign-indefinite; with the extreme 1:2 ratio at max overlap the
+  positive branch dominates. Not stochastic --- structural.
+  \item[Conforming, explicit free subdomain (IE/EE).] Time-level, not space,
+  pairing failure: the dashpot force is evaluated explicitly at lagged partner
+  velocity; central difference has no algorithmic damping to absorb the error.
+  \item[Variational rescue.] Mortar projection is a contraction and the
+  characteristic transfer restores much of the traction consistency, but the
+  dashpot still sees the full jump; the outcome rides on near-cancellation of
+  two large channels.
+\end{description}
+
+\section{Redesign: an energy-consistent impedance overlap}
+\label{sec:redesign}
+
+\begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
+  \item[Phase 1 --- adjoint-paired mortar transfer.] Per Schwarz boundary,
+  assemble the mortar cross-mass $~B$ of \eqref{eq:adjoint} on the common
+  refinement of this side's boundary facets against the partner's trace
+  (machinery largely present in
+  \code{get\_overlap\_rectangular\_projection\_matrix}), and route \emph{all}
+  partner quantities --- traction, velocity, displacement --- through the
+  adjoint pair $\Pi_{2\to1} = ~M_1^{-1}~B$, $\Pi_{1\to2} = ~M_2^{-1}~B^{T}$.
+  Never form nodal interpolation operators (ill-conditioning); solve with the
+  mass matrices. This restores the pairing that makes the traction exchange
+  cancel and the dashpot sign-definite \eqref{eq:telescope}, eliminating the
+  growth regime.
+  \item[Phase 2 --- dashpot on the representable jump.] Replace
+  $~Z(\dot{~u}_p - \dot{~u})$ by
+  $~Z\,\widehat\Pi\,(\dot{~u}_p - \dot{~u})$, where $\widehat\Pi$ is the
+  $W$-orthogonal projection onto the transferable span --- the projector
+  already built by the content-absorption machinery
+  (\code{compute\_impedance\_overlap\_schwarz\_projectors!}). At Schwarz
+  convergence $\widehat\Pi(\dot{~u}_p - \dot{~u}) \to 0$, so the persistent
+  drain vanishes; the unrepresentable fine content sees traction-only
+  transmission and reflects (conserving) instead of being absorbed. Where
+  absorption of that content is \emph{wanted} (radiation-dominated problems),
+  the existing \code{content aware absorption} option remains the explicit,
+  sign-controlled way to request it --- absorption becomes a choice, not an
+  accident.
+  \item[Phase 3 --- harmonic-mean impedance.] Use
+  $Z = Z_1 Z_2/(Z_1 + Z_2)$ per wave family (the Riemann-solver weighting of
+  Duru et al.\ and Liu et al.), reducing to $Z/2$ for identical materials and
+  correct for dissimilar ones; the current one-sided partner impedance over-
+  or under-damps whenever materials or resolved impedances differ.
+  \item[Phase 4 --- implicit interface for explicit subdomains.] Evaluate the
+  interface (dashpot) terms implicitly at the synchronization instants even
+  when a subdomain's interior is explicit (Liu's IMEX-Newmark; equivalently
+  Karimi--Nakshatrala's velocity continuity at shared instants), targeting the
+  conforming IE/EE growth.
+  \item[Regression metric.] Keep the channel-resolved interface-work CSV as a
+  test: after Phase 1--2, the dashpot work must be $\le 0$ in every
+  configuration (sign test) and $\to 0$ with Schwarz tolerance on conforming
+  meshes; the study's 36-case drift table is the acceptance benchmark.
+\end{description}
+
+The alternative structural cure --- a single independently discretized frame
+(mortar) field on each Schwarz boundary with both sides coupling to it
+adjointly (the localized-Lagrange-multiplier construction of Park--Felippa,
+applied in Dvorak et al.\ 2023) --- achieves the same pairing with an extra
+interface field, and is the natural fallback if the in-place adjoint retrofit
+of Phase 1 proves intrusive.
+
+\end{document}
