@@ -1304,6 +1304,19 @@ function subcycle(sim::MultiDomainSimulation)
         subsim = sim.subsims[subsim_index]
         norma_log(4, :domain, subsim.name)
         reset_history(controller, subsim_index)
+        # advance_time() clips the last substep to land exactly on the stop
+        # time and stores the clipped value in integrator.time_step (the
+        # integrator updates need the actual step taken). Without a reset the
+        # clipped remainder becomes the nominal step of every later pass, and
+        # the Schwarz re-integration of each stop amplifies the floating-point
+        # remainder geometrically (×3 per iteration for a 4:1 subcycle) until
+        # the step collapses to a sliver. Restore the nominal step before each
+        # pass; genuine adaptive stepping (minimum < maximum) keeps its
+        # adapted value.
+        integrator = subsim.integrator
+        if integrator.minimum_time_step == integrator.maximum_time_step
+            integrator.time_step = integrator.maximum_time_step
+        end
         while true
             advance_time(subsim)
             advance_one_step(subsim)
