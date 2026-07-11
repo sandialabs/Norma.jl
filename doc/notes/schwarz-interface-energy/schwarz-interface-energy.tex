@@ -594,6 +594,47 @@ Newmark (flat) and central-difference (dipping) references with no secular
 drift after the transient, and the nonconforming columns add the same
 monotone, sign-definite trace-jump dissipation as the II column.
 
+\subsection{Subcycled (multi-time-step) pairing}
+\label{sec:subcycle}
+
+Different time steps per subdomain require no new exchange machinery: each
+subdomain records its per-substep trajectory (kinematics \emph{and}
+internal force) during every Schwarz iteration, the coupling interpolates
+the partner's state piecewise-linearly in time at each of its own substeps,
+and the paired d'Alembert traction therefore evaluates on interpolated data
+--- exactly the interpolated-traction structure under which
+Gravouil--Combescure prove the subcycled interface work dissipative
+($E_{\mathrm{int}} \le 0$, $O(\Delta t)$). (Enabling this exposed a
+time-step erosion bug in the subcycler --- the stop-aligned remainder step
+persisted as the nominal step and the Schwarz re-integration amplified the
+floating-point remainder geometrically until the step collapsed --- fixed
+independently of the pairing.) Validation at 1\,ms, free side subcycled
+$4{:}1$ ($\Delta t = 0.25\,\mu$s inside the $1\,\mu$s stop; EE also
+staggers the clamped side at $0.5\,\mu$s):
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+case & subcycled & same-step \\
+\midrule
+conforming II & $-2.7$ & $-0.03$ \\
+conforming IE & $-9.6$ & $-10.3$ \\
+conforming EE & $-10.3$ & $-8.5$ \\
+1:0.5 II & $-20.6$ & $-13.3$ \\
+1:0.5 IE & $-24.4$ & $-21.2$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Stable and sign-definite in every combination, with no injection anywhere
+(maximum transient excursion $+0.14\%$, within the conservative spring's
+bounded storage). The extra dissipation relative to same-step coupling is
+the GC interpolation dissipation --- $-2.7\%$ at conforming II, where the
+same-step coupling is exact --- plus its interaction with the trace jump on
+nonconforming meshes. The Prakash--Hjelmstad restructuring, which
+telescopes the subcycled interface work to exactly zero, is the known
+refinement if that overhead ever matters.
+
 \section{Where this lands}
 \label{sec:conclusion}
 
@@ -626,8 +667,11 @@ the monodomain explicit run to $0.35\%$ pointwise, and every combination is
 sign-definite at every ratio. The practical recommendation is therefore:
 conforming meshes within the overlap family, or the adjoint-paired
 nonoverlap variant (\code{adjoint pairing: true}) when the decomposition
-must be nonconforming and the energy budget matters. Subcycled (multi-time-step)
-pairing and the localized-Lagrange-multiplier frame construction
-(Park--Felippa; Dvorak et al.\ 2023) remain follow-up work.
+must be nonconforming and the energy budget matters. Subcycled
+(multi-time-step) pairing is validated with the expected
+Gravouil--Combescure interpolation dissipation (Sec.~\ref{sec:subcycle});
+the Prakash--Hjelmstad exact-telescoping refinement and the
+localized-Lagrange-multiplier frame construction (Park--Felippa; Dvorak et
+al.\ 2023) remain follow-up work.
 
 \end{document}
