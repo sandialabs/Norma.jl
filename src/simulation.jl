@@ -1317,6 +1317,13 @@ function subcycle(sim::MultiDomainSimulation)
         if integrator.minimum_time_step == integrator.maximum_time_step
             integrator.time_step = integrator.maximum_time_step
         end
+        # Anchor the history with the stop-start state (the converged
+        # previous stop, just restored by restore_stop_state). Snapshots are
+        # otherwise pushed only after each substep, so without this anchor a
+        # non-subcycling subdomain's history is a single end-of-stop entry
+        # and a finer-stepping partner receives constant end-state data
+        # instead of the interpolant in time between the stop endpoints.
+        save_history_snapshot(controller, subsim, subsim_index)
         while true
             advance_time(subsim)
             advance_one_step(subsim)

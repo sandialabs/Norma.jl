@@ -926,21 +926,78 @@ function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Floa
     if param > param_hist[end] || isapprox(param, param_hist[end]; rtol=1.0e-06, atol=1.0e-12)
         return value_hist[end]
     end
-    index = 1
-    size = length(param_hist)
-    while param_hist[index] < param
-        if index == size
-            break
+    # Largest index with param_hist[index] ≤ param; the guards above ensure
+    # param lies strictly inside the history, so 1 ≤ index < length and the
+    # query interpolates on its own segment [index, index + 1].
+    index = searchsortedlast(param_hist, param)
+    return interpolate(param_hist[index], param_hist[index + 1], value_hist[index], value_hist[index + 1], param)
+end
+
+# Union of the window endpoints and the interior history times: the exact
+# integration grid for window integrals of the piecewise-linear interpolant.
+function window_breakpoints(param_hist::Vector{Float64}, t0::Float64, t1::Float64)
+    breakpoints = [t0]
+    for t in param_hist
+        if t0 < t < t1 && !isapprox(t, t0; rtol=1.0e-06, atol=1.0e-12) && !isapprox(t, t1; rtol=1.0e-06, atol=1.0e-12)
+            push!(breakpoints, t)
         end
-        index += 1
     end
-    if index == 1
-        return value_hist[1]
-    elseif index == size
-        return value_hist[end]
-    else
-        return interpolate(param_hist[index], param_hist[index + 1], value_hist[index], value_hist[index + 1], param)
+    push!(breakpoints, t1)
+    return breakpoints
+end
+
+# Time average (1 / (t1 - t0)) ∫ over [t0, t1] of the piecewise-linear
+# interpolant of the history, evaluated exactly by the trapezoidal rule on
+# the union of the window endpoints and the interior history times. Outside
+# the stored range the interpolant clamps to the end values, matching
+# `interpolate` above. A degenerate window falls back to point interpolation.
+function time_average(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, t0::Float64, t1::Float64)
+    window = t1 - t0
+    if window <= 0.0 || isapprox(t0, t1; rtol=1.0e-06, atol=1.0e-12)
+        return interpolate(param_hist, value_hist, t1)
     end
+    breakpoints = window_breakpoints(param_hist, t0, t1)
+    average = zeros(length(value_hist[1]))
+    value_prev = interpolate(param_hist, value_hist, breakpoints[1])
+    for i in 2:length(breakpoints)
+        value_next = interpolate(param_hist, value_hist, breakpoints[i])
+        average .+= (0.5 * (breakpoints[i] - breakpoints[i - 1])) .* (value_prev .+ value_next)
+        value_prev = value_next
+    end
+    average ./= window
+    return average
+end
+
+# Endpoint value of the least-squares linear-in-time fit of the history's
+# piecewise-linear interpolant over [t0, t1]: with the window average v̄ and
+# the centered first moment m = ∫ v(t) (t - t_c) dt (t_c the window center),
+# the LS line is v̄ + (12 m / W³)(t - t_c) and its value at t1 is
+# v̄ + 6 m / W². Both integrals are evaluated exactly per breakpoint segment.
+# For a trajectory that is linear across the window this returns the exact
+# endpoint value; content the line cannot represent is filtered out rather
+# than aliased in. A degenerate window falls back to point interpolation.
+function time_endpoint_fit(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, t0::Float64, t1::Float64)
+    window = t1 - t0
+    if window <= 0.0 || isapprox(t0, t1; rtol=1.0e-06, atol=1.0e-12)
+        return interpolate(param_hist, value_hist, t1)
+    end
+    breakpoints = window_breakpoints(param_hist, t0, t1)
+    center = 0.5 * (t0 + t1)
+    integral = zeros(length(value_hist[1]))
+    moment = zeros(length(value_hist[1]))
+    value_prev = interpolate(param_hist, value_hist, breakpoints[1])
+    for i in 2:length(breakpoints)
+        a = breakpoints[i - 1]
+        b = breakpoints[i]
+        h = b - a
+        value_next = interpolate(param_hist, value_hist, breakpoints[i])
+        integral .+= (0.5 * h) .* (value_prev .+ value_next)
+        # ∫_a^b [v_a + (v_b - v_a)(t - a)/h] (t - t_c) dt, exactly:
+        moment .+= (h * (0.5 * (a + b) - center)) .* value_prev .+
+                   (h * h / 3.0 + 0.5 * (a - center) * h) .* (value_next .- value_prev)
+        value_prev = value_next
+    end
+    return integral ./ window .+ (6.0 / window^2) .* moment
 end
 
 using Einsum

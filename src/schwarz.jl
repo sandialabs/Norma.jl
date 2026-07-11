@@ -1611,6 +1611,23 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     controller.iteration_number == 0 &&
     !isempty(controller.predictor_disp[coupled_index])
     if !isempty(time_hist)
+        # Piecewise-linear interpolation of the partner trajectory, in both
+        # directions of a subcycled pair (Gravouil-Combescure interpolated
+        # continuity). This is the measured stable optimum of the temporal
+        # transfer operators tried for the subcycled adjoint pairing on the
+        # cantilever benchmark (doc/notes/schwarz-interface-energy):
+        # replacements for the coarser side's exchange that are exactly
+        # work-conjugate to the finer side's interpolation -- the trapezoidal
+        # window average, the de-lagged recursion F = 2 avg - F_prev, and the
+        # least-squares endpoint fit (all three Schwarz-compatible forms of
+        # the Prakash-Hjelmstad linear-in-time interface traction) -- either
+        # add half-window-lag dissipation (average) or diverge (recursion:
+        # gain two on the partner-state channel doubles the fixed-point
+        # iteration's contraction factor; endpoint fit: zero-lag filtering is
+        # extrapolatory and pumps energy over long horizons). Exact
+        # interface-work telescoping under subcycling requires solving the
+        # interface problem directly, as Prakash-Hjelmstad do, not a
+        # partitioned exchange.
         interp_disp = interpolate(time_hist, disp_hist, time)
         interp_velo = interpolate(time_hist, velo_hist, time)
         interp_acce = interpolate(time_hist, acce_hist, time)

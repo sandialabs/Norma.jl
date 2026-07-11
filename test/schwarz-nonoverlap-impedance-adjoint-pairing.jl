@@ -125,6 +125,27 @@ end
     @test all(isfinite, u_sub)
     @test maximum(abs.(u_sub)) < 0.1
 
+    # Temporal transfer pair of the subcycled pairing: the finer side receives
+    # the piecewise-linear interpolant of the partner history (on the query's
+    # own segment), and the coarser side receives the endpoint value of the
+    # least-squares linear fit of the partner trajectory over its step window
+    # — lag-free like endpoint sampling, filtering intra-window content
+    # instead of aliasing it (the Schwarz-compatible form of the
+    # Prakash-Hjelmstad linear-in-time interface traction).
+    th2 = [0.0, 1.0]
+    vh2 = [[0.0], [10.0]]
+    @test Norma.interpolate(th2, vh2, 0.25) ≈ [2.5]        # not the endpoint
+    th5 = collect(0.0:0.25:1.0)
+    kinked = [[abs(t - 0.5)] for t in th5]
+    @test Norma.interpolate(th5, kinked, 0.30) ≈ [0.2]     # own segment, no sign flip
+    linear = [[t, 2.0 * t] for t in th5]
+    @test Norma.time_average(th5, linear, 0.0, 1.0) ≈ [0.5, 1.0]
+    @test Norma.time_average(th5, linear, 0.5, 0.5) ≈ [0.5, 1.0]      # degenerate window
+    @test Norma.time_endpoint_fit(th5, linear, 0.0, 1.0) ≈ [1.0, 2.0]  # exact endpoint, no lag
+    @test Norma.time_endpoint_fit(th5, linear, 0.1, 0.9) ≈ [0.9, 1.8]  # off-grid window
+    @test Norma.time_endpoint_fit(th5, kinked, 0.0, 1.0) ≈ [0.25]      # symmetric kink filtered flat
+    @test Norma.time_endpoint_fit(th5, linear, 0.5, 0.5) ≈ [0.5, 1.0]  # degenerate window
+
     # Mismatched Robin parameters abort under pairing (strict by design: the
     # Robin spring is conservative only when both sides' interface forces
     # pair through the same coefficient).
