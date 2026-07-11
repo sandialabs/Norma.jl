@@ -26,7 +26,7 @@
         y = read(joinpath(example, f), String)
         # Subdivided facet quadrature exercises the piecewise-integrand rule;
         # the reproduction invariants below hold for any rule.
-        y = replace(y, r"(source side set: [\w+-]+)" => s"\1
+        y = replace(y, r"(source block: [\w+-]+)" => s"\1
       transfer: variational
       transfer quadrature subdivisions: 3
       content aware absorption: true")

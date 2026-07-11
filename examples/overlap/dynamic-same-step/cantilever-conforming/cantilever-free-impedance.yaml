@@ -26,7 +26,6 @@ boundary conditions:
     - side set: ssx-
       source: cantilever-clamped-impedance
       source block: cantilever_clamped
-      source side set: ssx+
       robin parameter: 0.0
 solver:
   type: Hessian minimizer

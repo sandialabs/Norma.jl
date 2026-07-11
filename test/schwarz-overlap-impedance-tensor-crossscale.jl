@@ -66,7 +66,6 @@
         $(dirichlet)    - side set: $ss
               source: cantilever-$other-impedance
               source block: cantilever_$other_block
-              source side set: $other_ss
               robin parameter: 0.0
         solver:
           type: Hessian minimizer
