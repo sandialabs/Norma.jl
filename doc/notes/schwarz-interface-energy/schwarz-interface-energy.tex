@@ -504,7 +504,27 @@ $\Pi_1 = W_1^{-1}B$, $\Pi_2 = W_2^{-1}B^{T}$, and each side's force transfer
 the adjoint of the partner's kinematic transfer ($N_1 = \Pi_2^{T}$,
 $N_2 = \Pi_1^{T}$), which is exactly \eqref{eq:adjoint}; (iii) the pair
 shares one impedance ($2Z_1Z_2/(Z_1{+}Z_2)$, the Riemann weighting) and one
-Robin $\alpha$. Drift at 1\,ms, implicit--implicit:
+Robin $\alpha$.
+
+On parameter selection: the impedance is \emph{estimated}, the Robin
+parameter is \emph{chosen}. Each side's $Z_k = \rho_k c_{p,k} =
+\sqrt{\rho_k(\lambda_k + 2\mu_k)}$ is computed from its own material data,
+and the pair impedance is their harmonic mean, so the user supplies nothing.
+The Robin parameter $\alpha$ is user input (\code{robin parameter}, default
+$0$), and no estimate is attempted because none is needed for consistency:
+at the Schwarz fixed point the two Robin conditions add to traction balance
+and subtract to $Z\,\dot{~\delta} + \alpha W ~\delta = 0$ for the interface
+jump $~\delta$, so with $~\delta(0) = 0$ the converged solution is
+independent of $Z > 0$ and $\alpha \ge 0$ --- both act only on the
+convergence \emph{rate} of the iteration (the optimized-Schwarz role of the
+zeroth-order Robin term) and on the interface energy bookkeeping en route.
+What consistency does require is that $\alpha$ be \emph{one} number per
+interface: the Robin spring stores and returns energy conservatively only
+when both sides' interface forces pair through the same coefficient.
+Mismatched values under pairing are therefore a hard input error --- Norma
+aborts, naming both side sets and values --- rather than a warning with an
+internal average, since silent averaging would apply a condition neither
+side stated. Drift at 1\,ms, implicit--implicit:
 
 \begin{center}
 \begin{tabular}{lrr}

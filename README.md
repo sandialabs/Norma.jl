@@ -106,6 +106,9 @@ capabilities currently implemented are:
 - Single-domain and multi-domain simulations
 - Overlapping and non-overlapping (Dirichlet–Neumann) Schwarz
 - Robin–Robin and impedance-matching (absorbing) Schwarz
+- Adjoint-paired non-overlapping impedance coupling (default): both sides share one mortar cross-mass matrix, one pair impedance (harmonic mean), and one Robin parameter, and exchange the dynamically consistent d'Alembert reaction, making interface energy exchange sign-definite (dissipative) on conforming and non-conforming meshes (`adjoint pairing: false` restores the legacy per-side transfer; see `doc/notes/schwarz-interface-energy`)
+- IMEX interface treatment for explicit (central-difference) subdomains under adjoint pairing: interface rows of the acceleration update are closed implicitly, keeping the paired traction exchange stable
+- Multi-time-step (subcycled) Schwarz with per-substep time interpolation of the partner state, compatible with adjoint pairing (Gravouil–Combescure interpolated-traction structure)
 - Frictionless/tied contact via Schwarz
 - Fixed and adaptive Aitken relaxation — Aitken recursive (Irons–Tuck) and Aitken secant — with interface predictor acceleration
 
