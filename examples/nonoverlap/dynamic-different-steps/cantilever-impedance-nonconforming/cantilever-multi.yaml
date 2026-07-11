@@ -1,0 +1,13 @@
+type: multi
+domains: ["cantilever-free.yaml", "cantilever-clamped.yaml"]
+blended energy output: true
+Exodus output interval: 0
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0e-03
+time step: 1.0e-06
+minimum iterations: 1
+maximum iterations: 128
+relative tolerance: 1.0e-08
+absolute tolerance: 2.54e-08
+relaxation parameter: 0.5

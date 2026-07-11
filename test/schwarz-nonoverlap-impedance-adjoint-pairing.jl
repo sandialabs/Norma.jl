@@ -14,7 +14,7 @@ const cantilever_imp_nc_example = "../examples/nonoverlap/dynamic-same-step/cant
 # strip the flag and get the legacy per-side transfer). With
 # explicit_free=true the free subdomain runs central difference + explicit
 # solver, exercising the IMEX interface treatment.
-function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free=false)
+function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free=false, free_dt="5.0e-07")
     for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
               "cantilever-clamped.g", "cantilever-free.g"]
         cp("$cantilever_imp_nc_example/$f", f; force=true)
@@ -30,7 +30,7 @@ function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free
         doc = replace(
             doc,
             "time integrator:\n  type: Newmark\n  β: 0.25\n  γ: 0.5\n  time step: 5.0e-07" =>
-                "time integrator:\n  type: central difference\n  time step: 5.0e-07\n  CFL: 1.0\n  γ: 0.5",
+                "time integrator:\n  type: central difference\n  time step: $free_dt\n  CFL: 1.0\n  γ: 0.5",
         )
         doc = replace(
             doc,
@@ -113,6 +113,16 @@ end
     u_imex = sim_imex.subsims[1].model.displacement
     @test all(isfinite, u_imex)
     @test maximum(abs.(u_imex)) < 0.1
+
+    # Subcycled (multi-time-step) pairing: the explicit free subdomain runs
+    # four substeps per Schwarz stop; the paired consistent traction is
+    # evaluated on the partner's piecewise-linearly time-interpolated state
+    # (the Gravouil-Combescure interpolated-traction structure).
+    sim_sub = run_cantilever_imp_nc(true; explicit_free=true, free_dt="1.25e-07", num_steps=20)
+    @test sim_sub.failed == false
+    u_sub = sim_sub.subsims[1].model.displacement
+    @test all(isfinite, u_sub)
+    @test maximum(abs.(u_sub)) < 0.1
 
     # Legacy per-side transfer still runs on the same meshes (opt-out path).
     # On this 2:1 NESTED interface the legacy heuristics happen to select
