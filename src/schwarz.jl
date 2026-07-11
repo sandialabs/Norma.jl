@@ -392,16 +392,14 @@ function compute_paired_impedance_schwarz_projectors!(
     α1 = dst_bc.robin_parameter
     α2 = src_bc.robin_parameter
     if !isapprox(α1, α2; rtol=1.0e-12, atol=0.0)
-        norma_logf(
-            0,
-            :warning,
-            "Adjoint pairing requires one Robin parameter per interface; " *
-            "averaging the two sides' values %.3e and %.3e.",
-            α1,
-            α2,
+        norma_abort(
+            "Adjoint pairing requires ONE Robin parameter per interface, but " *
+            "the sides '$(dst_bc.name)' and '$(src_bc.name)' specify " *
+            "$(α1) and $(α2). Set the same `robin parameter` on both sides " *
+            "(the Robin spring is conservative only when the two sides' " *
+            "interface forces pair through the same coefficient).",
         )
     end
-    dst_bc.robin_parameter = src_bc.robin_parameter = 0.5 * (α1 + α2)
     # The consistent (D'Alembert) traction exchanged under pairing couples the
     # partner's acceleration into this side's force. Implicit (Newmark)
     # subdomains resolve that algebraic loop within the Schwarz iteration;

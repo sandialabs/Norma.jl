@@ -125,6 +125,30 @@ end
     @test all(isfinite, u_sub)
     @test maximum(abs.(u_sub)) < 0.1
 
+    # Mismatched Robin parameters abort under pairing (strict by design: the
+    # Robin spring is conservative only when both sides' interface forces
+    # pair through the same coefficient).
+    for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
+              "cantilever-clamped.g", "cantilever-free.g"]
+        cp("$cantilever_imp_nc_example/$f", f; force=true)
+    end
+    doc = read("cantilever-clamped.yaml", String)
+    write("cantilever-clamped.yaml", replace(doc, "robin parameter: 2.0e+09" => "robin parameter: 4.0e+09"))
+    params_bad = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
+    params_bad["name"] = "cantilever-multi.yaml"
+    params_bad["final time"] = 5.0e-07
+    Norma.NORMA_TEST_MODE[] = true
+    try
+        @test_throws Norma.NormaAbortException Norma.run(params_bad)
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+    end
+    for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
+              "cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
+              "cantilever-multi-energy.csv"]
+        rm(f; force=true)
+    end
+
     # Legacy per-side transfer still runs on the same meshes (opt-out path).
     # On this 2:1 NESTED interface the legacy heuristics happen to select
     # adjoint operators too, so no non-adjointness assertion is made here;
