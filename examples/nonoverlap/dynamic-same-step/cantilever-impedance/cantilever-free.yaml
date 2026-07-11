@@ -26,7 +26,7 @@ boundary conditions:
     - side set: ssx-
       source: cantilever-clamped
       source side set: ssx+
-      robin parameter: 2.0e+09
+      robin parameter: 3.0e+09
 solver:
   type: Hessian minimizer
   step: full Newton

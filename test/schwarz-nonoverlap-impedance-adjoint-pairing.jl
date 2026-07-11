@@ -20,9 +20,10 @@ function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free
         cp("$cantilever_imp_nc_example/$f", f; force=true)
     end
     if !adjoint_pairing
+        # Pairing is the default; the legacy path needs an explicit opt-out.
         for f in ["cantilever-clamped.yaml", "cantilever-free.yaml"]
             doc = read(f, String)
-            write(f, replace(doc, r"\n *adjoint pairing: true" => ""))
+            write(f, replace(doc, "adjoint pairing: true" => "adjoint pairing: false"))
         end
     end
     if explicit_free

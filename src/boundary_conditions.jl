@@ -559,7 +559,17 @@ function SMCouplingSchwarzBC(
             )
         end
         if bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz RR nonoverlap"
-            adjoint_pairing = Bool(get(bc_params, "adjoint pairing", false))
+            # Adjoint pairing is the default: both sides derive their transfer
+            # operators from one shared cross-mass matrix, share one impedance
+            # and Robin parameter, and exchange the dynamically consistent
+            # d'Alembert reaction (M·a + f_int − f_body). The cantilever
+            # benchmark measured the legacy per-side transfer losing 9.6%/ms
+            # even on conforming meshes (static reactions miss the interface
+            # inertia) and injecting up to +363% on nonconforming ones, where
+            # the paired coupling is sign-definite at every mesh ratio and
+            # integrator combination (see doc/notes/schwarz-interface-energy).
+            # The legacy behavior remains available as an explicit opt-out.
+            adjoint_pairing = Bool(get(bc_params, "adjoint pairing", true))
             SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
                 input_mesh,
                 side_set_name,

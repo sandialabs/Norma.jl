@@ -666,7 +666,7 @@ subdomains are covered by the IMEX interface treatment
 the monodomain explicit run to $0.35\%$ pointwise, and every combination is
 sign-definite at every ratio. The practical recommendation is therefore:
 conforming meshes within the overlap family, or the adjoint-paired
-nonoverlap variant (\code{adjoint pairing: true}) when the decomposition
+nonoverlap variant (now the default for \code{Schwarz impedance nonoverlap}; \code{adjoint pairing: false} restores the legacy transfer) when the decomposition
 must be nonconforming and the energy budget matters. Subcycled
 (multi-time-step) pairing is validated with the expected
 Gravouil--Combescure interpolation dissipation (Sec.~\ref{sec:subcycle});
