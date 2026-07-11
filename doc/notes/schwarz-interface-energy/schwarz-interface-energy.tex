@@ -58,9 +58,16 @@ for explicit subdomains --- they are now implemented and validated:
 implicit--implicit drift improves from $-9.6\%$ to $-0.03\%$ on conforming
 and mildly nonconforming meshes, the conforming explicit--explicit
 trajectory matches the monodomain explicit run to $0.35\%$ pointwise, and
-every injection pathology disappears (Sec.~\ref{sec:nonoverlap}). This note
-records the evidence, the theory, the phased redesign, and the validated
-fix.
+every injection pathology disappears (Sec.~\ref{sec:nonoverlap}). Under
+subcycling, two infrastructure defects that had silently reduced the
+multi-time-step exchange to end-sampled partner data are fixed --- genuine
+Gravouil--Combescure interpolation then halves the excess dissipation at
+strong mesh contrast --- and the Prakash--Hjelmstad exact-telescoping
+refinement is measured to be structurally incompatible with a partitioned
+exchange: its work-conjugate data are either lagged (over-dissipative) or
+anticipatory (unstable), so exact subcycled telescoping requires a direct
+interface solve (Sec.~\ref{sec:subcycle}). This note records the evidence,
+the theory, the phased redesign, and the validated fixes.
 \end{abstract}
 
 \section{Observed behavior}
@@ -619,41 +626,102 @@ monotone, sign-definite trace-jump dissipation as the II column.
 
 Different time steps per subdomain require no new exchange machinery: each
 subdomain records its per-substep trajectory (kinematics \emph{and}
-internal force) during every Schwarz iteration, the coupling interpolates
-the partner's state piecewise-linearly in time at each of its own substeps,
-and the paired d'Alembert traction therefore evaluates on interpolated data
---- exactly the interpolated-traction structure under which
-Gravouil--Combescure prove the subcycled interface work dissipative
-($E_{\mathrm{int}} \le 0$, $O(\Delta t)$). (Enabling this exposed a
-time-step erosion bug in the subcycler --- the stop-aligned remainder step
-persisted as the nominal step and the Schwarz re-integration amplified the
-floating-point remainder geometrically until the step collapsed --- fixed
-independently of the pairing.) Validation at 1\,ms, free side subcycled
-$4{:}1$ ($\Delta t = 0.25\,\mu$s inside the $1\,\mu$s stop; EE also
-staggers the clamped side at $0.5\,\mu$s):
+internal force) during every Schwarz iteration, the coupling evaluates the
+partner's state in time at each of its own substeps, and the paired
+d'Alembert traction follows. (Enabling this exposed a time-step erosion bug
+in the subcycler --- the stop-aligned remainder step persisted as the
+nominal step and the Schwarz re-integration amplified the floating-point
+remainder geometrically until the step collapsed --- fixed independently of
+the pairing.)
+
+The exchange was \emph{intended} to interpolate the partner
+piecewise-linearly in time --- the interpolated-continuity structure under
+which Gravouil--Combescure prove the subcycled interface work dissipative
+($E_{\mathrm{int}} \le 0$, $O(\Delta t)$) --- but two infrastructure
+defects, found while implementing the Prakash--Hjelmstad refinement below,
+meant that is not what actually ran. First, the history interpolation
+selected the wrong segment (an off-by-one that returned the end-of-history
+value for any query in the last segment, and extrapolated backward off the
+following segment elsewhere). Second, the per-stop history was anchored at
+the \emph{first substep}, not the stop start, so a non-subcycling
+partner's ``history'' was a single end-of-stop entry. Net effect: both
+directions of the exchange end-sampled the partner's stop-end state ---
+constant, not interpolated, data. With both defects fixed the exchange is
+genuinely piecewise-linear in both directions. Drift at 1\,ms, free side
+subcycled $4{:}1$ ($\Delta t = 0.25\,\mu$s inside the $1\,\mu$s stop,
+clamped side at $1\,\mu$s; measured on one harness for all columns):
 
 \begin{center}
 \begin{tabular}{lrr}
 \toprule
-case & subcycled & same-step \\
+case & end-sampled (as shipped) & interpolated (GC, fixed) \\
 \midrule
-conforming II & $-2.7$ & $-0.03$ \\
-conforming IE & $-9.6$ & $-10.3$ \\
-conforming EE & $-10.3$ & $-8.5$ \\
-1:0.5 II & $-20.6$ & $-13.3$ \\
-1:0.5 IE & $-24.4$ & $-21.2$ \\
+conforming II & $-2.8$ & $-3.6$ \\
+conforming IE & $-9.6$ & $-10.1$ \\
+conforming EE & $-10.6$ & $-9.6$ \\
+1:0.5 II & $-20.6$ & $\mathbf{-14.1}$ \\
+1:0.5 IE & $-24.4$ & $\mathbf{-21.3}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Stable and sign-definite in every combination, with no injection anywhere
-(maximum transient excursion $+0.14\%$, within the conservative spring's
-bounded storage). The extra dissipation relative to same-step coupling is
-the GC interpolation dissipation --- $-2.7\%$ at conforming II, where the
-same-step coupling is exact --- plus its interaction with the trace jump on
-nonconforming meshes. The Prakash--Hjelmstad restructuring, which
-telescopes the subcycled interface work to exactly zero, is the known
-refinement if that overhead ever matters.
+Genuine interpolation wins decisively at mesh contrast, where end-sampling
+aliases the fine side's intra-window motion into the exchanged traction
+($-20.6 \to -14.1\%$). It \emph{loses} slightly on the conforming implicit
+cases because the end-sampled datum is not merely aliased --- being the
+stop-\emph{end} value applied throughout the window, it \emph{leads} the
+true trajectory, and that anticipatory bias is a mild energy-injection
+channel that happened to offset part of the GC dissipation. A cancellation
+between two discretization crimes is not a conservation property, and it
+collapses exactly where the stakes are high (strong contrast); the
+interpolated exchange is now the behavior of the paired coupling.
+
+\subsubsection*{The Prakash--Hjelmstad refinement is not partitioned-compatible}
+
+Prakash--Hjelmstad telescope the subcycled interface work to exactly zero
+by giving the interface traction a linear-in-time representation
+$\hat\lambda(t)$ whose step values satisfy
+$\tfrac12(\hat\lambda_n + \hat\lambda_{n+1}) = \overline{\lambda}_{n \to
+n+1}$ (the partner's window average), so the trapezoidal work sums of the
+two sides cancel window by window. Three Schwarz-compatible constructions
+of this datum were implemented and measured on the benchmark above:
+
+\begin{description}
+  \item[Window average.] Handing the coarse side the partner's trapezoidal
+  window average is work-conjugate to the fine side's interpolation ---
+  but an average estimates the window \emph{midpoint}, and the half-window
+  lag of the interface force behind the interface motion is artificial
+  damping: uniformly worse than plain interpolation ($-3.6 \to -4.2$,
+  $-10.1 \to -11.1$, $-9.6 \to -12.3$, $-14.1 \to -15.5$, $-21.3 \to
+  -23.0$).
+  \item[Exact telescoping recursion.] The de-lagged datum
+  $\hat\lambda_{n+1} = 2\overline{\lambda} - \hat\lambda_n$ satisfies the
+  telescoping identity exactly --- and diverges: the factor of two on the
+  partner-state channel doubles the Schwarz fixed-point iteration's
+  contraction factor, and the coupled iteration blows up within tens of
+  stops.
+  \item[Least-squares endpoint fit.] The endpoint value of the LS linear
+  fit of the partner trajectory over the window is lag-free, filters
+  intra-window content instead of aliasing it, and telescopes for
+  window-linear tractions. It is stable over tens of stops and passes the
+  short regression --- and over hundreds of stops it pumps energy
+  catastrophically ($+10^3$--$10^5\%$ before aborting): a zero-lag
+  filtered estimate is an extrapolation, and its frequency response
+  exceeds unity off the linear band.
+\end{description}
+
+The pattern is the classical stability folklore of partitioned coupling:
+only \emph{causal} transfer operators (lag $\ge 0$) are robust in a
+fixed-point exchange, and every zero-lag work-conjugate datum is
+anticipatory. Prakash--Hjelmstad's telescoping is consistent with this ---
+their method solves the coupled interface problem \emph{directly} (a
+FETI-style interface system per large step), which is precisely what a
+partitioned Schwarz sweep does not do. Exact subcycled interface-work
+telescoping therefore requires a direct interface solve, not a smarter
+exchange; within the Schwarz family, genuinely interpolated GC transfer is
+the measured stable optimum, and its $O(\Delta t)$ dissipation
+($-3.6\%$ at conforming II vs.\ $-0.03\%$ same-step) is the price of
+subcycling.
 
 \section{Where this lands}
 \label{sec:conclusion}
@@ -688,10 +756,16 @@ sign-definite at every ratio. The practical recommendation is therefore:
 conforming meshes within the overlap family, or the adjoint-paired
 nonoverlap variant (now the default for \code{Schwarz impedance nonoverlap}; \code{adjoint pairing: false} restores the legacy transfer) when the decomposition
 must be nonconforming and the energy budget matters. Subcycled
-(multi-time-step) pairing is validated with the expected
-Gravouil--Combescure interpolation dissipation (Sec.~\ref{sec:subcycle});
-the Prakash--Hjelmstad exact-telescoping refinement and the
+(multi-time-step) pairing is validated with genuinely interpolated
+Gravouil--Combescure transfer --- two infrastructure defects that had
+silently reduced it to end-sampling are fixed, halving the excess
+dissipation at strong mesh contrast (Sec.~\ref{sec:subcycle}). The
+Prakash--Hjelmstad exact-telescoping refinement was implemented in three
+Schwarz-compatible forms and measured to be structurally incompatible with
+a partitioned exchange (lagged forms over-dissipate; zero-lag forms are
+anticipatory and unstable); realizing it requires a direct FETI-style
+interface solve per large step, which, together with the
 localized-Lagrange-multiplier frame construction (Park--Felippa; Dvorak et
-al.\ 2023) remain follow-up work.
+al.\ 2023), remains follow-up work.
 
 \end{document}
