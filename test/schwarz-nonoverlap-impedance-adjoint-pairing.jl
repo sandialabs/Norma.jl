@@ -170,6 +170,33 @@ end
         rm(f; force=true)
     end
 
+    # `impedance scale` on the nonoverlap variant scales the dashpot; 0 is the
+    # explicit pure-Robin opt-in (t + α W u = g, issue #176 warns) and must
+    # produce a zero pair impedance without dividing by zero in the harmonic
+    # mean. Both runs are short; pure Robin is not exercised at 1 ms here.
+    for (scale, factor) in (("0.5", 0.5), ("0.0", 0.0))
+        for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
+                  "cantilever-clamped.g", "cantilever-free.g"]
+            cp("$cantilever_imp_nc_example/$f", f; force=true)
+        end
+        for f in ["cantilever-clamped.yaml", "cantilever-free.yaml"]
+            doc = read(f, String)
+            write(f, replace(doc, "adjoint pairing: true" => "adjoint pairing: true\n      impedance scale: $scale"))
+        end
+        params_scaled = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
+        params_scaled["name"] = "cantilever-multi.yaml"
+        params_scaled["final time"] = 3 * 5.0e-07
+        sim_scaled = Norma.run(params_scaled)
+        @test sim_scaled.failed == false
+        bc_scaled = impedance_bc_of(sim_scaled.subsims[1])
+        @test bc_scaled.impedance ≈ factor * bc1.impedance
+        for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
+                  "cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
+                  "cantilever-multi-energy.csv"]
+            rm(f; force=true)
+        end
+    end
+
     # Legacy per-side transfer still runs on the same meshes (opt-out path).
     # On this 2:1 NESTED interface the legacy heuristics happen to select
     # adjoint operators too, so no non-adjointness assertion is made here;

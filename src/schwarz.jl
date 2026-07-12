@@ -384,10 +384,11 @@ function compute_paired_impedance_schwarz_projectors!(
     src_bc.square_projector = W2
     src_bc.dirichlet_projector = P2
     src_bc.neumann_projector = Matrix(transpose(P1))
-    # Shared pair impedance and Robin parameter.
+    # Shared pair impedance and Robin parameter. A zero pair impedance is the
+    # pure-Robin opt-in (`impedance scale: 0`); guard the harmonic mean.
     Z1 = dst_bc.impedance
     Z2 = src_bc.impedance
-    Z_pair = 2.0 * Z1 * Z2 / (Z1 + Z2)
+    Z_pair = Z1 + Z2 > 0.0 ? 2.0 * Z1 * Z2 / (Z1 + Z2) : 0.0
     dst_bc.impedance = src_bc.impedance = Z_pair
     α1 = dst_bc.robin_parameter
     α2 = src_bc.robin_parameter
@@ -397,7 +398,11 @@ function compute_paired_impedance_schwarz_projectors!(
             "the sides '$(dst_bc.name)' and '$(src_bc.name)' specify " *
             "$(α1) and $(α2). Set the same `robin parameter` on both sides " *
             "(the Robin spring is conservative only when the two sides' " *
-            "interface forces pair through the same coefficient).",
+            "interface forces pair through the same coefficient; the converged " *
+            "solution does not depend on its value, only the Schwarz " *
+            "convergence rate does). To use per-side Robin parameters with the " *
+            "legacy per-side transfer instead, set `adjoint pairing: false` " *
+            "on both sides of the interface.",
         )
     end
     # The consistent (D'Alembert) traction exchanged under pairing couples the
