@@ -607,19 +607,62 @@ ratio & II & IE & EI & EE \\
 \end{center}
 
 Sign-definite everywhere: no injection at any ratio in any combination. The
-explicit columns must, however, be read against the right reference: a
-\emph{monodomain} central-difference run of the same beam reads $-8.2\%$ in
-this integer-step energy metric (the sharp release wavefront carries
-mesh-scale content whose integer-step energy dips and oscillates; the
-conserved discrete energy of the leapfrog scheme lives at staggered half
-steps, and the dip is $\Delta t$-independent, confirming it is mesh
-dispersion, not time discretization). Against that reference the conforming
-paired EE run is exact to $0.35\%$ \emph{pointwise over the whole
-millisecond} --- the coupled trajectory \emph{is} the monodomain trajectory,
-as the fixed-point argument predicts. The mixed pairs sit between the
-Newmark (flat) and central-difference (dipping) references with no secular
-drift after the transient, and the nonconforming columns add the same
-monotone, sign-definite trace-jump dissipation as the II column.
+explicit columns of this table must, however, be read against the right
+reference: a \emph{monodomain} central-difference run of the same beam reads
+$-8.2\%$ in the energy metric used here (consistent-mass kinetic energy
+sampled at integer steps). Against that reference the conforming paired EE
+run is exact to $0.35\%$ \emph{pointwise over the whole millisecond} --- the
+coupled trajectory \emph{is} the monodomain trajectory, as the fixed-point
+argument predicts.
+
+\emph{Resolved: the $-8.2\%$ band was the metric, not the physics.} Central
+difference advances the \emph{lumped}-mass system with leapfrog structure,
+so the discrete energy it conserves exactly (linear problems) is the
+staggered lumped-mass form
+\begin{equation}
+  E_n \;=\; \tfrac12\,\dot{~u}_{n-\frac12}^{T} ~M_L\, \dot{~u}_{n+\frac12}
+        + \mathrm{SE}(~u_n)
+      \;=\; \tfrac12\,\dot{~u}_n^{T} ~M_L\, \dot{~u}_n
+        - \tfrac{\Delta t^2}{8}\, ~a_n^{T} ~M_L\, ~a_n
+        + \mathrm{SE}(~u_n).
+  \label{eq:staggered}
+\end{equation}
+Evaluating instead the consistent-mass integer-step kinetic energy
+misprices the short-wavelength content of the sharp release front twice
+over (consistent vs.\ lumped Rayleigh quotients diverge at high wavenumber,
+and the integer-step velocity aliases the staggered content). The staggered
+correction alone is $\Delta t$-dependent and small; the mass operator is
+the dominant term --- which is why the band originally read as
+``$\Delta t$-independent mesh dispersion.'' With the energy CSV evaluating
+\eqref{eq:staggered} for central-difference subdomains (implemented in
+\code{overlap\_energy.jl}), the monodomain explicit run conserves to
+$\pm 0.000\%$ over the full millisecond, and the paired table becomes, at
+1\,ms:
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+ratio & II & IE & EI & EE \\
+\midrule
+1:1.0 & $-0.03$ & $-0.11$ & $+0.20$ & $-0.27$ \\
+1:0.9 & $-0.03$ & $-0.10$ & $+0.29$ & $-0.27$ \\
+1:0.8 & $-3.6$ & $-4.4$ & $-3.5$ & $-7.3$ \\
+1:0.7 & $-6.6$ & $-6.2$ & $-5.3$ & $-9.8$ \\
+1:0.6 & $-9.7$ & $-9.8$ & $-9.8$ & $-11.8$ \\
+1:0.5 & $-13.3$ & $-13.8$ & $-10.2$ & $-10.5$ \\
+1:0.4 & $-15.1$ & $-17.8$ & $-11.4$ & $-13.3$ \\
+1:0.3 & $-15.1$ & $-11.5$ & $-26.4$ & $-20.2$ \\
+1:0.2 & $-13.3$ & $-20.1$ & $-27.8$ & $-21.4$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+On conforming and mildly nonconforming meshes \emph{all four} integrator
+combinations now conserve to $\le 0.3\%$; the nonconforming columns carry
+the same monotone, sign-definite trace-jump dissipation in every
+combination. (The tiny positive EI entries, $+0.2$--$0.3\%$, are bounded
+transient storage in the conservative interface spring, not secular
+growth.)
 
 \subsection{Subcycled (multi-time-step) pairing}
 \label{sec:subcycle}
@@ -665,9 +708,14 @@ conforming EE & $-10.6$ & $-9.6$ \\
 \end{tabular}
 \end{center}
 
-Genuine interpolation wins decisively at mesh contrast, where end-sampling
-aliases the fine side's intra-window motion into the exchanged traction
-($-20.6 \to -14.1\%$). It \emph{loses} slightly on the conforming implicit
+(Both columns are measured in the consistent-mass integer-step metric for
+comparability with the development history; in the staggered lumped-mass
+metric of \eqref{eq:staggered} the shipped interpolated exchange reads
+conforming II $-3.6$, IE $-1.4$, EE $-1.2$, and $1{:}0.5$ II $-14.1$,
+IE $-14.3\%$ --- the explicit subcycled overhead is about one percent on
+conforming meshes.) Genuine interpolation wins decisively at mesh contrast,
+where end-sampling aliases the fine side's intra-window motion into the
+exchanged traction ($-20.6 \to -14.1\%$). It \emph{loses} slightly on the conforming implicit
 cases because the end-sampled datum is not merely aliased --- being the
 stop-\emph{end} value applied throughout the window, it \emph{leads} the
 true trajectory, and that anticipatory bias is a mild energy-injection

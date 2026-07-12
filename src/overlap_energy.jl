@@ -249,6 +249,28 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
     mesh = model.mesh
     blocks = Exodus.read_sets(mesh, Block)
     dynamic = is_dynamic(subsim.integrator)
+    # Central difference advances the LUMPED-mass system with leapfrog
+    # (staggered-velocity) structure, so the discrete energy it conserves
+    # (linear problems) is the staggered product with the lumped mass,
+    #   ½ v_{n-½}ᵀ M_L v_{n+½} + SE(u_n)
+    #     = ½ v_nᵀ M_L v_n − (Δt²/8) a_nᵀ M_L a_n + SE(u_n).
+    # Evaluating the consistent-mass integer-step kinetic energy ½ρ|v_n|²
+    # instead misprices the short-wavelength content of sharp wavefronts twice
+    # over (consistent vs lumped Rayleigh quotients differ at high wavenumber,
+    # and the integer-step velocity aliases the staggered content) and reports
+    # an O(10%) spurious dip/oscillation on the cantilever release benchmark.
+    # For central-difference subdomains the kinetic term therefore accumulates
+    # the row-sum-lumped nodal masses of the SAME blended quadrature (exactly
+    # add_lumped_mass!'s lumping, weight applied inside) against the nodal
+    # staggered product |v_i|² − (Δt/2)²|a_i|². Implicit (consistent-mass)
+    # integrators keep the consistent-mass integer-step evaluation.
+    integrator = subsim.integrator
+    half_dt = 0.0
+    if integrator isa CentralDifference
+        nominal_dt = integrator.minimum_time_step == integrator.maximum_time_step ?
+            integrator.maximum_time_step : integrator.time_step
+        half_dt = 0.5 * nominal_dt
+    end
     stored = 0.0
     kinetic = 0.0
     for (block_index, block) in enumerate(blocks)
@@ -268,6 +290,7 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
             element_reference = model.reference[:, node_indices]
             element_current = element_reference + model.displacement[:, node_indices]
             element_velocity = model.velocity[:, node_indices]
+            element_acceleration = half_dt > 0.0 ? model.acceleration[:, node_indices] : nothing
             element_weights = aw.weights[block_index][element_index]
             for point in 1:num_points
                 w = element_weights[point]
@@ -282,8 +305,19 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
                 W = strain_energy_density(material, F, state_old)
                 stored += w * W * dvol
                 if dynamic
-                    v = element_velocity * N[:, point]
-                    kinetic += w * 0.5 * density * dot(v, v) * dvol
+                    if half_dt > 0.0
+                        s = sum(N[:, point])
+                        for i in 1:num_element_nodes
+                            m_i = w * density * dvol * N[i, point] * s
+                            v_i = @views element_velocity[:, i]
+                            a_i = @views element_acceleration[:, i]
+                            kinetic +=
+                                0.5 * m_i * (dot(v_i, v_i) - half_dt * half_dt * dot(a_i, a_i))
+                        end
+                    else
+                        v = element_velocity * N[:, point]
+                        kinetic += w * 0.5 * density * dot(v, v) * dvol
+                    end
                 end
             end
         end
