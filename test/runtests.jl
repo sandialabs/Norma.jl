@@ -157,6 +157,7 @@ const indexed_test_files = [
     (108, "schwarz-overlap-blended-energy.jl"),
     (109, "schwarz-nonoverlap-impedance-adjoint-pairing.jl"),
     (110, "restart-past-final-time.jl"),
+    (111, "restart-inplace-checkpoint.jl"),
 ]
 
 # Extract test file names

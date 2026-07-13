@@ -450,6 +450,22 @@ function SingleDomainSimulation(params::Parameters)
     _reject_restart_with_swaps!(params, basename)
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
+    # `output mesh file` is unconditionally rm'd and then reopened fresh below
+    # (as a copy of `input mesh file`) before the checkpoint is ever read. If
+    # the two paths coincide -- e.g. a restart run accidentally configured to
+    # write back over its own input checkpoint -- that rm destroys the only
+    # copy of the data this run needs to read, with nothing left to restore
+    # from on failure. Abort instead of running in place.
+    if abspath(input_mesh_file) == abspath(output_mesh_file)
+        norma_abortf(
+            "`input mesh file` and `output mesh file` resolve to the same path ('%s'). " *
+            "This would delete the input mesh before it can be read (it is rm'd and " *
+            "recreated as a copy of itself) -- most dangerous on restart, where the " *
+            "input mesh is often the only copy of the checkpoint. Use a different " *
+            "`output mesh file`.",
+            abspath(output_mesh_file),
+        )
+    end
     norma_log(0, :setup, "Input:  $input_mesh_file")
     norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
