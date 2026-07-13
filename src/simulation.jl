@@ -135,6 +135,28 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         )
     end
     restart_time = Exodus.read_time(input_mesh, restart_index)
+    integrator_params = params["time integrator"]
+    # A restart at or past `final time` leaves nothing to integrate. Without
+    # this check, num_stops = max(round((final_time - restart_time) /
+    # time_step) + 1, 2) is forced to at least 2 regardless, and evolve()
+    # always advances one control step before checking stop_evolve(), so the
+    # run would silently take one step past final_time and write a bogus
+    # extra stop there. Abort instead.
+    final_time = get(integrator_params, "final time", nothing)
+    if final_time !== nothing
+        final_time = Float64(final_time)
+        if restart_time > final_time || isapprox(restart_time, final_time; rtol=1e-9, atol=1e-12)
+            norma_abortf(
+                "Restart time %.6e (index %d of '%s') is at or past `time integrator: " *
+                "final time` %.6e; there is nothing left to integrate. Choose an earlier " *
+                "restart index, or increase `final time`.",
+                restart_time,
+                restart_index,
+                input_mesh.file_name,
+                final_time,
+            )
+        end
+    end
     disp_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_x")
     disp_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_y")
     disp_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_z")
@@ -154,7 +176,6 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # the only initial time consistent with the restart displacement/velocity
     # fields, regardless of what `time integrator: initial time` says in the
     # input file.
-    integrator_params = params["time integrator"]
     requested_initial_time = get(integrator_params, "initial time", nothing)
     integrator_params["initial time"] = restart_time
     norma_log(0, :restart, "Restarting simulation from snapshot data.")
@@ -314,6 +335,23 @@ function process_multidomain_restart!(params::Parameters)
                 restart_index,
                 domain_time,
                 restart_time,
+            )
+        end
+    end
+    # A restart at or past `final time` leaves nothing to integrate; see the
+    # matching check in process_restart!() for why this must be rejected
+    # rather than silently allowed to run one control step past final_time.
+    final_time = get(params, "final time", nothing)
+    if final_time !== nothing
+        final_time = Float64(final_time)
+        if restart_time > final_time || isapprox(restart_time, final_time; rtol=1e-9, atol=1e-12)
+            norma_abortf(
+                "Restart time %.6e (index %d) is at or past top-level `final time` %.6e; " *
+                "there is nothing left to integrate. Choose an earlier restart index, or " *
+                "increase `final time`.",
+                restart_time,
+                restart_index,
+                final_time,
             )
         end
     end
