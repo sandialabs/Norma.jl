@@ -286,7 +286,22 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     if !model.restarted && !trust_schwarz
         integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
     else
-        rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * integrator.acceleration[trusted_fixed]
+        # Read the prescribed (Dirichlet / Schwarz-coupled) accelerations from
+        # model.acceleration rather than integrator.acceleration. apply_bcs()
+        # always writes prescribed values onto model.acceleration. For a
+        # top-level SolidMechanics simulation, integrator.acceleration is the
+        # same aliased memory (initialize_storage, simulation.jl), so this is
+        # unchanged there. But this function also runs, via the RomModel
+        # dispatch in opinf_time_integrator.jl, with model set to a ROM
+        # subdomain's fom_model and integrator set to its fom_integrator; that
+        # fom_integrator.acceleration is a separate array that is never
+        # aliased to fom_model.acceleration, so it stays zero on fixed DOFs
+        # even after the Schwarz BCs have written real prescribed values into
+        # fom_model.acceleration. Reading model.acceleration (flattened to
+        # match the node/component ordering used everywhere else) is
+        # therefore correct in both cases.
+        prescribed_acceleration = vec(model.acceleration)
+        rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * prescribed_acceleration[trusted_fixed]
         integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
     end
     return nothing
