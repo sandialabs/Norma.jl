@@ -66,8 +66,16 @@ strong mesh contrast --- and the Prakash--Hjelmstad exact-telescoping
 refinement is measured to be structurally incompatible with a partitioned
 exchange: its work-conjugate data are either lagged (over-dissipative) or
 anticipatory (unstable), so exact subcycled telescoping requires a direct
-interface solve (Sec.~\ref{sec:subcycle}). This note records the evidence,
-the theory, the phased redesign, and the validated fixes.
+interface solve (Sec.~\ref{sec:subcycle}). A ten-fold horizon extension
+($10$\,ms, all $151$ configurations, Sec.~\ref{sec:tenms}) sharpens the
+verdict: the overlap family is long-horizon \emph{unstable} almost
+everywhere ($74$ of $108$ runs die of element inversion after exponential
+growth; only conforming II survives healthy), while the paired nonoverlap
+coupling never injects but compounds its dissipation at strong contrast,
+develops a failure window at mild non-nested mesh ratios, and saturates
+with undamped grid-frequency content when both members are explicit at
+$\mathrm{CFL}=1$. This note records the evidence, the theory, the phased
+redesign, and the validated fixes.
 \end{abstract}
 
 \section{Observed behavior}
@@ -771,6 +779,121 @@ the measured stable optimum, and its $O(\Delta t)$ dissipation
 ($-3.6\%$ at conforming II vs.\ $-0.03\%$ same-step) is the price of
 subcycling.
 
+\section{The ten-millisecond horizon: long-time behavior}
+\label{sec:tenms}
+
+Every conclusion above rests on 1\,ms runs --- about two transits of the
+release front. To test which behaviors are steady and which are transients,
+all $151$ study configurations were re-run to $10$\,ms ($10^4$ stops at
+$\Delta t = 10^{-6}$\,s): the full overlap sweep ($3$ widths $\times$ $9$
+ratios $\times$ $4$ combos, fixed relaxation $\theta = 0.5$ as before), the
+nonoverlap paired sweep and its subcycled set (now under
+\code{relaxation: aitken recursive}), and fresh monodomain references. Two
+validations anchor the data set: both monodomain references conserve the
+staggered energy \eqref{eq:staggered} to $\pm 0.000\%$ over the full
+$10$\,ms, and every surviving run reproduces its recorded 1\,ms drift at
+its $t = 1$\,ms row --- for the nonoverlap runs this doubles as a
+measurement that Aitken relaxation changes the iteration cost
+($\approx 3\times$ fewer sweeps), not the fixed point.
+
+\subsection*{Overlap: the 1\,ms drifts were transients of instabilities}
+
+The overlap family is long-horizon unstable almost everywhere. Of the
+$108$ overlap runs, $74$ died of element inversion after exponential
+energy growth (typically $+3{,}000$ to $+10{,}000\%$ of $E_0$ at death,
+between $2$ and $9$\,ms), and most of the remainder collapsed toward zero
+energy instead. The sign-indefinite $\pm$tens-of-percent drifts of the
+1\,ms sweep (Sec.~\ref{sec:ratiosweep}) were early sections of these
+trajectories: configurations that read as ``dissipative'' at 1\,ms (e.g.\
+maximum overlap $1{:}0.6$ II, $-61\%$) reversed and blew up ($+5{,}432\%$
+at death). Mesh conformity does not save the mixed-integrator combos: the
+conforming half-overlap IE run read $+13\%$ at 1\,ms, grew cleanly
+exponentially ($\times 3.3$ at $4$\,ms, $\times 38$ at $6$\,ms), and died
+at $6.25$\,ms; conforming EI behaves alike at all three widths. The only
+healthy overlap configurations at $10$\,ms are the conforming II runs:
+$+0.64$, $+0.61$, $+0.16\%$ at overlap widths $0.0508$, $0.0254$,
+$0.0127$\,m. The overlap coupling is therefore a short-horizon method on
+nonconforming meshes, and for non-II combos even on conforming ones.
+
+\subsection*{Nonoverlap pairing: no injection, but the dissipation
+compounds --- and two new failure modes appear}
+
+The paired nonoverlap coupling never injects at any ratio in any
+combination, at $10$\,ms as at $1$\,ms. Its monotone trace-jump
+dissipation, however, compounds. Drift at $10$\,ms ($\dagger\,t$ marks a
+run dead by element inversion at $t$\,ms; EE entries marked $\ast$ ended
+in the noise-saturated state discussed below):
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+ratio & II & IE & EI & EE \\
+\midrule
+1:1.0 & $+0.00$ & $-0.9$ & $-0.2$ & $\ast$ \\
+1:0.9 & $+0.00$ & $-0.5$ & $+0.1$ & $\ast$ \\
+1:0.8 & $\dagger\,5.2$ & $\dagger\,3.9$ & $\dagger\,4.0$ & $\dagger\,2.6$ \\
+1:0.7 & $\dagger\,4.9$ & $\dagger\,3.7$ & $\dagger\,3.9$ & $\dagger\,2.8$ \\
+1:0.6 & $-47.3$ & $-56.4$ & $-42.9$ & $\ast$ \\
+1:0.5 & $-56.8$ & $-72.0$ & $-40.8$ & $\ast$ \\
+1:0.4 & $-54.9$ & $-73.9$ & $-40.4$ & $\ast$ \\
+1:0.3 & $-65.1$ & $-66.0$ & $-81.1$ & $\ast$ \\
+1:0.2 & $-53.3$ & $-73.1$ & $-84.1$ & $\ast$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three observations. First, the conforming and $1{:}0.9$ columns with an
+implicit member are outstanding --- the coupling holds $0.00$ to $-0.9\%$
+over ten thousand stops. Second, at strong contrast ($\le 1{:}0.6$) the
+sign-definite dissipation that read as $10$--$28\%$ at 1\,ms reaches
+$40$--$85\%$ by $10$\,ms: bounded and ordered, but far too large for
+wave-transit accuracy. Absorption of unrepresentable content is a rate,
+not a one-time toll.
+
+Third, the mildly nonconforming, \emph{non-nested} ratios $1{:}0.7$ and
+$1{:}0.8$ form a failure window invisible at 1\,ms: the paired transfer
+accumulates interface-local high-frequency displacement content, and every
+integrator combination eventually dies there --- explicit members at
+$2.6$--$4$\,ms by central-difference instability, implicit pairs at
+$\approx 5$\,ms when the first interface element inverts while the
+\emph{global} energy is still smooth and healthy ($-19\%$ at death). This
+is not an Aitken artifact: re-runs with fixed $\theta = 0.5$ die
+identically (II $1{:}0.7$ at $5.15$ vs.\ $4.86$\,ms, trajectories matching
+to three digits), so the noise accumulation belongs to the transfer
+operators themselves. The nested ratios ($1{:}0.5$ exactly, and the strong
+ratios whose transfer filters aggressively) do not exhibit it.
+
+\subsection*{Explicit--explicit saturation, and subcycling as a remedy}
+
+The EE column degrades at \emph{every} ratio by $10$\,ms, conforming
+included, ending with the staggered metric near $-2\,E_0$. The end state
+is not a blow-up: the stored energy stays bounded and physical throughout
+(the conforming run holds $E/E_0 \ge 0.97$ to $5$\,ms, then slides), but
+the staggered kinetic term goes steadily negative --- the signature of
+sawtooth content at $\omega\Delta t \approx 2$ accumulating in velocity
+and acceleration. Central difference at $\mathrm{CFL} = 1$ has zero
+numerical dissipation at the stability edge, so whatever grid-frequency
+content the interface exchange seeds is never removed; with no implicit
+member in the pair, it accumulates without bound in amplitude-neutral
+modes. The measured remedy is time-step margin: the \emph{subcycled}
+conforming EE run (free side at $\Delta t/4$, $\mathrm{CFL} = 0.25$) ends
+at $-10.8\%$ with no saturation. Subcycling cuts the other way for II:
+the same-step conforming II run conserves to $+0.00\%$ while the subcycled
+one loses $-20.2\%$ (at $1{:}0.5$, $-61.6\%$) --- the
+Gravouil--Combescure interpolation dissipation of
+Sec.~\ref{sec:subcycle}, harmless per stop, compounds over $10^4$ stops.
+At long horizons the multi-time-step exchange is thus a trade: it
+stabilizes explicit members (CFL margin) and taxes implicit ones
+(interpolation dissipation).
+
+The long-horizon ranking is unambiguous: adjoint-paired nonoverlap
+coupling with at least one implicit interface member, on conforming or
+nested mesh ratios, is the only tested configuration that is sound at
+$10$\,ms; the overlap family is short-horizon only. Data, figures, and the
+run harness: \code{\textasciitilde/cantilever-energy-study/}
+(\code{*-10ms} data directories, \code{wccm-plots/*-10ms}, and
+\code{drift-table-10ms.txt}).
+
 \section{Where this lands}
 \label{sec:conclusion}
 
@@ -784,11 +907,15 @@ nor transfer improvements (Phase~1) can close at fixed $h$. The ratio sweep
 (Sec.~\ref{sec:ratiosweep}) removes the remaining comfort: the interface work
 is sign-indefinite in practice as well as in principle, so the ``price'' is
 not a bounded, predictable dissipation --- neighboring mesh ratios swing from
-$-53\%$ to $+174\%$ to $-66\%$. Mesh conformity therefore remains the only
-route to energy conservation \emph{within the overlap family}; nonconforming
-overlaps are usable only where neither energy loss \emph{nor} energy gain of
-tens of percent matters, with the channel-resolved instrumentation reporting
-which one occurred.
+$-53\%$ to $+174\%$ to $-66\%$. The ten-millisecond horizon
+(Sec.~\ref{sec:tenms}) removes the last of it: those swings are early
+sections of exponential instabilities, $74$ of the $108$ overlap runs die
+of element inversion by $9$\,ms, and even conforming meshes only save the
+implicit--implicit combination. Mesh conformity \emph{and} implicit
+integration on both sides therefore remain the only route to long-horizon
+energy conservation within the overlap family; everything else is usable
+for short transients at most, with the channel-resolved instrumentation
+reporting the damage.
 
 For energy-critical nonconforming coupling, the theory-backed path --- the
 \emph{nonoverlap} impedance variant, whose single shared interface admits the
@@ -800,9 +927,21 @@ dissipation at strong contrast, with no injection anywhere. Explicit
 subdomains are covered by the IMEX interface treatment
 (Sec.~\ref{sec:imex}): the conforming explicit--explicit trajectory matches
 the monodomain explicit run to $0.35\%$ pointwise, and every combination is
-sign-definite at every ratio. The practical recommendation is therefore:
-conforming meshes within the overlap family, or the adjoint-paired
-nonoverlap variant (now the default for \code{Schwarz impedance nonoverlap}; \code{adjoint pairing: false} restores the legacy transfer) when the decomposition
+sign-definite at every ratio. The ten-millisecond study
+(Sec.~\ref{sec:tenms}) qualifies this in three ways: the paired
+dissipation at strong contrast is a rate that compounds to $40$--$85\%$
+over $10^4$ stops; the mild non-nested ratios $1{:}0.7$--$1{:}0.8$
+accumulate interface-local high-frequency content until an interface
+element inverts (all combinations, implicit included, $2.6$--$5$\,ms);
+and the all-explicit pair at $\mathrm{CFL}=1$ saturates with undamped
+grid-frequency content at every ratio, for which time-step margin
+(measured via the subcycled free side at $\mathrm{CFL}=0.25$) is an
+effective remedy. The practical recommendation is therefore:
+conforming meshes within the overlap family (implicit--implicit only for
+long horizons), or the adjoint-paired
+nonoverlap variant (now the default for \code{Schwarz impedance nonoverlap}; \code{adjoint pairing: false} restores the legacy transfer) with at least
+one implicit interface member and a conforming or nested mesh ratio when
+the decomposition
 must be nonconforming and the energy budget matters. Subcycled
 (multi-time-step) pairing is validated with genuinely interpolated
 Gravouil--Combescure transfer --- two infrastructure defects that had
