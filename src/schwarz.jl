@@ -29,12 +29,55 @@ self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsim
 # negative excursions that accelerate convergence.
 const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
 
+# Resolve the relaxation time slot for coupling pair `pair` at substep time t,
+# appending a new slot when t is not yet keyed. The relaxation state must be
+# compared across Schwarz sweeps AT THE SAME SUBSTEP TIME: with a windowed
+# controller stop the relaxed side applies its BC once per substep, and a
+# single per-pair state would blend iterates across time — a causal low-pass
+# on the exchanged data that shifts the converged fixed point. Substep times
+# repeat bitwise across sweeps (subcycle() restores the nominal step every
+# pass), so the equality test hits; the isapprox fallback and the fresh-slot
+# path only engage if the substep grid is perturbed mid-stop (e.g. adaptive
+# stepping), where the new slot restarts that time's relaxation from scratch.
+function relaxation_slot!(controller::MultiDomainTimeController, pair::Int, t::Float64)
+    times = controller.lambda_time[pair]
+    for (k, tk) in enumerate(times)
+        if tk == t || isapprox(tk, t; rtol=1.0e-12)
+            return k
+        end
+    end
+    push!(times, t)
+    if controller.iteration_number > 0
+        norma_logf(1, :schwarz, "New relaxation slot at t = %.6e past iteration 0 (substep grid changed?)", t)
+    end
+    return length(times)
+end
+
+# Grow a per-slot state vector to hold slot k. New vector entries are empty —
+# the "no previous iterate yet" sentinel used throughout the relaxation code;
+# new scalar entries take the supplied default.
+function ensure_slot!(state::Vector{Vector{Float64}}, k::Int)
+    while length(state) < k
+        push!(state, Float64[])
+    end
+    return nothing
+end
+
+function ensure_slot!(state::Vector{Float64}, k::Int, default::Float64)
+    while length(state) < k
+        push!(state, default)
+    end
+    return nothing
+end
+
 # Returns the relaxation factor θ applied to interp_disp for this Schwarz
 # iterate. Fixed mode returns the user-configured constant; Aitken-recursive
-# mode uses Irons–Tuck with the previous residual stored on the controller.
+# mode uses Irons–Tuck with the previous residual stored on the controller,
+# per pair and per substep time slot.
 function relaxation_aitken_recursive_theta!(
     controller::MultiDomainTimeController,
-    slot::Int,
+    pair::Int,
+    slot_k::Int,
     iter::Int,
     interp_disp::AbstractVector{Float64},
     lambda_prev::AbstractVector{Float64},
@@ -43,15 +86,17 @@ function relaxation_aitken_recursive_theta!(
         return controller.relaxation_parameter
     end
     aitken_N0 = controller.aitken_N0
+    ensure_slot!(controller.aitken_prev_residual_disp[pair], slot_k)
+    ensure_slot!(controller.aitken_theta_disp[pair], slot_k, controller.relaxation_parameter)
     if iter < aitken_N0
-        controller.aitken_theta_disp[slot] = controller.relaxation_parameter
-        controller.aitken_prev_residual_disp[slot] = Float64[]
-        norma_logf(1, :schwarz, "Aitken-recursive θ[slot=%d, iter=%d] = %.4f", slot, iter, 1.0)
+        controller.aitken_theta_disp[pair][slot_k] = controller.relaxation_parameter
+        controller.aitken_prev_residual_disp[pair][slot_k] = Float64[]
+        norma_logf(1, :schwarz, "Aitken-recursive θ[pair=%d, slot=%d, iter=%d] = %.4f", pair, slot_k, iter, 1.0)
         return 1.0
     end
     residual = interp_disp .- lambda_prev
-    prev_residual = controller.aitken_prev_residual_disp[slot]
-    θ_prev = controller.aitken_theta_disp[slot]
+    prev_residual = controller.aitken_prev_residual_disp[pair][slot_k]
+    θ_prev = controller.aitken_theta_disp[pair][slot_k]
     θ = controller.relaxation_parameter
     if !isempty(prev_residual) && length(prev_residual) == length(residual)
         δ = residual .- prev_residual
@@ -62,9 +107,9 @@ function relaxation_aitken_recursive_theta!(
             θ = θ_prev
         end
     end
-    controller.aitken_prev_residual_disp[slot] = residual
-    controller.aitken_theta_disp[slot] = θ
-    norma_logf(1, :schwarz, "Aitken-recursive θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
+    controller.aitken_prev_residual_disp[pair][slot_k] = residual
+    controller.aitken_theta_disp[pair][slot_k] = θ
+    norma_logf(1, :schwarz, "Aitken-recursive θ[pair=%d, slot=%d, iter=%d] = %.4f", pair, slot_k, iter, θ)
     return θ
 end
 
@@ -81,14 +126,17 @@ end
 # recursion to stay exact.
 function relaxation_aitken_secant_theta!(
     controller::MultiDomainTimeController,
-    slot::Int,
+    pair::Int,
+    slot_k::Int,
     iter::Int,
     interp_disp::AbstractVector{Float64},
     lambda_prev::AbstractVector{Float64},
 )
+    ensure_slot!(controller.aitken_prev_residual_disp[pair], slot_k)
+    ensure_slot!(controller.aitken_prev_lambda_disp[pair], slot_k)
     residual = interp_disp .- lambda_prev                 # r^(n) = T(g^(n)) - g^(n)
-    prev_residual = controller.aitken_prev_residual_disp[slot]   # r^(n-1)
-    prev_lambda = controller.aitken_prev_lambda_disp[slot]       # g^(n-1)
+    prev_residual = controller.aitken_prev_residual_disp[pair][slot_k]   # r^(n-1)
+    prev_lambda = controller.aitken_prev_lambda_disp[pair][slot_k]       # g^(n-1)
     # For iter < N0 use the input ρ^(1) = relaxation_parameter (paper's N0 idea).
     θ = controller.relaxation_parameter
     if iter >= controller.aitken_N0 &&
@@ -105,9 +153,9 @@ function relaxation_aitken_secant_theta!(
             θ = -dot(d, δ) / δ_sq
         end
     end
-    controller.aitken_prev_residual_disp[slot] = residual
-    controller.aitken_prev_lambda_disp[slot] = copy(lambda_prev)
-    norma_logf(1, :schwarz, "Aitken-secant θ[slot=%d, iter=%d] = %.4f", slot, iter, θ)
+    controller.aitken_prev_residual_disp[pair][slot_k] = residual
+    controller.aitken_prev_lambda_disp[pair][slot_k] = copy(lambda_prev)
+    norma_logf(1, :schwarz, "Aitken-secant θ[pair=%d, slot=%d, iter=%d] = %.4f", pair, slot_k, iter, θ)
     return θ
 end
 
@@ -119,18 +167,18 @@ end
 #   a = (u - u_pre) / (β Δt²),   v = v_pre + γ Δt a.
 # For integrators without these predictors (e.g. quasi-static, explicit), the
 # interpolated kinematics are passed through unrelaxed.
-function recover_interface_kinematics!(controller, slot, integrator, interp_velo, interp_acce)
+function recover_interface_kinematics!(controller, pair, slot_k, integrator, interp_velo, interp_acce)
     if integrator isa Newmark
         Δt = integrator.time_step
         β = integrator.β
         γ = integrator.γ
-        u = controller.lambda_disp[slot]
+        u = controller.lambda_disp[pair][slot_k]
         a = (u .- integrator.disp_pre) ./ (β * Δt * Δt)
-        controller.lambda_acce[slot] = a
-        controller.lambda_velo[slot] = integrator.velo_pre .+ (γ * Δt) .* a
+        controller.lambda_acce[pair][slot_k] = a
+        controller.lambda_velo[pair][slot_k] = integrator.velo_pre .+ (γ * Δt) .* a
     else
-        controller.lambda_velo[slot] = interp_velo
-        controller.lambda_acce[slot] = interp_acce
+        controller.lambda_velo[pair][slot_k] = interp_velo
+        controller.lambda_acce[pair][slot_k] = interp_acce
     end
     return nothing
 end
@@ -185,12 +233,15 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
             end
         end
     else  # left subdomain (with relaxation)
-        if (iter == 0)
-            n = length(model.boundary_force)
-            g = zeros(n)
-        else
-            g = controller.lambda_disp[coupled_index]
-        end
+        # The relaxation state is per substep time slot (see relaxation_slot!):
+        # relaxing against the previous sweep's RHS at the SAME time keeps the
+        # windowed exchange waveform-consistent. A fresh slot (every slot on
+        # iteration 0, since the state resets at each stop) has no previous
+        # iterate and starts from zero, as before.
+        slot_k = relaxation_slot!(controller, coupled_index, model.time)
+        ensure_slot!(controller.lambda_disp[coupled_index], slot_k)
+        g_stored = controller.lambda_disp[coupled_index][slot_k]
+        g = isempty(g_stored) ? zeros(length(model.boundary_force)) : g_stored
         # Optional dynamic Aitken relaxation factor. The fixed-point iterate is
         # the impedance RHS stored in lambda_disp; its unrelaxed (theta = 1)
         # candidate is T(g) = boundary_force + impedance coupling term, from which
@@ -206,18 +257,18 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
                 end
             end
             theta = controller.relaxation_method === :aitken_secant ?
-                relaxation_aitken_secant_theta!(controller, coupled_index, iter, candidate, g) :
-                relaxation_aitken_recursive_theta!(controller, coupled_index, iter, candidate, g)
+                relaxation_aitken_secant_theta!(controller, coupled_index, slot_k, iter, candidate, g) :
+                relaxation_aitken_recursive_theta!(controller, coupled_index, slot_k, iter, candidate, g)
         end
-        controller.lambda_disp[coupled_index] = copy(model.boundary_force)
+        controller.lambda_disp[coupled_index][slot_k] = copy(model.boundary_force)
         for comp in 1:3
             Z_W_vdot = Z * (W * dst_velo[comp, :])
             α_W_u = α * (W * dst_disp[comp, :])
             for (i_local, i_global) in enumerate(global_from_local_map)
                 dof_i = 3 * (i_global - 1) + comp
                 rhs_i = neumann_force[3 * (i_local - 1) + comp] + Z_W_vdot[i_local] + α_W_u[i_local]
-                controller.lambda_disp[coupled_index][dof_i] += (1 - theta) * g[dof_i] + theta * rhs_i
-                model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][dof_i]
+                controller.lambda_disp[coupled_index][slot_k][dof_i] += (1 - theta) * g[dof_i] + theta * rhs_i
+                model.boundary_force[dof_i] = controller.lambda_disp[coupled_index][slot_k][dof_i]
             end
         end
     end
@@ -1662,27 +1713,38 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     # Apply relaxed update if needed
     if is_swappable_dn_schwarz(bc)
         iter = controller.iteration_number
-        λ_u_prev = iter < 1 ? interp_disp : controller.lambda_disp[coupled_index]
-        λ_v_prev = iter < 1 ? interp_velo : controller.lambda_velo[coupled_index]
-        λ_a_prev = iter < 1 ? interp_acce : controller.lambda_acce[coupled_index]
+        # Per-substep-time relaxation slot (see relaxation_slot!): the previous
+        # iterate must come from the previous Schwarz sweep at the SAME time. A
+        # fresh slot (every slot on iteration 0) has no previous iterate and
+        # falls back to the interpolated partner state, as before.
+        slot_k = relaxation_slot!(controller, coupled_index, time)
+        ensure_slot!(controller.lambda_disp[coupled_index], slot_k)
+        ensure_slot!(controller.lambda_velo[coupled_index], slot_k)
+        ensure_slot!(controller.lambda_acce[coupled_index], slot_k)
+        λ_u_stored = controller.lambda_disp[coupled_index][slot_k]
+        λ_u_prev = isempty(λ_u_stored) ? interp_disp : λ_u_stored
+        λ_v_stored = controller.lambda_velo[coupled_index][slot_k]
+        λ_v_prev = isempty(λ_v_stored) ? interp_velo : λ_v_stored
+        λ_a_stored = controller.lambda_acce[coupled_index][slot_k]
+        λ_a_prev = isempty(λ_a_stored) ? interp_acce : λ_a_stored
 
         if controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
-            θ = relaxation_aitken_secant_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
-            controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-            recover_interface_kinematics!(controller, coupled_index, coupled_integrator, interp_velo, interp_acce)
+            θ = relaxation_aitken_secant_theta!(controller, coupled_index, slot_k, iter, interp_disp, λ_u_prev)
+            controller.lambda_disp[coupled_index][slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
+            recover_interface_kinematics!(controller, coupled_index, slot_k, coupled_integrator, interp_velo, interp_acce)
         else
-            θ = relaxation_aitken_recursive_theta!(controller, coupled_index, iter, interp_disp, λ_u_prev)
+            θ = relaxation_aitken_recursive_theta!(controller, coupled_index, slot_k, iter, interp_disp, λ_u_prev)
 
-            controller.lambda_disp[coupled_index] = θ * interp_disp + (1 - θ) * λ_u_prev
-            controller.lambda_velo[coupled_index] = θ * interp_velo + (1 - θ) * λ_v_prev
-            controller.lambda_acce[coupled_index] = θ * interp_acce + (1 - θ) * λ_a_prev
+            controller.lambda_disp[coupled_index][slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
+            controller.lambda_velo[coupled_index][slot_k] = θ * interp_velo + (1 - θ) * λ_v_prev
+            controller.lambda_acce[coupled_index][slot_k] = θ * interp_acce + (1 - θ) * λ_a_prev
         end
 
-        coupled_integrator.displacement .= controller.lambda_disp[coupled_index]
-        coupled_integrator.velocity .= controller.lambda_velo[coupled_index]
-        coupled_integrator.acceleration .= controller.lambda_acce[coupled_index]
+        coupled_integrator.displacement .= controller.lambda_disp[coupled_index][slot_k]
+        coupled_integrator.velocity .= controller.lambda_velo[coupled_index][slot_k]
+        coupled_integrator.acceleration .= controller.lambda_acce[coupled_index][slot_k]
     else
         coupled_integrator.displacement .= interp_disp
         coupled_integrator.velocity .= interp_velo

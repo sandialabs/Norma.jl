@@ -14,7 +14,7 @@ const cantilever_imp_nc_example = "../examples/nonoverlap/dynamic-same-step/cant
 # strip the flag and get the legacy per-side transfer). With
 # explicit_free=true the free subdomain runs central difference + explicit
 # solver, exercising the IMEX interface treatment.
-function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free=false, free_dt="5.0e-07")
+function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free=false, free_dt="5.0e-07", controller_dt=nothing, schwarz_tols=nothing)
     for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
               "cantilever-clamped.g", "cantilever-free.g"]
         cp("$cantilever_imp_nc_example/$f", f; force=true)
@@ -43,6 +43,12 @@ function run_cantilever_imp_nc(adjoint_pairing::Bool; num_steps=5, explicit_free
     params = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
     params["name"] = "cantilever-multi.yaml"
     params["final time"] = num_steps * 5.0e-07
+    if controller_dt !== nothing
+        params["time step"] = controller_dt
+    end
+    if schwarz_tols !== nothing
+        params["relative tolerance"], params["absolute tolerance"] = schwarz_tols
+    end
     sim = Norma.run(params)
     for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
               "cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
@@ -124,6 +130,27 @@ end
     u_sub = sim_sub.subsims[1].model.displacement
     @test all(isfinite, u_sub)
     @test maximum(abs.(u_sub)) < 0.1
+
+    # Windowed controller stop (both subdomains subcycle five substeps per
+    # stop): the per-substep-time relaxation slots keep the windowed exchange
+    # waveform-consistent, so the converged trajectory must match the
+    # same-step run — the controller step is a cost knob, not a physics knob.
+    # Before the slotted state, the per-pair relaxation blended iterates
+    # across time (a causal low-pass on the exchanged traction) and the
+    # windowed run drifted from the first stop.
+    # The residual difference is Schwarz-truncation noise (it collapses as the
+    # stopping tolerances tighten), so both runs use tightened tolerances to
+    # keep the threshold crisp: ~4e-8 relative displacement mismatch remains
+    # here, while the pre-fix per-pair state fails at ~4e-4 regardless of
+    # tolerance (its windowed fixed point genuinely differs).
+    tols = (1.0e-10, 1.0e-12)
+    sim_ss = run_cantilever_imp_nc(true; num_steps=10, schwarz_tols=tols)
+    sim_win = run_cantilever_imp_nc(true; num_steps=10, controller_dt=2.5e-06, schwarz_tols=tols)
+    for i in 1:2
+        u_ss = sim_ss.subsims[i].model.displacement
+        u_win = sim_win.subsims[i].model.displacement
+        @test norm(u_win - u_ss) / norm(u_ss) < 1.0e-6
+    end
 
     # Temporal transfer pair of the subcycled pairing: the finer side receives
     # the piecewise-linear interpolant of the partner history (on the query's
