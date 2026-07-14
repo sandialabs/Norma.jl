@@ -68,6 +68,22 @@ function _reject_restart_with_swaps!(params::Parameters, context::String)
     return nothing
 end
 
+# Validate and normalize a `restart: index:` value. Integer-valued numbers
+# (an `Integer`, or an integer-valued `AbstractFloat` such as YAML's parse of
+# `2.0`) are accepted and converted to Int64. Anything else (e.g. `2.5`)
+# previously reached `Int64(...)` directly, which throws a raw, uninformative
+# `InexactError` instead of a clean, actionable abort message.
+function _validate_restart_index(index_value)
+    if !(index_value isa Integer || (index_value isa AbstractFloat && isinteger(index_value)))
+        norma_abortf(
+            "`restart: index:` must be an integer, got %s (a %s).",
+            string(index_value),
+            string(typeof(index_value)),
+        )
+    end
+    return Int64(index_value)
+end
+
 # Read the restart snapshot (time + nodal displacement/velocity fields) for a
 # single-domain simulation from its (already-opened) input mesh, validate the
 # request, and stash the result on params under "restart_info" for SolidMechanics
@@ -114,7 +130,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # (shared restart index/time, no per-subdomain `restart:` blocks).
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
-    requested_restart_index = Int64(restart_params["index"])
+    requested_restart_index = _validate_restart_index(restart_params["index"])
     num_steps = Exodus.read_number_of_time_steps(input_mesh)
     if num_steps < 1
         norma_abort("Restart mesh '$(input_mesh.file_name)' contains no time steps.")
@@ -160,18 +176,40 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     disp_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_x")
     disp_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_y")
     disp_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_z")
-    velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
-    velo_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_y")
-    velo_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_z")
     num_nodes = Exodus.num_nodes(input_mesh.init)
     displacement = Matrix{Float64}(undef, 3, num_nodes)
-    velocity = Matrix{Float64}(undef, 3, num_nodes)
     displacement[1, :] = disp_x
     displacement[2, :] = disp_y
     displacement[3, :] = disp_z
-    velocity[1, :] = velo_x
-    velocity[2, :] = velo_y
-    velocity[3, :] = velo_z
+    # Only a dynamic-integrator run ever writes velo_x/y/z to its Exodus
+    # output (see is_dynamic(integrator) in initialize_writing(), io.jl); a
+    # checkpoint written by a quasistatic (StaticTimeIntegrator) run has no
+    # velocity fields at all, since velocity is not a meaningful quasistatic
+    # quantity. Reading them unconditionally would throw a raw, uninformative
+    # Exodus "variable not found" error. Use zero initial velocity instead
+    # when the checkpoint has no velocity fields -- this is the correct
+    # restart behavior for a quasistatic checkpoint, not just a fallback: a
+    # quasistatic run can never have had a nonzero velocity to lose (nor can
+    # `initial conditions:` have set one, since it is rejected above whenever
+    # `restart:` is present).
+    velocity = Matrix{Float64}(undef, 3, num_nodes)
+    available_node_vars = Exodus.read_names(input_mesh, NodalVariable)
+    has_velocity = all(v -> v in available_node_vars, ("velo_x", "velo_y", "velo_z"))
+    if has_velocity
+        velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
+        velo_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_y")
+        velo_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_z")
+        velocity[1, :] = velo_x
+        velocity[2, :] = velo_y
+        velocity[3, :] = velo_z
+    else
+        velocity .= 0.0
+        norma_log(
+            0,
+            :restart,
+            "Restart checkpoint has no velocity fields (quasistatic); using zero initial velocity.",
+        )
+    end
     # Override the initial time unconditionally: the restart snapshot's time is
     # the only initial time consistent with the restart displacement/velocity
     # fields, regardless of what `time integrator: initial time` says in the
@@ -272,7 +310,7 @@ function process_multidomain_restart!(params::Parameters)
     haskey(params, "restart") || return nothing
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
-    restart_index = Int64(restart_params["index"])
+    restart_index = _validate_restart_index(restart_params["index"])
     restart_time = nothing
     for domain_path in domain_paths
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
@@ -384,8 +422,15 @@ end
 # conditions are not populated until then.
 function warn_restart_with_nonoverlap_schwarz(sim::MultiDomainSimulation)
     haskey(sim.params, "restart") || return nothing
+    # Check the geometry-axis abstract type (overlap vs. non-overlap), not the
+    # concrete `SolidMechanicsNonOverlapSchwarzBoundaryCondition` (the "Schwarz
+    # DN nonoverlap" type): "Schwarz RR nonoverlap" and "Schwarz impedance
+    # nonoverlap" both build SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition,
+    # a sibling concrete type under the same
+    # SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition abstract type that
+    # the earlier concrete-type check never matched.
     has_nonoverlap = any(
-        any(bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
+        any(bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
         for sub in sim.subsims
     )
     if has_nonoverlap
