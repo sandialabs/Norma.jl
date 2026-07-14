@@ -243,22 +243,122 @@ test_files_to_run = parse_args(ARGS)
 start_time = time()
 Norma.norma_log(0, :norma, "BEGIN TESTS")
 
-@testset verbose = true "Norma.jl Test Suite" begin
-    for (i, file) in test_files_to_run
-        Norma.norma_log(0, :test, "[$i] Running $file...")
-        ts = @testset "[$i] $file" begin
-            include(file)
+# A top-level @testset prints its own summary to stdout (bypassing norma_log,
+# so it never reaches runtests.log) and, if ANY test anywhere in the tree
+# failed or errored, throws a Test.TestSetException right at the closing
+# `end` of the block below. That exception would otherwise abort the script
+# before any of the summary/cleanup code runs, which is why the log was
+# missing its final summary (and "Tests Complete"/"END TESTS") on any run
+# with at least one failure -- the common case, not the exception.
+#
+# We catch that exception so the log always gets finalized. The aggregate
+# pass/fail/error totals are accumulated as we go, from the same per-file
+# count_test_results(ts) call already used for each file's log line --
+# NOT recomputed afterwards from the outer testset object, since Test.jl's
+# internal bookkeeping for a testset that wraps many children doesn't expose
+# child counts the same way a single file's testset does (confirmed: doing
+# so silently produced "0 passed" even when every test had passed).
+#
+# This all lives in a function rather than directly at the top level of the
+# script: assigning to `overall_passes` etc. inside the nested for/try below
+# would otherwise hit Julia's soft-scope-vs-hard-scope ambiguity for
+# non-interactive scripts (confirmed: this raised
+# `UndefVarError: overall_passes not defined in local scope`). Inside a
+# function body, scoping is unambiguous and no `global` declarations are
+# needed.
+function run_test_suite(test_files_to_run)
+    overall_passes = 0
+    overall_fails = 0
+    overall_errors = 0
+    suite_failed = false
+    # (label, passes, fails, errors, elapsed) per file, in run order -- used
+    # to render a Test-Summary-style table after the run, mirroring what
+    # Julia's own Test stdlib prints to the console (see below).
+    file_summaries = Tuple{String,Int,Int,Int,Float64}[]
+
+    try
+        @testset verbose = true "Norma.jl Test Suite" begin
+            for (i, file) in test_files_to_run
+                Norma.norma_log(0, :test, "[$i] Running $file...")
+                file_start = time()
+                ts = @testset "[$i] $file" begin
+                    include(file)
+                end
+                file_elapsed = time() - file_start
+                passes, fails, errors = count_test_results(ts)
+                overall_passes += passes
+                overall_fails += fails
+                overall_errors += errors
+                push!(file_summaries, ("[$i] $file", passes, fails, errors, file_elapsed))
+                if fails == 0 && errors == 0
+                    Norma.norma_log(0, :done, "[$i] $file: $passes passed")
+                else
+                    Norma.norma_log(0, :error, "[$i] $file: $passes passed, $fails failed, $errors errored")
+                end
+            end
         end
-        passes, fails, errors = count_test_results(ts)
-        if fails == 0 && errors == 0
-            Norma.norma_log(0, :done, "[$i] $file: $passes passed")
+    catch e
+        if e isa Test.TestSetException
+            # The per-file totals accumulated above are already complete and
+            # correct at this point -- the outer @testset only throws once
+            # its whole body (the entire for loop) has finished running, so
+            # every file has already been counted.
+            suite_failed = true
         else
-            Norma.norma_log(0, :error, "[$i] $file: $passes passed, $fails failed, $errors errored")
+            # Not a test failure -- a real error (e.g. a bug in runtests.jl
+            # itself). Still try to close the log below, then rethrow so it
+            # isn't silently swallowed.
+            Norma.norma_log(0, :error, "Unexpected error while running the test suite: $e")
+            Norma.close_session_log_file()
+            rethrow()
         end
+    end
+
+    return overall_passes, overall_fails, overall_errors, suite_failed, file_summaries
+end
+
+# Render a table in the same spirit as Julia's own "Test Summary: | Pass
+# Fail Error Total Time" output (see the comment above run_test_suite for
+# why we can't just capture that table's actual text without buffering
+# away the suite's live console output for however long the run takes).
+# Each row is (label, passes, fails, errors, elapsed_seconds); the first
+# row is treated as the grand total and is not indented.
+function log_test_summary_table(rows)
+    label_width = maximum(length(label) for (label, _, _, _, _) in rows)
+    header =
+        rpad("Test Summary", label_width) *
+        " | " *
+        lpad("Pass", 6) *
+        lpad("Fail", 6) *
+        lpad("Error", 7) *
+        lpad("Total", 7) *
+        lpad("Time", 9)
+    Norma.norma_log(0, :summary, header)
+    for (idx, (label, passes, fails, errors, elapsed)) in enumerate(rows)
+        total = passes + fails + errors
+        indented_label = idx == 1 ? label : "  " * label
+        line =
+            rpad(indented_label, label_width) *
+            " | " *
+            lpad(string(passes), 6) *
+            lpad(string(fails), 6) *
+            lpad(string(errors), 7) *
+            lpad(string(total), 7) *
+            lpad(Norma.format_time(elapsed), 9)
+        keyword = (fails == 0 && errors == 0) ? :summary : :error
+        Norma.norma_log(0, keyword, line)
     end
 end
 
+overall_passes, overall_fails, overall_errors, suite_failed, file_summaries =
+    run_test_suite(test_files_to_run)
+
 elapsed_time = time() - start_time
+
+total_tests = length(test_files_to_run)
+summary_rows = vcat([("Norma.jl Test Suite", overall_passes, overall_fails, overall_errors, elapsed_time)], file_summaries)
+log_test_summary_table(summary_rows)
+
 Norma.norma_log(0, :done, "Tests Complete")
 Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
 Norma.norma_log(0, :norma, "END TESTS")
@@ -273,3 +373,7 @@ for ext in ["yaml", "e", "g", "csv"]
         rm(file; force=true)
     end
 end
+
+# Preserve the previous behavior of exiting non-zero when the suite failed,
+# now that the exception is caught rather than propagating on its own.
+suite_failed && exit(1)
