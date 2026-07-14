@@ -401,6 +401,30 @@ end
 
 warn_restart_with_nonoverlap_schwarz(::SingleDomainSimulation) = nothing
 
+# The restart refinement pass (see the Mfc correction in time_integrator.jl)
+# runs before detect_contact() re-establishes active_contact for the
+# restarted step, so apply_bc skips every Schwarz contact BC during that
+# pass and it silently keeps whatever stale interface acceleration was in
+# the checkpoint. Restart + Schwarz contact has not been tested against
+# this gap, so reject the combination outright rather than risk a quietly
+# wrong result.
+function reject_restart_with_contact(sim::MultiDomainSimulation)
+    haskey(sim.params, "restart") || return nothing
+    if sim.controller.schwarz_contact
+        norma_abort(
+            "Restart is not supported in combination with `Schwarz contact` boundary " *
+            "conditions: the restart refinement pass runs before contact is " *
+            "re-detected for the restarted step, so it would silently reuse the stale " *
+            "interface acceleration recorded in the checkpoint instead of the correct " *
+            "contact state. This combination is untested; remove the `restart:` block " *
+            "or remove the `Schwarz contact` boundary conditions.",
+        )
+    end
+    return nothing
+end
+
+reject_restart_with_contact(::SingleDomainSimulation) = nothing
+
 function create_simulation(params::Parameters)
     sim_type = params["type"]
     if sim_type == "single"
@@ -413,6 +437,7 @@ function create_simulation(params::Parameters)
         create_bcs(sim)
         validate_swap_criteria(sim)
         warn_restart_with_nonoverlap_schwarz(sim)
+        reject_restart_with_contact(sim)
         initialize_storage(sim)
         return sim
     else
