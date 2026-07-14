@@ -70,6 +70,21 @@ function ensure_slot!(state::Vector{Float64}, k::Int, default::Float64)
     return nothing
 end
 
+# Aitken acceleration applies only to single-slot (same-step) stops. In a
+# windowed stop the sweep map couples all time slots, and every Aitken policy
+# measured on the 10 ms cantilever benchmark fails or loses there: per-slot
+# θs take unclamped excursions that hand the solver a divergent interface
+# force (deaths at 3.9/5.7 ms where fixed θ and θ = 1 ran clean), and pooling
+# the residual inner products over the sweep's slots (waveform Aitken,
+# Irons–Tuck base frozen per sweep) survived on the implicit pair but cost
+# 55 sweeps/stop against 47.5 for fixed θ = 0.5 and 19.1 for θ = 1, while
+# locking θ persistently negative on the explicit pair (dead at 0.33 ms).
+# Windowed stops therefore use the configured relaxation parameter; for the
+# dashpot-stabilized impedance exchange θ = 1 is the measured optimum there.
+function aitken_applies(controller::MultiDomainTimeController, pair::Int)
+    return length(controller.lambda_time[pair]) <= 1
+end
+
 # Returns the relaxation factor θ applied to interp_disp for this Schwarz
 # iterate. Fixed mode returns the user-configured constant; Aitken-recursive
 # mode uses Irons–Tuck with the previous residual stored on the controller,
@@ -82,7 +97,7 @@ function relaxation_aitken_recursive_theta!(
     interp_disp::AbstractVector{Float64},
     lambda_prev::AbstractVector{Float64},
 )
-    if controller.relaxation_method !== :aitken_recursive
+    if controller.relaxation_method !== :aitken_recursive || !aitken_applies(controller, pair)
         return controller.relaxation_parameter
     end
     aitken_N0 = controller.aitken_N0
@@ -132,6 +147,9 @@ function relaxation_aitken_secant_theta!(
     interp_disp::AbstractVector{Float64},
     lambda_prev::AbstractVector{Float64},
 )
+    if !aitken_applies(controller, pair)
+        return controller.relaxation_parameter
+    end
     ensure_slot!(controller.aitken_prev_residual_disp[pair], slot_k)
     ensure_slot!(controller.aitken_prev_lambda_disp[pair], slot_k)
     residual = interp_disp .- lambda_prev                 # r^(n) = T(g^(n)) - g^(n)
