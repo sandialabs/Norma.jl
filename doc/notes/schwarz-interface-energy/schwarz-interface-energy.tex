@@ -11,6 +11,7 @@
 \usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{enumitem}
+\usepackage{graphicx}
 
 \newcommand{\dd}{\mathrm{d}}
 \newcommand{\Real}{\mathbb{R}}
@@ -74,8 +75,18 @@ growth; only conforming II survives healthy), while the paired nonoverlap
 coupling never injects but compounds its dissipation at strong contrast,
 develops a failure window at mild non-nested mesh ratios, and saturates
 with undamped grid-frequency content when both members are explicit at
-$\mathrm{CFL}=1$. This note records the evidence, the theory, the phased
-redesign, and the validated fixes.
+$\mathrm{CFL}=1$. Finally, a controller-step sweep exposes --- and fixes ---
+a defect of the Schwarz relaxation machinery itself: with controller stops
+larger than a subdomain's time step, the per-pair relaxation state blended
+iterates across \emph{time}, a causal low-pass on the exchanged traction
+that shifted the converged fixed point (up to $-88\%$ at ten substeps per
+stop on the conforming pair, and energy injection under Aitken
+acceleration). The state is now keyed per substep time slot, restoring
+windowed $\equiv$ same-step to Schwarz truncation; Aitken acceleration is
+restricted to single-slot stops after every windowed variant measured
+worse than a fixed relaxation parameter (Sec.~\ref{sec:windowed}). This
+note records the evidence, the theory, the phased redesign, and the
+validated fixes.
 \end{abstract}
 
 \section{Observed behavior}
@@ -559,6 +570,20 @@ ratio & legacy II & paired II \\
 \end{tabular}
 \end{center}
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/legacy-vs-paired.pdf}
+\caption{Non-overlap impedance Schwarz, energy drift at 1\,ms across the
+mesh-ratio family, all four integrator combinations. Left: legacy per-side
+transfer (consistent-mass integer-step metric) --- sign-indefinite, with
+injection up to $+363\%$ (EE) and $+223\%$ (EI) at $1{:}0.3$. Right: the
+adjoint-paired coupling (staggered lumped-mass metric of
+Eq.~\eqref{eq:staggered} for explicit members) --- monotone, sign-definite
+trace-jump dissipation at every ratio, and conservation to $\le 0.3\%$ on
+conforming and $1{:}0.9$ meshes.}
+\label{fig:legacy-paired}
+\end{figure}
+
 Three properties, in order of importance. First, \emph{no injection at any
 ratio}: the interface work is sign-definite, as the telescoping identity
 \eqref{eq:telescope} guarantees --- the wild $-53 \to +174 \to -66\%$ swings
@@ -813,7 +838,21 @@ at $6.25$\,ms; conforming EI behaves alike at all three widths. The only
 healthy overlap configurations at $10$\,ms are the conforming II runs:
 $+0.64$, $+0.61$, $+0.16\%$ at overlap widths $0.0508$, $0.0254$,
 $0.0127$\,m. The overlap coupling is therefore a short-horizon method on
-nonconforming meshes, and for non-II combos even on conforming ones.
+nonconforming meshes, and for non-II combos even on conforming ones
+(Fig.~\ref{fig:overlap-10ms}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/overlap-II-10ms.pdf}
+\caption{Overlap impedance Schwarz (variational transfer),
+implicit--implicit, $10$\,ms horizon. Nearly every nonconforming
+configuration either grows exponentially until element inversion kills the
+run (curves leaving the top of the axes) or collapses toward zero energy;
+only the conforming ($1{:}1.0$) runs track the monodomain reference. The
+mixed and all-explicit combinations (not shown) are worse: they lose even
+the conforming cases.}
+\label{fig:overlap-10ms}
+\end{figure}
 
 \subsection*{Nonoverlap pairing: no injection, but the dissipation
 compounds --- and two new failure modes appear}
@@ -842,7 +881,24 @@ ratio & II & IE & EI & EE \\
 \end{tabular}
 \end{center}
 
-Three observations. First, the conforming and $1{:}0.9$ columns with an
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.495\textwidth]{figs/nonoverlap-II-10ms.pdf}\hfill
+\includegraphics[width=0.495\textwidth]{figs/nonoverlap-EE-10ms.pdf}
+\caption{Adjoint-paired nonoverlap impedance Schwarz, $10$\,ms horizon,
+staggered energy metric. Left: implicit--implicit --- no injection
+anywhere; conforming and $1{:}0.9$ hold the monodomain reference, strong
+contrast dissipates monotonically, and the non-nested ratios
+$1{:}0.7$--$1{:}0.8$ end early at $\approx 5$\,ms (interface element
+inversion). Right: explicit--explicit --- the staggered kinetic term goes
+secularly negative at every ratio as undamped grid-frequency content
+accumulates at $\mathrm{CFL}=1$; the $1{:}0.7$--$1{:}0.8$ runs die of
+central-difference instability at $2.6$--$2.8$\,ms.}
+\label{fig:nonoverlap-10ms}
+\end{figure}
+
+Three observations (Fig.~\ref{fig:nonoverlap-10ms}, left). First, the
+conforming and $1{:}0.9$ columns with an
 implicit member are outstanding --- the coupling holds $0.00$ to $-0.9\%$
 over ten thousand stops. Second, at strong contrast ($\le 1{:}0.6$) the
 sign-definite dissipation that read as $10$--$28\%$ at 1\,ms reaches
@@ -866,7 +922,8 @@ ratios whose transfer filters aggressively) do not exhibit it.
 \subsection*{Explicit--explicit saturation, and subcycling as a remedy}
 
 The EE column degrades at \emph{every} ratio by $10$\,ms, conforming
-included, ending with the staggered metric near $-2\,E_0$. The end state
+included (Fig.~\ref{fig:nonoverlap-10ms}, right), ending with the
+staggered metric near $-2\,E_0$. The end state
 is not a blow-up: the stored energy stays bounded and physical throughout
 (the conforming run holds $E/E_0 \ge 0.97$ to $5$\,ms, then slides), but
 the staggered kinetic term goes steadily negative --- the signature of
@@ -884,7 +941,23 @@ Gravouil--Combescure interpolation dissipation of
 Sec.~\ref{sec:subcycle}, harmless per stop, compounds over $10^4$ stops.
 At long horizons the multi-time-step exchange is thus a trade: it
 stabilizes explicit members (CFL margin) and taxes implicit ones
-(interpolation dissipation).
+(interpolation dissipation). Figure~\ref{fig:subcycled-10ms} shows both
+sides of the trade on one axis.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/nonoverlap-subcycled-10ms.pdf}
+\caption{Subcycled (free side $4{:}1$, solid) vs same-step (dotted)
+adjoint-paired nonoverlap coupling over $10$\,ms. Left, conforming: the
+subcycled EE run (orange solid, $\mathrm{CFL}=0.25$) avoids the saturation
+that destroys same-step EE (orange dotted), while subcycled II (blue
+solid) pays the compounding Gravouil--Combescure interpolation dissipation
+that same-step II (on the reference line) does not. Right, mesh ratio
+$1{:}0.5$: at strong contrast the trace-jump dissipation dominates and the
+subcycling overhead is comparatively small (II subcycled $-61.6\%$ vs
+same-step $-56.8\%$).}
+\label{fig:subcycled-10ms}
+\end{figure}
 
 The long-horizon ranking is unambiguous: adjoint-paired nonoverlap
 coupling with at least one implicit interface member, on conforming or
@@ -893,6 +966,129 @@ $10$\,ms; the overlap family is short-horizon only. Data, figures, and the
 run harness: \code{\textasciitilde/cantilever-energy-study/}
 (\code{*-10ms} data directories, \code{wccm-plots/*-10ms}, and
 \code{drift-table-10ms.txt}).
+
+\section{Windowed controller stops: the relaxation state must be
+slot-keyed}
+\label{sec:windowed}
+
+The multi-domain controller advances in \emph{stops}; within a stop each
+subdomain subcycles to the stop end with its own time step, and partner
+data are exchanged as per-substep trajectories with piecewise-linear time
+interpolation (Sec.~\ref{sec:subcycle}). This raises a configuration
+question the study had not yet touched: with the subdomain steps held
+fixed ($1\,\mu$s), does the \emph{controller} stop size --- the
+``window'' over which the Schwarz iteration converges before committing
+--- affect the converged physics? A sweep over windows of $1$ (baseline),
+$2$, $5$, and $10\,\mu$s on representative overlap and nonoverlap cases,
+run to $10$\,ms, gave a split answer. (Data:
+\code{controller-step-sweep/} in the study bundle.)
+
+\textbf{Overlap: a pure cost knob.} Every overlap trajectory is identical
+across all four windows to all printed digits --- the conforming II run
+ends at $+0.61\%$ in all four, and the $1{:}0.5$ instability even dies at
+the same instant ($7.25$--$7.26$\,ms). The overlap exchange interpolates
+partner kinematics from history with no per-pair relaxation state, so the
+windowed waveform iteration converges to the same-step fixed point.
+
+\textbf{Nonoverlap: the window shifted the fixed point.} Drift for the
+conforming paired II case at $10$\,ms: $+0.00\%$ same-step, $+11.3\%$ at
+the $2\,\mu$s window, $-81.9\%$ at $5\,\mu$s, $-83.7\%$ at $10\,\mu$s
+(Aitken relaxation; with fixed $\theta = 0.5$ the sequence is a monotone
+drain instead, $-7.1\%$ at $2\,\mu$s to $-87.9\%$ at $10\,\mu$s). This
+was not a convergence failure --- the sweeps converged normally --- but a
+defect of the relaxation machinery: the relaxation state
+($\lambda$ vectors and Aitken residual buffers) was stored as \emph{one
+vector per interface pair}, updated on every BC application. In a
+windowed stop the relaxed side of a pair (the later-listed member)
+applies its coupling BC once per \emph{substep}, so the blend
+$(1-\theta)\,g + \theta\,\mathrm{rhs}$ mixed iterates across \emph{time}
+rather than across Schwarz sweeps: a causal exponential low-pass (lag
+$\sim \Delta t_{\mathrm{sub}}/\theta$) on the exchanged traction, whose
+lag dissipation grows with the window. Under Aitken the defect changes
+sign: the $\theta$ estimate compares residuals belonging to different
+times, overshoots past $1$, and the resulting phase \emph{lead} injects
+energy --- the $+11.3\%$ entry. (The subcycled study of
+Sec.~\ref{sec:subcycle} escaped by an ordering accident: its subcycling
+free side is listed first, i.e.\ unrelaxed.)
+
+Two experiments isolate and confirm the mechanism. First, $\theta = 1$
+--- which uses no relaxation state at all --- reproduces the same-step
+physics on the \emph{unmodified} code at every window ($+0.00\%$ over
+the full $10$\,ms at the $10\,\mu$s window; the EE case recovers its
+same-step saturation exactly). Second, with the fix below in place, all
+windowed policies land on the same-step trajectory. The fix keys the
+relaxation state by pair \emph{and} by substep time slot within the
+current stop, clearing it at every stop; with one substep per stop it
+reduces exactly to the classical per-pair iteration, and the same-step
+code path is bit-identical to the pre-fix baselines. Windowed runs then
+match same-step to Schwarz truncation (the residual $3.9\times 10^{-6}$
+displacement mismatch at working tolerances collapses to
+$3.7\times 10^{-8}$ as the stopping tolerances tighten), and a
+windowed-equivalence regression now guards this in the adjoint-pairing
+test.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/windowed-stops.pdf}
+\caption{Windowed controller stops on the conforming paired II case,
+$10$\,ms. Left, pre-fix: the per-pair relaxation state blends iterates
+across time --- Aitken injects at the $2\,\mu$s window and drains at
+$5$--$10\,\mu$s; fixed $\theta = 0.5$ drains monotonically. Right,
+post-fix (slot-keyed state): every windowed policy lands on the same-step
+trajectory; the per-slot Aitken run is physically correct until its
+unclamped $\theta$ excursions kill the Newton solve at $3.9$\,ms
+($\times$), which motivated restricting Aitken to single-slot stops.}
+\label{fig:windowed}
+\end{figure}
+
+\textbf{Relaxation policy inside windows.} With the state fixed, the
+remaining question is which relaxation policy a windowed stop should use.
+Measured on the conforming II case at the $10\,\mu$s window (mean Schwarz
+sweeps per stop): $\theta = 1$ converges in $19.1$ and runs the full
+$10$\,ms cleanly; per-slot Aitken takes ${\sim}25$ and dies at $3.9$\,ms
+when an unclamped $\theta$ excursion feeds the Newton solve a divergent
+iterate; fixed $\theta = 0.5$ takes $47.5$ (clean); and a waveform-pooled
+Aitken (one $\theta$ from residuals pooled across the window's slots)
+takes $55.1$ --- clean on II but fatal on EE, where it locks $\theta$
+persistently negative. Aitken acceleration is therefore at best useless
+and at worst fatal inside windows, and Norma now applies it only to
+single-slot stops, where its ${\approx}3\times$ sweep reduction is
+proven; windowed stops use the configured relaxation parameter, with
+$\theta = 1$ recommended --- the impedance dashpot supplies the
+contraction, so no under-relaxation is needed.
+
+Two limitations round out the picture. The all-explicit pair at large
+windows is impractical under \emph{any} policy: the windowed explicit
+sweep map is nearly non-contractive (fixed $\theta = 0.5$ rides the
+$128$-sweep cap and still dies at $9.8$\,ms). And windows are never a
+cost optimization for the nonoverlap exchange: the number of substep
+solves per unit time is (sweeps per stop)$/\Delta t_{\mathrm{sub}}$
+regardless of the window, and the windowed sweep counts above all exceed
+the same-step Aitken count, so the controller step is purely a
+convenience knob (e.g.\ aligning output stops), cost-neutral at best.
+For the overlap family, by contrast, larger stops are a mild speedup
+(fewer, barely-more-iterated stops). One earlier observation is
+withdrawn as an artifact: the pre-fix ``EE at the $2\,\mu$s window with
+fixed $\theta$ ends at $-0.25\%$'' entry was the defect's low-pass
+accidentally damping the grid-frequency saturation; post-fix, windowed
+EE saturates exactly like same-step EE, and the honest remedy remains
+CFL margin via subcycling (Sec.~\ref{sec:tenms}).
+
+\textbf{Open issue: a $\theta$-sensitive fixed point.} The
+windowed-equivalence test exposed a pre-existing defect, orthogonal to
+the fix: the \emph{converged} paired-impedance solution depends weakly on
+the relaxation parameter --- $\theta = 0.5$ and $\theta = 1.0$ differ by
+${\sim}4\times 10^{-5}$ relative displacement on the $2{:}1$
+nonconforming cantilever at a $10^{-13}$ stopping tolerance, same-step
+and windowed alike, and an Aitken run lands on the $\theta = 1$ answer to
+$10^{-12}$. Instrumentation rules out the blend algebra (the blended
+``base'' is identically zero at interface DOFs, because
+\code{apply\_bcs} zeroes the boundary force before each pass); the
+evidence points to a neutral --- non-contracting --- mode of the paired
+exchange that retains its $\theta$-dependent initialization and is
+invisible to the displacement-based stopping criterion. The magnitude is
+far below every signal in this study ($\ge 10^{-4}$), but it is a genuine
+correctness question and needs its own investigation.
 
 \section{Where this lands}
 \label{sec:conclusion}
@@ -953,6 +1149,14 @@ a partitioned exchange (lagged forms over-dissipate; zero-lag forms are
 anticipatory and unstable); realizing it requires a direct FETI-style
 interface solve per large step, which, together with the
 localized-Lagrange-multiplier frame construction (Park--Felippa; Dvorak et
-al.\ 2023), remains follow-up work.
+al.\ 2023), remains follow-up work. Finally, the Schwarz controller step is
+now a pure convenience knob for both families: the relaxation-state defect
+that made windowed stops shift the nonoverlap fixed point is fixed
+(slot-keyed state; windowed $\equiv$ same-step to Schwarz truncation), with
+Aitken acceleration restricted to the single-slot stops where it provably
+helps (Sec.~\ref{sec:windowed}). The one open correctness question left by
+that investigation is the weakly $\theta$-sensitive fixed point of the
+paired exchange (${\sim}4\times 10^{-5}$ relative displacement), evidence
+of a neutral mode invisible to the displacement-based stopping criterion.
 
 \end{document}
