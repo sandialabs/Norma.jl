@@ -68,6 +68,22 @@ function _reject_restart_with_swaps!(params::Parameters, context::String)
     return nothing
 end
 
+# Validate and normalize a `restart: index:` value. Integer-valued numbers
+# (an `Integer`, or an integer-valued `AbstractFloat` such as YAML's parse of
+# `2.0`) are accepted and converted to Int64. Anything else (e.g. `2.5`)
+# previously reached `Int64(...)` directly, which throws a raw, uninformative
+# `InexactError` instead of a clean, actionable abort message.
+function _validate_restart_index(index_value)
+    if !(index_value isa Integer || (index_value isa AbstractFloat && isinteger(index_value)))
+        norma_abortf(
+            "`restart: index:` must be an integer, got %s (a %s).",
+            string(index_value),
+            string(typeof(index_value)),
+        )
+    end
+    return Int64(index_value)
+end
+
 # Read the restart snapshot (time + nodal displacement/velocity fields) for a
 # single-domain simulation from its (already-opened) input mesh, validate the
 # request, and stash the result on params under "restart_info" for SolidMechanics
@@ -114,7 +130,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # (shared restart index/time, no per-subdomain `restart:` blocks).
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
-    requested_restart_index = Int64(restart_params["index"])
+    requested_restart_index = _validate_restart_index(restart_params["index"])
     num_steps = Exodus.read_number_of_time_steps(input_mesh)
     if num_steps < 1
         norma_abort("Restart mesh '$(input_mesh.file_name)' contains no time steps.")
@@ -135,26 +151,69 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         )
     end
     restart_time = Exodus.read_time(input_mesh, restart_index)
+    integrator_params = params["time integrator"]
+    # A restart at or past `final time` leaves nothing to integrate. Without
+    # this check, num_stops = max(round((final_time - restart_time) /
+    # time_step) + 1, 2) is forced to at least 2 regardless, and evolve()
+    # always advances one control step before checking stop_evolve(), so the
+    # run would silently take one step past final_time and write a bogus
+    # extra stop there. Abort instead.
+    final_time = get(integrator_params, "final time", nothing)
+    if final_time !== nothing
+        final_time = Float64(final_time)
+        if restart_time > final_time || isapprox(restart_time, final_time; rtol=1e-9, atol=1e-12)
+            norma_abortf(
+                "Restart time %.6e (index %d of '%s') is at or past `time integrator: " *
+                "final time` %.6e; there is nothing left to integrate. Choose an earlier " *
+                "restart index, or increase `final time`.",
+                restart_time,
+                restart_index,
+                input_mesh.file_name,
+                final_time,
+            )
+        end
+    end
     disp_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_x")
     disp_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_y")
     disp_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "disp_z")
-    velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
-    velo_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_y")
-    velo_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_z")
     num_nodes = Exodus.num_nodes(input_mesh.init)
     displacement = Matrix{Float64}(undef, 3, num_nodes)
-    velocity = Matrix{Float64}(undef, 3, num_nodes)
     displacement[1, :] = disp_x
     displacement[2, :] = disp_y
     displacement[3, :] = disp_z
-    velocity[1, :] = velo_x
-    velocity[2, :] = velo_y
-    velocity[3, :] = velo_z
+    # Only a dynamic-integrator run ever writes velo_x/y/z to its Exodus
+    # output (see is_dynamic(integrator) in initialize_writing(), io.jl); a
+    # checkpoint written by a quasistatic (StaticTimeIntegrator) run has no
+    # velocity fields at all, since velocity is not a meaningful quasistatic
+    # quantity. Reading them unconditionally would throw a raw, uninformative
+    # Exodus "variable not found" error. Use zero initial velocity instead
+    # when the checkpoint has no velocity fields -- this is the correct
+    # restart behavior for a quasistatic checkpoint, not just a fallback: a
+    # quasistatic run can never have had a nonzero velocity to lose (nor can
+    # `initial conditions:` have set one, since it is rejected above whenever
+    # `restart:` is present).
+    velocity = Matrix{Float64}(undef, 3, num_nodes)
+    available_node_vars = Exodus.read_names(input_mesh, NodalVariable)
+    has_velocity = all(v -> v in available_node_vars, ("velo_x", "velo_y", "velo_z"))
+    if has_velocity
+        velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
+        velo_y = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_y")
+        velo_z = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_z")
+        velocity[1, :] = velo_x
+        velocity[2, :] = velo_y
+        velocity[3, :] = velo_z
+    else
+        velocity .= 0.0
+        norma_log(
+            0,
+            :restart,
+            "Restart checkpoint has no velocity fields (quasistatic); using zero initial velocity.",
+        )
+    end
     # Override the initial time unconditionally: the restart snapshot's time is
     # the only initial time consistent with the restart displacement/velocity
     # fields, regardless of what `time integrator: initial time` says in the
     # input file.
-    integrator_params = params["time integrator"]
     requested_initial_time = get(integrator_params, "initial time", nothing)
     integrator_params["initial time"] = restart_time
     norma_log(0, :restart, "Restarting simulation from snapshot data.")
@@ -251,7 +310,7 @@ function process_multidomain_restart!(params::Parameters)
     haskey(params, "restart") || return nothing
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
-    restart_index = Int64(restart_params["index"])
+    restart_index = _validate_restart_index(restart_params["index"])
     restart_time = nothing
     for domain_path in domain_paths
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
@@ -317,6 +376,23 @@ function process_multidomain_restart!(params::Parameters)
             )
         end
     end
+    # A restart at or past `final time` leaves nothing to integrate; see the
+    # matching check in process_restart!() for why this must be rejected
+    # rather than silently allowed to run one control step past final_time.
+    final_time = get(params, "final time", nothing)
+    if final_time !== nothing
+        final_time = Float64(final_time)
+        if restart_time > final_time || isapprox(restart_time, final_time; rtol=1e-9, atol=1e-12)
+            norma_abortf(
+                "Restart time %.6e (index %d) is at or past top-level `final time` %.6e; " *
+                "there is nothing left to integrate. Choose an earlier restart index, or " *
+                "increase `final time`.",
+                restart_time,
+                restart_index,
+                final_time,
+            )
+        end
+    end
     requested_initial_time = get(params, "initial time", nothing)
     params["initial time"] = restart_time
     params["_multidomain_restart_index"] = restart_index
@@ -346,8 +422,15 @@ end
 # conditions are not populated until then.
 function warn_restart_with_nonoverlap_schwarz(sim::MultiDomainSimulation)
     haskey(sim.params, "restart") || return nothing
+    # Check the geometry-axis abstract type (overlap vs. non-overlap), not the
+    # concrete `SolidMechanicsNonOverlapSchwarzBoundaryCondition` (the "Schwarz
+    # DN nonoverlap" type): "Schwarz RR nonoverlap" and "Schwarz impedance
+    # nonoverlap" both build SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition,
+    # a sibling concrete type under the same
+    # SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition abstract type that
+    # the earlier concrete-type check never matched.
     has_nonoverlap = any(
-        any(bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
+        any(bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
         for sub in sim.subsims
     )
     if has_nonoverlap
@@ -363,6 +446,30 @@ end
 
 warn_restart_with_nonoverlap_schwarz(::SingleDomainSimulation) = nothing
 
+# The restart refinement pass (see the Mfc correction in time_integrator.jl)
+# runs before detect_contact() re-establishes active_contact for the
+# restarted step, so apply_bc skips every Schwarz contact BC during that
+# pass and it silently keeps whatever stale interface acceleration was in
+# the checkpoint. Restart + Schwarz contact has not been tested against
+# this gap, so reject the combination outright rather than risk a quietly
+# wrong result.
+function reject_restart_with_contact(sim::MultiDomainSimulation)
+    haskey(sim.params, "restart") || return nothing
+    if sim.controller.schwarz_contact
+        norma_abort(
+            "Restart is not supported in combination with `Schwarz contact` boundary " *
+            "conditions: the restart refinement pass runs before contact is " *
+            "re-detected for the restarted step, so it would silently reuse the stale " *
+            "interface acceleration recorded in the checkpoint instead of the correct " *
+            "contact state. This combination is untested; remove the `restart:` block " *
+            "or remove the `Schwarz contact` boundary conditions.",
+        )
+    end
+    return nothing
+end
+
+reject_restart_with_contact(::SingleDomainSimulation) = nothing
+
 function create_simulation(params::Parameters)
     sim_type = params["type"]
     if sim_type == "single"
@@ -375,6 +482,7 @@ function create_simulation(params::Parameters)
         create_bcs(sim)
         validate_swap_criteria(sim)
         warn_restart_with_nonoverlap_schwarz(sim)
+        reject_restart_with_contact(sim)
         initialize_storage(sim)
         return sim
     else
@@ -412,6 +520,22 @@ function SingleDomainSimulation(params::Parameters)
     _reject_restart_with_swaps!(params, basename)
     input_mesh_file = params["input mesh file"]
     output_mesh_file = params["output mesh file"]
+    # `output mesh file` is unconditionally rm'd and then reopened fresh below
+    # (as a copy of `input mesh file`) before the checkpoint is ever read. If
+    # the two paths coincide -- e.g. a restart run accidentally configured to
+    # write back over its own input checkpoint -- that rm destroys the only
+    # copy of the data this run needs to read, with nothing left to restore
+    # from on failure. Abort instead of running in place.
+    if abspath(input_mesh_file) == abspath(output_mesh_file)
+        norma_abortf(
+            "`input mesh file` and `output mesh file` resolve to the same path ('%s'). " *
+            "This would delete the input mesh before it can be read (it is rm'd and " *
+            "recreated as a copy of itself) -- most dangerous on restart, where the " *
+            "input mesh is often the only copy of the checkpoint. Use a different " *
+            "`output mesh file`.",
+            abspath(output_mesh_file),
+        )
+    end
     norma_log(0, :setup, "Input:  $input_mesh_file")
     norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
