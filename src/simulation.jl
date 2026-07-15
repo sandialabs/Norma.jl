@@ -751,14 +751,15 @@ function SolidMultiDomainTimeController(params::Parameters)
         relaxation_parameter = Float64(params["relaxation parameter"])
     end
     naive_stabilized = get(params, "naive stabilized", false)
+    lambda_time = [Float64[] for _ in 1:num_domains]
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
     lambda_acce = [Vector{Float64}[] for _ in 1:num_domains]
-    aitken_prev_residual_disp = [Vector{Float64}() for _ in 1:num_domains]
-    aitken_prev_residual_velo = [Vector{Float64}() for _ in 1:num_domains]
-    aitken_prev_residual_acce = [Vector{Float64}() for _ in 1:num_domains]
-    aitken_theta_disp = ones(Float64, num_domains)
-    aitken_prev_lambda_disp = [Vector{Float64}() for _ in 1:num_domains]
+    aitken_prev_residual_disp = [Vector{Float64}[] for _ in 1:num_domains]
+    aitken_prev_residual_velo = [Vector{Float64}[] for _ in 1:num_domains]
+    aitken_prev_residual_acce = [Vector{Float64}[] for _ in 1:num_domains]
+    aitken_theta_disp = [Float64[] for _ in 1:num_domains]
+    aitken_prev_lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
@@ -804,6 +805,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         relaxation_method,
         aitken_N0, 
         naive_stabilized,
+        lambda_time,
         lambda_disp,
         lambda_velo,
         lambda_acce,
@@ -1213,6 +1215,7 @@ function schwarz(sim::MultiDomainSimulation)
     save_stop_state(sim)
     save_schwarz_state(sim)
     reset_histories(sim)
+    reset_relaxation_state!(sim.controller)
     swap_swappable_bcs(sim)
 
     if sim.controller.use_interface_predictor
@@ -1493,6 +1496,24 @@ function reset_histories(sim::MultiDomainSimulation)
     num_domains = sim.num_domains
     for subsim_index in 1:num_domains
         reset_history(controller, subsim_index)
+    end
+    return nothing
+end
+
+# Clear the per-pair, per-time-slot relaxation state at the start of every
+# controller stop. Slots are keyed by substep time within the stop, so state
+# left over from a previous stop is never a valid previous iterate.
+function reset_relaxation_state!(controller::MultiDomainTimeController)
+    for i in 1:length(controller.lambda_time)
+        empty!(controller.lambda_time[i])
+        empty!(controller.lambda_disp[i])
+        empty!(controller.lambda_velo[i])
+        empty!(controller.lambda_acce[i])
+        empty!(controller.aitken_prev_residual_disp[i])
+        empty!(controller.aitken_prev_residual_velo[i])
+        empty!(controller.aitken_prev_residual_acce[i])
+        empty!(controller.aitken_theta_disp[i])
+        empty!(controller.aitken_prev_lambda_disp[i])
     end
     return nothing
 end
