@@ -131,7 +131,26 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     restart_params = params["restart"]
     haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
     requested_restart_index = _validate_restart_index(restart_params["index"])
-    restart_index, num_steps, restart_time = read_restart_snapshot_time(input_mesh, requested_restart_index)
+    num_steps = Exodus.read_number_of_time_steps(input_mesh)
+    if num_steps < 1
+        norma_abort("Restart mesh '$(input_mesh.file_name)' contains no time steps.")
+    end
+    # Negative indices count back from the last snapshot, Python-style:
+    # -1 is the final snapshot, -2 the one before it, and so on.
+    restart_index =
+        requested_restart_index < 0 ? num_steps + requested_restart_index + 1 : requested_restart_index
+    if restart_index < 1 || restart_index > num_steps
+        norma_abortf(
+            "Restart index %d is out of range for mesh '%s', which has %d time step(s) " *
+            "(valid range is 1:%d, or -1:-%d counting back from the last snapshot).",
+            requested_restart_index,
+            input_mesh.file_name,
+            num_steps,
+            num_steps,
+            num_steps,
+        )
+    end
+    restart_time = Exodus.read_time(input_mesh, restart_index)
     integrator_params = params["time integrator"]
     # A restart at or past `final time` leaves nothing to integrate. Without
     # this check, num_stops = max(round((final_time - restart_time) /
@@ -218,37 +237,20 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     return nothing
 end
 
-# Resolve a possibly-negative `restart: index:` against `mesh`'s available
-# snapshots and read the corresponding snapshot time. Negative indices count
-# back from the last snapshot, Python-style: -1 is the final snapshot, -2 the
-# one before it, and so on. Shared by process_restart!() (single-domain) and
-# process_multidomain_restart!() (per-subdomain checkpoint peek), so both
-# apply the same step-count/range checks instead of maintaining two mirrored
-# copies. `context`, when non-empty, is appended after the mesh file name in
-# error messages to identify which subdomain the check is for (e.g.
-# `" (subdomain 'left.yaml')"`); left as the default empty string for
-# single-domain restart, whose error messages need no such qualifier. Aborts
-# if the mesh has no time steps or if the resolved index is out of range.
-# Returns `(resolved_index, num_steps, time)`.
-function read_restart_snapshot_time(mesh, requested_index::Int64; context::String="")
-    num_steps = Exodus.read_number_of_time_steps(mesh)
-    if num_steps < 1
-        norma_abort("Restart mesh '$(mesh.file_name)'$context contains no time steps.")
-    end
-    resolved_index = requested_index < 0 ? num_steps + requested_index + 1 : requested_index
-    if resolved_index < 1 || resolved_index > num_steps
-        norma_abortf(
-            "Restart index %d is out of range for mesh '%s'%s, which has %d time step(s) " *
-            "(valid range is 1:%d, or -1:-%d counting back from the last snapshot).",
-            requested_index,
-            mesh.file_name,
-            context,
-            num_steps,
-            num_steps,
-            num_steps,
-        )
-    end
-    return resolved_index, num_steps, Exodus.read_time(mesh, resolved_index)
+# The list of `material: <name>: model:` strings actually referenced by a
+# subdomain's `material: blocks:` mapping (block_name => material_name). Used
+# by process_multidomain_restart!() to reject restart for subdomains using
+# material models with internal state that the restart snapshot can't carry
+# (currently just `j2 plasticity`), without having to open the mesh or build
+# the full model. Mirrors the block -> material_name -> model resolution in
+# SolidMechanics() (model.jl) and create_material() (constitutive.jl).
+function _material_models_used(model_params::Parameters)
+    material_params = get(model_params, "material", Parameters())
+    blocks = get(material_params, "blocks", Parameters())
+    return [
+        get(get(material_params, material_name, Parameters()), "model", "")
+        for material_name in values(blocks)
+    ]
 end
 
 # Resolve and validate restart for a multi-domain (Schwarz) simulation. Run
@@ -286,24 +288,14 @@ end
 #
 # No-op when the top-level file has no `restart:` block. Aborts if a
 # subdomain file has its own `restart:` block instead (restart belongs at
-# the top level only, for Schwarz), or if subdomains' checkpoints disagree
-# on what time the shared index lands on. A restarting subdomain using the
-# `j2 plasticity` material model is rejected too, for the same
-# internal-state-variable reason monolithic restart rejects it — but that
-# check is not duplicated here; it is caught later, per subdomain, by
-# SolidMechanics() (model.jl) once real subdomain construction happens. Both
-# FOM (`solid mechanics`) and ROM subdomains may restart, including mixed
+# the top level only, for Schwarz), if subdomains' checkpoints disagree on
+# what time the shared index lands on, or if a restarting subdomain uses the
+# `j2 plasticity` material model, for the same internal-state-variable reason
+# monolithic restart rejects it (see SolidMechanics() in model.jl). Both FOM
+# (`solid mechanics`) and ROM subdomains may restart, including mixed
 # FOM-ROM pairings.
 function process_multidomain_restart!(params::Parameters)
     domain_paths = params["domains"]
-    has_restart = haskey(params, "restart")
-    restart_index = nothing
-    if has_restart
-        restart_params = params["restart"]
-        haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
-        restart_index = _validate_restart_index(restart_params["index"])
-    end
-    restart_time = nothing
     for domain_path in domain_paths
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
         if haskey(subparams, "restart")
@@ -314,22 +306,58 @@ function process_multidomain_restart!(params::Parameters)
                 "block there and remove it from '$domain_path'.",
             )
         end
-        has_restart || continue
+    end
+    haskey(params, "restart") || return nothing
+    restart_params = params["restart"]
+    haskey(restart_params, "index") || norma_abort("`restart:` block must specify an `index`.")
+    restart_index = _validate_restart_index(restart_params["index"])
+    restart_time = nothing
+    for domain_path in domain_paths
+        subparams = YAML.load_file(domain_path; dicttype=Parameters)
+        model_params = get(subparams, "model", Parameters())
+        if "j2 plasticity" in _material_models_used(model_params)
+            norma_abortf(
+                "Schwarz restart does not support the `j2 plasticity` material model " *
+                "(subdomain '%s'), for the same reason monolithic restart does not: the " *
+                "restart snapshot only stores nodal displacement and velocity fields; J2 " *
+                "plasticity's internal state variables (e.g. plastic strain, back stress) " *
+                "are not written to or read from the restart file, so resuming would " *
+                "silently discard the accumulated plastic history. Remove the `restart:` " *
+                "block, or switch to a material model without internal state variables, " *
+                "until restart support for internal variables is implemented.",
+                domain_path,
+            )
+        end
         haskey(subparams, "input mesh file") ||
             norma_abort("Subdomain '$domain_path' has no `input mesh file`.")
         input_mesh_file = subparams["input mesh file"]
         input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
         domain_time = try
-            # Resolved per subdomain against that subdomain's own checkpoint
-            # mesh, since `restart_index` (possibly negative) is what gets
-            # propagated to each subdomain's own `restart:` block later —
-            # see the comment on `_multidomain_restart_index` below.
-            _, _, domain_time = read_restart_snapshot_time(
-                input_mesh,
-                restart_index;
-                context=" (subdomain '$domain_path')",
-            )
-            domain_time
+            num_steps = Exodus.read_number_of_time_steps(input_mesh)
+            if num_steps < 1
+                norma_abort("Restart mesh '$input_mesh_file' (subdomain '$domain_path') contains no time steps.")
+            end
+            # Negative indices count back from the last snapshot, Python-style:
+            # -1 is the final snapshot, -2 the one before it, and so on. Resolved
+            # per subdomain against that subdomain's own checkpoint mesh, since
+            # `restart_index` (possibly negative) is what gets propagated to each
+            # subdomain's own `restart:` block later — see the comment on
+            # `_multidomain_restart_index` below.
+            domain_restart_index = restart_index < 0 ? num_steps + restart_index + 1 : restart_index
+            if domain_restart_index < 1 || domain_restart_index > num_steps
+                norma_abortf(
+                    "Restart index %d is out of range for mesh '%s' (subdomain '%s'), " *
+                    "which has %d time step(s) (valid range is 1:%d, or -1:-%d counting " *
+                    "back from the last snapshot).",
+                    restart_index,
+                    input_mesh_file,
+                    domain_path,
+                    num_steps,
+                    num_steps,
+                    num_steps,
+                )
+            end
+            Exodus.read_time(input_mesh, domain_restart_index)
         finally
             Exodus.close(input_mesh)
         end
@@ -348,7 +376,6 @@ function process_multidomain_restart!(params::Parameters)
             )
         end
     end
-    has_restart || return nothing
     # A restart at or past `final time` leaves nothing to integrate; see the
     # matching check in process_restart!() for why this must be rejected
     # rather than silently allowed to run one control step past final_time.
@@ -623,7 +650,6 @@ function MultiDomainSimulation(params::Parameters)
             norma_log(4, :domain, domain_name)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
             subparams["name"] = domain_name
-            subparams["_is_subdomain"] = true
             if haskey(params, "_multidomain_restart_index")
                 subparams["restart"] = Parameters("index" => params["_multidomain_restart_index"])
             end
