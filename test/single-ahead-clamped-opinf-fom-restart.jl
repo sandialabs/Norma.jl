@@ -4,6 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using YAML
+
 # Runs the AHeaD single-domain clamped (single-Gaussian IC) OpInf-FOM problem
 # two ways and checks that they agree at the final time step:
 #
@@ -35,7 +37,13 @@
         force=true,
     )
 
-    sim_full = Norma.run("clamped-single-gaussian-fom.yaml")
+    # Load into a params dict (instead of running the file directly) so CSV
+    # output can be turned off without touching the original example file.
+    params_full = YAML.load_file("clamped-single-gaussian-fom.yaml"; dicttype=Norma.Parameters)
+    params_full["CSV output interval"] = 0.0
+    params_full["name"] = "clamped-single-gaussian-fom"
+
+    sim_full = Norma.run(params_full)
 
     rm("clamped-single-gaussian-fom.yaml"; force=true)
     rm("clamped_single_gaussian.e"; force=true)
@@ -55,7 +63,11 @@
         force=true,
     )
 
-    sim_restart = Norma.run("clamped-single-gaussian-fom-restart.yaml")
+    params_restart = YAML.load_file("clamped-single-gaussian-fom-restart.yaml"; dicttype=Norma.Parameters)
+    params_restart["CSV output interval"] = 0.0
+    params_restart["name"] = "clamped-single-gaussian-fom-restart"
+
+    sim_restart = Norma.run(params_restart)
 
     rm("clamped-single-gaussian-fom-restart.yaml"; force=true)
     rm("clamped_single_gaussian-in.e"; force=true)
