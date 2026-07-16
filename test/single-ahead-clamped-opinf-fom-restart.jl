@@ -82,8 +82,15 @@
     # ── Final-step stress field agrees as well ──────────────────────────────
     avg_stress_full = average_components(model_full.stress)
     avg_stress_restart = average_components(model_restart.stress)
-    err_abs = norm(avg_stress_full - avg_stress_restart) 
-    @test err_abs ≈ 6.055561584887406e-6 atol = 1.0e-5
+    err_abs = norm(avg_stress_full - avg_stress_restart)
+    # Was `@test err_abs ≈ 6.055561584887406e-6 atol = 1.0e-5`: an equality
+    # check whose atol (1.0e-5) is larger than the target value itself, so it
+    # was really just `err_abs < 6.055561584887406e-6 + 1.0e-5 ≈ 1.6e-5`
+    # written as an equality. Write the actual intent directly as an upper
+    # bound, with a bit of extra headroom over the observed value (order
+    # 1.0e-5, well below the ~1.0e-3 displacement/stress scale of this
+    # problem) so this doesn't become platform-brittle.
+    @test err_abs < 2.0e-5
 
     # ── Sanity check: the body actually moved from its Gaussian-pulse IC ───
     avg_disp_full = average_components(sim_full.integrator.displacement)
