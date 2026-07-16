@@ -30,36 +30,39 @@ and Energy-Consistent Design}
 
 \begin{abstract}
 This note is the consolidated reference for the Schwarz coupling conditions
-implemented in Norma.jl and for the study of their energy behavior in dynamic
-solid mechanics. It records, in order: the Robin and impedance transmission
-conditions on shared (nonoverlap) interfaces and their reflection properties;
-the Dirichlet and impedance conditions on overlap boundaries, including the
-consistent partner traction that makes the impedance-overlap condition exact
-on conforming meshes (energy error $59\% \to 0.08\%$ over $1$\,ms, with no
-adjustable parameters); a systematic transfer-fidelity study on nonconforming
-meshes showing that every increase in transfer fidelity worsens the interface
-energy exchange, because the residual error is a disagreement between the two
-grids' discrete dispersion relations rather than a transfer defect; a
-parametric energy study ($151$ configurations) showing that the interface work
-of the overlap coupling is sign-indefinite --- neighboring mesh ratios swing
-from $-53\%$ to $+174\%$ to $-66\%$ drift --- and that at a ten-millisecond
-horizon $74$ of $108$ nonconforming overlap runs diverge; the theoretical
-requirements for energy consistency (a single-valued interface traction acting
-through $L^2$-adjoint transfer operators, which makes the interface power
-telescope to a sign-definite dissipation on the interface jump); and the
-resulting redesign. The adjoint-paired nonoverlap impedance coupling ---
-one shared cross-mass matrix, force transfers adjoint to the partner's
-kinematic transfers, a harmonic-mean pair impedance, the dynamically
-consistent d'Alembert interface reaction, and an implicit--explicit (IMEX)
-treatment of the interface rows for explicit subdomains --- conserves energy
-to $0.3\%$ over $1$\,ms in all four integrator combinations on conforming and
-mildly nonconforming meshes, never injects energy at any mesh ratio, and holds
-the monodomain trajectory over ten thousand steps. Subcycling with genuine
-piecewise-linear time interpolation of partner data, the measured
-incompatibility of exact interface-work telescoping with a partitioned
-exchange, and the slot-keyed relaxation state required for controller stops
-larger than a subdomain time step complete the picture. Practical
-recommendations and open questions close the note.
+implemented in Norma.jl and for the study of their energy behavior in
+dynamic solid mechanics. On a shared (nonoverlap) interface, the Robin
+condition is fully reflecting and the impedance condition is absorbing, with
+the impedance fixed by material data. On an overlap boundary, the impedance
+condition is consistent with the monodomain solution only when it carries
+the partner traction; with the consistent nodal traction the coupling is
+exact on conforming meshes (energy error $59\% \to 0.08\%$ over $1$\,ms,
+with no adjustable parameters). On nonconforming meshes the overlap coupling
+cannot be assigned a reliable energy budget: because the two sides transfer
+partner data through independent, non-adjoint operators, the interface work
+is sign-indefinite --- measured drifts swing from $-53\%$ to $+174\%$ to
+$-66\%$ across adjacent mesh ratios --- and at a ten-millisecond horizon
+$74$ of $108$ configurations fail by element inversion after exponential
+energy growth. Every remedy attempted at the interface --- variational
+transfer, exact traction transfer, filtered dissipation --- fails for a
+structural reason: the persistent interface jump is a disagreement between
+the two grids' discrete dispersion relations, not a transfer defect. Energy
+consistency requires a single-valued interface traction acting through
+$L^2$-adjoint transfer operators, which makes the interface power telescope
+to a sign-definite dissipation on the interface jump; this construction is
+available only on the nonoverlap variant, whose two sides share one
+interface. The resulting adjoint-paired nonoverlap coupling --- one shared
+cross-mass matrix, force transfers adjoint to the partner's kinematic
+transfers, a harmonic-mean pair impedance, the dynamically consistent
+d'Alembert interface reaction, and an implicit--explicit treatment of the
+interface rows for explicit subdomains --- never injects energy at any mesh
+ratio, conserves energy to $0.3\%$ over $1$\,ms in all four integrator
+combinations on conforming and mildly nonconforming meshes, and holds the
+monodomain trajectory over ten thousand steps. The note also records the
+subcycled (multi-time-step) exchange, the measured incompatibility of exact
+interface-work telescoping with a partitioned iteration, and the slot-keyed
+relaxation state required when controller stops exceed a subdomain time
+step. Practical recommendations and open questions close the note.
 \end{abstract}
 
 \medskip
@@ -109,9 +112,8 @@ built from that interior state (Sec.~\ref{sec:overlap-tc}).
 
 Throughout, $~W_k = \int_{\Gamma_k} ~N_k\,~N_k^\top\,\dd\Gamma$ denotes the
 boundary mass matrix of side $k$, $~P$ a kinematic transfer operator mapping
-partner data to a side's interface nodes, a subscript $p$ (in transmission
-conditions written per side) the partner field evaluated at this side's
-coupling boundary, and $\jump{\cdot}$ an interface jump.
+partner data to a side's interface nodes, a subscript $j$ the partner of
+side $k$, and $\jump{\cdot}$ an interface jump.
 
 \subsection{Benchmark and energy metrics}
 \label{sec:benchmark}
@@ -131,7 +133,7 @@ $6.35/r$\,mm, written as ratio $1{:}r$; the original three-point family used
 $\{1{:}1,\ 3{:}4,\ 1{:}2\}$ (i.e.\ $h = 8.47$ vs.\ $6.35$\,mm at $3{:}4$).
 
 \paragraph{Partition-of-unity (PU) energy.} Summing the two subdomains'
-energies counts the overlap region twice and pollutes the diagnostic: a
+energies counts the overlap region twice and distorts the diagnostic: a
 provably conservative run shows apparent $\pm 13\%$ excursions as the pulse
 transits the overlap. All energies quoted here count the overlap once,
 through a partition of unity. The production implementation
@@ -155,14 +157,27 @@ form
 \end{equation}
 where $~M_L$ is the lumped mass and $\mathrm{SE}$ the stored energy.
 Evaluating instead the consistent-mass kinetic energy at integer steps
-misprices the short-wavelength content of the sharp release front twice over
-(the consistent and lumped Rayleigh quotients diverge at high wavenumber, and
-the integer-step velocity aliases the staggered content): a monodomain
-central-difference run of this benchmark reads $-8.2\%$ at $1$\,ms in the
-consistent-mass integer-step metric and $\pm 0.000\%$ in
+misrepresents the short-wavelength content of the sharp release front in two
+ways: the consistent and lumped Rayleigh quotients diverge at high
+wavenumber, and the integer-step velocity aliases the staggered content. A
+monodomain central-difference run of this benchmark reads $-8.2\%$ at
+$1$\,ms in the consistent-mass integer-step metric and $\pm 0.000\%$ in
 \eqref{eq:staggered}. Norma's energy output evaluates \eqref{eq:staggered}
-for central-difference subdomains. Explicit-subdomain results below use this
-metric unless noted.
+for central-difference subdomains, and explicit-subdomain results below use
+this metric unless noted.
+
+\paragraph{Organization.} Sections \ref{sec:nonoverlap-tc} and
+\ref{sec:overlap-tc} define the four transmission conditions.
+Section~\ref{sec:ladder} establishes the conforming baseline. Sections
+\ref{sec:fidelity} and \ref{sec:study} record the nonconforming overlap
+problem: first the transfer-fidelity study and its conclusion, then the
+parametric energy study and its diagnosis. Section~\ref{sec:theory} states
+the theoretical requirements for energy consistency and
+Sec.~\ref{sec:overlap-design} their consequences for the overlap family.
+Sections \ref{sec:paired}--\ref{sec:windowed} present the adjoint-paired
+nonoverlap coupling, subcycling, long-horizon behavior, and the windowed
+controller stops. Section~\ref{sec:conclusion} collects findings,
+recommendations, and open questions.
 
 \section{Transmission conditions on a shared interface}
 \label{sec:nonoverlap-tc}
@@ -190,7 +205,7 @@ $~f_{\Gamma,k} \leftarrow ~f_{\Gamma,k} - ~t_j\big|_\Gamma
 The parameter $\alpha$ has units of stiffness per unit area
 ($\mathrm{N}/\mathrm{m}^3$) and interpolates between a Dirichlet constraint
 ($\alpha \to \infty$) and a Neumann condition ($\alpha \to 0$); the optimal
-value minimizes the Schwarz convergence rate and in practice the scaling
+value minimizes the Schwarz convergence rate, and in practice the scaling
 $\alpha \sim E/h$ has been effective.
 
 \subsection{Impedance coupling}
@@ -228,7 +243,7 @@ $c_v = \gamma/(\beta\,\Delta t)$, so the self term contributes the tangent
 $~K_{\mathrm{is}} = (Z\,c_v + \alpha)\,~W$ and the self force
 $~f_{\mathrm{is}} = ~W(Z\,\dot{~u}_k + \alpha\,~u_k)$; the partner datum
 enters the boundary force through the same surface operator and transfer as
-the Robin case with the additional velocity term. In the quasi-static limit
+the Robin case, with the additional velocity term. In the quasi-static limit
 Norma.jl sets $c_v = 0$ and the impedance condition collapses onto the Robin
 condition \eqref{eq:rr}; note that a quasi-static impedance run with
 $\alpha = 0$ degenerates to a pure Neumann condition and does not couple the
@@ -369,10 +384,11 @@ nodal stress recovery misrepresents. Implemented by
 $~t_j$ is obtained by interpolating the partner's nodal-recovered stress
 with the same shape-function data used for the kinematic fields and
 contracting with $\Omega_k$'s outward normals. Consistent ($L^2$-projected,
-Cholesky-factorized) nodal recovery is force-enabled for any model carrying
-this condition; lumped recovery's $O(h)$ nodal-stress error feeds directly
-into the transmission condition and dominates the residual energy error
-($13.6\%$ vs.\ $1.5\%$ with consistent recovery; Sec.~\ref{sec:ladder}).
+Cholesky-factorized) nodal recovery is enabled automatically for any model
+carrying this condition; lumped recovery's $O(h)$ nodal-stress error feeds
+directly into the transmission condition and dominates the residual energy
+error ($13.6\%$ vs.\ $1.5\%$ with consistent recovery;
+Sec.~\ref{sec:ladder}).
 
 \paragraph{Discrete assembly.} The self tangent consists of $3\times 3$
 nodal blocks $~K_{\mathrm{is},ij} = W_{ij}\,(c_v\,~Z(~n_j) + \alpha\,~I)$;
@@ -382,14 +398,14 @@ datum enters as
 $~f_\Gamma \leftarrow ~f_\Gamma
  + ~W\,~t_j + ~W(~Z\,\dot{~u}_j + \alpha\,~u_j)$,
 with the kinematic fields transferred variationally by default
-(Sec.~\ref{sec:redesign}) or by pointwise interpolation as a legacy option.
-At the Schwarz fixed point all three jumps in \eqref{eq:imp-overlap} vanish
-for the monodomain solution, so on conforming meshes the converged coupled
-solution is the monodomain solution and the condition needs no parameter
-tuning: $~Z$ is fixed by the partner material and $\alpha$ may be zero. A
-step-dependent multiplier on $~Z$ (\code{impedance\_scale}) rescales the
-whole operator; with the traction term in place the conserving scale is the
-physical one (scale $= 1$), and the historical role of the scale as a
+(Sec.~\ref{sec:overlap-design}) or by pointwise interpolation as a legacy
+option. At the Schwarz fixed point all three jumps in \eqref{eq:imp-overlap}
+vanish for the monodomain solution, so on conforming meshes the converged
+coupled solution is the monodomain solution and the condition needs no
+parameter tuning: $~Z$ is fixed by the partner material and $\alpha$ may be
+zero. A step-dependent multiplier on $~Z$ (\code{impedance\_scale}) rescales
+the whole operator; with the traction term in place the conserving scale is
+the physical one (scale $= 1$), and the historical role of the scale as a
 per-problem tuning parameter --- which compensated the missing-traction
 dissipation --- is obsolete.
 
@@ -401,9 +417,14 @@ by the impedance overlap condition and not exposed separately.
 
 \subsection{Summary of the four conditions}
 
-\paragraph{Nonoverlap.}
-\begin{center}
+Tables \ref{tab:nonoverlap-conditions} and \ref{tab:overlap-conditions}
+collect the four conditions and their discrete ingredients.
+
+\begin{table}[htbp]
+\centering
 \small
+\caption{Transmission conditions on a shared (nonoverlap) interface.}
+\label{tab:nonoverlap-conditions}
 \begin{tabular}{lcc}
 \toprule
 & Robin & Impedance \\
@@ -434,11 +455,13 @@ Reflection $\lvert R \rvert$ &
   $< 1$; $0$ at $\alpha = 0$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-\paragraph{Overlap.}
-\begin{center}
+\begin{table}[htbp]
+\centering
 \small
+\caption{Transmission conditions on an overlap boundary.}
+\label{tab:overlap-conditions}
 \begin{tabular}{lcc}
 \toprule
 & Dirichlet & Impedance \\
@@ -466,7 +489,7 @@ $\alpha$ set by &
   user, optional \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 \section{Conforming meshes: the partner-traction ladder}
 \label{sec:ladder}
@@ -522,7 +545,7 @@ is dissipated at rate $\lvert \delta t \rvert^2/Z_s$, and
 $Z_s = Z_p/\sqrt{3}$ amplifies it. With the consistent traction the error
 term is gone and the tensor impedance conserves to $0.076\%$. Transmission
 conditions should be benchmarked on conforming meshes; nonconforming
-results can flatter a scheme through error cancellation
+results can overstate a scheme's accuracy through error cancellation
 (Sec.~\ref{sec:fidelity}).
 
 \paragraph{Impedance scale.} With the traction term missing, a swept
@@ -535,20 +558,26 @@ tuning of the scale (and of large $\alpha$ values near
 $5\times 10^{11}$--$10^{12}$) optimized a double-counted diagnostic, not the
 physics.
 
-\section{Nonconforming overlap I: transfer fidelity}
+\section{Nonconforming overlap: transfer fidelity}
 \label{sec:fidelity}
 
 With the conforming case closed, the nonconforming overlap interface was
 studied on the $3{:}4$ pair ($h = 8.47$ vs.\ $6.35$\,mm). The net drift
-looks small ($\pm 1\%$ at $1$\,ms), but the channel decomposition shows this
-is a cancellation of two error channels, each moving roughly half the system
-energy per millisecond:
+appears small ($\pm 1\%$ at $1$\,ms), but the channel decomposition
+(Table~\ref{tab:channels-fidelity}) shows this is a cancellation of two
+error channels, each moving roughly half the system energy per millisecond.
 
-\begin{center}
+\begin{table}[htbp]
+\centering
 \small
+\caption{Interface-work channels of the impedance overlap coupling with
+pointwise transfer and recovered-stress traction (1\,ms, II, PU metric).
+The small net drift on the nonconforming pair is the difference of two
+large channels.}
+\label{tab:channels-fidelity}
 \begin{tabular}{lccc}
 \toprule
-1\,ms, II, PU metric & conforming & nonconforming $h$ & nonconforming $h/2$ \\
+& conforming & nonconforming $h$ & nonconforming $h/2$ \\
 \midrule
 dashpot (spurious) work & $-42.6$\,J \,(2.8\%) & $-606.5$\,J \,(40\%) & $-598.5$\,J \,(40\%) \\
 traction-channel work & --- & $+677$\,J \,(45\%) & $+768$\,J \,(51\%) \\
@@ -556,7 +585,7 @@ net PU-energy drift & $1.5\% \to 0.08\%$ & $-0.75$\% & $+1.5$\% \\
 mean velocity jump (RMS) & 8.9\,m/s & 40\,m/s (growing $15 \to 60$) & 27\,m/s \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 Three facts drove the investigation: (i) the channels do not shrink under
 mesh refinement, so the pointwise-interpolation transfer feeds the condition
@@ -565,7 +594,7 @@ of two large channels and flips sign between $h$ and $h/2$ --- it is not
 robust; (iii) the velocity jumps grow through the run: each interface pass
 leaves mesh-scale residue that reverberates between the grids.
 
-\subsection{The variational transfer and the fidelity ladder}
+\subsection{The variational transfer and the fidelity sequence}
 \label{sec:fidelity-ladder}
 
 Gander--Halpern--Nataf state three conditions for discrete energy
@@ -608,14 +637,16 @@ error):
   the partner side, before transfer.
 \end{itemize}
 
-The measured ladder at resolution $h$ (dashpot work and net drift at
-$1$\,ms):
-
-\begin{center}
+\begin{table}[htbp]
+\centering
 \small
+\caption{Transfer-fidelity sequence on the nonconforming $3{:}4$ pair at
+resolution $h$ (1\,ms, II, PU metric). Each increase in transfer fidelity
+increases the spurious interface work.}
+\label{tab:fidelity-ladder}
 \begin{tabular}{lcc}
 \toprule
-1\,ms, II, PU metric, $h$ & dashpot work & net PU drift \\
+& dashpot work & net PU drift \\
 \midrule
 pointwise + recovered stress & $-607$\,J & $-0.75$\% \\
 variational + recovered stress & $-726$\,J & $+6.2$\% (growth) \\
@@ -624,21 +655,22 @@ variational, subdivided + consistent traction & $-1129$\,J & $+9.3$\% (growth) \
 single-operator characteristic & $-1084$\,J & $+9.8$\% (growth) \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-Every fidelity increase makes the interface energy exchange larger. The
-variational transfer does restore an $h$-dependence that pointwise
-interpolation lacks (dashpot work $726 \to 484$\,J under refinement, versus
-unchanged), but the error class does not change, and at production
-resolution the net worsens because projecting the kinematics decorrelates
-the kinematic-transfer error from the recovered-traction error, breaking the
+The measured sequence (Table~\ref{tab:fidelity-ladder}) shows that every
+fidelity increase enlarges the spurious interface work. The variational
+transfer does restore an $h$-dependence that pointwise interpolation lacks
+(dashpot work $726 \to 484$\,J under refinement, versus unchanged), but the
+magnitude of the channels does not change class, and at production
+resolution the net worsens: projecting the kinematics decorrelates the
+kinematic-transfer error from the recovered-traction error, breaking the
 cancellation that kept the pointwise scheme's net small. The
 characteristic-transfer result refutes the hypothesis that the operator
-pairing between traction and velocity drives the residual. The conclusion is
-structural, not implementational: \emph{on nonmatching grids, content that
-cannot be represented identically across the interface must be dissipated;
-smoothing the transferred data is beneficial, and nodal stress recovery had
-been acting as a load-bearing low-pass filter.}
+pairing between traction and velocity drives the residual. The conclusion
+is structural, not implementational: \emph{on nonmatching grids, content
+that cannot be represented identically across the interface must be
+dissipated; smoothing the transferred data is beneficial, and nodal stress
+recovery had been providing exactly that stabilizing attenuation.}
 
 \subsection{Content-aware absorption: a decisive null result}
 \label{sec:content-aware}
@@ -653,21 +685,21 @@ interfaces and on the coarse side of the study pair, is nonzero only on the
 fine side ($\norm{~F} = 0.44$), and is provably dissipative (asserted in
 test 105). \textbf{Its measured effect is null}: the absorber drains
 $4.6$\,J over $1$\,ms while the channels and the net remain identical to the
-baseline. Because the operator is verified, the null is informative:
+baseline. Because the operator is verified, the null result is informative:
 \emph{the reverberating content lies inside the transferable subspace}. Both
 grids can represent the content that circulates; they disagree about it
 because their discrete dispersion relations differ. No transfer-side
 construction can remove a dispersion disagreement --- which retroactively
-explains the entire fidelity ladder.
+explains the entire fidelity sequence.
 
 The closing diagnostic confirms the mechanism: rerunning the pointwise
 baseline with a dissipative integrator (Newmark $\gamma = 0.6$,
-$\beta = 0.3025$) collapses the dashpot work from $-607$ to $-231$\,J and
+$\beta = 0.3025$) reduces the dashpot work from $-607$ to $-231$\,J and
 the velocity jumps \emph{decay} ($11.8 \to 5.6$\,m/s between run halves)
 instead of growing ($33 \to 47$): the reverberation loop is closed by
-subdomain-level damping, not by the interface. ($\gamma = 0.6$ is a blunt
-instrument --- it also removed $87\%$ of the physical energy on this
-broadband benchmark.)
+subdomain-level damping, not by the interface. (Newmark $\gamma = 0.6$
+damps broadband: it also removed $87\%$ of the physical energy on this
+benchmark.)
 
 \subsection{HHT-$\alpha$ damping and its cost}
 \label{sec:hht}
@@ -677,10 +709,15 @@ HHT-$\alpha$ numerical dissipation was added to the Newmark integrator
 the blended state $(1-\bar\alpha)\,u_{n+1} + \bar\alpha\,u_n$;
 $\gamma = 1/2 + \bar\alpha$ and $\beta = (1+\bar\alpha)^2/4$ derived;
 $\rho_\infty = (1-\bar\alpha)/(1+\bar\alpha)$) and swept on both mesh pairs
-at $1$\,ms:
+at $1$\,ms (Table~\ref{tab:hht}).
 
-\begin{center}
+\begin{table}[htbp]
+\centering
 \small
+\caption{HHT-$\alpha$ sweep on the impedance overlap coupling (pointwise
+transfer, 1\,ms). The interface-specific extra loss is the nonconforming
+loss beyond the damping cost measured on the conforming pair.}
+\label{tab:hht}
 \begin{tabular}{lccccc}
 \toprule
 $\bar\alpha$ & 0 & 0.02 & 0.05 & 0.1 & 0.2 \\
@@ -692,32 +729,41 @@ dashpot work [J] & $-607$ & $-595$ & $-580$ & $-561$ & $-540$ \\
 jump growth (halves, m/s) & $33\to47$ & $32\to44$ & $31\to41$ & $30\to37$ & $29\to32$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-Mild HHT barely touches the interface channels even though
+Mild HHT barely reduces the interface channels even though
 $\bar\alpha = 0.1$ has the same $\rho_\infty = 0.818$ as the Newmark
 $\gamma = 0.6$ diagnostic: at $\Delta t = 10^{-6}$\,s the mesh-frequency
 band sits at $\omega\Delta t \approx 0.3$--$0.7$, which the time step
 resolves and HHT (by design) preserves, while broadband first-order
 Newmark-$\gamma$ damping reaches it --- and the physics with it ($87\%$
-loss vs.\ $17\%$ at the same $\rho_\infty$). Damping converts the fragile
-$\pm 1\%$ net (sign-indefinite, growth-capable) into monotone, bounded
-decay at a cost proportional to how much of the problem's energy lives in
-the reverberating band; on this benchmark that fraction is large by
-construction (the parabolic release has no scale separation), whereas
-production problems with smooth loading and resolution margin should obtain
-the robustness at small cost with $\bar\alpha \approx 0.02$--$0.05$.
+loss vs.\ $17\%$ at the same $\rho_\infty$). Enlarging the time step to
+$\Delta t = 4\times 10^{-6}$\,s, which moves the band into HHT's damped
+range, does not help on this benchmark: the conforming damping cost grows
+to $31\%$, because the parabolic release has no scale separation --- its
+physical content extends to the grid scale, so any damping strategy removes
+physical energy. In general, damping converts the fragile $\pm 1\%$ net
+(sign-indefinite, growth-capable) into monotone, bounded decay at a cost
+proportional to how much of the problem's energy lies in the reverberating
+band; production problems with smooth loading and resolution margin should
+obtain the robustness at small cost with
+$\bar\alpha \approx 0.02$--$0.05$.
 
-\section{Nonconforming overlap II: the parametric energy study}
+\section{Nonconforming overlap: the parametric energy study}
 \label{sec:study}
 
-\subsection{Integrator--overlap--ratio sweep}
+\subsection{Drift across integrators, overlap widths, and mesh ratios}
 \label{sec:observed}
 
-Drift $E(1\,\mathrm{ms})/E(0) - 1$ in percent, pointwise transfer, across
-integrator pairs, overlap widths, and mesh ratios:
+Table~\ref{tab:drift-1ms} reports the drift $E(1\,\mathrm{ms})/E(0) - 1$
+with pointwise transfer across integrator pairs, overlap widths, and mesh
+ratios.
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Energy drift at 1\,ms of the impedance overlap coupling
+(pointwise transfer, PU metric), in percent.}
+\label{tab:drift-1ms}
 \begin{tabular}{llrrrr}
 \toprule
 overlap [m] & ratio & II & IE & EI & EE \\
@@ -733,9 +779,9 @@ overlap [m] & ratio & II & IE & EI & EE \\
        & 1:2 & $-63.8$ & $-64.3$ & $-70.8$ & $-61.9$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-Three regimes: (a) conforming implicit--implicit runs conserve to
+Three regimes appear: (a) conforming implicit--implicit runs conserve to
 $\le 0.1\%$ at every overlap width; (b) nonconforming runs lose tens of
 percent, worse with mesh ratio and with smaller overlap; (c) a minority of
 cases, including II at maximum overlap and $1{:}2$, \emph{gain} energy.
@@ -748,9 +794,15 @@ to $25.4\%$ --- helpful, not structural.
 \subsection{Channel-resolved interface work}
 \label{sec:channels}
 
-Integrated interface work over $1$\,ms (II runs, both subdomains):
+Table~\ref{tab:channel-work} reports the interface work integrated over
+$1$\,ms for representative II runs, summed over both subdomains.
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Channel-resolved interface work of the impedance overlap coupling
+(1\,ms, II runs, both subdomains). Positive dashpot work in the fourth row
+proves the discrete dashpot term is not a quadratic form.}
+\label{tab:channel-work}
 \begin{tabular}{lrrrr}
 \toprule
 case & $\Delta E$ blended & dashpot work & traction work & jump RMS \\
@@ -762,7 +814,7 @@ nonconf.\ 0.0508, 1:2 (pointwise) & $+188$\,J  & $\mathbf{+554}$\,J & $-211$\,J 
 nonconf.\ 0.0127, 3:4 (variational) & $-67$\,J & $-864$\,J & $+780$\,J & $\sim 26$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 Three facts follow. First, on conforming meshes the dashpot channel is
 negligible and the coupling is conservative: the velocity jump closes at
@@ -770,7 +822,7 @@ Schwarz convergence. Second, on nonconforming meshes the dashpot channel
 carries the loss: the jump is an order of magnitude larger and never closes
 --- the coarse trace space cannot represent the fine side's boundary
 velocity, and the dashpot persistently absorbs the difference, exactly as an
-absorbing boundary absorbs outgoing content. Third, and decisively for the
+absorbing boundary absorbs outgoing content. Third, and decisive for the
 mechanism: in the $0.0508$/1:2 case the ``dashpot'' does $+554$\,J of
 \emph{positive} work. A dissipator can never do positive work; this proves
 the discrete dashpot term is not a quadratic form. Because each subdomain
@@ -793,9 +845,14 @@ damping force.
 
 To separate ``defect of the impedance condition'' from ``price of
 nonconforming overlap coupling,'' the same nine mesh configurations were run
-with Dirichlet overlap coupling (II), in both transfer flavors:
+with Dirichlet overlap coupling (II), in both transfer variants
+(Table~\ref{tab:dbc}).
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Energy drift at 1\,ms of Dirichlet overlap coupling (II).
+$^{*}$\,run failed (Newton divergence) before 1\,ms; drift at last stop.}
+\label{tab:dbc}
 \begin{tabular}{llrr}
 \toprule
 overlap [m] & ratio & Dirichlet pointwise & Dirichlet weak \\
@@ -810,9 +867,8 @@ overlap [m] & ratio & Dirichlet pointwise & Dirichlet weak \\
        & 3:4 & $+33\%$ & $+22\%$ \\
        & 1:2 & $+3268\%^{*}$ & $+262\%$ \\
 \bottomrule
-\end{tabular}\\[2pt]
-{\footnotesize $^{*}$ run died (Newton failure) before 1\,ms; drift at last stop.}
-\end{center}
+\end{tabular}
+\end{table}
 
 Hard kinematic matching conserves essentially exactly on conforming meshes
 and is severely unstable on every nonconforming one --- and the weak
@@ -829,16 +885,21 @@ through the overlap volume.
 \subsection{Mesh-ratio sweep: injection is generic}
 \label{sec:ratiosweep}
 
-A finer-grained sweep (originating in a parametric study by our intern
-Lukas, then confirmed and extended) coarsens the clamped mesh through
-$r = 1.0, 0.9, \dots, 0.2$ at all three overlap widths and all four
-integrator pairs, with variational transfer throughout --- $108$ runs. The
-$1{:}1.0$ column reproduces the conforming baselines of
-Sec.~\ref{sec:observed} to all printed digits, and $1{:}0.5$ reproduces the
-earlier variational $1{:}2$ results exactly.
+An independent parametric study observed significant energy injection at
+mesh ratios the original $\{1{:}1, 3{:}4, 1{:}2\}$ family does not sample.
+The following sweep confirms and maps the effect: the clamped mesh is
+coarsened through $r = 1.0, 0.9, \dots, 0.2$ at all three overlap widths
+and all four integrator pairs, with variational transfer throughout ---
+$108$ runs (Table~\ref{tab:ratio-sweep}). The $1{:}1.0$ column reproduces
+the conforming baselines of Sec.~\ref{sec:observed} to all printed digits,
+and $1{:}0.5$ reproduces the earlier variational $1{:}2$ results exactly.
 
-\begin{center}
+\begin{table}[htbp]
+\centering
 \small\setlength{\tabcolsep}{3.6pt}
+\caption{Energy drift at 1\,ms across the mesh-ratio family (impedance
+overlap coupling, variational transfer, PU metric), in percent.}
+\label{tab:ratio-sweep}
 \begin{tabular}{l rrrr rrrr rrrr}
 \toprule
 & \multicolumn{4}{c}{overlap 0.0508\,m} & \multicolumn{4}{c}{overlap 0.0254\,m}
@@ -857,7 +918,7 @@ ratio & II & IE & EI & EE & II & IE & EI & EE & II & IE & EI & EE \\
 1:0.2 & $-79.1$ & $-76.8$ & $-80.8$ & $-78.9$ & $-66.5$ & $-66.2$ & $-86.3$ & $-87.4$ & $-22.2$ & $-45.8$ & $-91.2$ & $-90.3$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 Three observations sharpen the diagnosis.
 
@@ -869,16 +930,16 @@ Three observations sharpen the diagnosis.
   place. The contraction property bounds the transfer but not the sign of
   the dashpot work; no per-side transfer improvement yields
   sign-definiteness on the two-surface overlap coupling.
-  \item[An injection resonance.] At $0.0254$/$1{:}0.3$ the coupling drives
+  \item[A strong injection case.] At $0.0254$/$1{:}0.3$ the coupling drives
   the beam to $+174\%$ (II) and $+275\%$ (IE) of $E(0)$, growing smoothly
   for ${\sim}0.7$\,ms and saturating near $3$--$4\times E(0)$ --- steady
-  interface pumping, not a numerical divergence. At this ratio the clamped
-  mesh has degenerated to a single-element cross-section, but degeneracy
-  alone does not decide the outcome: the same clamped mesh at quarter
-  overlap dissipates $-30.5\%$, and the explicit-clamped pairs on the
-  identical configuration dissipate $-81\%$. Whether the sign-indefinite
-  interface work injects or absorbs is a property of the mesh pair and the
-  overlap geometry together.
+  energy injection at the interface rather than a numerical divergence. At
+  this ratio the clamped mesh has degenerated to a single-element
+  cross-section, but degeneracy alone does not decide the outcome: the same
+  clamped mesh at quarter overlap dissipates $-30.5\%$, and the
+  explicit-clamped pairs on the identical configuration dissipate $-81\%$.
+  Whether the sign-indefinite interface work injects or absorbs is a
+  property of the mesh pair and the overlap geometry together.
   \item[The drift is strongly non-monotone in the ratio.] At $0.0254$
   overlap, II moves $-52.7 \to +173.7 \to -66.5\%$ across the three adjacent
   ratios $1{:}0.4 \to 1{:}0.3 \to 1{:}0.2$. There is no usable regime map of
@@ -888,12 +949,12 @@ Three observations sharpen the diagnosis.
 \end{description}
 
 This closes the question of whether the nonconforming overlap coupling can
-be trusted with a drift budget: it cannot. The interface work is
+be assigned a reliable energy budget: it cannot. The interface work is
 sign-indefinite in practice as well as in principle, and both signs are
 realized at large amplitude across neighboring points of a smooth parameter
 family.
 
-\section{Theoretical requirements for energy consistency}
+\section{Requirements for energy consistency}
 \label{sec:theory}
 
 Four independent lines of analysis agree on the structure of the problem
@@ -974,8 +1035,8 @@ has no sign. Liu et al.\ additionally warn that nonconforming
 cross-interpolation matrices are severely ill-conditioned and that interface
 unknowns may need implicit treatment even between explicit interiors (their
 IMEX-Newmark) --- directly relevant to the conforming IE/EE growth ($+5$ to
-$+10\%$ in Sec.~\ref{sec:observed}), where the explicitly evaluated dashpot
-at lagged time levels injects energy that central difference
+$+10\%$ in Table~\ref{tab:drift-1ms}), where the explicitly evaluated
+dashpot at lagged time levels injects energy that central difference
 ($\gamma = \tfrac12$, zero algorithmic damping) never removes.
 
 \subsection{Synthesis: why each observed regime occurs}
@@ -1002,61 +1063,66 @@ at lagged time levels injects energy that central difference
   \item[Variational improvement.] The variational projection is a
   contraction and the characteristic transfer restores much of the traction
   consistency, but the dashpot still sees the full jump; the net outcome
-  rides on near-cancellation of two large channels.
+  depends on the near-cancellation of two large channels.
 \end{description}
 
-\section{Redesign within the overlap family}
-\label{sec:redesign}
+\section{Design conclusions for the overlap family}
+\label{sec:overlap-design}
 
-Four redesign phases were formulated from the theory; their outcomes:
+The theory and the measurements of Secs.~\ref{sec:fidelity} and
+\ref{sec:study} yield four conclusions for the overlap coupling.
 
-\begin{description}[style=unboxed,leftmargin=0pt,itemsep=2pt]
-  \item[Phase 1 --- variational transfer by default (implemented,
-  reframed).] The full adjoint pairing of \eqref{eq:adjoint} presumes a
-  \emph{shared} interface on which the two sides' works telescope. The
-  overlap variant has none: data are exchanged on two distinct surfaces
-  $\Gamma_1, \Gamma_2$, so no pairing of their works exists, and energy
-  consistency can come only from agreement of the two solutions in the
-  overlap --- exactly what dispersion mismatch precludes at fixed $h$
-  (Sec.~\ref{sec:content-aware}). The implementable core of Phase~1 is the
-  contraction requirement: \code{transfer: variational} is the default for
-  the impedance overlap condition (pointwise remains an explicit legacy
-  option; the two coincide on node-aligned interfaces). Empirically this
-  converts the worst sign-indefinite case ($+554$\,J of positive dashpot
-  work) into sign-correct controlled dissipation and improves $17$ of $24$
-  nonconforming cases, but it cannot eliminate the dispersion-jump
-  dissipation, and isolated growth cells persist.
-  \item[Phase 2 --- dashpot on the representable jump (implemented;
-  falsified).] Replace $~Z\jump{\dot{~u}}$ by
-  $~Z\,\widehat\Pi\,\jump{\dot{~u}}$, where $\widehat\Pi$ is the
-  $W$-orthogonal projection onto the transferable span (\code{representable
-  dashpot: true}; a strict no-op on node-aligned interfaces). The premise
-  was that the persistent jump is trace content the coarse space cannot
-  represent, so that filtering it would let it reflect (conserving) instead
-  of being absorbed. Measurement falsifies the premise: on the
-  $0.0127$/3:4 case the fine side's $\widehat\Pi$ is a genuine projection
-  ($\norm{\widehat\Pi - I}/\sqrt{n} = 0.48$) yet the dashpot work is
-  unchanged ($-1066 \to -1065$\,J) --- the jump lies \emph{inside} the
-  representable subspace. The persistent jump is a solution-content defect,
-  not a spatial-representability defect: coarse-grid dispersion phase-lags
-  the transiting pulse, so at Schwarz convergence the two discrete solutions
-  disagree by a smooth, in-band field that no static spatial filter can
-  remove. The option is retained (default off) as a diagnostic of where the
-  jump lives.
-  \item[Phases 3 and 4 --- harmonic-mean impedance; implicit interface for
-  explicit subdomains.] Both belong structurally to the nonoverlap variant,
-  where they were implemented as part of the adjoint pairing
-  (Sec.~\ref{sec:paired}): the pair impedance $2Z_1 Z_2/(Z_1 + Z_2)$ per
-  wave family (the Riemann-solver weighting of Duru et al.\ and Liu et
-  al.), and the IMEX interface treatment (Sec.~\ref{sec:imex}).
-\end{description}
+\paragraph{Sign-definiteness is structurally unavailable.} The adjoint
+condition \eqref{eq:adjoint} presumes a \emph{shared} interface on which
+the two sides' works telescope. The overlap variant has none: data are
+exchanged on two distinct surfaces $\Gamma_1, \Gamma_2$, so no pairing of
+their works exists, and energy consistency could come only from agreement
+of the two discrete solutions in the overlap --- exactly what the
+dispersion disagreement of Sec.~\ref{sec:content-aware} precludes at fixed
+$h$. No transfer-side construction can make the overlap interface work
+sign-definite, and a universal dashpot sign test is not an attainable
+regression criterion for this variant.
+
+\paragraph{The contractive transfer is the implementable requirement.}
+\code{transfer: variational} is therefore the default for the impedance
+overlap condition (pointwise interpolation remains an explicit legacy
+option; the two coincide on node-aligned interfaces). Empirically
+(Sec.~\ref{sec:observed}) the variational transfer converts the worst
+sign-indefinite case ($+554$\,J of positive dashpot work) into dissipation
+of the correct sign and improves $17$ of $24$ nonconforming cases, but it
+cannot eliminate the dispersion-jump dissipation, and isolated growth cells
+persist.
+
+\paragraph{Restricting the dashpot to the representable jump does not
+help.} The redesign also tested replacing $~Z\jump{\dot{~u}}$ by
+$~Z\,\widehat\Pi\,\jump{\dot{~u}}$, where $\widehat\Pi$ is the
+$W$-orthogonal projection onto the transferable span
+(\code{representable dashpot: true}; a strict no-op on node-aligned
+interfaces). The premise was that the persistent jump is trace content the
+coarse space cannot represent, so that filtering it would let it reflect
+(conserving) instead of being absorbed. Measurement falsifies the premise:
+on the $0.0127$/3:4 case the fine side's $\widehat\Pi$ is a genuine
+projection ($\norm{\widehat\Pi - I}/\sqrt{n} = 0.48$) yet the dashpot work
+is unchanged ($-1066 \to -1065$\,J) --- the jump lies \emph{inside} the
+representable subspace, consistent with the dispersion diagnosis: the two
+discrete solutions disagree by a smooth, in-band field that no static
+spatial filter can remove. Where $\widehat\Pi$ does act ($0.0508$/1:2),
+per-side filtering worsens the transfer asymmetry and the drift
+($+12.5 \to +45.6\%$). The option is retained (default off) as a diagnostic
+of where the jump lies.
+
+\paragraph{The remaining theoretical ingredients belong to the nonoverlap
+variant.} The adjoint pairing itself, the harmonic-mean (Riemann-weighted)
+pair impedance, and the implicit treatment of interface terms for explicit
+subdomains all require a single shared interface; their implementation is
+the subject of Sec.~\ref{sec:paired}.
 
 The channel-resolved interface-work instrumentation remains the regression
-metric: the dashpot work must be $\approx 0$ on conforming meshes at Schwarz
-tolerance, and the study's drift tables are the acceptance benchmark for any
-future change to the transmission machinery. A universal dashpot sign test
-is \emph{not} attainable in the overlap variant, for the structural reason
-stated under Phase~1.
+metric for the overlap family: the dashpot work must be $\approx 0$ on
+conforming meshes at Schwarz tolerance, and the drift tables of
+Sec.~\ref{sec:study} are the acceptance benchmark for any future change to
+the transmission machinery --- a small net drift can be a cancellation of
+large opposing channels.
 
 \section{The adjoint-paired nonoverlap coupling}
 \label{sec:paired}
@@ -1064,8 +1130,8 @@ stated under Phase~1.
 The theory identifies the nonoverlap impedance variant --- one shared
 interface $\Gamma$, transmission $~t + Z\dot{~u} + \alpha W ~u = g$ --- as
 the member of the family on which the adjoint condition \eqref{eq:adjoint}
-is actually available. It has been implemented and measured on the
-cantilever benchmark, split at $x = 0.127$\,m, with the mesh-ratio family of
+is available. It has been implemented and measured on the cantilever
+benchmark, split at $x = 0.127$\,m, with the mesh-ratio family of
 Sec.~\ref{sec:ratiosweep}.
 
 \subsection{Baseline: the legacy coupling}
@@ -1116,7 +1182,7 @@ the two Robin conditions add to traction balance and subtract to
 $Z\,\dot{~\delta} + \alpha W ~\delta = 0$ for the interface jump $~\delta$;
 with $~\delta(0) = 0$ the converged solution is independent of $Z > 0$ and
 $\alpha \ge 0$ --- both act only on the convergence rate of the iteration
-and on the interface energy bookkeeping en route. What consistency does
+and on the interface energy bookkeeping during it. What consistency does
 require is that $\alpha$ be one number per interface: the Robin spring
 stores and returns energy conservatively only when both sides' interface
 forces pair through the same coefficient. Mismatched values under pairing
@@ -1124,9 +1190,11 @@ are therefore a hard input error --- Norma aborts, naming both side sets and
 values --- since silently averaging them would apply a condition neither
 side stated.
 
-Drift at $1$\,ms, implicit--implicit:
-
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Energy drift at 1\,ms of the nonoverlap impedance coupling,
+implicit--implicit, legacy vs.\ adjoint-paired, in percent.}
+\label{tab:legacy-paired}
 \begin{tabular}{lrr}
 \toprule
 ratio & legacy II & paired II \\
@@ -1142,7 +1210,7 @@ ratio & legacy II & paired II \\
 1:0.2 & $+77.49$ & $-13.26$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 \begin{figure}[htbp]
 \centering
@@ -1158,16 +1226,17 @@ conforming and $1{:}0.9$ meshes.}
 \label{fig:legacy-paired}
 \end{figure}
 
-Three properties, in order of importance. First, \emph{no injection at any
-ratio}: the interface work is sign-definite, as the telescoping identity
-\eqref{eq:telescope} guarantees. Second, near-conservation through mild
-contrast ($-0.03\%$ at $1{:}0.9$, where every other variant tested loses or
-gains several percent). Third, the residual dissipation at strong contrast
-is the genuine trace-space jump being absorbed at rate
-$Z\!\int_\Gamma \jump{\dot{~u}}^2$: at the exactly nested ratio $1{:}0.5$
-(where the legacy transfer is coincidentally adjoint and the quadrature is
-exact) paired and legacy agree to $0.1\%$, so the remaining loss is not a
-transfer artifact but the representability price of
+Table~\ref{tab:legacy-paired} and Fig.~\ref{fig:legacy-paired} compare the
+two couplings. Three properties, in order of importance. First, \emph{no
+injection at any ratio}: the interface work is sign-definite, as the
+telescoping identity \eqref{eq:telescope} guarantees. Second,
+near-conservation through mild contrast ($-0.03\%$ at $1{:}0.9$, where
+every other variant tested loses or gains several percent). Third, the
+residual dissipation at strong contrast is the genuine trace-space jump
+being absorbed at rate $Z\!\int_\Gamma \jump{\dot{~u}}^2$: at the exactly
+nested ratio $1{:}0.5$ (where the legacy transfer is coincidentally adjoint
+and the quadrature is exact) paired and legacy agree to $0.1\%$, so the
+remaining loss is not a transfer artifact but the representability price of
 Sec.~\ref{sec:ghn} --- now paid in a controlled, monotone, sign-definite
 form.
 
@@ -1179,9 +1248,9 @@ coupling is strongly unstable ($+10^3$ to $+10^5\,\%$) if the interface
 terms are evaluated at lagged time levels: the consistent traction couples
 the partner's \emph{acceleration} into the interface force, an algebraic
 loop that the implicit pairs resolve within the Schwarz iteration. The cure
-is the IMEX structure of Liu et al.: because the dashpot force is linear in
-the unknown acceleration, the explicit update is closed implicitly on the
-interface rows only,
+is the implicit--explicit (IMEX) structure of Liu et al.: because the
+dashpot force is linear in the unknown acceleration, the explicit update is
+closed implicitly on the interface rows only,
 \begin{equation}
   \bigl(~M + \gamma\,\Delta t\,Z\,W\bigr)\big|_\Gamma\, ~a_{n+1}
   \;=\; ~M\,~a^{\mathrm{expl}}\big|_\Gamma,
@@ -1191,10 +1260,14 @@ a small symmetric-positive-definite solve per interface (reused for the
 three components) while the interior stays matrix-free explicit
 (\code{imex\_interface\_acceleration!}); the dashpot then acts on the
 end-of-step velocity and the Schwarz iteration synchronizes both sides at
-$t_{n+1}$ exactly as in the implicit--implicit case. Drift at $1$\,ms, all
-combinations, staggered metric \eqref{eq:staggered} for explicit members:
+$t_{n+1}$ exactly as in the implicit--implicit case.
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Energy drift at 1\,ms of the adjoint-paired nonoverlap coupling,
+all integrator combinations, staggered metric \eqref{eq:staggered} for
+explicit members, in percent.}
+\label{tab:paired-all}
 \begin{tabular}{lrrrr}
 \toprule
 ratio & II & IE & EI & EE \\
@@ -1210,19 +1283,20 @@ ratio & II & IE & EI & EE \\
 1:0.2 & $-13.3$ & $-20.1$ & $-27.8$ & $-21.4$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 On conforming and mildly nonconforming meshes all four integrator
-combinations conserve to $\le 0.3\%$; the nonconforming columns carry the
-same monotone, sign-definite trace-jump dissipation in every combination.
-(The small positive EI entries, $+0.2$--$0.3\%$, are bounded transient
-storage in the conservative interface spring, not secular growth.) In the
-consistent-mass integer-step metric the explicit columns instead read $-4$
-to $-37\%$; the difference is the metric artifact of
-Sec.~\ref{sec:benchmark}, not the coupling --- against the monodomain
-explicit reference the conforming paired EE trajectory is exact to $0.35\%$
-\emph{pointwise over the whole millisecond}: the coupled trajectory is the
-monodomain trajectory, as the fixed-point argument predicts.
+combinations conserve to $\le 0.3\%$ (Table~\ref{tab:paired-all}); the
+nonconforming columns carry the same monotone, sign-definite trace-jump
+dissipation in every combination. (The small positive EI entries,
+$+0.2$--$0.3\%$, are bounded transient storage in the conservative
+interface spring, not secular growth.) In the consistent-mass integer-step
+metric the explicit columns instead read $-4$ to $-37\%$; the difference is
+the metric artifact of Sec.~\ref{sec:benchmark}, not the coupling ---
+against the monodomain explicit reference the conforming paired EE
+trajectory is exact to $0.35\%$ \emph{pointwise over the whole
+millisecond}: the coupled trajectory is the monodomain trajectory, as the
+fixed-point argument predicts.
 
 \section{Subcycling: different time steps per subdomain}
 \label{sec:subcycle}
@@ -1244,18 +1318,25 @@ time --- the interpolated-continuity structure under which
 Gravouil--Combescure prove the subcycled interface work dissipative
 ($E_{\mathrm{int}} \le 0$, $O(\Delta t)$) --- but two infrastructure defects
 meant that is not what actually ran. First, the history interpolation
-selected the wrong segment (an off-by-one that returned the end-of-history
-value for any query in the last segment and extrapolated backward
-elsewhere). Second, the per-stop history was anchored at the first substep,
-not the stop start, so a non-subcycling partner's history was a single
-end-of-stop entry. Net effect: both directions of the exchange end-sampled
-the partner's stop-end state --- constant, not interpolated, data. With
-both defects fixed the exchange is genuinely piecewise-linear in both
-directions. Drift at $1$\,ms, free side subcycled $4{:}1$
-($\Delta t = 0.25\,\mu$s inside a $1\,\mu$s stop; consistent-mass
-integer-step metric for comparability across the development history):
+selected the wrong segment (an off-by-one error that returned the
+end-of-history value for any query in the last segment and extrapolated
+backward elsewhere). Second, the per-stop history was anchored at the first
+substep, not the stop start, so a non-subcycling partner's history was a
+single end-of-stop entry. Net effect: both directions of the exchange
+end-sampled the partner's stop-end state --- constant, not interpolated,
+data. With both defects fixed the exchange is genuinely piecewise-linear in
+both directions. Table~\ref{tab:subcycled} compares the two at $1$\,ms with
+the free side subcycled $4{:}1$ ($\Delta t = 0.25\,\mu$s inside a $1\,\mu$s
+stop; consistent-mass integer-step metric for comparability across the
+development history).
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Energy drift at 1\,ms of the subcycled ($4{:}1$) adjoint-paired
+coupling with the defective end-sampled exchange vs.\ the corrected
+piecewise-linear interpolation, in percent (consistent-mass integer-step
+metric).}
+\label{tab:subcycled}
 \begin{tabular}{lrr}
 \toprule
 case & end-sampled (defective) & interpolated (fixed) \\
@@ -1267,19 +1348,19 @@ conforming EE & $-10.6$ & $-9.6$ \\
 1:0.5 IE & $-24.4$ & $\mathbf{-21.3}$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 (In the staggered metric the interpolated exchange reads conforming II
 $-3.6$, IE $-1.4$, EE $-1.2\%$: the explicit subcycled overhead is about
-one percent on conforming meshes.) Genuine interpolation wins decisively at
-mesh contrast, where end-sampling aliases the fine side's intra-window
+one percent on conforming meshes.) Genuine interpolation is clearly better
+at mesh contrast, where end-sampling aliases the fine side's intra-window
 motion into the exchanged traction. It loses slightly on the conforming
 implicit cases because the end-sampled datum, being the stop-end value
 applied throughout the window, \emph{leads} the true trajectory, and that
 anticipatory bias is a mild energy-injection channel that happened to
 offset part of the interpolation dissipation. A cancellation between two
-discretization errors is not a conservation property, and it collapses
-exactly where the stakes are high; the interpolated exchange is the
+discretization errors is not a conservation property, and this one fails
+precisely at strong mesh contrast; the interpolated exchange is the
 behavior of the paired coupling.
 
 \subsection{Exact telescoping is incompatible with a partitioned exchange}
@@ -1311,10 +1392,10 @@ this datum were implemented and measured:
   least-squares linear fit of the partner trajectory over the window is
   lag-free, filters intra-window content instead of aliasing it, and
   telescopes for window-linear tractions. It is stable over tens of stops
-  and passes the short regression --- and over hundreds of stops it injects
-  energy catastrophically ($+10^3$--$10^5\%$ before aborting): a zero-lag
-  filtered estimate is an extrapolation, and its frequency response exceeds
-  unity off the linear band.
+  and passes the short regression test --- and over hundreds of stops it
+  injects energy catastrophically ($+10^3$--$10^5\%$ before aborting): a
+  zero-lag filtered estimate is an extrapolation, and its frequency
+  response exceeds unity outside the linear band.
 \end{description}
 
 The pattern is the classical stability principle of partitioned coupling:
@@ -1324,8 +1405,8 @@ anticipatory. Prakash--Hjelmstad's telescoping is consistent with this ---
 their method solves the coupled interface problem \emph{directly} (a
 FETI-style interface system per large step), which is precisely what a
 partitioned Schwarz sweep does not do. Exact subcycled interface-work
-telescoping therefore requires a direct interface solve, not a smarter
-exchange; within the Schwarz family, genuinely interpolated
+telescoping therefore requires a direct interface solve, not a modified
+partitioned exchange; within the Schwarz family, genuinely interpolated
 Gravouil--Combescure transfer is the measured stable optimum, and its
 $O(\Delta t)$ dissipation ($-3.6\%$ at conforming II vs.\ $-0.03\%$
 same-step) is the price of subcycling. (The window-average and
@@ -1347,20 +1428,20 @@ its $t = 1$\,ms row.
 \subsection{Overlap: the 1\,ms drifts were transients of instabilities}
 
 The overlap family is long-horizon unstable almost everywhere. Of the $108$
-overlap runs, $74$ died of element inversion after exponential energy
-growth (typically $+3{,}000$ to $+10{,}000\%$ of $E_0$ at death, between
-$2$ and $9$\,ms), and most of the remainder collapsed toward zero energy.
-The sign-indefinite drifts of the $1$\,ms sweep were early sections of
-these trajectories: configurations that read as dissipative at $1$\,ms
+overlap runs, $74$ were terminated by element inversion after exponential
+energy growth (typically $+3{,}000$ to $+10{,}000\%$ of $E_0$ at failure,
+between $2$ and $9$\,ms), and most of the remainder collapsed toward zero
+energy. The sign-indefinite drifts of the $1$\,ms sweep were early sections
+of these trajectories: configurations that appeared dissipative at $1$\,ms
 (e.g.\ maximum overlap $1{:}0.6$ II, $-61\%$) reversed and grew to
-$+5{,}432\%$ at death. Mesh conformity does not save the mixed-integrator
+$+5{,}432\%$ at failure. Mesh conformity does not save the mixed-integrator
 combinations: the conforming half-overlap IE run read $+13\%$ at $1$\,ms,
-grew cleanly exponentially, and died at $6.25$\,ms; conforming EI behaves
-alike at all three widths. The only healthy overlap configurations at
-$10$\,ms are the conforming II runs: $+0.64$, $+0.61$, $+0.16\%$ at the
-three overlap widths (Fig.~\ref{fig:overlap-10ms}). The overlap coupling is
-therefore a short-horizon method on nonconforming meshes, and for non-II
-combinations even on conforming ones.
+grew exponentially, and failed at $6.25$\,ms; conforming EI behaves alike
+at all three widths. The only overlap configurations that remain stable and
+accurate at $10$\,ms are the conforming II runs: $+0.64$, $+0.61$,
+$+0.16\%$ at the three overlap widths (Fig.~\ref{fig:overlap-10ms}). The
+overlap coupling is therefore a short-horizon method on nonconforming
+meshes, and for non-II combinations even on conforming ones.
 
 \begin{figure}[htbp]
 \centering
@@ -1380,11 +1461,15 @@ and two new failure modes}
 
 The paired nonoverlap coupling never injects at any ratio in any
 combination, at $10$\,ms as at $1$\,ms. Its monotone trace-jump
-dissipation, however, compounds. Drift at $10$\,ms ($\dagger\,t$ marks a
-run dead by element inversion at $t$\,ms; EE entries marked $\ast$ ended in
-the noise-saturated state discussed below):
+dissipation, however, compounds (Table~\ref{tab:nonoverlap-10ms}).
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Energy drift at 10\,ms of the adjoint-paired nonoverlap coupling,
+staggered metric, in percent. $\dagger\,t$: run terminated by element
+inversion at $t$\,ms. $\ast$: run ended in the noise-saturated
+explicit--explicit state discussed in the text.}
+\label{tab:nonoverlap-10ms}
 \begin{tabular}{lrrrr}
 \toprule
 ratio & II & IE & EI & EE \\
@@ -1400,7 +1485,7 @@ ratio & II & IE & EI & EE \\
 1:0.2 & $-53.3$ & $-73.1$ & $-84.1$ & $\ast$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
 \begin{figure}[htbp]
 \centering
@@ -1413,52 +1498,52 @@ contrast dissipates monotonically, and the non-nested ratios
 $1{:}0.7$--$1{:}0.8$ end early at $\approx 5$\,ms (interface element
 inversion). Right: explicit--explicit --- the staggered kinetic term goes
 secularly negative at every ratio as undamped grid-frequency content
-accumulates at $\mathrm{CFL}=1$; the $1{:}0.7$--$1{:}0.8$ runs die of
+accumulates at $\mathrm{CFL}=1$; the $1{:}0.7$--$1{:}0.8$ runs fail by
 central-difference instability at $2.6$--$2.8$\,ms.}
 \label{fig:nonoverlap-10ms}
 \end{figure}
 
-Three observations (Fig.~\ref{fig:nonoverlap-10ms}). First, the conforming
-and $1{:}0.9$ columns with an implicit member are excellent --- the
-coupling holds $0.00$ to $-0.9\%$ over ten thousand stops. Second, at
-strong contrast ($\le 1{:}0.6$) the sign-definite dissipation that read as
-$10$--$28\%$ at $1$\,ms reaches $40$--$85\%$ by $10$\,ms: bounded and
-ordered, but far too large for wave-transit accuracy. Absorption of
-unrepresentable content is a rate, not a one-time toll. Third, the mildly
-nonconforming, \emph{non-nested} ratios $1{:}0.7$ and $1{:}0.8$ form a
-failure window invisible at $1$\,ms: the paired transfer accumulates
-interface-local high-frequency displacement content, and every integrator
-combination eventually dies there --- explicit members at $2.6$--$4$\,ms by
-central-difference instability, implicit pairs at $\approx 5$\,ms when the
-first interface element inverts while the global energy is still smooth
-($-19\%$ at death). This is not a relaxation artifact: reruns with fixed
-$\theta = 0.5$ die identically (trajectories matching to three digits), so
-the noise accumulation belongs to the transfer operators themselves. The
-nested ratios ($1{:}0.5$ exactly, and the strong ratios whose transfer
-filters aggressively) do not exhibit it.
+Three observations (Fig.~\ref{fig:nonoverlap-10ms}). First, with an
+implicit member the conforming and $1{:}0.9$ columns hold $0.00$ to
+$-0.9\%$ over ten thousand stops. Second, at strong contrast
+($\le 1{:}0.6$) the sign-definite dissipation that read as $10$--$28\%$ at
+$1$\,ms reaches $40$--$85\%$ by $10$\,ms: bounded and ordered, but far too
+large for wave-transit accuracy. Absorption of unrepresentable content is a
+rate, not a one-time toll. Third, the mildly nonconforming, \emph{non-nested}
+ratios $1{:}0.7$ and $1{:}0.8$ form a failure window invisible at $1$\,ms:
+the paired transfer accumulates interface-local high-frequency displacement
+content, and every integrator combination eventually fails there ---
+explicit members at $2.6$--$4$\,ms by central-difference instability,
+implicit pairs at $\approx 5$\,ms when the first interface element inverts
+while the global energy is still smooth ($-19\%$ at failure). This is not a
+relaxation artifact: reruns with fixed $\theta = 0.5$ fail identically
+(trajectories matching to three digits), so the noise accumulation belongs
+to the transfer operators themselves. The nested ratios ($1{:}0.5$ exactly,
+and the strong ratios whose transfer filters aggressively) do not exhibit
+it.
 
 \subsection{Explicit--explicit saturation, and subcycling as a remedy}
 
 The EE column degrades at every ratio by $10$\,ms, conforming included,
 ending with the staggered metric near $-2\,E_0$. The end state is not a
 divergence: the stored energy stays bounded and physical throughout (the
-conforming run holds $E/E_0 \ge 0.97$ to $5$\,ms, then slides), but the
+conforming run holds $E/E_0 \ge 0.97$ to $5$\,ms, then declines), but the
 staggered kinetic term goes steadily negative --- the signature of sawtooth
 content at $\omega\Delta t \approx 2$ accumulating in velocity and
 acceleration. Central difference at $\mathrm{CFL} = 1$ has zero numerical
-dissipation at the stability edge, so whatever grid-frequency content the
+dissipation at the stability limit, so whatever grid-frequency content the
 interface exchange seeds is never removed; with no implicit member in the
 pair, it accumulates without bound in amplitude-neutral modes. The measured
 remedy is time-step margin: the subcycled conforming EE run (free side at
 $\Delta t/4$, $\mathrm{CFL} = 0.25$) ends at $-10.8\%$ with no saturation.
-Subcycling cuts the other way for II: the same-step conforming II run
-conserves to $+0.00\%$ while the subcycled one loses $-20.2\%$ (at
-$1{:}0.5$, $-61.6\%$) --- the Gravouil--Combescure interpolation
-dissipation of Sec.~\ref{sec:gc}, harmless per stop, compounds over $10^4$
-stops. At long horizons the multi-time-step exchange is thus a trade: it
-stabilizes explicit members (CFL margin) and taxes implicit ones
-(interpolation dissipation). Figure~\ref{fig:subcycled-10ms} shows both
-sides of the trade.
+Subcycling has the opposite effect on the implicit--implicit pair: the
+same-step conforming II run conserves to $+0.00\%$ while the subcycled one
+loses $-20.2\%$ (at $1{:}0.5$, $-61.6\%$) --- the Gravouil--Combescure
+interpolation dissipation of Sec.~\ref{sec:gc}, harmless per stop,
+compounds over $10^4$ stops. At long horizons the multi-time-step exchange
+is thus a trade: it stabilizes explicit members (CFL margin) and taxes
+implicit ones (interpolation dissipation). Figure~\ref{fig:subcycled-10ms}
+shows both sides of the trade.
 
 \begin{figure}[htbp]
 \centering
@@ -1495,7 +1580,7 @@ split answer.
 \paragraph{Overlap: a pure cost parameter.} Every overlap trajectory is
 identical across all four windows to all printed digits --- the conforming
 II run ends at $+0.61\%$ in all four, and the $1{:}0.5$ instability even
-dies at the same instant. The overlap exchange interpolates partner
+fails at the same instant. The overlap exchange interpolates partner
 kinematics from history with no per-pair relaxation state, so the windowed
 waveform iteration converges to the same-step fixed point.
 
@@ -1517,8 +1602,8 @@ whose lag dissipation grows with the window. Under Aitken the defect
 changes sign: the $\theta$ estimate compares residuals belonging to
 different times, overshoots past $1$, and the resulting phase lead injects
 energy --- the $+11.3\%$ entry. (The subcycled study of
-Sec.~\ref{sec:subcycle} escaped by an ordering accident: its subcycling
-free side is listed first, i.e.\ unrelaxed.)
+Sec.~\ref{sec:subcycle} was unaffected because its subcycling free side is
+listed first and therefore unrelaxed.)
 
 Two experiments isolate and confirm the mechanism. First, $\theta = 1$ ---
 which uses no relaxation state at all --- reproduces the same-step physics
@@ -1553,24 +1638,24 @@ unclamped $\theta$ excursions cause a Newton failure at $3.9$\,ms
 remaining question is which relaxation policy a windowed stop should use.
 Measured on the conforming II case at the $10\,\mu$s window (mean Schwarz
 sweeps per stop): $\theta = 1$ converges in $19.1$ and runs the full
-$10$\,ms cleanly; per-slot Aitken takes ${\sim}25$ and dies at $3.9$\,ms
-when an unclamped $\theta$ excursion feeds the Newton solver a divergent
-iterate; fixed $\theta = 0.5$ takes $47.5$ (clean); and a waveform-pooled
-Aitken (one $\theta$ from residuals pooled across the window's slots) takes
-$55.1$ --- clean on II but fatal on EE, where it locks $\theta$
-persistently negative. Aitken acceleration is therefore at best useless and
-at worst fatal inside windows, and Norma applies it only to single-slot
-stops, where its ${\approx}3\times$ sweep reduction is proven
-(\code{aitken\_applies}); windowed stops use the configured
-\code{relaxation parameter}, with $\theta = 1$ recommended --- the
-impedance dashpot supplies the contraction, so no under-relaxation is
+$10$\,ms without incident; per-slot Aitken takes ${\sim}25$ and fails at
+$3.9$\,ms when an unclamped $\theta$ excursion causes the Newton iteration
+to diverge; fixed $\theta = 0.5$ takes $47.5$ (no failures); and a
+waveform-pooled Aitken (one $\theta$ from residuals pooled across the
+window's slots) takes $55.1$ --- no failures on II but it fails on EE,
+where it locks $\theta$ persistently negative. Aitken acceleration
+therefore offers no benefit inside windows and can cause failure, and Norma
+applies it only to single-slot stops, where its ${\approx}3\times$ sweep
+reduction is established (\code{aitken\_applies}); windowed stops use the
+configured \code{relaxation parameter}, with $\theta = 1$ recommended ---
+the impedance dashpot supplies the contraction, so no under-relaxation is
 needed.
 
-Two limitations round out the picture. The all-explicit pair at large
+Two limitations complete the picture. The all-explicit pair at large
 windows is impractical under any policy: the windowed explicit sweep map is
 nearly non-contractive (fixed $\theta = 0.5$ reaches the $128$-sweep limit
-and still dies at $9.8$\,ms). And windows are never a cost optimization for
-the nonoverlap exchange: the number of substep solves per unit time is
+and still fails at $9.8$\,ms). And windows are never a cost optimization
+for the nonoverlap exchange: the number of substep solves per unit time is
 (sweeps per stop)$/\Delta t_{\mathrm{sub}}$ regardless of the window, and
 the windowed sweep counts above all exceed the same-step Aitken count, so
 the controller step is purely a convenience parameter (e.g.\ for aligning
@@ -1580,7 +1665,7 @@ One earlier observation is withdrawn as an artifact: the pre-fix ``EE at
 the $2\,\mu$s window with fixed $\theta$ ends at $-0.25\%$'' entry was the
 defect's low-pass filter accidentally damping the grid-frequency
 saturation; post-fix, windowed EE saturates exactly like same-step EE, and
-the honest remedy remains CFL margin via subcycling
+the effective remedy remains CFL margin via subcycling
 (Sec.~\ref{sec:tenms}).
 
 \paragraph{Open issue: a $\theta$-sensitive fixed point.} The
@@ -1627,8 +1712,8 @@ question and needs its own investigation.
 \item The interface work of the overlap coupling is sign-indefinite in
   principle (two independent, non-adjoint transfers) and in practice
   (injection up to $+275\%$; sign flips between adjacent mesh ratios), and
-  at a $10$\,ms horizon $74$ of $108$ nonconforming overlap runs diverge.
-  The nonconforming overlap coupling cannot be trusted with an energy
+  at a $10$\,ms horizon $74$ of $108$ nonconforming overlap runs fail. The
+  nonconforming overlap coupling cannot be assigned a reliable energy
   budget (Secs.~\ref{sec:ratiosweep}, \ref{sec:tenms}).
 \item Energy consistency requires a single-valued interface traction acting
   through $L^2$-adjoint transfer operators built from one cross-mass matrix
@@ -1675,9 +1760,9 @@ question and needs its own investigation.
   ($1{:}0.7$--$1{:}0.8$ class) for long runs.
 \item \textbf{Overlap decompositions}: conforming meshes with
   implicit--implicit integration conserve energy at any horizon; every
-  other overlap configuration is a short-transient method. On conforming
-  node-aligned interfaces the consistent traction makes the impedance
-  overlap condition exact to the Dirichlet-coupling reference.
+  other overlap configuration is suitable for short transients only. On
+  conforming node-aligned interfaces the consistent traction makes the
+  impedance overlap condition exact to the Dirichlet-coupling reference.
 \item \textbf{All-explicit interfaces}: provide CFL margin (e.g.\ subcycle
   the finer side); central difference at $\mathrm{CFL} = 1$ cannot remove
   the grid-frequency content the exchange seeds.
