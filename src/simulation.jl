@@ -562,6 +562,20 @@ function SingleDomainSimulation(params::Parameters)
                    controller.initial_time, controller.final_time,
                    controller.time_step, controller.num_stops - 1)
         model = create_model(params)
+        # The restart snapshot's displacement/velocity fields (if any) were
+        # copied into model.displacement/model.velocity -- and, for a ROM
+        # model, again into model.fom_model.displacement/velocity -- inside
+        # SolidMechanics() above (model.jl); nothing reads them from
+        # params["restart_info"] from here on. Only the fact that this run
+        # *is* a restart still matters downstream: apply_ics(::RomModel, ...)
+        # (opinf_ics_bcs.jl) checks `restart_info !== nothing` to decide
+        # whether to project the restored FOM state onto the reduced basis.
+        # Replace the two full 3xN snapshot matrices with a lightweight
+        # marker instead of letting them sit alive, unused, in `params` (and
+        # therefore in `sim.params`) for the rest of the run.
+        if params["restart_info"] !== nothing
+            params["restart_info"] = (index=params["restart_info"].index, time=params["restart_info"].time)
+        end
         _log_materials(model, input_mesh)
         integrator = create_time_integrator(params, model)
         solver = create_solver(params, model)
