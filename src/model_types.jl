@@ -111,5 +111,26 @@ mutable struct SolidMechanics <: Model
     restarted::Bool
 end
 
+# Whether a Model subtype's restart snapshot (nodal displacement/velocity)
+# fully captures the state needed to resume a run. Defaults to false; a
+# model type opts in by overriding this trait next to its own struct
+# definition, rather than being enumerated in a separately maintained list.
+# process_restart!() (simulation.jl) calls
+# supports_restart(model_type_for(model_type)) (model.jl) instead of
+# checking membership in a hand-kept table, so a new Model subtype can't
+# silently fall out of sync with create_model() the way the old
+# RESTART_SUPPORTED_MODEL_TYPES string table could.
+supports_restart(::Type{<:Model}) = false
+supports_restart(::Type{SolidMechanics}) = true
+
 include("opinf/opinf_model_types.jl")
 include("kroms/krom_model_types.jl")
+
+# Every ROM type is layered on the FOM restart machinery via its internal
+# fom_model::SolidMechanics (see process_restart!() in simulation.jl and
+# apply_ics(::Parameters, ::RomModel, ...) in opinf_ics_bcs.jl), so restart
+# support is a property of RomModel itself, not of each individual ROM
+# subtype. This one method covers LinearOpInfRom, QuadraticOpInfRom,
+# CubicOpInfRom, NeuralNetworkOpInfRom, RBFKernelROM, and any future
+# RomModel subtype automatically -- no separate entry needed per type.
+supports_restart(::Type{<:RomModel}) = true
