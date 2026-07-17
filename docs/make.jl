@@ -30,5 +30,8 @@ makedocs(;
     warnonly=[:cross_references, :missing_docs],
 )
 
-# Deployment (GitHub Pages) is intentionally omitted here. Add a `deploydocs`
-# call and a CI workflow when you are ready to publish the site.
+deploydocs(;
+    repo="github.com/sandialabs/Norma.jl.git",
+    devbranch="main",
+    push_preview=true,
+)
