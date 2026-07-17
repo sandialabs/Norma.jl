@@ -258,27 +258,46 @@ function SolidMechanics(params::Parameters)
     )
 end
 
+# Maps a `model: type:` string to the Julia Model subtype used to construct
+# it. The single source of truth create_model() (below) dispatches through;
+# process_restart!() (simulation.jl) looks up the same mapping to resolve
+# supports_restart() (model_types.jl) for a `model: type:` string before any
+# model is actually constructed, instead of keeping a separate
+# hand-maintained list of restart-capable type strings in sync with this
+# function. Returns `nothing` for an unrecognized string. "mesh smoothing"
+# maps to SolidMechanics too (it is a mode of that same model, selected via
+# params["mesh smoothing"] in create_model() below, not a distinct type) --
+# supports_restart() only sees the resolved Julia type, so process_restart!()
+# still special-cases the "mesh smoothing" string directly wherever the
+# distinction matters (mesh smoothing is not a stateful dynamic simulation
+# and was never restart-capable).
+function model_type_for(model_name::AbstractString)
+    if model_name in ("solid mechanics", "mesh smoothing")
+        return SolidMechanics
+    elseif model_name in ("linear opinf rom", "linear kernel rom")
+        return LinearOpInfRom
+    elseif model_name in ("quadratic opinf rom", "quadratic kernel rom")
+        return QuadraticOpInfRom
+    elseif model_name in ("cubic opinf rom", "cubic kernel rom")
+        return CubicOpInfRom
+    elseif model_name == "neural network opinf rom"
+        return NeuralNetworkOpInfRom
+    elseif model_name == "rbf kernel rom"
+        return RBFKernelROM
+    else
+        return nothing
+    end
+end
+
 function create_model(params::Parameters)
     model_params = params["model"]
     model_name = model_params["type"]
-    if model_name == "solid mechanics"
-        return SolidMechanics(params)
-    elseif model_name == "mesh smoothing"
+    model_type = model_type_for(model_name)
+    model_type === nothing && norma_abort("Unknown type of model : $model_name")
+    if model_name == "mesh smoothing"
         params["mesh smoothing"] = true
-        return SolidMechanics(params)
-    elseif model_name in ["linear opinf rom", "linear kernel rom"]
-        return LinearOpInfRom(params)
-    elseif model_name in ["quadratic opinf rom", "quadratic kernel rom"]
-        return QuadraticOpInfRom(params)
-    elseif model_name in ["cubic opinf rom", "cubic kernel rom"]
-        return CubicOpInfRom(params)
-    elseif model_name == "neural network opinf rom"
-        return NeuralNetworkOpInfRom(params)
-    elseif model_name == "rbf kernel rom"
-        return RBFKernelROM(params)
-    else
-        norma_abort("Unknown type of model : $model_name")
     end
+    return model_type(params)
 end
 
 # Compile a user-defined size field s(t, x, y, z) into a callable that returns

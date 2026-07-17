@@ -16,29 +16,21 @@ function create_simulation(input_file::String)
     return create_simulation(params)
 end
 
-# Model types for which restart is supported. "solid mechanics" is the FOM
-# model; the rest are ROM model types (see create_model() in model.jl for the
-# canonical list of recognized `model: type:` strings). Each ROM type wraps
-# an internal FOM model (`fom_model::SolidMechanics`) that is restored from
-# the restart snapshot the same way a standalone FOM model is; see
-# process_restart!() and apply_ics(::Parameters, ::RomModel, ...) for how the
-# restored FOM state is then projected onto the reduced basis.
+# Whether a `model: type:` string supports restart is now resolved via
+# supports_restart(model_type_for(model_type)) (model.jl / model_types.jl)
+# rather than a hand-kept list here -- see process_restart!() below. "solid
+# mechanics" is the FOM model; every ROM model type (see model_type_for() in
+# model.jl for the canonical list of recognized `model: type:` strings) also
+# supports it. Each ROM type wraps an internal FOM model
+# (`fom_model::SolidMechanics`) that is restored from the restart snapshot
+# the same way a standalone FOM model is; see process_restart!() and
+# apply_ics(::Parameters, ::RomModel, ...) for how the restored FOM state is
+# then projected onto the reduced basis.
 #
-# This list applies uniformly to single-domain and multi-domain
-# (Schwarz-coupled) simulations: any combination of FOM and ROM subdomains
-# (including mixed FOM-ROM pairings) may restart. See
-# process_multidomain_restart!() below for the multi-domain-specific checks.
-const RESTART_SUPPORTED_MODEL_TYPES = (
-    "solid mechanics",
-    "linear opinf rom",
-    "linear kernel rom",
-    "quadratic opinf rom",
-    "quadratic kernel rom",
-    "cubic opinf rom",
-    "cubic kernel rom",
-    "neural network opinf rom",
-    "rbf kernel rom",
-)
+# This applies uniformly to single-domain and multi-domain (Schwarz-coupled)
+# simulations: any combination of FOM and ROM subdomains (including mixed
+# FOM-ROM pairings) may restart. See process_multidomain_restart!() below for
+# the multi-domain-specific checks.
 
 # Restart and mid-run mesh swapping (`swaps:`, see swap.jl) are mutually
 # incompatible in the current implementation and must never be combined.
@@ -105,11 +97,19 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     end
     model_params = get(params, "model", Parameters())
     model_type = get(model_params, "type", "")
-    if model_type ∉ RESTART_SUPPORTED_MODEL_TYPES
+    if model_type == "mesh smoothing"
+        norma_abort(
+            "Restart is not supported for `model: type: mesh smoothing`: mesh smoothing " *
+            "is not a stateful dynamic simulation, so there is no displacement/velocity " *
+            "state for a restart snapshot to resume.",
+        )
+    end
+    julia_model_type = model_type_for(model_type)
+    if julia_model_type === nothing || !supports_restart(julia_model_type)
         norma_abortf(
             "Restart is only supported for `model: type: solid mechanics` (FOM) models " *
-            "and ROM models (%s). Got `model: type: %s`.",
-            join(RESTART_SUPPORTED_MODEL_TYPES[2:end], ", "),
+            "and ROM models (linear/quadratic/cubic OpInf or kernel ROM, neural network " *
+            "OpInf ROM, RBF kernel ROM). Got `model: type: %s`.",
             model_type,
         )
     end
@@ -562,6 +562,20 @@ function SingleDomainSimulation(params::Parameters)
                    controller.initial_time, controller.final_time,
                    controller.time_step, controller.num_stops - 1)
         model = create_model(params)
+        # The restart snapshot's displacement/velocity fields (if any) were
+        # copied into model.displacement/model.velocity -- and, for a ROM
+        # model, again into model.fom_model.displacement/velocity -- inside
+        # SolidMechanics() above (model.jl); nothing reads them from
+        # params["restart_info"] from here on. Only the fact that this run
+        # *is* a restart still matters downstream: apply_ics(::RomModel, ...)
+        # (opinf_ics_bcs.jl) checks `restart_info !== nothing` to decide
+        # whether to project the restored FOM state onto the reduced basis.
+        # Replace the two full 3xN snapshot matrices with a lightweight
+        # marker instead of letting them sit alive, unused, in `params` (and
+        # therefore in `sim.params`) for the rest of the run.
+        if params["restart_info"] !== nothing
+            params["restart_info"] = (index=params["restart_info"].index, time=params["restart_info"].time)
+        end
         _log_materials(model, input_mesh)
         integrator = create_time_integrator(params, model)
         solver = create_solver(params, model)
@@ -650,7 +664,6 @@ function MultiDomainSimulation(params::Parameters)
             norma_log(4, :domain, domain_name)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
             subparams["name"] = domain_name
-            subparams["_is_subdomain"] = true
             if haskey(params, "_multidomain_restart_index")
                 subparams["restart"] = Parameters("index" => params["_multidomain_restart_index"])
             end

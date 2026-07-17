@@ -82,153 +82,54 @@ using Exodus
     # checkpoint. With time step = 1.0e-6 and Exodus output interval =
     # 1.0e-5 (10 * time step), write index k (1-based) holds
     # t = (k - 1) * 1.0e-5, so index 30 is t = 2.9e-4.
-    mv("clamped-1.e", "clamped-1-restart-in.e"; force=true)
-    mv("clamped-2.e", "clamped-2-restart-in.e"; force=true)
+    mv("clamped-1.e", "clamped-1-in.e"; force=true)
+    mv("clamped-2.e", "clamped-2-in.e"; force=true)
 
     # ── Phase 2: restart run resuming both subdomains from t = 2.9e-4 -> 1.0e-3 ──
-    # Same subdomain content as the original example, minus `initial
-    # conditions:` (restart supplies the initial displacement/velocity
-    # instead — the two can't coexist, see process_restart!()), and with
-    # `input mesh file:` pointing at this subdomain's own checkpoint.
-    write(
-        "clamped-1.yaml",
-        """
-        type: single
-        input mesh file: clamped-1-restart-in.e
-        output mesh file: clamped-1.e
-        CSV output interval: 0
-        model:
-          type: solid mechanics
-          material:
-            blocks:
-              coarse: hyperelastic
-            hyperelastic:
-              model: linear elastic
-              elastic modulus: 1.0e+09
-              Poisson's ratio: 0.0
-              density: 1000.0
-        time integrator:
-          type: Newmark
-          β: 0.25
-          γ: 0.5
-        boundary conditions:
-          Dirichlet:
-            - node set: nsx-
-              component: x
-              function: "0.0"
-            - node set: nsx+
-              component: x
-              function: "0.0"
-            - node set: nsy-
-              component: y
-              function: "0.0"
-            - node set: nsy+
-              component: y
-              function: "0.0"
-            - node set: nsz-
-              component: z
-              function: "0.0"
-          Schwarz overlap:
-            - side set: ssz+
-              source: clamped-2
-              source block: fine
-        solver:
-          type: Hessian minimizer
-          step: full Newton
-          minimum iterations: 1
-          maximum iterations: 16
-          relative tolerance: 1.0e-10
-          absolute tolerance: 1.0e-06
-        """,
-    )
-    write(
-        "clamped-2.yaml",
-        """
-        type: single
-        input mesh file: clamped-2-restart-in.e
-        output mesh file: clamped-2.e
-        CSV output interval: 0
-        model:
-          type: solid mechanics
-          material:
-            blocks:
-              fine: hyperelastic
-            hyperelastic:
-              model: linear elastic
-              elastic modulus: 1.0e+09
-              Poisson's ratio: 0.0
-              density: 1000.0
-        time integrator:
-          type: Newmark
-          β: 0.25
-          γ: 0.5
-        boundary conditions:
-          Dirichlet:
-            - node set: nsx-
-              component: x
-              function: "0.0"
-            - node set: nsx+
-              component: x
-              function: "0.0"
-            - node set: nsy-
-              component: y
-              function: "0.0"
-            - node set: nsy+
-              component: y
-              function: "0.0"
-            - node set: nsz+
-              component: z
-              function: "0.0"
-          Schwarz overlap:
-            - side set: ssz-
-              source: clamped-1
-              source block: coarse
-        solver:
-          type: Hessian minimizer
-          step: full Newton
-          minimum iterations: 1
-          maximum iterations: 16
-          relative tolerance: 1.0e-10
-          absolute tolerance: 1.0e-06
-        """,
-    )
+    # These files already point at "clamped-1-in.e"/"clamped-2-in.e" (the
+    # checkpoint names just produced above), already omit `initial
+    # conditions:` in favor of a `restart:` block (restart supplies the
+    # initial displacement/velocity instead — the two can't coexist, see
+    # process_restart!()), and already write to "clamped-1-out.e"/
+    # "clamped-2-out.e" — no edits needed to the subdomain files. The
+    # top-level file's own `restart: index: -11` is patched to `index: 30`
+    # (t = 2.9e-4): the example's own choice of restart point isn't tied to
+    # anything in particular, but this test deliberately restarts while the
+    # pulse is actively crossing the Schwarz-coupled boundary — see the
+    # comment at the top of this file — so that specific index is preserved
+    # here rather than adopted from the example as-is.
+    restart_example_dir = "../examples/ahead/overlap/clamped/dynamic-linear-elastic-single-gaussian-opinf-fom-restart"
+    cp("$restart_example_dir/clamped-1.yaml", "clamped-1.yaml"; force=true)
+    cp("$restart_example_dir/clamped-2.yaml", "clamped-2.yaml"; force=true)
+    cp("$restart_example_dir/clamped.yaml", "clamped.yaml"; force=true)
     write(
         "clamped.yaml",
-        """
-        type: multi
-        domains: ["clamped-1.yaml", "clamped-2.yaml"]
-        restart:
-          index: 30
-        CSV output interval: 0
-        Exodus output interval: 1.0e-5
-        final time: 1.0e-3
-        time step: 1.0e-6
-        minimum iterations: 1
-        maximum iterations: 16
-        relative tolerance: 1.0e-12
-        absolute tolerance: 1.0e-08
-        """,
+        replace(
+            read("clamped.yaml", String),
+            "index: -11" => "index: 30",
+            "CSV output interval: 1.0e-5" => "CSV output interval: 0",
+        ),
     )
 
     sim_restart = Norma.run("clamped.yaml")
 
     # ── Check the initial-acceleration-at-restart fix directly ─────────────
-    # "clamped-1-restart-in.e"/"clamped-2-restart-in.e" (renamed copies of
-    # run 1's own output) still hold the *true*, continuously-integrated
-    # acceleration at t = 2.9e-4 (index 30) — ground truth. "clamped-1.e"/
-    # "clamped-2.e" (this restart run's own fresh output) hold, at Exodus
-    # time_index 1, the acceleration this run *solved for* right after
-    # restart, before any time-stepping. These should agree, including on
-    # the Schwarz-coupled (coarse/fine) overlap boundary specifically, which
-    # is exactly where this problem previously showed a large spike. A
-    # generous tolerance is used since a fresh one-shot solve need not
-    # bit-match a value produced by ~30 real Newmark/Schwarz steps -- this
-    # is a smoke test against a full regression back to the pre-fix,
-    # order-unity relative error at the Schwarz-coupled boundary, not a
-    # tight accuracy bound.
+    # "clamped-1-in.e"/"clamped-2-in.e" (renamed copies of run 1's own
+    # output) still hold the *true*, continuously-integrated acceleration at
+    # t = 2.9e-4 (index 30) — ground truth. "clamped-1-out.e"/
+    # "clamped-2-out.e" (this restart run's own fresh output, per "output
+    # mesh file:" in the example) hold, at Exodus time_index 1, the
+    # acceleration this run *solved for* right after restart, before any
+    # time-stepping. These should agree, including on the Schwarz-coupled
+    # (coarse/fine) overlap boundary specifically, which is exactly where
+    # this problem previously showed a large spike. A generous tolerance is
+    # used since a fresh one-shot solve need not bit-match a value produced
+    # by ~30 real Newmark/Schwarz steps -- this is a smoke test against a
+    # full regression back to the pre-fix, order-unity relative error at the
+    # Schwarz-coupled boundary, not a tight accuracy bound.
     for domain in 1:2
-        true_mesh = ExodusDatabase("clamped-$domain-restart-in.e", "r")
-        restart_mesh = ExodusDatabase("clamped-$domain.e", "r")
+        true_mesh = ExodusDatabase("clamped-$domain-in.e", "r")
+        restart_mesh = ExodusDatabase("clamped-$domain-out.e", "r")
         local true_acce, fresh_acce
         try
             true_acce_x = Vector{Float64}(Exodus.read_values(true_mesh, NodalVariable, 30, "acce_x"))
@@ -249,10 +150,10 @@ using Exodus
     rm("clamped-1.yaml"; force=true)
     rm("clamped-2.yaml"; force=true)
     rm("clamped.yaml"; force=true)
-    rm("clamped-1-restart-in.e"; force=true)
-    rm("clamped-2-restart-in.e"; force=true)
-    rm("clamped-1.e"; force=true)
-    rm("clamped-2.e"; force=true)
+    rm("clamped-1-in.e"; force=true)
+    rm("clamped-2-in.e"; force=true)
+    rm("clamped-1-out.e"; force=true)
+    rm("clamped-2-out.e"; force=true)
 
     # ── Both runs reached the same final time without failing ──────────────
     @test sim_dynamic.failed == false

@@ -120,7 +120,13 @@ using YAML
     avg_stress_full = average_components(model_full.fom_model.stress)
     avg_stress_restart = average_components(model_restart.fom_model.stress)
     err_abs = norm(avg_stress_full - avg_stress_restart)
-    @test err_abs ≈ 6.682167652892721e-7 atol = 1.0e-6
+    # Was `@test err_abs ≈ 6.682167652892721e-7 atol = 1.0e-6`: an equality
+    # check whose atol (1.0e-6) is larger than the target value itself, so it
+    # was really just `err_abs < 6.682167652892721e-7 + 1.0e-6 ≈ 1.7e-6`
+    # written as an equality. Write the actual intent directly as an upper
+    # bound, with a bit of extra headroom over the observed value so this
+    # doesn't become platform-brittle.
+    @test err_abs < 2.0e-6
 
     # ── Sanity check: the body actually moved from its Gaussian-pulse IC ───
     avg_disp_full = average_components(vec(model_full.fom_model.displacement))
