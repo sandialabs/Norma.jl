@@ -19,7 +19,7 @@
 \newcommand{\jump}[1]{[\![#1]\!]}
 \emergencystretch=3em
 
-\title{Schwarz Coupling for Solid Dynamics in Norma.jl:\\
+\title{Schwarz Coupling for Solid Dynamics in Norma:\\
 Transmission Conditions, Interface Energy,\\
 and Energy-Consistent Design}
 \author{Alejandro Mota}
@@ -30,7 +30,7 @@ and Energy-Consistent Design}
 
 \begin{abstract}
 This note is the consolidated reference for the Schwarz coupling conditions
-implemented in Norma.jl and for the study of their energy behavior in
+implemented in Norma and for the study of their energy behavior in
 dynamic solid mechanics. On a shared (nonoverlap) interface, the Robin
 condition is fully reflecting and the impedance condition is absorbing, with
 the impedance fixed by material data. On an overlap boundary, the impedance
@@ -87,7 +87,7 @@ coupled by a Schwarz iteration. The Schwarz alternating framework itself
 Mota, Tezaur, and Phlipot~\cite{MotaTezaurPhlipot2022} (the contact variant
 is described in~\cite{MotaKoliesnikovaTezaurHoy2023}); this note is
 concerned with the transmission conditions imposed on the coupling
-boundaries and with their energy behavior. Norma.jl supports two geometric
+boundaries and with their energy behavior. Norma supports two geometric
 configurations.
 
 \paragraph{Nonoverlap.} The subdomains partition $\Omega$ and share an
@@ -209,14 +209,15 @@ recommendations, and open questions.
 \subsection{Robin coupling}
 \label{sec:rr}
 
-On each side of the interface the user specifies a Robin parameter
-$\alpha > 0$ and imposes
+On each side of the interface a Robin parameter $\alpha > 0$ is
+prescribed in the input and the condition
 \begin{equation}
   ~t_k + \alpha\, ~u_k \;=\; ~g_k
     \qquad \text{on } \Gamma, \quad k = 1, 2,
   \label{eq:rr}
 \end{equation}
-with the datum built from the partner's previous Schwarz iterate,
+is imposed, with the datum built from the partner's previous Schwarz
+iterate,
 $~g_k^{(n+1)} = -\,~t_j^{(n)} + \alpha\, ~u_j^{(n)}$, $j \ne k$. At the
 Schwarz fixed point $~u_k = ~u_j$ and $~t_k = -~t_j$, so \eqref{eq:rr}
 reproduces \eqref{eq:continuity} and \eqref{eq:traction} simultaneously.
@@ -260,8 +261,8 @@ impedance. The impedance Schwarz condition augments
 \end{equation}
 At the fixed point the impedance and displacement terms cancel and
 \eqref{eq:impedance} again reproduces continuity and traction balance; the
-impedance is computed from material data with no user input, while $\alpha$
-remains an optional user parameter.
+impedance is computed from material data and requires no input, while
+$\alpha$ remains an optional input parameter.
 
 Under Newmark integration with parameters $\beta$, $\gamma$ the new-step
 velocity is linear in the new-step displacement with coefficient
@@ -270,7 +271,7 @@ $~K_{\mathrm{is}} = (Z\,c_v + \alpha)\,~W$ and the self force
 $~f_{\mathrm{is}} = ~W(Z\,\dot{~u}_k + \alpha\,~u_k)$; the partner datum
 enters the boundary force through the same surface operator and transfer as
 the Robin case, with the additional velocity term. In the quasi-static limit
-Norma.jl sets $c_v = 0$ and the impedance condition reduces to the Robin
+Norma sets $c_v = 0$ and the impedance condition reduces to the Robin
 condition \eqref{eq:rr}; note that a quasi-static impedance run with
 $\alpha = 0$ degenerates to a pure Neumann condition and does not couple the
 subdomains kinematically.
@@ -381,7 +382,7 @@ Sec.~\ref{sec:ladder}).
 \paragraph{Evaluating the partner traction.} Because $\Gamma_k$ is an
 interior surface of the partner mesh, the partner's assembled internal force
 cannot supply $~t_j$ there (interior rows carry the inertia residual, not
-$~\sigma\,~n$). Norma.jl evaluates $~t_j$ in one of two ways, selected by
+$~\sigma\,~n$). Norma evaluates $~t_j$ in one of two ways, selected by
 the \code{partner traction} option (default \code{auto}).
 
 \emph{Consistent traction (node-aligned interfaces).} When every node of
@@ -471,8 +472,8 @@ $Z$ set by &
   (not used) &
   material (automatic) \\[0.3em]
 $\alpha$ set by &
-  user &
-  user, optional \\[0.3em]
+  input file &
+  input file, optional \\[0.3em]
 Quasi-static limit &
   same &
   reduces to Robin \\[0.3em]
@@ -512,7 +513,7 @@ $~Z$ set by &
   partner material (automatic), P/S split \\[0.3em]
 $\alpha$ set by &
   (not used) &
-  user, optional \\
+  input file, optional \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -544,7 +545,14 @@ instrumentation (\code{report\_impedance\_interface\_work}, environment-gated,
 CSV output via \code{NORMA\_IMPEDANCE\_WORK\_CSV}) that decomposes the
 interface power into partner-traction, dashpot, and Robin channels; the
 dashpot and Robin powers vanish identically for the exact solution, so their
-integrated work measures spurious dissipation directly. Three experiments
+integrated work measures spurious dissipation directly. At every converged
+stop the instrumentation also records the root-mean-square (RMS) velocity
+jump over the coupling-boundary nodes,
+$\bigl( \sum_i \lvert \dot{~u}_j - \dot{~u}_k \rvert_i^2 / n
+\bigr)^{1/2}$ for the $n$ nodes $i$ of $\Gamma_k$; the velocity-jump
+values quoted in Tables~\ref{tab:channels-fidelity} and
+\ref{tab:channel-work} are averages of this per-stop RMS over the run.
+Three experiments
 discriminated the candidate mechanisms: (i) sweeping the Schwarz tolerance
 from $10^{-8}$ to $10^{-11}$ leaves the energy history bit-identical, ruling
 out iteration lag; (ii) the loss is invariant under
@@ -605,7 +613,8 @@ overlap width 0.0508\,m, tensor impedance, mesh ratio $1{:}0.75$ for the
 nonconforming columns). The small net drift on the nonconforming pair is
 the difference of two large channels. The conforming net column shows the
 recovered-stress $\to$ consistent-traction transition of
-Sec.~\ref{sec:ladder}.}
+Sec.~\ref{sec:ladder}; the velocity-jump row is the run average of the
+per-stop RMS jump defined there.}
 \label{tab:channels-fidelity}
 \begin{tabular}{lccc}
 \toprule
@@ -614,7 +623,7 @@ Sec.~\ref{sec:ladder}.}
 dashpot (spurious) work & $-42.6$\,J \,(2.8\%) & $-606.5$\,J \,(40\%) & $-598.5$\,J \,(40\%) \\
 traction-channel work & --- & $+677$\,J \,(45\%) & $+768$\,J \,(51\%) \\
 net PU-energy drift & $3.9\% \to 0.08\%$ & $-0.75$\% & $+1.5$\% \\
-mean velocity jump (RMS) & 8.9\,m/s & 40\,m/s (growing $15 \to 60$) & 27\,m/s \\
+velocity jump (RMS) & 8.9\,m/s & 40\,m/s (growing $15 \to 60$) & 27\,m/s \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -843,7 +852,8 @@ use recovered stress. Positive dashpot work in the fourth row proves the
 discrete dashpot term is not a quadratic form. The $\Delta E$ column is
 consistent with the drift values of Table~\ref{tab:drift-1ms}; the third
 row's values, mistranscribed in a superseded working note, were confirmed
-by rerunning the instrumented case.}
+by rerunning the instrumented case. The jump column is the run average of
+the per-stop RMS velocity jump defined in Sec.~\ref{sec:ladder}.}
 \label{tab:channel-work}
 \small
 \begin{tabular}{lrrrr}
@@ -1234,7 +1244,7 @@ the legacy transfer) changes three things:
 \end{enumerate}
 
 On parameter selection: the impedance is \emph{estimated} from material
-data, the Robin parameter is \emph{chosen} by the user
+data, the Robin parameter is \emph{prescribed} in the input
 (\code{robin parameter}, default $0$), and no estimate of $\alpha$ is
 attempted because none is needed for consistency. At the Schwarz fixed point
 the two Robin conditions add to traction balance and subtract to
