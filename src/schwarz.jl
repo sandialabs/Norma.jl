@@ -1689,7 +1689,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         # directions of a subcycled pair (Gravouil-Combescure interpolated
         # continuity). This is the measured stable optimum of the temporal
         # transfer operators tried for the subcycled adjoint pairing on the
-        # cantilever benchmark (doc/notes/schwarz-interface-energy):
+        # cantilever benchmark (doc/notes/schwarz-coupling):
         # replacements for the coarser side's exchange that are exactly
         # work-conjugate to the finer side's interpolation -- the trapezoidal
         # window average, the de-lagged recursion F = 2 avg - F_prev, and the
