@@ -5,6 +5,13 @@ on:
     branches:
       - main
     tags: ['*']
+    # Documentation-only pushes do not affect the tests; skip the suite for them
+    # (the Documentation workflow handles docs). Any change under src/, test/,
+    # ext/, or the project files still runs the full matrix.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/documentation.yaml'
   pull_request:
   workflow_dispatch:
 
