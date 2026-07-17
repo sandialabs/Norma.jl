@@ -153,8 +153,29 @@ $\theta \in (0, 1]$ ($\theta = 1$ means no relaxation), either fixed or
 adapted by Aitken $\Delta^2$ extrapolation from successive residuals. A
 stop spanning several substeps is called a \emph{window}
 (Sec.~\ref{sec:windowed}). A mesh pair is \emph{nested} when every coarse
-node coincides with a fine node. CFL denotes the ratio of an explicit
-subdomain's time step to its central-difference stability limit.
+node coincides with a fine node.
+
+\paragraph{Explicit stability margin.} The explicit runs use central
+difference at the same $\Delta t = 10^{-6}$\,s as the implicit runs. A
+monodomain time-step sweep on the finest ($h = 6.35$\,mm) mesh brackets
+the central-difference stability limit between $3.5$ and $3.7\,\mu$s ---
+every run at $\Delta t \le 3.5\,\mu$s conserves the staggered energy to
+machine precision over $2000$ steps, and a run at $3.7\,\mu$s fails within
+$14$ steps --- consistent with the one-dimensional axial-mode bound
+$h/c_p = 3.67\,\mu$s, which the lumped-mass hexahedral mesh attains.
+Every explicit subdomain in this study therefore operates at or below
+$0.27$ of its stability limit (coarser meshes have proportionally larger
+limits; the subcycled explicit runs operate at $0.07$), so no result
+reported here is affected by proximity to the explicit stability limit.
+The \code{CFL} input parameter of the central-difference integrator is a
+per-step clamp multiplier on an element-diameter estimate recomputed on
+the current configuration; for the cube elements used here that estimate
+is $\sqrt{3}\,h/c_p \approx 6.4\,\mu$s, about $1.7\times$ the measured
+limit, so the clamp at the setting \code{CFL: 1.0} never engaged in these
+runs and would not by itself guarantee stability --- a run clamped to
+$6.36\,\mu$s fails within two steps. With the diameter-based estimate,
+clamp settings of about $0.5$ or below are required for the clamp to be
+protective on hexahedral meshes.
 
 \paragraph{Partition-of-unity (PU) energy.} Summing the two subdomains'
 energies counts the overlap region twice and distorts the diagnostic: a
@@ -1573,7 +1594,7 @@ contrast dissipates monotonically, and the non-nested ratios
 $1{:}0.7$--$1{:}0.8$ end early at $\approx 5$\,ms (interface element
 inversion). Right: explicit--explicit --- the staggered kinetic term goes
 secularly negative at every ratio as undamped grid-frequency content
-accumulates at $\mathrm{CFL}=1$; the $1{:}0.7$--$1{:}0.8$ runs fail by
+accumulates; the $1{:}0.7$--$1{:}0.8$ runs fail by
 central-difference instability at $2.6$--$2.8$\,ms.}
 \label{fig:nonoverlap-10ms}
 \end{figure}
@@ -1589,13 +1610,15 @@ persistent rate; it is not a fixed initial loss. Third, the mildly nonconforming
 ratios $1{:}0.7$ and $1{:}0.8$ form a failure window not detectable at $1$\,ms:
 the paired transfer accumulates interface-local high-frequency displacement
 content, and every integrator combination eventually fails there ---
-explicit members at $2.6$--$4$\,ms by central-difference instability,
-implicit pairs at $\approx 5$\,ms when the first interface element inverts
-while the global energy is still smooth ($-19\%$ at failure). This is not a
+explicit members at $2.6$--$4$\,ms by central-difference instability
+(despite the $3.7\times$ stability margin of Sec.~\ref{sec:benchmark}, so
+the instability is driven by the accumulated content, not by the time
+step), implicit pairs at $\approx 5$\,ms when the first interface element
+inverts while the global energy is still smooth ($-19\%$ at failure). This is not a
 relaxation artifact: reruns with fixed $\theta = 0.5$ fail identically
 (trajectories matching to three digits), so the noise accumulation is attributable
 to the transfer operators themselves. The nested ratios ($1{:}0.5$ exactly,
-and the strong ratios, whose transfer is strongly smoothing,) do not exhibit
+and the strong ratios, whose transfer is strongly smoothing) do not exhibit
 it.
 
 \subsection{Explicit--explicit saturation, and subcycling as a remedy}
@@ -1604,21 +1627,27 @@ The EE column degrades at every ratio by $10$\,ms, conforming included,
 ending with the staggered metric near $-2\,E_0$. The end state is not a
 divergence: the stored energy stays bounded and physical throughout (the
 conforming run maintains $E/E_0 \ge 0.97$ to $5$\,ms, then declines), but the
-staggered kinetic term goes steadily negative --- the signature of sawtooth
-content at $\omega\Delta t \approx 2$ accumulating in velocity and
-acceleration. Central difference at $\mathrm{CFL} = 1$ has zero numerical
-dissipation at the stability limit, so whatever grid-frequency content the
-interface exchange introduces is never removed; with no implicit member in the
-pair, it accumulates without bound in amplitude-neutral modes. The measured
-remedy is time-step margin: the subcycled conforming EE run (free side at
-$\Delta t/4$, $\mathrm{CFL} = 0.25$) ends at $-10.8\%$ with no saturation.
+staggered kinetic term goes steadily negative --- the signature of undamped
+high-frequency content accumulating in the velocity and acceleration
+fields. This is not an artifact of operating near the stability limit: the
+explicit subdomains run at $0.27$ of theirs
+(Sec.~\ref{sec:benchmark}). Central difference with $\gamma = 1/2$ has no
+algorithmic dissipation at any stable step, so whatever grid-frequency
+content the interface exchange introduces is never removed; with no
+implicit member in the pair, it accumulates without bound in
+amplitude-neutral modes. The measured remedy is subcycling the explicit
+member: the subcycled conforming EE run (free side at $\Delta t/4$) ends
+at $-10.8\%$ with no saturation, consistent with the mild dissipation of
+the interpolated subcycled exchange (Sec.~\ref{sec:gc}), which removes the
+high-frequency content that the non-dissipative same-step exchange
+retains.
 Subcycling has the opposite effect on the implicit--implicit pair: the
 same-step conforming II run conserves to $+0.00\%$ while the subcycled one
 loses $-20.2\%$ (at $1{:}0.5$, $-61.6\%$) --- the Gravouil--Combescure
 interpolation dissipation of Sec.~\ref{sec:gc}, harmless per stop,
 accumulates over $10^4$ stops. At long horizons the multi-time-step exchange
-is thus a trade-off: it stabilizes explicit members (CFL margin) and
-degrades implicit ones through interpolation dissipation.
+is thus a trade-off: it suppresses the explicit saturation and
+degrades implicit pairs through interpolation dissipation.
 Figure~\ref{fig:subcycled-10ms} shows both effects.
 
 \begin{figure}[htbp]
@@ -1626,7 +1655,7 @@ Figure~\ref{fig:subcycled-10ms} shows both effects.
 \includegraphics[width=\textwidth]{figs/nonoverlap-subcycled-10ms.pdf}
 \caption{Subcycled (free side $4{:}1$, solid) vs.\ same-step (dotted)
 adjoint-paired nonoverlap coupling over $10$\,ms. Left, conforming: the
-subcycled EE run (orange solid, $\mathrm{CFL}=0.25$) avoids the saturation
+subcycled EE run (orange solid, $\Delta t/4$) avoids the saturation
 that terminates same-step EE (orange dotted), while subcycled II (blue solid)
 incurs the accumulating interpolation dissipation that same-step II (on the
 reference line) does not. Right, mesh ratio $1{:}0.5$: at strong contrast
@@ -1743,7 +1772,7 @@ EE with fixed $\theta$ at the $2\,\mu$s window appeared nearly
 conservative ($-0.25\%$ at $10$\,ms), but this was the defect's low-pass
 filter accidentally damping the grid-frequency saturation, not a property
 of the coupling; post-fix, windowed EE saturates exactly like same-step
-EE, and the effective remedy remains CFL margin via subcycling
+EE, and the effective remedy remains subcycling the explicit member
 (Sec.~\ref{sec:tenms}).
 
 \paragraph{Open issue: a $\theta$-sensitive fixed point.} The
@@ -1811,10 +1840,9 @@ question and warrants a separate investigation.
 \item At long horizons the paired coupling's sign-definite dissipation at
   strong mesh contrast accumulates ($40$--$85\%$ at $10$\,ms); the non-nested
   ratios $1{:}0.7$--$1{:}0.8$ accumulate interface-local high-frequency
-  content until an interface element inverts; and the all-explicit pair at
-  $\mathrm{CFL} = 1$ saturates with undamped grid-frequency content, for
-  which subcycling (CFL margin) is an effective remedy
-  (Sec.~\ref{sec:tenms}).
+  content until an interface element inverts; and the all-explicit pair
+  saturates with undamped grid-frequency content, for which subcycling the
+  explicit member is an effective remedy (Sec.~\ref{sec:tenms}).
 \item Subcycling uses genuine piecewise-linear interpolation of partner
   trajectories (two silent defects that reduced it to end-sampling are
   fixed); its $O(\Delta t)$ dissipation is the energy loss intrinsic to subcycling, and
@@ -1843,9 +1871,10 @@ question and warrants a separate investigation.
   other overlap configuration is suitable for short transients only. On
   conforming node-aligned interfaces the consistent traction makes the
   impedance overlap condition exact to the Dirichlet-coupling reference.
-\item \textbf{All-explicit interfaces}: provide CFL margin (e.g.\ subcycle
-  the finer side); central difference at $\mathrm{CFL} = 1$ cannot remove
-  the grid-frequency content the exchange introduces.
+\item \textbf{All-explicit interfaces}: subcycle the finer side; central
+  difference with $\gamma = 1/2$ does not remove the grid-frequency
+  content the exchange introduces at any stable step, and only the
+  dissipative subcycled exchange suppresses its accumulation.
 \item \textbf{Parameters}: no impedance tuning anywhere --- the impedance
   is material data (harmonic mean per pair for nonoverlap; partner material
   with P/S split for overlap). The Robin parameter affects only the
