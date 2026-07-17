@@ -108,7 +108,7 @@ sides must take opposite roles.
 Non-overlapping impedance (absorbing) coupling — the default and recommended
 non-overlapping method. The interface transmits the partner traction plus a
 dashpot term, making the interface energy exchange dissipative. See
-`doc/notes/schwarz-coupling` for the theory.
+`docs/notes/schwarz-coupling` for the theory.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
@@ -188,5 +188,5 @@ restart:
 - Adaptive mesh swapping: `examples/adaptive-time-stepping/`,
   `examples/ahead/`
 
-See `doc/notes/schwarz-coupling` for the theory and stability analysis of the
+See `docs/notes/schwarz-coupling` for the theory and stability analysis of the
 impedance coupling.

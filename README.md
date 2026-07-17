@@ -10,17 +10,17 @@
   coupling and multiphysics, primarily in solid mechanics and heat
   conduction.
 
-![Norma Contact Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/bars.gif)
+![Norma Contact Simulation](https://github.com/sandialabs/Norma.jl/blob/main/docs/assets/bars.gif)
 *Impact simulation of two bars using different time integrators and
 mesh types: the left bar uses hexahedral elements with an implicit
 time integrator; the right bar uses tetrahedral elements with an
 explicit time integrator. Each subdomain advances independently with
 its own time step. (~100,000 elements)*
 
-![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/torsion.gif)
+![Norma Torsion Simulation](https://github.com/sandialabs/Norma.jl/blob/main/docs/assets/torsion.gif)
 *Dynamic torsion of a solid cylinder undergoing large deformations. (~160,000 elements)*
 
-![Norma Sphere Simulation](https://github.com/sandialabs/Norma.jl/blob/main/doc/sphere.gif)
+![Norma Sphere Simulation](https://github.com/sandialabs/Norma.jl/blob/main/docs/assets/sphere.gif)
 *Large-deformation vibration of a soft rubber ball. The animation
 plays in real time (100 frames per second) to match simulation
 time. (~300,000 elements)*

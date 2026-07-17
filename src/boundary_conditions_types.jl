@@ -294,7 +294,7 @@ mutable struct SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition <: Soli
     # the dashpot's interface power telescope to -Z ∫_Γ [[u̇ʰ]]² dS ≤ 0 and
     # the Robin term a conservative interface spring — the discrete
     # energy-stability condition of the DG/mortar literature (see
-    # doc/notes/schwarz-coupling, Eq. (adjoint)), available on this
+    # docs/notes/schwarz-coupling, Eq. (adjoint)), available on this
     # nonoverlap variant precisely because the two sides share a single
     # interface Γ. Both sides of a pair must set it.
     adjoint_pairing::Bool

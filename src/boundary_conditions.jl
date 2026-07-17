@@ -595,7 +595,7 @@ function SMCouplingSchwarzBC(
             # even on conforming meshes (static reactions miss the interface
             # inertia) and injecting up to +363% on nonconforming ones, where
             # the paired coupling is sign-definite at every mesh ratio and
-            # integrator combination (see doc/notes/schwarz-coupling).
+            # integrator combination (see docs/notes/schwarz-coupling).
             # The legacy behavior remains available as an explicit opt-out.
             adjoint_pairing = Bool(get(bc_params, "adjoint pairing", true))
             SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
@@ -628,7 +628,7 @@ function SMCouplingSchwarzBC(
             # impedance dashpot's interface work sign-indefinite on
             # nonconforming meshes (energy growth), where variational transfer
             # restores controlled dissipation (see
-            # doc/notes/schwarz-coupling). On node-aligned interfaces
+            # docs/notes/schwarz-coupling). On node-aligned interfaces
             # the two coincide. Pointwise remains an explicit legacy opt-in.
             transfer_mode = get(bc_params, "transfer", "variational")
             if transfer_mode ∉ ("pointwise", "variational")

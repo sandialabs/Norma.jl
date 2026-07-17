@@ -7,7 +7,7 @@ implicit and explicit time integration, large deformations, contact, and domain
 decomposition by Schwarz methods.
 
 ```@raw html
-<img src="https://raw.githubusercontent.com/sandialabs/Norma.jl/main/doc/bars.gif" alt="Contact simulation of two bars" style="max-width:100%;">
+<img src="https://raw.githubusercontent.com/sandialabs/Norma.jl/main/docs/assets/bars.gif" alt="Contact simulation of two bars" style="max-width:100%;">
 ```
 *Impact of two bars using different time integrators and mesh types: the left
 bar uses hexahedral elements with an implicit integrator; the right bar uses
@@ -15,12 +15,12 @@ tetrahedral elements with an explicit integrator. Each subdomain advances with
 its own time step.*
 
 ```@raw html
-<img src="https://raw.githubusercontent.com/sandialabs/Norma.jl/main/doc/torsion.gif" alt="Torsion simulation" style="max-width:100%;">
+<img src="https://raw.githubusercontent.com/sandialabs/Norma.jl/main/docs/assets/torsion.gif" alt="Torsion simulation" style="max-width:100%;">
 ```
 *Dynamic torsion of a solid cylinder undergoing large deformations.*
 
 ```@raw html
-<img src="https://raw.githubusercontent.com/sandialabs/Norma.jl/main/doc/sphere.gif" alt="Vibrating sphere simulation" style="max-width:100%;">
+<img src="https://raw.githubusercontent.com/sandialabs/Norma.jl/main/docs/assets/sphere.gif" alt="Vibrating sphere simulation" style="max-width:100%;">
 ```
 *Large-deformation vibration of a soft rubber ball, playing in real time.*
 
@@ -94,7 +94,7 @@ Capabilities currently implemented:
 - Overlapping and non-overlapping (Dirichlet–Neumann) Schwarz
 - Robin–Robin and impedance-matching (absorbing) Schwarz, including the
   adjoint-paired non-overlapping impedance coupling (see
-  `doc/notes/schwarz-coupling`)
+  `docs/notes/schwarz-coupling`)
 - Multi-time-step (subcycled) coupling with time interpolation of the partner state
 - Frictionless and tied contact via Schwarz
 - Fixed and adaptive (Aitken) relaxation with interface prediction

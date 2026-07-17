@@ -37,4 +37,4 @@ quickest way to learn how a feature is configured.
   `examples/single/implicit-dynamic-solid`.
 - Explicit dynamics: `examples/single/explicit-dynamic-solid`.
 - Schwarz coupling: `examples/overlap/` and `examples/nonoverlap/`; see also the
-  theory note in `doc/notes/schwarz-coupling`.
+  theory note in `docs/notes/schwarz-coupling`.
