@@ -227,7 +227,15 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     if model.failed == true
         norma_abort("Finite element model failed to initialize")
     end
-    internal_force = model.internal_force
+    # The Robin and impedance-Schwarz self terms belong to the internal force
+    # (they are added there by the Newton assembly in solver.jl), while the
+    # partner terms already sit in boundary_force from apply_bcs. Omitting the
+    # self terms here leaves an unbalanced interface force ∝ α in the initial
+    # acceleration: a one-step impulsive kick, visible from any start whose
+    # interface displacement or velocity is nonzero (e.g. a stress-free
+    # finite-rotation initial condition).
+    apply_robin_bcs_internal_force!(model)
+    internal_force = model.internal_force + build_impedance_schwarz_force(model)
     external_force = model.body_force + model.boundary_force
     inertial_force = external_force - internal_force
     kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
@@ -351,7 +359,11 @@ function initialize(integrator::CentralDifference, solver::ExplicitSolver, model
     if model.failed == true
         norma_abort("The finite element model has failed to initialize")
     end
-    internal_force = model.internal_force
+    # Same interface-force balance as the Newmark initializer above: the Robin
+    # and impedance-Schwarz self terms must accompany the partner terms that
+    # apply_bcs left in boundary_force.
+    apply_robin_bcs_internal_force!(model)
+    internal_force = model.internal_force + build_impedance_schwarz_force(model)
     external_force = model.body_force + model.boundary_force
     kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
