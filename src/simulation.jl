@@ -1235,12 +1235,47 @@ function schwarz(sim::MultiDomainSimulation)
         compute_interface_predictor!(sim)
     end
 
+    # Interface-jump gate for adjoint-paired impedance interfaces: their slow
+    # jump mode contributes almost nothing to ΔU while still far from the
+    # fixed point, and the dashpot dissipates whatever jump the iteration
+    # leaves behind (measured: −16% of a wave packet crossing a conforming
+    # interface at the 1.0e-8 default tolerance) — see paired_impedance_jump
+    # (schwarz.jl). The gate holds convergence only while the jump is actually
+    # contracting: a jump mode with no dashpot authority (e.g. a quiescent
+    # interface) can stall above the tolerance, and holding then just rides
+    # the sweep cap without improving the answer, so a stalled jump is
+    # accepted with a warning instead.
+    prev_jump_rel = -1.0
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
+        if sim.controller.converged
+            jump_rel = paired_impedance_jump(sim)
+            if jump_rel > sim.controller.relative_tolerance
+                if prev_jump_rel ≥ 0.0 && jump_rel > 0.95 * prev_jump_rel
+                    norma_logf(
+                        0,
+                        :schwarz,
+                        "Impedance interface jump %.2e stalled above tolerance %.2e; accepting.",
+                        jump_rel,
+                        sim.controller.relative_tolerance,
+                    )
+                else
+                    norma_logf(
+                        0,
+                        :schwarz,
+                        "Impedance interface jump %.2e > %.2e holds convergence.",
+                        jump_rel,
+                        sim.controller.relative_tolerance,
+                    )
+                    sim.controller.converged = false
+                end
+            end
+            prev_jump_rel = jump_rel
+        end
         if iteration_number == 0
             # Initial Schwarz pass: there is no prior iterate to compare against,
             # so the relative criterion is not yet a Schwarz convergence measure.
@@ -1257,8 +1292,11 @@ function schwarz(sim::MultiDomainSimulation)
             )
             # Early exit: if the initial absolute update already meets the absolute
             # tolerance, no further Schwarz iterations are needed. The relative test
-            # still cannot be applied on iteration 0 (no prior iterate).
-            if ΔU ≤ sim.controller.absolute_tolerance
+            # still cannot be applied on iteration 0 (no prior iterate). Paired
+            # impedance interfaces must also clear the jump gate here, since this
+            # path bypasses controller.converged entirely.
+            if ΔU ≤ sim.controller.absolute_tolerance &&
+                paired_impedance_jump(sim) ≤ sim.controller.relative_tolerance
                 norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
                 sim.controller.schwarz_iters[sim.controller.stop] = 0
                 break

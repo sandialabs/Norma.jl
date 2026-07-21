@@ -1339,6 +1339,54 @@ function build_impedance_schwarz_force(model::SolidMechanics)
     return f
 end
 
+# Maximum relative kinematic jump across all adjoint-paired impedance
+# interfaces, each side measuring the partner trace through its own transfer
+# operator. The paired exchange has a slow interface-jump mode whose per-sweep
+# displacement increment is far smaller than its remaining distance to the
+# fixed point, so the ΔU-based Schwarz criterion alone can declare convergence
+# while the interface still carries an O(10%) kinematic jump — which the
+# dashpot then dissipates (measured: −16% of the energy of a wave packet
+# crossing a conforming interface at the 1.0e-8 default tolerance, restored to
+# −0.003% once the jump is actually converged). The jump vanishes at the true
+# fixed point, so it serves as an additional convergence gate; see
+# update_schwarz_convergence_criterion (simulation.jl). Displacement and
+# velocity jumps are gated separately, each relative to its own trace scale;
+# traces whose scale is below the controller's absolute tolerance (velocity:
+# divided by the controller step) are quiescent and skipped so roundoff on an
+# idle interface cannot stall the iteration.
+function paired_impedance_jump(sim::MultiDomainSimulation)
+    controller = sim.controller
+    floor_u = controller.absolute_tolerance
+    floor_v = controller.absolute_tolerance / controller.time_step
+    max_rel = 0.0
+    for subsim in sim.subsims
+        model = get_fom_model(subsim)
+        model isa SolidMechanics || continue
+        for bc in model.boundary_conditions
+            bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
+            bc.adjoint_pairing || continue
+            size(bc.dirichlet_projector, 1) > 0 || continue
+            src_model = get_fom_model(coupled_subsim_of(bc))
+            src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
+            src_map = src_bc.global_from_local_map
+            dst_map = bc.global_from_local_map
+            P = bc.dirichlet_projector
+            for (field, floor_scale) in ((:displacement, floor_u), (:velocity, floor_v))
+                self_trace = getfield(model, field)[:, dst_map]
+                src_trace = getfield(src_model, field)[:, src_map]
+                transferred = similar(self_trace)
+                for comp in 1:3
+                    transferred[comp, :] = P * src_trace[comp, :]
+                end
+                scale = max(norm(self_trace), norm(transferred))
+                scale ≤ floor_scale && continue
+                max_rel = max(max_rel, norm(self_trace - transferred) / scale)
+            end
+        end
+    end
+    return max_rel
+end
+
 # --- Interface work instrumentation (diagnosis; enabled via env var) --------
 #
 # When NORMA_IMPEDANCE_WORK_CSV is set, a row is appended per impedance-overlap
