@@ -1106,7 +1106,18 @@ function initialize(sim::MultiDomainSimulation)
     # a real (round-1-refined) acceleration already in place, so every
     # reconstruction this time reads real data no matter which subdomain
     # is processed first.
-    if any(is_restarted(subsim.model) for subsim in sim.subsims)
+    # A fresh (non-restart) start whose initial conditions put nonzero
+    # displacement or velocity on a Schwarz-coupled interface has the same
+    # consistency problem as a restart: the pass-1 accelerations were solved
+    # against placeholder (zero) partner data, so the interface force balance
+    # at t = 0 is one-sided. For the impedance exchange the unbalanced Robin
+    # term α W u produces a one-step impulsive kick (measured: interface-
+    # localized kinetic energy scaling as α²Δt² from a stress-free rotated
+    # state). The same refinement pass restores the balance; it is a no-op
+    # for the common at-rest start, which is skipped to preserve existing
+    # behavior exactly.
+    if any(is_restarted(subsim.model) for subsim in sim.subsims) ||
+        any(has_initial_interface_motion(subsim) for subsim in sim.subsims)
         for _ in 1:2
             for (subsim_index, subsim) in enumerate(sim.subsims)
                 reset_history(sim.controller, subsim_index)
@@ -1121,6 +1132,27 @@ function initialize(sim::MultiDomainSimulation)
     end
     detect_contact(sim)
     return nothing
+end
+
+# True when any Schwarz-coupled DOF of this subdomain carries nonzero initial
+# displacement or velocity — the condition under which the t = 0 acceleration
+# refinement pass in initialize(sim::MultiDomainSimulation) is needed for a
+# fresh start.
+function has_initial_interface_motion(subsim::SingleDomainSimulation)
+    model = get_fom_model(subsim)
+    model isa SolidMechanics || return false
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsSchwarzBoundaryCondition || continue
+        for i_global in bc.global_from_local_map
+            for comp in 1:3
+                if model.displacement[comp, i_global] != 0.0 ||
+                    model.velocity[comp, i_global] != 0.0
+                    return true
+                end
+            end
+        end
+    end
+    return false
 end
 
 function solve(sim::SingleDomainSimulation)
@@ -1256,6 +1288,29 @@ function schwarz(sim::MultiDomainSimulation)
             jump_rel = paired_impedance_jump(sim)
             if jump_rel > sim.controller.relative_tolerance
                 if prev_jump_rel ≥ 0.0 && jump_rel > 0.95 * prev_jump_rel
+                    # A stalled jump is a representability floor of the pair's
+                    # trace spaces: no further sweeping reduces it, and the
+                    # dashpot dissipates it at a rate the tolerance no longer
+                    # bounds. The default accepts it loudly; "abort" is for
+                    # runs where that dissipation is unacceptable and the
+                    # remedy (mesh conformity or refinement) is on the user.
+                    stall_action = get(sim.params, "stalled interface jump action", "warn")
+                    if stall_action == "abort"
+                        norma_abort(
+                            "Impedance interface jump $(jump_rel) stalled above " *
+                            "tolerance $(sim.controller.relative_tolerance) and " *
+                            "`stalled interface jump action: abort` is set. The " *
+                            "jump is a representability limit of the interface " *
+                            "trace spaces (nonconforming meshes); the dashpot " *
+                            "dissipates it every stop. Refine toward conformity " *
+                            "or accept the loss with the default `warn`.",
+                        )
+                    elseif stall_action != "warn"
+                        norma_abort(
+                            "Unknown `stalled interface jump action: $(stall_action)`. " *
+                            "Valid values are `warn` (default) and `abort`.",
+                        )
+                    end
                     norma_logf(
                         0,
                         :schwarz,
