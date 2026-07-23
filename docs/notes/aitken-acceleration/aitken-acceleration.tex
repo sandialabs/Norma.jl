@@ -133,6 +133,59 @@ secant form reads the actual stored iterates $\bm{g}^{(n)},\bm{g}^{(n-1)}$ and
 is robust to it, while the recursion silently inherits any inconsistency in the
 stored $\omega^{(n-1)}$ and $\bm{r}^{(n-1)}$.
 
+\section{An equivalent map-output form of the secant factor}
+\label{sec:mapoutput}
+
+An alternative statement of the acceleration, proposed independently by
+D.~Koliesnikova, works with the differences of the \emph{map outputs}
+$T(\bm{g}^{(n)})$ rather than of the iterates. Define
+\begin{equation}
+    \beta^{(n)} \;=\;
+    \frac{\bigl(T(\bm{g}^{(n)}) - T(\bm{g}^{(n-1)})\bigr)\cdot\bm{\delta}^{(n)}}
+         {\bigl\lVert \bm{\delta}^{(n)} \bigr\rVert^{2}},
+    \qquad
+    \omega^{(n)} \;=\; 1 - \beta^{(n)},
+    \label{eq:mapoutput}
+\end{equation}
+followed by the same relaxed update~\eqref{eq:update}, equivalently written
+$\bm{g}^{(n+1)} = T(\bm{g}^{(n)}) - \beta^{(n)}\bm{r}^{(n)}$. Since
+$T(\bm{g}) = \bm{g} + \bm{r}$, the map-output difference decomposes as
+\begin{equation}
+    T(\bm{g}^{(n)}) - T(\bm{g}^{(n-1)})
+    \;=\; \bm{d}^{(n)} + \bm{\delta}^{(n)},
+    \label{eq:Tdecomp}
+\end{equation}
+so that
+\begin{equation*}
+    \omega^{(n)} \;=\; 1 -
+    \frac{\bigl(\bm{d}^{(n)} + \bm{\delta}^{(n)}\bigr)\cdot\bm{\delta}^{(n)}}
+         {\lVert \bm{\delta}^{(n)} \rVert^{2}}
+    \;=\; -\,\frac{\bm{d}^{(n)}\cdot\bm{\delta}^{(n)}}
+                  {\lVert \bm{\delta}^{(n)} \rVert^{2}} ,
+\end{equation*}
+which is exactly the secant factor~\eqref{eq:secant}. The map-output
+form~\eqref{eq:mapoutput} is therefore algebraically identical to
+Version~2, and in particular is \emph{not} the Irons--Tuck
+recursion~\eqref{eq:ironstuck}: like the secant form, it is non-recursive,
+reads only stored data, and inherits the robustness discussed in
+Section~\ref{sec:equiv}. That the same factor is reached from two
+independent derivations is a useful cross-check on both.
+
+Two implementation remarks. First, the storage requirements are the same
+but the stored quantities differ: \eqref{eq:mapoutput} retains the two map
+outputs (or one output and the residual history), whereas the
+implementation retains the iterate $\bm{g}^{(n-1)}$ and the residual
+$\bm{r}^{(n-1)}$. Second, computing $\omega^{(n)} = 1 - \beta^{(n)}$
+incurs a cancellation when $\beta^{(n)} \to 1$ (strong damping,
+$\omega^{(n)}$ small) that amplifies the \emph{relative} error of
+$\omega^{(n)}$, although the absolute error --- which is what enters the
+update --- is unaffected; the direct form~\eqref{eq:secant} avoids even
+this. The considerations that distinguish the variants in practice are
+unchanged by the choice of form: the warm-up and safeguard bookkeeping
+(Sections~\ref{sec:init}--\ref{sec:fields}) and, most consequentially for
+dynamics, the choice of which interface variable to relax
+(Section~\ref{sec:fields}), on which~\eqref{eq:mapoutput} is silent.
+
 \section{Initialization}
 \label{sec:init}
 
