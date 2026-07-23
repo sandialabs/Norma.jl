@@ -25,7 +25,7 @@ Norma's non-overlapping Schwarz alternating solver, together with the
 displacement-form kinematic recovery they use. The purpose is to fix the exact
 formulas and index conventions so they can be reproduced in Sierra/SM. Both
 formulations are exposed through the multi-domain controller: the recursive
-Irons--Tuck variant (\texttt{relaxation: aitken}) and the non-recursive secant
+Irons--Tuck variant (\texttt{relaxation: aitken recursive}) and the non-recursive secant
 variant (\texttt{relaxation: aitken secant}). They are mathematically
 equivalent in exact arithmetic but differ in their initialization bookkeeping
 and in how they treat the interface velocity and acceleration.
@@ -78,7 +78,7 @@ with relaxation factor $\omega^{(n)}$. Classical relaxation uses a fixed
 $\omega^{(n)} \equiv \omega$; the Aitken variants choose $\omega^{(n)}$
 dynamically.
 
-\section{Version 1: recursive Irons--Tuck Aitken (\texttt{relaxation: aitken})}
+\section{Version 1: recursive Irons--Tuck Aitken (\texttt{relaxation: aitken recursive})}
 
 With $\bm{\delta}^{(n)} := \bm{r}^{(n)} - \bm{r}^{(n-1)}$, the Irons--Tuck
 recursion~\cite{IronsTuck} sets
@@ -137,8 +137,8 @@ stored $\omega^{(n-1)}$ and $\bm{r}^{(n-1)}$.
 \label{sec:mapoutput}
 
 An alternative statement of the acceleration, proposed independently by
-D.~Koliesnikova, works with the differences of the \emph{map outputs}
-$T(\bm{g}^{(n)})$ rather than of the iterates. Define
+Koliesnikova~\cite{Koliesnikova}, works with the differences of the
+\emph{map outputs} $T(\bm{g}^{(n)})$ rather than of the iterates. Define
 \begin{equation}
     \beta^{(n)} \;=\;
     \frac{\bigl(T(\bm{g}^{(n)}) - T(\bm{g}^{(n-1)})\bigr)\cdot\bm{\delta}^{(n)}}
@@ -167,15 +167,15 @@ which is exactly the secant factor~\eqref{eq:secant}. The map-output
 form~\eqref{eq:mapoutput} is therefore algebraically identical to
 Version~2.
 
-\paragraph{Notation.} The original statement of~\eqref{eq:mapoutput}
-writes the fixed-point residual itself as $\delta g^{n}$, so the
-quantity $\delta g^{n} - \delta g^{n-1}$ appearing there in the
-numerator and denominator is this note's residual difference
+\paragraph{Notation.} Reference~\cite{Koliesnikova} writes the
+fixed-point residual itself as $\delta g^{n}$, so the quantity
+$\delta g^{n} - \delta g^{n-1}$ appearing there in the numerator and
+denominator of~\eqref{eq:mapoutput} is this note's residual difference
 $\bm{\delta}^{(n)}$ --- the shared letter $\delta$ denotes different
-quantities in the two notations. It also indexes the sweep
-\emph{output} ($g^{n} = T(g^{n-1})$), whereas this note evaluates
-$T$ and $\bm{r}$ at a single iterate level; the residual definitions
-coincide after shifting her iterate indices by one.
+quantities in the two notations. Reference~\cite{Koliesnikova} also
+indexes the sweep \emph{output} ($g^{n} = T(g^{n-1})$), whereas this
+note evaluates $T$ and $\bm{r}$ at a single iterate level; the residual
+definitions coincide after shifting the iterate indices by one.
 Table~\ref{tab:translation} gives the correspondence.
 
 \begin{table}[ht!]
@@ -183,7 +183,7 @@ Table~\ref{tab:translation} gives the correspondence.
 \small
 \begin{tabular}{@{}lll@{}}
 \toprule
-Original statement & This note & Meaning \\
+Ref.~\cite{Koliesnikova} & This note & Meaning \\
 \midrule
 $\delta g^{n} = T(g^{n}) - g^{n-1}$ &
 $\bm{r}^{(n)} = T(\bm{g}^{(n)}) - \bm{g}^{(n)}$ &
@@ -196,8 +196,8 @@ $\bm{d}^{(n)} + \bm{\delta}^{(n)}$ &
 map-output difference \\
 \bottomrule
 \end{tabular}
-\caption{Correspondence between the notation of the original statement
-of~\eqref{eq:mapoutput} and that of this note. The mixed iterate
+\caption{Correspondence between the notation of
+Ref.~\cite{Koliesnikova} and that of this note. The mixed iterate
 indices in the first row reflect the output-based indexing
 $g^{n} = T(g^{n-1})$; both rows denote the same residual once the
 iterate indices are aligned.}
@@ -230,10 +230,27 @@ dynamics, the choice of which interface variable to relax
 
 Let $\omega^{(1)}$ be a user-supplied initial factor (Norma:
 \texttt{relaxation parameter}, default $1$) and $N_0$ a warm-up count (Norma:
-\texttt{aitken N0 parameter}, default $1$). For $1 \le n < N_0$ the factor is
-held at $\omega^{(n)} = \omega^{(1)}$; the first dynamic factor is computed at
-$n = N_0$, once two residuals (Version~1) and additionally two iterates
-(Version~2) are on record.
+\texttt{aitken N0 parameter}, default $1$). Norma counts Schwarz sweeps from
+$k = 0$. The two versions warm up differently
+(\texttt{relaxation\_aitken\_recursive\_theta!} and
+\texttt{relaxation\_aitken\_secant\_theta!} in \texttt{src/schwarz.jl}):
+
+\begin{itemize}
+\item \emph{Version 2 (secant)}: sweeps $k < N_0$ apply $\omega^{(1)}$
+while recording the residual and the iterate; the first dynamic
+factor~\eqref{eq:secant} is computed at $k = N_0$, once a previous
+residual and a previous iterate are on record.
+\item \emph{Version 1 (recursive)}: sweeps $k < N_0$ apply $\omega = 1$
+(no relaxation, regardless of $\omega^{(1)}$) and keep the residual
+history cleared; at $k = N_0$ no previous residual exists, so the factor
+$\omega^{(1)}$ is applied and seeds the recursion; the first dynamic
+factor~\eqref{eq:ironstuck} is computed at $k = N_0 + 1$, with
+$\omega^{(N_0)} = \omega^{(1)}$ as the carried factor.
+\end{itemize}
+
+With the default $\omega^{(1)} = 1$ the warm-up factors of the two
+versions coincide; for $\omega^{(1)} \ne 1$ Version~1 starts relaxing one
+sweep later than Version~2.
 
 \section{Numerical safeguards}
 
@@ -276,7 +293,7 @@ $\bm{u}^{(n+1)} = \bm{g}^{(n+1)}$ from~\eqref{eq:update}, and recovers
     \bm{v}^{(n+1)} = \bm{v}_{\mathrm{pre}} + \gamma\Delta t\,\bm{a}^{(n+1)} .
     \label{eq:recover}
 \end{equation}
-The legacy \texttt{relaxation: aitken} variant instead relaxes
+The \texttt{relaxation: aitken recursive} variant instead relaxes
 $\bm{u}$, $\bm{v}$, and $\bm{a}$ independently with the same $\omega^{(n)}$. A
 $\omega$-blend of two kinematically consistent triples is again consistent, so
 the two treatments agree when the incoming triple lies on~\eqref{eq:newmark};
@@ -302,7 +319,7 @@ Formulation & Relaxation factor & Norma key & Variable relaxed \\
 \midrule
 Irons--Tuck (recursive) &
 $\omega^{(n)} = -\omega^{(n-1)}\dfrac{\bm{r}^{(n-1)}\cdot\bm{\delta}^{(n)}}{\lVert\bm{\delta}^{(n)}\rVert^2}$ &
-\texttt{aitken} & $\bm{u},\bm{v},\bm{a}$ (same $\omega$) \\[1.4em]
+\texttt{aitken recursive} & $\bm{u},\bm{v},\bm{a}$ (same $\omega$) \\[1.4em]
 Secant (non-recursive) &
 $\omega^{(n)} = -\dfrac{\bm{d}^{(n)}\cdot\bm{\delta}^{(n)}}{\lVert\bm{\delta}^{(n)}\rVert^2}$ &
 \texttt{aitken secant} & primary unknown; recover rest \\
@@ -341,6 +358,7 @@ problems}, MOX Report 45, Politecnico di Milano.
 \bibitem{IronsTuck} B.~M.~Irons and R.~C.~Tuck,
 \emph{A version of the Aitken accelerator for computer iteration},
 Int.\ J.\ Numer.\ Methods Eng.\ \textbf{1} (1969) 275--277.
+\bibitem{Koliesnikova} D.~Koliesnikova, personal communication, July 2026.
 \end{thebibliography}
 
 \end{document}
