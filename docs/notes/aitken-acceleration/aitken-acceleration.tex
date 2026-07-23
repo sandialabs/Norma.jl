@@ -165,7 +165,46 @@ so that
 \end{equation*}
 which is exactly the secant factor~\eqref{eq:secant}. The map-output
 form~\eqref{eq:mapoutput} is therefore algebraically identical to
-Version~2, and in particular is \emph{not} the Irons--Tuck
+Version~2.
+
+\paragraph{Notation.} The original statement of~\eqref{eq:mapoutput}
+writes the fixed-point residual itself as $\delta g^{n}$, so the
+quantity $\delta g^{n} - \delta g^{n-1}$ appearing there in the
+numerator and denominator is this note's residual difference
+$\bm{\delta}^{(n)}$ --- the shared letter $\delta$ denotes different
+quantities in the two notations. It also indexes the sweep
+\emph{output} ($g^{n} = T(g^{n-1})$), whereas this note evaluates
+$T$ and $\bm{r}$ at a single iterate level; the residual definitions
+coincide after shifting her iterate indices by one.
+Table~\ref{tab:translation} gives the correspondence.
+
+\begin{table}[ht!]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Original statement & This note & Meaning \\
+\midrule
+$\delta g^{n} = T(g^{n}) - g^{n-1}$ &
+$\bm{r}^{(n)} = T(\bm{g}^{(n)}) - \bm{g}^{(n)}$ &
+fixed-point residual \\
+$\delta g^{n} - \delta g^{n-1}$ &
+$\bm{\delta}^{(n)} = \bm{r}^{(n)} - \bm{r}^{(n-1)}$ &
+residual difference \\
+$T(g^{n}) - T(g^{n-1})$ &
+$\bm{d}^{(n)} + \bm{\delta}^{(n)}$ &
+map-output difference \\
+\bottomrule
+\end{tabular}
+\caption{Correspondence between the notation of the original statement
+of~\eqref{eq:mapoutput} and that of this note. The mixed iterate
+indices in the first row reflect the output-based indexing
+$g^{n} = T(g^{n-1})$; both rows denote the same residual once the
+iterate indices are aligned.}
+\label{tab:translation}
+\end{table}
+
+The form~\eqref{eq:mapoutput} is in particular \emph{not} the Irons--Tuck
 recursion~\eqref{eq:ironstuck}: like the secant form, it is non-recursive,
 reads only stored data, and inherits the robustness discussed in
 Section~\ref{sec:equiv}. That the same factor is reached from two
