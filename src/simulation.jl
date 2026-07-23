@@ -1107,15 +1107,16 @@ function initialize(sim::MultiDomainSimulation)
     # reconstruction this time reads real data no matter which subdomain
     # is processed first.
     # A fresh (non-restart) start whose initial conditions put nonzero
-    # displacement or velocity on a Schwarz-coupled interface has the same
-    # consistency problem as a restart: the pass-1 accelerations were solved
-    # against placeholder (zero) partner data, so the interface force balance
-    # at t = 0 is one-sided. For the impedance exchange the unbalanced Robin
-    # term α W u produces a one-step impulsive kick (measured: interface-
+    # displacement or velocity on an impedance-Schwarz-coupled interface has
+    # the same consistency problem as a restart: the pass-1 accelerations
+    # were solved against placeholder (zero) partner data, so the interface
+    # force balance at t = 0 is one-sided, and the unbalanced Robin term
+    # α W u produces a one-step impulsive kick (measured: interface-
     # localized kinetic energy scaling as α²Δt² from a stress-free rotated
     # state). The same refinement pass restores the balance; it is a no-op
     # for the common at-rest start, which is skipped to preserve existing
-    # behavior exactly.
+    # behavior exactly. Fresh starts of other Schwarz couplings (DN,
+    # overlap) are excluded — see has_initial_interface_motion below.
     if any(is_restarted(subsim.model) for subsim in sim.subsims) ||
         any(has_initial_interface_motion(subsim) for subsim in sim.subsims)
         for _ in 1:2
@@ -1134,15 +1135,20 @@ function initialize(sim::MultiDomainSimulation)
     return nothing
 end
 
-# True when any Schwarz-coupled DOF of this subdomain carries nonzero initial
-# displacement or velocity — the condition under which the t = 0 acceleration
-# refinement pass in initialize(sim::MultiDomainSimulation) is needed for a
-# fresh start.
+# True when any impedance-Schwarz-coupled DOF of this subdomain carries
+# nonzero initial displacement or velocity — the condition under which the
+# t = 0 acceleration refinement pass in initialize(sim::MultiDomainSimulation)
+# is needed for a fresh start. Restricted to the impedance nonoverlap
+# exchange, the only coupling the pass has been validated on: the unbalanced
+# Robin term α W u is what produces the one-step kick the pass removes, and
+# the DN d-form exchange demonstrably does not tolerate a trust-Schwarz
+# re-solve from a moving initial state (element inversion on the DN
+# cantilever with a parabolic initial bend).
 function has_initial_interface_motion(subsim::SingleDomainSimulation)
     model = get_fom_model(subsim)
     model isa SolidMechanics || return false
     for bc in model.boundary_conditions
-        bc isa SolidMechanicsSchwarzBoundaryCondition || continue
+        bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
         for i_global in bc.global_from_local_map
             for comp in 1:3
                 if model.displacement[comp, i_global] != 0.0 ||
