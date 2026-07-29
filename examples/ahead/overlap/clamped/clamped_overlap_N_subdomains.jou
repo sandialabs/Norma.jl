@@ -1,0 +1,171 @@
+# ============================================================================
+# clamped_overlap_N_subdomains.jou
+#
+# Generalized version of:
+#   clamped_left_-0p5_-0p2_right_-0p3_0p5.jou
+#
+# Decomposes a slender bar (a thin brick extruded along z, used as a 1D-like
+# solid mesh) into N EQUALLY SIZED, EQUALLY SPACED, OVERLAPPING subdomains,
+# meshes each one independently, and exports each to its own Genesis (.g)
+# file -- exactly the workflow the original file used for its 2-subdomain
+# (coarse/fine) case, but generalized to arbitrary N and a
+# user-controlled overlap length.
+#
+# All of the knobs you need are in the "USER CONTROLS" block below.
+# ============================================================================
+
+${m  = 1.0}
+${mm = 0.001 * m}
+
+# ----------------------------------------------------------------------------
+# USER CONTROLS -- edit these to control the decomposition
+# ----------------------------------------------------------------------------
+
+# Overall domain extent along z (must match the original "-0.5 to 0.5" bar
+# unless you want a different total length).
+${z_min = -0.5 * m}
+${z_max =  0.5 * m}
+
+# Number of overlapping subdomains to generate (N >= 1).
+${num_domains = 5}
+
+# Physical overlap length shared between every pair of neighboring
+# subdomains (this is the "0.1" requested -- change it here).
+${overlap = 0.1 * m}
+
+# Cross-sectional (x,y) dimensions and surface mesh size.
+${side         = 1.0 * mm}
+${h_size_face  = 1.0 * mm}
+
+# Target element size ALONG z. Interval counts per subdomain are derived
+# from this so that axial mesh resolution stays consistent across all
+# subdomains regardless of their (equal) length.
+#   (matches the original file: 0.3 m / 150 intervals = 0.8 m / 400 intervals
+#    = 2 mm axial element size)
+${h_size_z = 2.0 * mm}
+
+# Prefix used for the exported mesh files: "<prefix>-1.g", "<prefix>-2.g", ...
+${file_prefix = "clamped-subdomain"}
+
+# ----------------------------------------------------------------------------
+# DERIVED QUANTITIES -- do not need to be edited
+# ----------------------------------------------------------------------------
+
+${total_length = z_max - z_min}
+
+# Equal subdomain length such that N subdomains of this length, each
+# overlapping its neighbor by "overlap", exactly tile [z_min, z_max]:
+#   N * sub_length - (N - 1) * overlap = total_length
+${sub_length = (total_length + (num_domains - 1) * overlap) / num_domains}
+
+# Distance between the starts of consecutive subdomains.
+${stride = sub_length - overlap}
+
+# ----------------------------------------------------------------------------
+# PARAMETER VALIDATION
+# ----------------------------------------------------------------------------
+# The decomposition above only makes physical sense if each subdomain is
+# longer than the requested overlap (sub_length > overlap), and if at least
+# one subdomain was requested. If either check fails, the geometry loop
+# below is skipped entirely so no broken/degenerate geometry gets built or
+# exported, and a large, unmistakable block of text is emitted in its place.
+# Cubit's own parser will then flag that block as an invalid/unrecognized
+# command, which forces a hard, visible failure in the log rather than a
+# silent no-op -- look for "FATAL_ERROR" in the Cubit console output.
+
+${num_domains_valid = num_domains >= 1}
+${overlap_valid      = sub_length > overlap}
+${params_valid        = num_domains_valid * overlap_valid}
+
+{If(params_valid == 0)}
+##############################################################################
+# FATAL ERROR -- invalid decomposition parameters, aborting before any
+# geometry is created:
+#
+#   num_domains = {num_domains}   (must be >= 1)
+#   overlap     = {overlap}
+#   sub_length  = {sub_length}    (computed subdomain length; must be > overlap)
+#   total_length = {total_length}
+#
+# Fix: reduce 'overlap' and/or 'num_domains', or increase the domain extent
+# (z_max - z_min), then re-run this journal file.
+##############################################################################
+FATAL_ERROR_INVALID_OVERLAP_OR_NUM_DOMAINS_PARAMETERS_SEE_COMMENTS_ABOVE
+{Else}
+
+# ============================================================================
+# Main loop: build, mesh, and export each subdomain
+# ============================================================================
+
+${loop_index = 0}
+{Loop(num_domains)}
+
+  ${domain_start  = z_min + loop_index * stride}
+  ${domain_end    = domain_start + sub_length}
+  ${domain_center = 0.5 * (domain_start + domain_end)}
+  ${domain_intervals = int(sub_length / h_size_z + 0.5)}
+
+# ---- Fresh brick for this subdomain ----------------------------------------
+# compress ids all (done at the end of the previous iteration, and here for
+# the very first iteration) ensures every subdomain again gets volume ID 1,
+# surfaces 1--6, and curves 1--12, just like in the original file.
+  compress ids all
+
+  create brick x {side} y {side} z {sub_length}
+  move volume 1 z {domain_center} include_merged
+
+  surface 1 2 size {h_size_face}
+  surface 1 2 scheme submap
+  mesh surface 1 2
+  curve 9 10 11 12 interval {domain_intervals}
+  mesh volume 1
+
+  block 1 volume 1
+  block 1 name "subdomain_{loop_index+1}"
+
+  nodeset 1 surface with x_coord < 0
+  nodeset 1 name "nsx-"
+  nodeset 2 surface with x_coord > 0
+  nodeset 2 name "nsx+"
+  nodeset 3 surface with y_coord < 0
+  nodeset 3 name "nsy-"
+  nodeset 4 surface with y_coord > 0
+  nodeset 4 name "nsy+"
+  #nodeset 5 surface with z_coord < 0
+  nodeset 5 surface 2
+  nodeset 5 name "nsz-"
+  #nodeset 6 surface with z_coord > 0
+  nodeset 6 surface 1
+  nodeset 6 name "nsz+"
+  nodeset 7 volume all
+  nodeset 7 name "nsall"
+
+  sideset 1 surface with x_coord < 0
+  sideset 1 name "ssx-"
+  sideset 2 surface with x_coord > 0
+  sideset 2 name "ssx+"
+  sideset 3 surface with y_coord < 0
+  sideset 3 name "ssy-"
+  sideset 4 surface with y_coord > 0
+  sideset 4 name "ssy+"
+  #sideset 5 surface with z_coord < 0
+  sideset 5 surface 2
+  sideset 5 name "ssz-"
+  #sideset 6 surface with z_coord > 0
+  sideset 6 surface 1
+  sideset 6 name "ssz+"
+
+  set large exodus file off
+  export mesh "{file_prefix}-{loop_index+1}.g" overwrite
+
+# ---- Clean up before the next subdomain ------------------------------------
+  delete mesh
+  delete volume all
+  compress ids all
+
+  ${loop_index = loop_index + 1}
+
+{EndLoop}
+
+{EndIf}
+
