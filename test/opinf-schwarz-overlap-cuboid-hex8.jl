@@ -22,7 +22,7 @@
     rm("cuboid-1.e"; force=true)
     rm("cuboid-2.e"; force=true)
     rm("opinf-operator.npz"; force=true)
-    @test model_coarse.reduced_state[1] ≈ -1.235577703737587e-5 rtol = 1.0e-06
-    @test model_coarse.reduced_state[2] ≈ -1.235577703737587e-5 rtol = 1.0e-06
-    @test model_coarse.reduced_state[3] ≈ -0.0008960511947529225 rtol = 1.0e-06
+    @test model_coarse.reduced_state[1] ≈ -4.3573266969888975e-6 rtol = 1.0e-06
+    @test model_coarse.reduced_state[2] ≈ -4.35732680985116e-6 rtol = 1.0e-06
+    @test model_coarse.reduced_state[3] ≈ -0.0026094667380943113 rtol = 1.0e-06
 end

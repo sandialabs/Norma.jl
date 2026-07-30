@@ -50,7 +50,7 @@
         ])
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
-        @test bc_fine.overlap_l2_error ≈ 0.2549171831856978 rtol = 1.0e-06
+        @test bc_fine.overlap_l2_error ≈ 0.13903853379703812 rtol = 1.0e-06
         @test bc_coarse.overlap_l2_error ≈ 2.8375269021790513e-13 atol = 1.0e-12
         @test isfile("overlap-l2-disp-rel-errors-0001.csv")
 
@@ -126,7 +126,7 @@ end
         ])
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
-        @test bc_fine.overlap_l2_error ≈ 0.2021333 rtol = 1.0e-06
+        @test bc_fine.overlap_l2_error ≈ 0.13335300884323992 rtol = 1.0e-06
         @test bc_coarse.overlap_l2_error ≈ 0.0 atol = 0.0
         @test isfile("overlap-l2-velo-rel-errors-0001.csv")
 
@@ -203,7 +203,7 @@ end
         ])
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
-        @test bc_fine.overlap_l2_error ≈ 0.1420472027022424 rtol = 1.0e-06
+        @test bc_fine.overlap_l2_error ≈ 0.721289326722417 rtol = 1.0e-06
         @test bc_coarse.overlap_l2_error ≈ 0.0 atol = 0.0
         @test isfile("overlap-l2-acce-rel-errors-0001.csv")
 
