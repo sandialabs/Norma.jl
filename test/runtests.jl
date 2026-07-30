@@ -74,7 +74,6 @@ const indexed_test_files = [
     (26, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
     (27, "adaptive-time-stepping.jl"),
     (28, "schwarz-ahead-overlap-dynamic-clamped.jl"),
-    (29, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
     (29, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
     (30, "schwarz-ahead-overlap-dynamic-torsion.jl"),
     (31, "schwarz-ahead-overlap-dynamic-bracket.jl"),
@@ -159,6 +158,7 @@ const indexed_test_files = [
     (110, "restart-past-final-time.jl"),
     (111, "restart-inplace-checkpoint.jl"),
     (112, "schwarz-overlap-static-cuboids-restart.jl"),
+    (113, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
 ]
 
 # Extract test file names
