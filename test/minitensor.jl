@@ -49,7 +49,18 @@ using StaticArrays
         w_prev = @SVector [-π, 0.0, 0.0]
         w_cont = Norma.rv_continue(w, w_prev)
         @test isapprox(Norma.rt_of_rv(w_cont), Norma.rt_of_rv(w); atol=1e-12)
-        @test dot(w_cont, w_prev) < 0.0  # same direction as previous
+        @test isapprox(w_cont, w_prev; atol=1e-12)  # closest equivalent is prev itself
+
+        # Continuity across the pi and 2 pi crossings: sweep the rotation
+        # angle, continuing each principal rotation vector from the
+        # previous continued one, and recover the swept vector throughout.
+        axis = LinearAlgebra.normalize(@SVector [1.0, -2.0, 2.0])
+        swept = @SVector zeros(3)
+        for angle in 0.05:0.1:6.95
+            principal = Norma.rv_of_rt(Norma.rt_of_rv(angle * axis))
+            swept = Norma.rv_continue(principal, swept)
+            @test isapprox(swept, angle * axis; atol=1e-12)
+        end
     end
 
     @testset "BCH Identity (approximate Exp(log(exp(x)exp(y))))" begin
