@@ -251,16 +251,28 @@ Norma.norma_log(0, :norma, "BEGIN TESTS")
 # failed or errored, throws a Test.TestSetException right at the closing
 # `end` of the block below. That exception would otherwise abort the script
 # before any of the summary/cleanup code runs, which is why the log was
-# missing its final summary (and "Tests Complete"/"END TESTS") on any run
-# with at least one failure -- the common case, not the exception.
+# missing its final summary (and "END TESTS") on any run with at least one
+# failure -- the common case, not the exception.
 #
 # We catch that exception so the log always gets finalized. The aggregate
 # pass/fail/error totals are accumulated as we go, from the same per-file
-# count_test_results(ts) call already used for each file's log line --
-# NOT recomputed afterwards from the outer testset object, since Test.jl's
-# internal bookkeeping for a testset that wraps many children doesn't expose
-# child counts the same way a single file's testset does (confirmed: doing
-# so silently produced "0 passed" even when every test had passed).
+# count_test_results(ts) call already used for each file's log line.
+#
+# An earlier version of this function tried to hand Test.jl's own outer
+# testset object to Test.print_test_results a second time, so the log could
+# get a byte-for-byte copy of the table @testset prints to stdout. That
+# meant reconstructing the outer testset by hand with Test's private
+# push_testset/pop_testset/finish functions instead of the `@testset`
+# macro, to keep a live reference to it even when finishing it throws. That
+# turned out to be too fragile in practice -- it crashed partway through
+# rendering the table on a real run, after every test file had already
+# completed, with nothing left standing to catch the error or log it,
+# silently truncating runtests.log right after the last test file with no
+# summary and no "END TESTS" at all. Rather than lean further on that
+# undocumented internal API, we go back to the plain `@testset` macro here
+# (proven to reliably reach the end of a run, failures included) and build
+# our own summary table below from data we already collect per file, which
+# has no such dependency.
 #
 # This all lives in a function rather than directly at the top level of the
 # script: assigning to `overall_passes` etc. inside the nested for/try below
@@ -320,37 +332,70 @@ function run_test_suite(test_files_to_run)
     return overall_passes, overall_fails, overall_errors, suite_failed, file_summaries
 end
 
-# Render a table in the same spirit as Julia's own "Test Summary: | Pass
-# Fail Error Total Time" output (see the comment above run_test_suite for
-# why we can't just capture that table's actual text without buffering
-# away the suite's live console output for however long the run takes).
-# Each row is (label, passes, fails, errors, elapsed_seconds); the first
-# row is treated as the grand total and is not indented.
-function log_test_summary_table(rows)
-    label_width = maximum(length(label) for (label, _, _, _, _) in rows)
-    header =
-        rpad("Test Summary", label_width) *
-        " | " *
-        lpad("Pass", 6) *
-        lpad("Fail", 6) *
-        lpad("Error", 7) *
-        lpad("Total", 7) *
-        lpad("Time", 9)
-    Norma.norma_log(0, :summary, header)
-    for (idx, (label, passes, fails, errors, elapsed)) in enumerate(rows)
-        total = passes + fails + errors
-        indented_label = idx == 1 ? label : "  " * label
-        line =
-            rpad(indented_label, label_width) *
-            " | " *
-            lpad(string(passes), 6) *
-            lpad(string(fails), 6) *
-            lpad(string(errors), 7) *
-            lpad(string(total), 7) *
-            lpad(Norma.format_time(elapsed), 9)
-        keyword = (fails == 0 && errors == 0) ? :summary : :error
-        Norma.norma_log(0, keyword, line)
+# Format a duration the way the Test stdlib's own summary table does: plain
+# minutes (no rollover to hours) plus one decimal place of seconds, e.g.
+# "45.2s" under a minute, "9m10.0s" or "1m03.7s" over one, with the seconds
+# field zero-padded to two digits once there's a minutes part.
+function format_duration_like_testset(seconds::Real)
+    if seconds < 60
+        return @sprintf("%.1fs", seconds)
     end
+    minutes = floor(Int, seconds / 60)
+    secs = seconds - minutes * 60
+    return @sprintf("%dm%04.1fs", minutes, secs)
+end
+
+# Render a table in the same visual style as the Test stdlib's own
+# "Test Summary:" table -- Pass/Fail/[Error]/Total/Time columns, with the
+# Error column dropped entirely when nothing in the run actually errored
+# (as opposed to failed), same as the real one -- and write it straight to
+# the log file as plain text, not through norma_log, so it isn't prefixed
+# with a [TAG] the way every other log line is; that's what makes it read
+# as one clean table instead of another wall of tagged lines. Each row is
+# (label, passes, fails, errors, elapsed_seconds); the first row is treated
+# as the grand total and is not indented.
+#
+# Earlier this used Norma.format_time, which formats "1h 7m 45.24s" -- a
+# string longer than the column width the header line reserved for it. The
+# lpad() used to right-align the Time column silently does nothing when the
+# content is already wider than the requested width, so that string landed
+# glued directly onto the end of the previous (Total) column with no space
+# between them, e.g. "20491h 7m 45.24s" for a Total of 2049. Sizing every
+# column to the actual widest value it will hold (as done below), rather
+# than a width chosen in advance, avoids that class of bug entirely.
+function log_test_summary_table(io, rows)
+    show_errors = any(errors > 0 for (_, _, _, errors, _) in rows)
+    # Blank, rather than "0", for a zero-count cell -- Total and Time are
+    # the only columns always populated -- matching how the real Test
+    # stdlib table reads (a row of all-Pass has nothing at all under Fail).
+    zero_blank(n) = n == 0 ? "" : string(n)
+
+    labels = [i == 1 ? label : "  " * label for (i, (label, _, _, _, _)) in enumerate(rows)]
+    pass_strs = [zero_blank(p) for (_, p, _, _, _) in rows]
+    fail_strs = [zero_blank(f) for (_, _, f, _, _) in rows]
+    error_strs = [zero_blank(e) for (_, _, _, e, _) in rows]
+    total_strs = [string(p + f + e) for (_, p, f, e, _) in rows]
+    time_strs = [format_duration_like_testset(t) for (_, _, _, _, t) in rows]
+
+    label_w = maximum(length, labels)
+    pass_w = max(length("Pass"), maximum(length, pass_strs))
+    fail_w = max(length("Fail"), maximum(length, fail_strs))
+    error_w = show_errors ? max(length("Error"), maximum(length, error_strs)) : 0
+    total_w = max(length("Total"), maximum(length, total_strs))
+    time_w = max(length("Time"), maximum(length, time_strs))
+
+    function render(label, pass_s, fail_s, error_s, total_s, time_s)
+        cols = [lpad(pass_s, pass_w), lpad(fail_s, fail_w)]
+        show_errors && push!(cols, lpad(error_s, error_w))
+        push!(cols, lpad(total_s, total_w), lpad(time_s, time_w))
+        return rpad(label, label_w) * " | " * join(cols, "  ")
+    end
+
+    println(io, render("Test Summary:", "Pass", "Fail", "Error", "Total", "Time"))
+    for (i, _) in enumerate(rows)
+        println(io, render(labels[i], pass_strs[i], fail_strs[i], error_strs[i], total_strs[i], time_strs[i]))
+    end
+    return nothing
 end
 
 overall_passes, overall_fails, overall_errors, suite_failed, file_summaries =
@@ -358,12 +403,14 @@ overall_passes, overall_fails, overall_errors, suite_failed, file_summaries =
 
 elapsed_time = time() - start_time
 
-total_tests = length(test_files_to_run)
 summary_rows = vcat([("Norma.jl Test Suite", overall_passes, overall_fails, overall_errors, elapsed_time)], file_summaries)
-log_test_summary_table(summary_rows)
+let io = Norma.NORMA_LOG_FILE[]
+    if io !== nothing
+        log_test_summary_table(io, summary_rows)
+        flush(io)
+    end
+end
 
-Norma.norma_log(0, :done, "Tests Complete")
-Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
 Norma.norma_log(0, :norma, "END TESTS")
 
 # Finish writing the suite log and report where it was written.
