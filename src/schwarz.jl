@@ -106,7 +106,7 @@ function relaxation_aitken_recursive_theta!(
     if iter < aitken_N0
         controller.aitken_theta_disp[pair][slot_k] = controller.relaxation_parameter
         controller.aitken_prev_residual_disp[pair][slot_k] = Float64[]
-        norma_logf(1, :schwarz, "Aitken-recursive θ[pair=%d, slot=%d, iter=%d] = %.4f", pair, slot_k, iter, 1.0)
+        norma_logf(1, :schwarz, "Aitken-recursive θ[iter=%d] = %.4e", iter, 1.0)
         return 1.0
     end
     residual = interp_disp .- lambda_prev
@@ -124,7 +124,7 @@ function relaxation_aitken_recursive_theta!(
     end
     controller.aitken_prev_residual_disp[pair][slot_k] = residual
     controller.aitken_theta_disp[pair][slot_k] = θ
-    norma_logf(1, :schwarz, "Aitken-recursive θ[pair=%d, slot=%d, iter=%d] = %.4f", pair, slot_k, iter, θ)
+    norma_logf(1, :schwarz, "Aitken-recursive θ[iter=%d] = %.4e", iter, θ)
     return θ
 end
 
@@ -173,7 +173,7 @@ function relaxation_aitken_secant_theta!(
     end
     controller.aitken_prev_residual_disp[pair][slot_k] = residual
     controller.aitken_prev_lambda_disp[pair][slot_k] = copy(lambda_prev)
-    norma_logf(1, :schwarz, "Aitken-secant θ[pair=%d, slot=%d, iter=%d] = %.4f", pair, slot_k, iter, θ)
+    norma_logf(1, :schwarz, "Aitken-secant θ[iter=%d] = %.4e", iter, θ)
     return θ
 end
 
@@ -1776,8 +1776,12 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     # Assign interpolated force
     set_internal_force!(coupled_model, interp_∂Ω_f)
 
-    # Apply relaxed update if needed
-    if is_swappable_dn_schwarz(bc)
+    # Apply relaxed update if needed. Only the Dirichlet side of the interface
+    # is relaxed: the Neumann side's traction datum is the interpolated partner
+    # reaction (set_internal_force! above), which the kinematic blend below
+    # never touches, so relaxation state kept there is dead — it would only
+    # compute and log a spurious second θ per iteration.
+    if is_swappable_dn_schwarz(bc) && bc.is_dirichlet
         iter = controller.iteration_number
         # Per-substep-time relaxation slot (see relaxation_slot!): the previous
         # iterate must come from the previous Schwarz sweep at the SAME time. A
