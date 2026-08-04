@@ -763,6 +763,15 @@ function SolidMultiDomainTimeController(params::Parameters)
     if has_relaxation_parameter
         relaxation_parameter = Float64(params["relaxation parameter"])
     end
+    # Echo the effective relaxation settings once, so a misspelled or misplaced
+    # YAML key (silently ignored, like all unrecognized keys) is visible at startup.
+    if relaxation_method === :fixed
+        norma_logf(0, :schwarz, "Relaxation: fixed, θ = %.4e", relaxation_parameter)
+    else
+        norma_logf(0, :schwarz, "Relaxation: %s, θ₀ = %.4e, N0 = %d",
+            relaxation_method === :aitken_recursive ? "Aitken recursive" : "Aitken secant",
+            relaxation_parameter, aitken_N0)
+    end
     naive_stabilized = get(params, "naive stabilized", false)
     lambda_time = [Float64[] for _ in 1:num_domains]
     lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
