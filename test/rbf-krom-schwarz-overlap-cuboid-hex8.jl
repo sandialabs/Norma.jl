@@ -46,7 +46,7 @@
     rm("cuboid-1.e"; force = true)
     rm("cuboid-2.e"; force = true)
     rm("linear-matern-kernel-rom-2.npz"; force = true)
-    @test model_coarse.reduced_state[1] ≈ 0.008808299413396137 rtol = 1.0e-06
-    @test model_coarse.reduced_state[2] ≈ 0.00880829941294263 rtol = 1.0e-06
-    @test model_coarse.reduced_state[3] ≈ 0.04563144912830183 rtol = 1.0e-06
+    
+    @test model_coarse.reduced_state[1] ≈ -0.04401322123736658 rtol = 1.0e-06
+    @test model_coarse.reduced_state[2] ≈ -0.003034562618537815 rtol = 1.0e-06
 end

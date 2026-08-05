@@ -58,7 +58,7 @@ function get_rbf_kernel(rbf_type::String, shape::Float64)
         return BasicMaternKernel(shape)
     elseif rbf_type == "linear-matern"
         return LinearMaternKernel(shape)
-    elseif rbf_type == "quadatic-matern"
+    elseif rbf_type == "quadratic-matern"
         return QuadraticMaternKernel(shape)
     end
 end

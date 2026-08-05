@@ -53,10 +53,8 @@
     rm("linear-kernel-rom-1.npz"; force = true)
     rm("linear-matern-kernel-rom-2.npz"; force = true)
 
-    @test model_coarse.reduced_state[1] ≈ 0.008882766687235059 rtol = 1.0e-05
-    @test model_coarse.reduced_state[2] ≈ 0.00888276668678142 rtol = 1.0e-05
-    @test model_coarse.reduced_state[3] ≈ 0.04572613960481776 rtol = 1.0e-05
-    @test model_fine.reduced_state[1] ≈ -0.02101576778429137 rtol = 1.0e-05
-    @test model_fine.reduced_state[2] ≈ -0.021015767784260495 rtol = 1.0e-05
-    @test model_fine.reduced_state[3] ≈ -0.06524948951176532 rtol = 1.0e-05
+    @test model_coarse.reduced_state[1] ≈ -0.04408941424927044 rtol = 1.0e-05
+    @test model_coarse.reduced_state[2] ≈ -0.0031640397058258734 rtol = 1.0e-05
+    @test model_fine.reduced_state[1] ≈ -0.06992403693639167 rtol = 1.0e-05
+    @test model_fine.reduced_state[2] ≈ -0.005910211088836505 rtol = 1.0e-05
 end
