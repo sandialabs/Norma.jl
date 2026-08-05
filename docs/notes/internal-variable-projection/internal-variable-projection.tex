@@ -1,0 +1,594 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+\newcommand{\inner}[2]{\left( #1 , #2 \right)}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\bs}[1]{\boldsymbol{#1}}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\emergencystretch=3em
+
+\title{Variational Recovery of Internal Variables\\
+in Admissible Spaces:\\
+Constrained $L^2$ Projection for Norm-Like Variables}
+\author{Alejandro Mota}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The variational recovery of internal variables of
+Mota~et~al.~\cite{mota2013} extends integration-point fields to the entire
+domain by an $L^2$ projection derived from a three-field variational
+principle, and preserves the admissible spaces of group-valued variables by
+interpolating in the corresponding Lie algebras through the logarithmic and
+exponential maps. This treatment leaves open the case of norm-like
+variables such as the equivalent plastic strain, whose admissible set is
+the closed half-line $[0,\infty)$: the field attains the boundary value
+zero over finite regions, the half-line is not a group, and in practice the
+consistent projection produces negative values near steep gradients. This
+note argues that the correct extension is not a repair of the logarithmic
+transformation but a change of the admissible set in the same variational
+principle: minimize the same $L^2$ distance over the intersection of the
+finite element space with the convex cone of admissible fields. The
+resulting constrained projection is the unique solution of a variational
+inequality; it is idempotent and non-expansive by construction, properties
+that the unconstrained projection followed by clamping does not possess.
+Discretely it is a bound-constrained quadratic program on the
+already-assembled Gram matrix, solvable by a primal--dual active-set method
+in a small, finite number of iterations. The active set of the constraint
+is a localized indicator of an under-resolved front and therefore serves
+directly as an input to error estimation and mesh size-field
+construction. The note
+closes with a taxonomy of internal variables by admissible set and an
+outline of an implementation in Norma.
+\end{abstract}
+
+\tableofcontents
+
+\section{Background and problem statement}
+\label{sec:background}
+
+The recovery procedure of \cite{mota2013} arises from a three-field
+functional in the deformation mapping $\bs{\varphi}$, a
+\emph{target} internal variable field $\bar{\bs{z}}$ defined over the whole
+domain, and a Lagrange multiplier $\bar{\bs{y}}$ that enforces equality
+between the target field and the \emph{source} field $\bs{z}$ available at
+integration points. Discretization with interpolation functions
+$\lambda_\alpha$ for the target field yields the consistent $L^2$
+projection
+\begin{equation}
+\bar{\bs{z}}_h(\bs{X}) = \lambda_\alpha(\bs{X})\,\bar{\bs{z}}_\alpha,
+\qquad
+\bar{\bs{z}}_\alpha = \bs{H}_{\alpha\beta}^{-1}\,\bs{\Sigma}_\beta,
+\qquad
+\bs{H}_{\alpha\beta} := \int_B \lambda_\alpha \lambda_\beta\, \bs{I} \, \dd V,
+\qquad
+\bs{\Sigma}_\beta := \int_B \lambda_\beta\, \bs{z} \, \dd V,
+\label{eq:projection}
+\end{equation}
+with $\bs{I}$ the $q \times q$ identity and $q$ the number of scalar
+parameters that represent the internal variable. The projection
+\eqref{eq:projection} is the minimizer of
+$\tfrac12 \norm{\bar{\bs{z}}_h - \bs{z}}_{L^2(B)}^2$ over the finite
+element space $V_h$. The Gram matrix $\bs{H}$ is symmetric positive
+definite, sparse, and of narrow band. Because the projection is a
+minimizer, it is optimal; because it is a projection onto a subspace, it is
+idempotent, which is the property that makes it suitable for repeated
+remap: lumped (diagonalized) variants are not idempotent and diffuse the
+field under repeated application.
+
+For internal variables that do not live in a linear space, \cite{mota2013}
+interpolates in the Lie algebra: the field $\bs{Z}$ with values in
+a Lie group $G$ is transformed by the logarithmic map to $\bs{z} = \log
+\bs{Z}$ in the Lie algebra $\mathfrak{g}$, which is a vector space;
+the projection \eqref{eq:projection} is applied there; and the result is
+returned to the group by the exponential map. This guarantees, for
+example, that projected rotations remain rotations, that isochoric
+deformations remain isochoric, and that a volumetric Jacobian remains
+positive.
+
+The open question addressed here is the treatment of \emph{norm-like}
+variables, of which the equivalent plastic strain
+$\varepsilon^p = \int \dot{\varepsilon}^p \,\dd t \geq 0$
+is the canonical example. Its admissible set is the closed half-line
+$[0,\infty)$. In practice, the consistent projection of such a variable
+produces negative values near steep gradients --- the projection is a
+(near-)best $L^2$ approximation, and best approximations of fields with
+sharp fronts oscillate. Negative equivalent plastic strain subsequently
+enters constitutive updates that assume non-negativity, with consequences
+ranging from silent inaccuracy to failure of the local return mapping.
+
+\section{Why the logarithmic transformation does not extend to this case}
+\label{sec:limits}
+
+It is tempting to treat $[0,\infty)$ by analogy with the positive reals
+$\mathbb{R}^+$, which form a Lie group under multiplication with Lie
+algebra $\mathbb{R}$. The analogy fails for a structural reason, and
+identifying that reason yields a criterion that predicts which variables
+need which treatment.
+
+The half-line $[0,\infty)$ is not a group: zero has no multiplicative
+inverse, and $\log 0 = -\infty$. More importantly, zero is not an
+exceptional value of the equivalent plastic strain but its \emph{generic}
+value: every elastic region carries $\varepsilon^p = 0$ exactly, over
+finite subdomains. The field therefore sits \emph{on} the boundary of its
+admissible set, not merely near it.
+
+Contrast this with the variables the logarithmic transformation serves
+well. The volumetric Jacobian $J = \det \bs{F}$ is positive, and
+$J \to 0$ is approached only asymptotically under extreme compression;
+the generic state $J = 1$ maps to $\log J = 0$, the identity of the
+algebra. Scalar damage $D \in [0,1)$, transformed as
+$1 - D \in \mathbb{R}^+$ with $h = \log(1 - D)$, maps the generic
+virgin state $D = 0$ to $h = 0$; the boundary $D \to 1$ is asymptotic
+and is pushed to $h \to -\infty$, where linear interpolation cannot
+overshoot it.
+
+The criterion is then:
+\begin{quote}
+\emph{Asymptotic boundaries --- approached but never attained --- are
+handled by a logarithmic transformation, which maps them to infinity.
+Attained boundaries --- on which the field sits over finite regions ---
+cannot be transformed away and must be enforced as inequality
+constraints.}
+\end{quote}
+The two mechanisms compose. Scalar damage possesses both kinds of
+boundary: the asymptotic boundary $D \to 1$ is removed by the
+transformation $h = \log(1-D) \in (-\infty, 0]$, while the attained
+boundary $D = 0$, that is $h = 0$, persists in the transformed variable
+and requires the one-sided constraint $h \leq 0$ --- which is again a
+convex cone constraint, now linear in the transformed space. The
+equivalent plastic strain has only the attained boundary and is treated
+by a cone constraint in physical space directly.
+
+A regularized transformation $\log(\epsilon + \varepsilon^p)$ is not a
+remedy. First, the reconstructed location of an elastic--plastic front
+becomes a function of the regularization parameter $\epsilon$ rather than
+of the data. Second, the $L^2$ norm in the transformed space weights
+\emph{relative} error: fluctuations of order $\log \epsilon$ in the
+elastic region contribute to the minimized distance as strongly as the
+physically meaningful variation in the plastic zone, and the minimizer
+approximates the former in preference to the latter.
+
+\section{Constrained projection as a variational inequality}
+\label{sec:vi}
+
+The proposed extension retains the variational principle of
+\cite{mota2013} verbatim and changes only the admissible set. Let
+$K \subseteq \mathbb{R}^q$ be the closed convex set of admissible values
+of the internal variable (a cone, a box, or a simplex; see
+Section~\ref{sec:taxonomy}), and define the admissible subset of the
+finite element space
+\begin{equation}
+\mathcal{K}_h := \left\{ \bs{\eta}_h \in V_h \;:\;
+\bs{\eta}_h(\bs{X}) \in K \ \text{for all } \bs{X} \in B
+\right\},
+\end{equation}
+which is closed and convex. The constrained recovery is
+\begin{equation}
+\bar{\bs{z}}_h = \operatorname*{arg\,min}_{\bs{\eta}_h \in \mathcal{K}_h}
+\tfrac12 \norm{\bs{\eta}_h - \bs{z}}_{L^2(B)}^2 ,
+\label{eq:constrained}
+\end{equation}
+equivalently the solution of the variational inequality
+\begin{equation}
+\bar{\bs{z}}_h \in \mathcal{K}_h :
+\qquad
+\inner{\bar{\bs{z}}_h - \bs{z}}{\bs{\eta}_h - \bar{\bs{z}}_h}_{L^2(B)} \geq 0
+\qquad \forall\, \bs{\eta}_h \in \mathcal{K}_h ,
+\label{eq:vi}
+\end{equation}
+the discrete analogue of the obstacle problem. When no constraint is
+active, \eqref{eq:constrained} reduces identically to
+\eqref{eq:projection}; on a mesh that resolves the field, the constrained
+and unconstrained recoveries coincide.
+
+The essential properties follow from the Hilbert space projection theorem
+onto closed convex sets.
+
+\begin{proposition}[Well-posedness, idempotency, stability]
+\label{prop:properties}
+Problem \eqref{eq:constrained} admits a unique solution
+$\bar{\bs{z}}_h = P_{\mathcal{K}_h}\, \bs{z}$. The map $P_{\mathcal{K}_h}$
+is idempotent, $P_{\mathcal{K}_h} \circ P_{\mathcal{K}_h} =
+P_{\mathcal{K}_h}$, and non-expansive,
+$\norm{P_{\mathcal{K}_h} \bs{u} - P_{\mathcal{K}_h} \bs{v}} \leq
+\norm{\bs{u} - \bs{v}}$.
+\end{proposition}
+
+Idempotency deserves emphasis because it has been raised as a concern:
+one might fear that appending constraints to the projection destroys the
+idempotency that motivates the consistent projection in the first place.
+The opposite holds. The metric projection onto a closed convex set is
+idempotent \emph{by construction} --- an admissible field is its own
+closest admissible point --- whereas the apparently simpler alternative,
+the unconstrained projection followed by a pointwise clamp, is not: the
+clamp is the projection in the wrong (diagonal) metric, the clamped field
+is generally not the $L^2$-closest admissible field, and re-projecting it
+re-introduces oscillation. Under the repeated project--interpolate cycles
+of successive remaps, the composition ``project, then clamp'' drifts; the
+constrained projection does not. Non-expansiveness supplies the
+complementary stability statement: a sequence of constrained projections
+cannot amplify perturbations.
+
+\begin{remark}[One-sided conservation of the accumulated quantity]
+\label{rem:mean}
+Let $K = [0,\infty)^q$, componentwise non-negativity of the $q$ scalar
+parameters that represent the internal variable in
+\eqref{eq:projection}, with the equivalent plastic strain as the scalar
+case $q = 1$. The \emph{unconstrained} projection conserves the integral
+of the field: the Lagrange interpolation functions form a partition of
+unity, $\sum_\alpha \lambda_\alpha = 1$, so constant fields belong to
+$V_h$, and testing the unconstrained stationarity condition
+$\inner{\bar{\bs{z}}_h - \bs{z}}{\bs{\eta}_h}_{L^2(B)} = 0$ with
+$\bs{\eta}_h = \bs{1}$, the constant field of ones in $\mathbb{R}^q$,
+yields
+$\int_B \bs{1} \cdot \bar{\bs{z}}_h \,\dd V =
+\int_B \bs{1} \cdot \bs{z} \,\dd V$.
+
+The constrained projection retains exactly one half of this statement,
+and the geometry of the cone selects which half. In the variational
+inequality \eqref{eq:vi} the perturbation
+$\bs{\eta}_h = \bar{\bs{z}}_h + c\,\bs{1}$, with $c > 0$ a scalar
+constant, is always admissible --- raising an admissible field keeps it
+admissible --- and substitution gives
+$c \int_B (\bar{\bs{z}}_h - \bs{z}) \cdot \bs{1} \,\dd V \geq 0$,
+that is,
+\begin{equation}
+\int_B \bs{1} \cdot \bar{\bs{z}}_h \,\dd V \;\geq\;
+\int_B \bs{1} \cdot \bs{z} \,\dd V .
+\label{eq:mean}
+\end{equation}
+The opposite perturbation $\bs{\eta}_h = \bar{\bs{z}}_h - c\,\bs{1}$
+is inadmissible wherever any component of the solution touches the
+bound, so no matching upper inequality survives: the projection may
+raise the total of the field, never lower it.
+
+Discretely the statement sharpens to an identity. In the
+scalar-variable setting of Section~\ref{sec:discrete}, multiplying the
+complementarity system \eqref{eq:kkt} by $\bs{1}^{\mathsf{T}}$, with
+$\bs{1}$ the vector of ones, and using the partition of unity twice,
+namely
+$\bs{1}^{\mathsf{T}} \bs{H} \bar{\bs{z}} = \int_B \bar{\bs{z}}_h \,\dd V$
+and $\bs{1}^{\mathsf{T}} \bs{\Sigma} = \int_B \bs{z} \,\dd V$, gives
+\begin{equation}
+\int_B \bar{\bs{z}}_h \,\dd V - \int_B \bs{z} \,\dd V
+= \bs{1}^{\mathsf{T}} \bs{\mu} \;\geq\; 0 ,
+\label{eq:meanid}
+\end{equation}
+so the excess of the accumulated variable equals the resultant of the
+admissibility reactions $\bs{\mu}$ of
+Remark~\ref{rem:multiplier}. It is therefore supported on the active
+set, vanishes identically when no constraint activates, and decays with
+the local projection error as the mesh resolves the front.
+
+The direction of inequality \eqref{eq:mean} is the physically correct
+one. Repairing a negative undershoot of the equivalent plastic strain
+must add plastic history in a neighborhood of the front; a repair able
+to remove it would fabricate less-yielded material out of a numerical
+oscillation. Among all admissible fields the constrained projection adds
+the least, since $\bar{\bs{z}}_h$ is by definition the closest
+admissible field to the source.
+\end{remark}
+
+\begin{remark}[Interpretation of the multiplier]
+\label{rem:multiplier}
+In \cite{mota2013} the Lagrange multiplier of the three-field functional
+is identified with the thermodynamic force conjugate to the internal
+variable. Appending the inequality $\bar{\bs{z}}_h \in \mathcal{K}_h$
+introduces a further multiplier $\bs{\mu} \geq \bs{0}$, complementary to
+the constraint, which plays the role of the reaction that maintains
+admissibility of the state --- the same role the contact pressure plays
+for the impenetrability constraint. Its support marks precisely the
+regions where the unconstrained projection would exit the admissible set;
+Section~\ref{sec:adaptivity} exploits this.
+\end{remark}
+
+\section{Discrete formulation and solution algorithms}
+\label{sec:discrete}
+
+\subsection{Bound-constrained quadratic program}
+
+For a scalar variable with $K = [0,\infty)$ and constraints imposed on
+the vector $\bar{\bs{z}}$ of nodal values (the adequacy of nodal
+constraints is discussed in Section~\ref{sec:where}), problem
+\eqref{eq:constrained} is the bound-constrained quadratic program
+\begin{equation}
+\min_{\bar{\bs{z}} \geq \bs{0}} \
+\tfrac12\, \bar{\bs{z}}^{\mathsf{T}} \bs{H} \bar{\bs{z}}
+- \bs{\Sigma}^{\mathsf{T}} \bar{\bs{z}},
+\label{eq:qp}
+\end{equation}
+with $\bs{H}$ and $\bs{\Sigma}$ exactly as assembled for
+\eqref{eq:projection}. The first-order conditions are the linear
+complementarity system
+\begin{equation}
+\bs{H} \bar{\bs{z}} - \bs{\Sigma} = \bs{\mu}, \qquad
+\bar{\bs{z}} \geq \bs{0}, \qquad \bs{\mu} \geq \bs{0}, \qquad
+\bs{\mu}^{\mathsf{T}} \bar{\bs{z}} = 0 .
+\label{eq:kkt}
+\end{equation}
+Because $\bs{H}$ is symmetric positive definite, \eqref{eq:qp} is
+strictly convex and possesses exactly one solution: the closest
+admissible field of \eqref{eq:constrained}. The two algorithms below
+compute this same point and differ only in how they reach it --- the
+first exactly, in finitely many steps; the second in the limit of an
+infinite iteration.
+
+\subsection{Primal--dual active set (preferred for a new implementation)}
+\label{sec:pdas}
+
+The primal--dual active-set method --- equivalent to a semismooth Newton
+method on the complementarity system \cite{hintermuller2003} ---
+terminates at the exact solution of \eqref{eq:qp} in a finite number of
+iterations, typically fewer than five in practice. Each iteration fixes the currently
+active nodes at the bound and solves the reduced symmetric positive
+definite system on the inactive set. A factorization of $\bs{H}$,
+computed once per remap, is reused across iterations, so the additional
+computation relative to the unconstrained projection
+\eqref{eq:projection} amounts to a small number of back-substitutions
+on subsets of the unknowns. When
+no constraints activate, the method terminates after one iteration with
+the unconstrained solution.
+
+Two further properties recommend it in the remap setting. First, it
+warm-starts: the front moves little between successive remaps, so the
+active set of the previous remap is an excellent initial guess, and the
+method typically confirms or barely amends it in one or two iterations.
+Second, it yields the multiplier $\bs{\mu}$ exactly at termination,
+and the multiplier is precisely the quantity that
+Section~\ref{sec:adaptivity} supplies to the size field: a truncated
+iterative method produces $\bs{\mu}$ only to the accuracy of its
+stopping tolerance, contaminating the small, localized indicator one
+wishes to read.
+
+\subsection{Dykstra's alternating projections (preferred when
+retrofitting a legacy code)}
+\label{sec:dykstra}
+
+An implementation that prefers to compose existing operators rather than
+introduce a quadratic programming kernel may use Dykstra's algorithm
+\cite{boyle1986}: alternate the consistent projection onto $V_h$ (a Gram
+matrix solve) and the pointwise clamp onto the cone of non-negative
+fields, with Dykstra's correction increments carried between passes.
+The correction increments are essential, and their role is the point
+most easily misread. \emph{Plain} alternating projections --- project,
+clamp, repeat, with no corrections --- converge to \emph{some} point of
+the intersection of $V_h$ with the cone: an admissible field, but in
+general not the minimizer of \eqref{eq:qp}, hence a suboptimal recovery.
+Dykstra's increments repair exactly this defect: the corrected iteration
+converges to the solution of \eqref{eq:qp}, the same point the
+active-set method computes. The difference between the two subsections
+is therefore not the answer but the route: the active-set method reaches
+it exactly in finitely many steps, whereas Dykstra's iteration reaches
+it only in the limit, at a linear rate that degrades precisely where the
+constraint matters --- near a sharp front, where the subspace and the
+cone meet at a shallow angle.
+
+The advantage of Dykstra's algorithm is therefore architectural rather
+than mathematical: it introduces no new solver kernel, only the
+composition of two operators a legacy code already possesses --- the
+consistent Gram matrix solve and the pointwise clamp. In an existing
+code where a bound-constrained solver would be an intrusive addition,
+it is the appropriate first implementation; in a new implementation,
+where the active-set solver of Section~\ref{sec:pdas} is
+straightforward to write, nothing else favors it.
+
+\subsection{Quadrature consistency}
+
+The unconstrained projection is idempotent under inexact quadrature
+provided $\bs{H}$ and $\bs{\Sigma}$ are integrated with the same rule:
+the projection of a member of $V_h$ then reproduces it identically. The
+constrained projection inherits this property, since an admissible member
+of $V_h$ satisfies \eqref{eq:vi} trivially. The discipline of
+\cite{mota2013} --- the same integration points for the recovery as for
+the equilibrium statement --- carries over unchanged.
+
+\section{Where to impose the bounds}
+\label{sec:where}
+
+Nodal constraints $\bar{\bs{z}}_\alpha \geq \bs{0}$ guarantee a
+non-negative \emph{field} only when the interpolation functions are
+non-negative, as for linear simplices and multilinear hexahedra. For
+quadratic and serendipity elements the basis functions change sign and
+nodal bounds do not imply field bounds. Two options exist:
+\begin{enumerate}[nosep]
+\item constrain the field at the points where it will be evaluated ---
+the integration points of the target mesh --- which is natural for
+in-core remap where the target is known at projection time; or
+\item express the element polynomial in the Bernstein basis and constrain
+the Bernstein coefficients, whose non-negativity is a sufficient (mildly
+conservative) condition for non-negativity of the polynomial. This is the
+standard device of bound-preserving high-order transport and requires no
+knowledge of the target mesh, which suits file-based remap.
+\end{enumerate}
+For the linear elements that dominate current practice, nodal constraints
+suffice.
+
+\section{A taxonomy of internal variables}
+\label{sec:taxonomy}
+
+Table~\ref{tab:taxonomy} classifies common internal variables by
+admissible set, boundary character, and the resulting treatment. The
+classification is the operational content of the criterion of
+Section~\ref{sec:limits}.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{llll}
+\toprule
+Variable & Admissible set & Boundary character & Treatment \\
+\midrule
+Back stress, strains & vector space & none & projection \eqref{eq:projection} \\
+Rotations $\bs{R}$ & $SO(3)$ & none (group) & $\log$/$\exp$ + \eqref{eq:projection} \\
+Isochoric $\bs{F}^p$ & $SL(3)$ & none (group) & $\log$/$\exp$ + \eqref{eq:projection} \\
+Jacobian $J$ & $(0,\infty)$ & $0$ asymptotic & $\log$ + \eqref{eq:projection} \\
+Equiv.\ plastic strain $\varepsilon^p$ & $[0,\infty)$ & $0$ attained & cone constraint \eqref{eq:constrained} \\
+Scalar damage $D$, porosity $f$ & $[0,1)$ & $0$ attained, $1$ asymptotic &
+$h = \log(1-D)$, constraint $h \leq 0$ \\
+Volume fractions $\phi_i$ & simplex & faces attained &
+\eqref{eq:constrained} with $\sum_i \phi_i = 1$ \\
+\bottomrule
+\end{tabular}
+\caption{Internal variables by admissible set. ``Attained'' boundaries
+are those on which the field sits over finite regions; they require
+inequality constraints. ``Asymptotic'' boundaries are removed by
+logarithmic transformation. The two mechanisms compose, as in the damage
+row.}
+\label{tab:taxonomy}
+\end{table}
+
+The architectural consequence is that the admissible set is
+\emph{metadata of the state variable}, declared by the constitutive model
+and read by the transfer machinery, which dispatches on it: plain
+projection for vector-space variables, logarithmic transformation for
+group-valued variables, constrained projection for cone- and box-valued
+variables, and their composition where the taxonomy requires it. Codes
+that already tag variables for transfer (for instance, as eligible for
+``$L^2$ projection'') possess the natural place for this declaration; the
+tag needs only to be enriched from a method label to an admissible-set
+descriptor.
+
+A complementary safeguard belongs in the constitutive model itself:
+state entering a material update --- from initial conditions, restart, or
+transfer --- should be checked against the declared admissible set, with
+tolerance semantics: violations below a tolerance are repaired silently,
+violations above it are reported as errors. This is a verification
+layer, not the primary mechanism. A silent clamp buried in the material
+model conceals transfer
+defects and re-introduces exactly the non-idempotent repair that
+Section~\ref{sec:vi} argues against; if the transfer enforces
+admissibility variationally, the material-level check should never
+activate.
+
+\section{Interaction with error estimation and mesh adaptation}
+\label{sec:adaptivity}
+
+The negativity that motivates this note is a symptom; the underlying
+cause is a front that the mesh does not resolve. The constrained projection removes the
+inadmissibility but not the approximation error, and it is therefore a
+complement to, not a substitute for, adaptive refinement driven by the
+recovery error. The two interact favorably in both directions.
+
+First, the multiplier $\bs{\mu}$ of \eqref{eq:kkt}, obtained as a
+byproduct of the solution, is a localized indicator of exactly the
+regions where the finite element space cannot represent the front: its support is the active set, which is nonempty
+precisely where the unconstrained projection would exit the admissible
+set. In a remap-driven adaptive cycle --- project the field, interpolate
+back to the integration points, measure the $L^2$ discrepancy elementwise,
+construct a size field, remesh --- the multiplier supplies an additional
+element-level input to the size field without further computation,
+identifying fronts that the plain $L^2$ discrepancy may under-weight
+because the offending oscillations are small in norm while large in
+consequence.
+
+Second, as refinement resolves the
+front, the constraints deactivate and the constrained projection reduces
+continuously to the unconstrained one, whose optimality and idempotency
+are already established. The constraint governs the pre-asymptotic
+regime; refinement removes the need for it. Near a genuine free boundary
+the recovered field remains only $C^0$ at any resolution, so mild
+residual constraint activity at the front is expected and benign.
+
+\section{Approaches considered and rejected}
+\label{sec:rejected}
+
+\begin{description}[nosep]
+\item[Clamping after projection.] Not idempotent; the projection in the
+wrong metric; drifts under repeated remap
+(Section~\ref{sec:vi}).
+\item[Regularized logarithm $\log(\epsilon + \varepsilon^p)$.] Front
+location depends on $\epsilon$; relative-error weighting resolves the
+elastic region in preference to the plastic zone
+(Section~\ref{sec:limits}).
+\item[Lumped projection.] Idempotency fails; repeated remap diffuses the
+field. This is the original motivation for the consistent projection of
+\cite{mota2013} and is not revisited here.
+\item[Conservation constraint on the mean.] Appending
+$\int_B \bar{\bs{z}}_h \,\dd V = \int_B \bs{z} \,\dd V$ to
+$\mathcal{K}_h$ is convex and implementable, but the equivalent plastic
+strain is not a conserved quantity; the one-sided inequality
+\eqref{eq:mean} is the appropriate statement, and forcing equality
+would spread the front's admissibility correction over the domain.
+\end{description}
+
+\section{Outline of an implementation in Norma}
+\label{sec:norma}
+
+Norma is well suited for a prototype: it already assembles consistent
+mass (Gram) matrices, carries constitutive state at integration points,
+and possesses the quadrature and interpolation infrastructure of
+\cite{mota2013}. A minimal introduction would comprise:
+\begin{enumerate}[nosep]
+\item a recovery module implementing \eqref{eq:projection} with the Gram
+matrix assembled by the existing interpolation and quadrature routines,
+verified for idempotency under project--interpolate cycles on a fixed
+mesh;
+\item the admissible-set tag on constitutive state
+(vector space, Lie group with its $\log$/$\exp$ pair, cone, box,
+simplex), with the dispatch of Section~\ref{sec:taxonomy};
+\item the primal--dual active-set solver for \eqref{eq:qp}, exercised
+first on a manufactured front (a piecewise field with an attained-boundary
+region) and then on a Taylor-bar-type problem under repeated remap, with
+the clamped unconstrained projection as the control demonstrating drift;
+\item the multiplier-to-size-field hook of
+Section~\ref{sec:adaptivity}, deferred until a remeshing loop exists.
+\end{enumerate}
+Items 1--3 are self-contained and testable without any remeshing
+capability, since idempotency, admissibility, and the front benchmark are
+all statements about a single mesh.
+
+\section{Summary}
+
+The variational principle of \cite{mota2013} --- recover the internal
+variable field by minimizing the $L^2$ distance to the source data in the
+variable's own space --- already contains the answer for norm-like
+variables. Their own space is a convex cone rather than a group, so the
+minimization runs over the admissible convex subset of the finite element
+space and becomes a variational inequality: a bound-constrained quadratic
+program on the already-assembled Gram matrix, solved by a primal--dual
+active-set method with a few additional back-substitutions.
+Idempotency and stability under repeated remap follow from convexity
+rather than requiring preservation; the logarithmic transformation
+retains its role for asymptotic boundaries and composes with the
+constraints where a variable possesses boundaries of both kinds; and the
+active set of the constraint serves also as the front indicator that an
+adaptive remeshing loop requires.
+
+\begin{thebibliography}{9}
+
+\bibitem{mota2013}
+A.~Mota, W.~Sun, J.~T.~Ostien, J.~W.~Foulk~III, K.~N.~Long.
+Lie-group interpolation and variational recovery for internal variables.
+\emph{Computational Mechanics} 52 (2013) 1281--1299.
+
+\bibitem{hintermuller2003}
+M.~Hinterm\"uller, K.~Ito, K.~Kunisch.
+The primal--dual active set strategy as a semismooth Newton method.
+\emph{SIAM Journal on Optimization} 13 (2003) 865--888.
+
+\bibitem{boyle1986}
+J.~P.~Boyle, R.~L.~Dykstra.
+A method for finding projections onto the intersection of convex sets in
+Hilbert spaces.
+In: \emph{Advances in Order Restricted Statistical Inference},
+Lecture Notes in Statistics 37, Springer, 1986, 28--47.
+
+\bibitem{lawson1974}
+C.~L.~Lawson, R.~J.~Hanson.
+\emph{Solving Least Squares Problems}.
+Prentice-Hall, 1974.
+
+\end{thebibliography}
+
+\end{document}
