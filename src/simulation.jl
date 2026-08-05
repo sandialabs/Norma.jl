@@ -773,15 +773,17 @@ function SolidMultiDomainTimeController(params::Parameters)
             relaxation_parameter, aitken_N0)
     end
     naive_stabilized = get(params, "naive stabilized", false)
-    lambda_time = [Float64[] for _ in 1:num_domains]
-    lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
-    lambda_velo = [Vector{Float64}[] for _ in 1:num_domains]
-    lambda_acce = [Vector{Float64}[] for _ in 1:num_domains]
-    aitken_prev_residual_disp = [Vector{Float64}[] for _ in 1:num_domains]
-    aitken_prev_residual_velo = [Vector{Float64}[] for _ in 1:num_domains]
-    aitken_prev_residual_acce = [Vector{Float64}[] for _ in 1:num_domains]
-    aitken_theta_disp = [Float64[] for _ in 1:num_domains]
-    aitken_prev_lambda_disp = [Vector{Float64}[] for _ in 1:num_domains]
+    # Keyed per interface and filled on demand, as the interfaces are known to
+    # the boundary conditions, not to the controller (see RelaxationKey).
+    lambda_time = Dict{RelaxationKey,Vector{Float64}}()
+    lambda_disp = Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    lambda_velo = Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    lambda_acce = Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    aitken_prev_residual_disp = Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    aitken_prev_residual_velo = Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    aitken_prev_residual_acce = Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    aitken_theta_disp = Dict{RelaxationKey,Vector{Float64}}()
+    aitken_prev_lambda_disp = Dict{RelaxationKey,Vector{Vector{Float64}}}()
     is_schwarz = true
     schwarz_contact = false
     active_contact = false
@@ -1621,21 +1623,20 @@ function reset_histories(sim::MultiDomainSimulation)
     return nothing
 end
 
-# Clear the per-pair, per-time-slot relaxation state at the start of every
+# Clear the per-interface, per-time-slot relaxation state at the start of every
 # controller stop. Slots are keyed by substep time within the stop, so state
-# left over from a previous stop is never a valid previous iterate.
+# left over from a previous stop is never a valid previous iterate. Dropping the
+# interface keys as well is equivalent: they are re-created on demand.
 function reset_relaxation_state!(controller::MultiDomainTimeController)
-    for i in 1:length(controller.lambda_time)
-        empty!(controller.lambda_time[i])
-        empty!(controller.lambda_disp[i])
-        empty!(controller.lambda_velo[i])
-        empty!(controller.lambda_acce[i])
-        empty!(controller.aitken_prev_residual_disp[i])
-        empty!(controller.aitken_prev_residual_velo[i])
-        empty!(controller.aitken_prev_residual_acce[i])
-        empty!(controller.aitken_theta_disp[i])
-        empty!(controller.aitken_prev_lambda_disp[i])
-    end
+    empty!(controller.lambda_time)
+    empty!(controller.lambda_disp)
+    empty!(controller.lambda_velo)
+    empty!(controller.lambda_acce)
+    empty!(controller.aitken_prev_residual_disp)
+    empty!(controller.aitken_prev_residual_velo)
+    empty!(controller.aitken_prev_residual_acce)
+    empty!(controller.aitken_theta_disp)
+    empty!(controller.aitken_prev_lambda_disp)
     return nothing
 end
 
