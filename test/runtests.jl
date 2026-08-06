@@ -74,109 +74,116 @@ const indexed_test_files = [
     (26, "cubic-opinf-schwarz-overlap-cuboid-hex8.jl"),
     (27, "adaptive-time-stepping.jl"),
     (28, "schwarz-ahead-overlap-dynamic-clamped.jl"),
-    (29, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
-    (30, "schwarz-ahead-overlap-dynamic-torsion.jl"),
-    (31, "schwarz-ahead-overlap-dynamic-bracket.jl"),
-    (32, "schwarz-ahead-overlap-dynamic-plate.jl"),
-    (33, "single-ahead-clamped.jl"),
-    (34, "single-ahead-notched-cylinder.jl"),
-    (35, "single-ahead-laser-weld.jl"),
-    (36, "single-ahead-torsion.jl"),
-    (37, "single-ahead-bracket.jl"),
-    (38, "single-ahead-plate.jl"),
-    (39, "schwarz-ahead-nonoverlap-dynamic-clamped.jl"),
-    (40, "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl"),
-    (41, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
-    (42, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
-    (43, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
-    (44, "single-static-solid-pressure-bc.jl"),
-    (45, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"),
-    (46, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"),
-    (47, "single-implicit-dynamic-solid-can-pressure-nbc.jl"),
-    (48, "single-static-solid-cube-sd-dbc.jl"),
-    (49, "constitutive-model-energy-gradient.jl"),
-    (50, "smoothing.jl"),
-    (51, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
-    (52, "single-static-solid-j2-plasticity.jl"),
-    (53, "utils.jl"),
-    (54, "schwarz-nonoverlap-dynamic-cantilever-dn.jl"),
-    (55, "schwarz-overlap-dynamic-cantilever-weak.jl"),
-    (56, "schwarz-overlap-static-cuboid-hex8-swap.jl"),
-    (57, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
-    (58, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
-    (59, "single-static-solid-cube-time-swap.jl"),
-    (60, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
-    (61, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
-    (62, "krom-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
-    (63, "recovery-cube.jl"),
-    (64, "transfer-volumetric.jl"),
-    (65, "single-static-solid-cube-time-swap-mesh-change.jl"),
-    (66, "schwarz-ahead-nonoverlap-dynamic-cuboid.jl"),
-    (67, "schwarz-ahead-nonoverlap-dynamic-cuboid-fom-rom.jl"),
-    (68, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-fom.jl"),
-    (69, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-rom.jl"),
-    (70, "schwarz-ahead-nonoverlap-dynamic-cuboid-quadratic-rom-fom.jl"),
-    (71, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-fom.jl"),
-    (72, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-rom.jl"),
-    (73, "single-static-solid-cube-stress-recovery-swap.jl"),
-    (74, "schwarz-overlap-static-cuboid-hex8-overlap-l2-swap.jl"),
-    (75, "quadratic-opinf-central-difference-schwarz-overlap-cuboid-hex8.jl"),
-    (76, "cubic-opinf-central-difference-schwarz-overlap-cuboid-hex8.jl"),
-    (77, "single-static-solid-notched-cylinder-j2-elastic-to-plastic-swap.jl"),
-    (78, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap.jl"),
-    (79, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap-long.jl"),
-    (80, "schwarz-ahead-overlap-dynamic-notched-cylinder-j2-swap-fom.jl"),
-    (81, "single-implicit-dynamic-solid-clamped-bc.jl"),
-    (82, "single-explicit-dynamic-solid-clamped-bc.jl"),
-    (83, "single-dynamic-opinf-rom-to-fom-time-swap.jl"),
-    (84, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap-middle.jl"),
-    (85, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-fom-multi-swap.jl"),
-    (86, "schwarz-ahead-overlap-dynamic-notched-cylinder-opinf-swap-rom-fom.jl"),
-    (87, "single-static-solid-cube-sideset-dbc.jl"),
-    (88, "schwarz-ahead-overlap-dynamic-clamped-3sd-rom-fom-swap-sides.jl"),
-    (89, "schwarz-ahead-overlap-dynamic-clamped-3sd-round-trip-swap-chain.jl"),
-    (90, "schwarz-nonoverlap-static-cuboid-hex8-aitken-secant.jl"),
-    (91, "schwarz-nonoverlap-dynamic-cantilever-dn-aitken-secant.jl"),
-    (92, "schwarz-nonoverlap-static-cuboid-robin-robin-aitken.jl"),
-    (93, "schwarz-nonoverlap-dynamic-cuboids-impedance-aitken.jl"),
-    (94, "schwarz-nonoverlap-dynamic-cantilever-rr-aitken.jl"),
-    (95, "schwarz-nonoverlap-dynamic-cantilever-impedance-aitken.jl"),
-    (96, "schwarz-ahead-overlap-dynamic-clamped-3sd-multi-swap-all-subdomains.jl"),
-    (97, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-rom-fom-multi-swap.jl"),
-    (98, "single-ahead-cuboid-dynamic-restart.jl"),
-    (99, "single-ahead-clamped-opinf-fom-restart.jl"),
-    (100, "single-ahead-clamped-opinf-rom-restart.jl"),
-    (101, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-fom-fom-restart.jl"),
-    (102, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-opinf-rom-restart.jl"),
-    (103, "schwarz-overlap-dynamic-cantilever-impedance-energy.jl"),
-    (104, "schwarz-overlap-impedance-tensor-crossscale.jl"),
-    (105, "schwarz-overlap-impedance-variational-transfer.jl"),
-    (106, "newmark-hht-alpha.jl"),
-    (107, "schwarz-ahead-nonoverlap-dynamic-notched-cylinder.jl"),
-    (108, "schwarz-overlap-blended-energy.jl"),
-    (109, "schwarz-nonoverlap-impedance-adjoint-pairing.jl"),
-    (110, "restart-past-final-time.jl"),
-    (111, "restart-inplace-checkpoint.jl"),
-    (112, "schwarz-overlap-static-cuboids-restart.jl"),
-    (113, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
+    (29, "schwarz-ahead-overlap-dynamic-notched-cylinder.jl"),
+    (30, "schwarz-ahead-overlap-dynamic-laser-weld.jl"),
+    (31, "schwarz-ahead-overlap-dynamic-torsion.jl"),
+    (32, "schwarz-ahead-overlap-dynamic-bracket.jl"),
+    (33, "schwarz-ahead-overlap-dynamic-plate.jl"),
+    (34, "single-ahead-clamped.jl"),
+    (35, "single-ahead-notched-cylinder.jl"),
+    (36, "single-ahead-laser-weld.jl"),
+    (37, "single-ahead-torsion.jl"),
+    (38, "single-ahead-bracket.jl"),
+    (39, "single-ahead-plate.jl"),
+    (40, "schwarz-ahead-nonoverlap-dynamic-clamped.jl"),
+    (41, "schwarz-ahead-nonoverlap-dynamic-laser-weld.jl"),
+    (42, "schwarz-ahead-nonoverlap-dynamic-torsion.jl"),
+    (43, "schwarz-ahead-nonoverlap-dynamic-plate.jl"),
+    (44, "schwarz-ahead-nonoverlap-dynamic-bracket.jl"),
+    (45, "single-static-solid-pressure-bc.jl"),
+    (46, "single-implicit-dynamic-solid-cube-pressure-nbc-stretch.jl"),
+    (47, "single-implicit-dynamic-solid-cube-pressure-nbc-expand.jl"),
+    (48, "single-implicit-dynamic-solid-can-pressure-nbc.jl"),
+    (49, "single-static-solid-cube-sd-dbc.jl"),
+    (50, "constitutive-model-energy-gradient.jl"),
+    (51, "smoothing.jl"),
+    (52, "nnopinf-schwarz-overlap-cuboid-hex8.jl"),
+    (53, "single-static-solid-j2-plasticity.jl"),
+    (54, "utils.jl"),
+    (55, "schwarz-nonoverlap-dynamic-cantilever-dn.jl"),
+    (56, "schwarz-overlap-dynamic-cantilever-weak.jl"),
+    (57, "schwarz-overlap-static-cuboid-hex8-swap.jl"),
+    (58, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
+    (59, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
+    (60, "single-static-solid-cube-time-swap.jl"),
+    (61, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
+    (62, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
+    (63, "krom-schwarz-overlap-rom-rom-cuboid-hex8.jl"),
+    (64, "recovery-cube.jl"),
+    (65, "transfer-volumetric.jl"),
+    (66, "single-static-solid-cube-time-swap-mesh-change.jl"),
+    (67, "schwarz-ahead-nonoverlap-dynamic-cuboid.jl"),
+    (68, "schwarz-ahead-nonoverlap-dynamic-cuboid-fom-rom.jl"),
+    (69, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-fom.jl"),
+    (70, "schwarz-ahead-nonoverlap-dynamic-cuboid-rom-rom.jl"),
+    (71, "schwarz-ahead-nonoverlap-dynamic-cuboid-quadratic-rom-fom.jl"),
+    (72, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-fom.jl"),
+    (73, "schwarz-ahead-nonoverlap-dynamic-cuboid-cubic-rom-rom.jl"),
+    (74, "single-static-solid-cube-stress-recovery-swap.jl"),
+    (75, "schwarz-overlap-static-cuboid-hex8-overlap-l2-swap.jl"),
+    (76, "quadratic-opinf-central-difference-schwarz-overlap-cuboid-hex8.jl"),
+    (77, "cubic-opinf-central-difference-schwarz-overlap-cuboid-hex8.jl"),
+    (78, "single-static-solid-notched-cylinder-j2-elastic-to-plastic-swap.jl"),
+    (79, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap.jl"),
+    (80, "single-dynamic-tension-specimen-j2-elastic-to-plastic-swap-long.jl"),
+    (81, "schwarz-ahead-overlap-dynamic-notched-cylinder-j2-swap-fom.jl"),
+    (82, "single-implicit-dynamic-solid-clamped-bc.jl"),
+    (83, "single-explicit-dynamic-solid-clamped-bc.jl"),
+    (84, "single-dynamic-opinf-rom-to-fom-time-swap.jl"),
+    (85, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap-middle.jl"),
+    (86, "schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-fom-multi-swap.jl"),
+    (87, "schwarz-ahead-overlap-dynamic-notched-cylinder-opinf-swap-rom-fom.jl"),
+    (88, "single-static-solid-cube-sideset-dbc.jl"),
+    (89, "schwarz-ahead-overlap-dynamic-clamped-3sd-rom-fom-swap-sides.jl"),
+    (90, "schwarz-ahead-overlap-dynamic-clamped-3sd-round-trip-swap-chain.jl"),
+    (91, "schwarz-nonoverlap-static-cuboid-hex8-aitken-secant.jl"),
+    (92, "schwarz-nonoverlap-dynamic-cantilever-dn-aitken-secant.jl"),
+    (93, "schwarz-nonoverlap-static-cuboid-robin-robin-aitken.jl"),
+    (94, "schwarz-nonoverlap-dynamic-cuboids-impedance-aitken.jl"),
+    (95, "schwarz-nonoverlap-dynamic-cantilever-rr-aitken.jl"),
+    (96, "schwarz-nonoverlap-dynamic-cantilever-impedance-aitken.jl"),
+    (97, "schwarz-ahead-overlap-dynamic-clamped-3sd-multi-swap-all-subdomains.jl"),
+    (98, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-rom-fom-multi-swap.jl"),
+    (99, "single-ahead-cuboid-dynamic-restart.jl"),
+    (100, "single-ahead-clamped-opinf-fom-restart.jl"),
+    (101, "single-ahead-clamped-opinf-rom-restart.jl"),
+    (102, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-fom-fom-restart.jl"),
+    (103, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-opinf-rom-restart.jl"),
+    (104, "schwarz-overlap-dynamic-cantilever-impedance-energy.jl"),
+    (105, "schwarz-overlap-impedance-tensor-crossscale.jl"),
+    (106, "schwarz-overlap-impedance-variational-transfer.jl"),
+    (107, "newmark-hht-alpha.jl"),
+    (108, "schwarz-ahead-nonoverlap-dynamic-notched-cylinder.jl"),
+    (109, "schwarz-overlap-blended-energy.jl"),
+    (110, "schwarz-nonoverlap-impedance-adjoint-pairing.jl"),
+    (111, "restart-past-final-time.jl"),
+    (112, "restart-inplace-checkpoint.jl"),
+    (113, "schwarz-overlap-static-cuboids-restart.jl"),
 ]
 
-# Extract test file names
-const nnopinf_test_indices = Int[51]
+# Neural-network OpInf tests. These load the optional PyCall dependency to reach
+# the NormaPyTorchExt extension, so they need a Python with torch and
+# norma-opinf installed and would error at include time without it. They are
+# therefore excluded from the default suite and enabled with --with-nnopinf.
+const nnopinf_test_indices = Int[52]
 
 const all_test_files = [file for (_, file) in indexed_test_files]
 const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopinf_test_indices]
-# Optional test indices (excluded from quick runs):
-# - 27..32 schwarz-ahead-overlap-dynamic-*
-# - 33..38 single-ahead-*
-# - 39..43 schwarz-ahead-nonoverlap-dynamic-*
-# - 51     nnopinf-schwarz-overlap-cuboid-hex8
-# - 54     schwarz-nonoverlap-dynamic-cantilever-dn
-# - 84     schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-swap
-# - 85     schwarz-ahead-overlap-dynamic-clamped-3sd-fom-rom-fom-multi-swap
-# - 86     schwarz-ahead-overlap-dynamic-notched-cylinder-opinf-swap-rom-fom
-# - 107    schwarz-ahead-nonoverlap-dynamic-notched-cylinder
-const optional_test_indices = Int[27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 51, 54, 77, 79, 80, 83, 84, 85, 86, 88, 89, 96, 97, 99, 101, 102, 103, 107]
+# Optional test indices (excluded from quick runs), by group:
+# - 27       adaptive-time-stepping
+# - 28..33   schwarz-ahead-overlap-dynamic-*
+# - 34..39   single-ahead-*
+# - 40..44   schwarz-ahead-nonoverlap-dynamic-*
+# - 52       nnopinf-schwarz-overlap-cuboid-hex8
+# - 55       schwarz-nonoverlap-dynamic-cantilever-dn
+# - 78, 80, 81, 84..87, 89, 90, 97, 98   long swapping cases
+# - 100, 102, 103                        long restart cases
+# - 104      schwarz-overlap-dynamic-cantilever-impedance-energy
+# - 108      schwarz-ahead-nonoverlap-dynamic-notched-cylinder
+const optional_test_indices = Int[
+    27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+    52, 55, 78, 80, 81, 84, 85, 86, 87, 89, 90, 97, 98, 100, 102, 103, 104, 108,
+]
 
 # Quick test set (subset of all tests)
 const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional_test_indices]
@@ -184,7 +191,7 @@ const quick_test_indices = [i for (i, _) in indexed_test_files if i ∉ optional
 function print_available_tests()
     Norma.norma_log(0, :info, "Available tests:")
     for (i, file) in indexed_test_files
-        Norma.norma_log(0, :info, rpad("[$i]", 5) * file)
+        Norma.norma_log(0, :info, rpad("[$i]", 6) * file)
     end
 end
 
@@ -225,6 +232,12 @@ function parse_args(args)
         indexed_test_files
     else
         Norma.norma_log(0, :info, "Running standard test suite.")
+        # Announce the omission. Without this the neural-network tests vanish
+        # from the run with no trace other than a gap in the printed indices,
+        # which reads as an unexplained skip rather than a deliberate one.
+        skipped = join(("[$i] " * name for (i, name) in indexed_test_files if i in nnopinf_test_indices), ", ")
+        Norma.norma_log(0, :info, "Skipping neural-network OpInf tests: $skipped")
+        Norma.norma_log(0, :info, "Use --with-nnopinf to include them (requires PyCall, torch and norma-opinf).")
         filter(t -> t[1] in standard_test_indices, indexed_test_files)
     end
 
