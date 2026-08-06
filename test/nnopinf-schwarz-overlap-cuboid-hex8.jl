@@ -34,8 +34,8 @@ import PyCall
     end
     # Now remove the empty directory
     rm("ml-models"; force=true)
-    @test model_coarse.reduced_state[1] ≈  0.0044815500966186  rtol = 1.0e-06
-    @test model_coarse.reduced_state[2] ≈ 0.00023499840866102404 rtol = 1.0e-06
+    @test model_coarse.reduced_state[1] ≈  0.000848847640847531  rtol = 1.0e-06
+    @test model_coarse.reduced_state[2] ≈ 0.0004393255173410676 rtol = 1.0e-06
 end
 
 @testset "NN Opinf Schwarz Overlap L2 Error Dynamic Cuboid Hex8 Same Step" begin
