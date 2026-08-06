@@ -463,6 +463,10 @@ end
 Returns a rotation pseudo-vector that is equivalent to `old` (represents the same rotation), but is as close as possible to `prev`.
 
 This helps enforce continuity in incremental rotation updates by accounting for 2π ambiguities in the exponential map.
+
+The equivalent rotation vectors are `(|old| + 2πk) unit(old)`; the number of turns
+`k` is chosen so that the signed coordinate of the result along `unit(old)` is
+closest to that of `prev`.
 """
 function rv_continue(old::SVector{3,Float64}, prev::SVector{3,Float64})::SVector{3,Float64}
     norm_old = LinearAlgebra.norm(old)
@@ -476,7 +480,7 @@ function rv_continue(old::SVector{3,Float64}, prev::SVector{3,Float64})::SVector
     if proj == 0.0
         return old
     end
-    kk = round(0.5 * proj / π)
+    kk = round(0.5 * (proj - norm_old) / π)
     if kk == 0.0
         return old
     end

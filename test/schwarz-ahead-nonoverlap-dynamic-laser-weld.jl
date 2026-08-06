@@ -50,27 +50,30 @@ using YAML
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
 
-    @test min_disp_x_holder0 ≈ -4.851628886395898e-5 atol = 1e-7
+    @test min_disp_x_holder0 ≈ -4.8503353649823056e-5 atol = 1e-7
     @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-12
     @test max_disp_z_holder0 ≈ 0.0 atol = 1e-12
-    @test min_disp_x_gauge ≈ -7.731358906070013e-5 atol = 1e-7
-    @test min_disp_y_gauge ≈ -0.0002794662877980967 atol = 1e-7
-    @test max_disp_z_gauge ≈ 4.334015744528366e-5 atol = 1e-7
-    @test min_disp_x_holder1 ≈ -4.8101884538691166e-5 atol = 1e-7
-    @test min_disp_y_holder1 ≈ 0.00023579973361378126 atol = 1e-7
+    @test min_disp_x_gauge ≈ -7.732050750191575e-5 atol = 1e-7
+    @test min_disp_y_gauge ≈ -0.0002794601407257627 atol = 1e-7
+    @test max_disp_z_gauge ≈ 4.334628364924738e-5 atol = 1e-7
+    @test min_disp_x_holder1 ≈ -4.810143238079646e-5 atol = 1e-7
+    @test min_disp_y_holder1 ≈ 0.00023577100314417488 atol = 1e-7
     @test max_disp_z_holder1 ≈ 0.0 atol = 1e-12
     @test avg_stress_holder0 ≈
-        [-651.1464725557873 1.7780739370373667e6 -51812.70666114553 -46494.7446878697 1154.5056911923787 1353.1974148960885] atol =
+        [-639.6261094759388 1.7782199539431625e6 -51807.83120981262 -46504.79388129707 1156.5355292243473 1346.1170342658352] atol =
         1.0e1
     @test avg_stress_gauge ≈
-        [16539.536519038895 1.841840302350875e6 116828.34012429455 76.90140926572899 29330.37279517582 196.6113248495793] atol =
+        [16522.192587960613 1.8419942446213954e6 116817.7849691327 88.09734397642102 29332.667642010096 205.35636784946962] atol =
         1.0e1
     @test avg_stress_holder1 ≈
-        [-390.26264976813616 1.7780748572807203e6 -51773.82697053141 46424.020268542656 1145.3620331332904 -1462.8716682712588] atol =
+        [-384.0829568066664 1.7782249323431996e6 -51768.35215766566 46423.40270612918 1145.662052893047 -1463.950585851161] atol =
         1.0e1
     # Iteration counts and converged values reflect the slot-keyed relaxation
     # state (commit 0deb579): with the controller step (0.01) larger than the
     # adaptively-substepped subdomains, these windowed stops now blend the
-    # fixed-θ relaxation per substep-time slot instead of across time.
-    @test sim.controller.schwarz_iters ≈ [33, 40, 44, 47, 49] atol = 0
+    # fixed-θ relaxation per substep-time slot instead of across time. They also
+    # reflect relaxing only the Dirichlet side of an interface (commit 38bd028):
+    # the two holders couple to the same gauge, so before that gate the second
+    # of them re-blended the shared iterate the first had just written.
+    @test sim.controller.schwarz_iters ≈ [34, 42, 47, 50, 52] atol = 0
 end

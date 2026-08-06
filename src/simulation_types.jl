@@ -8,6 +8,13 @@ abstract type TimeController end
 abstract type SingleTimeController <: TimeController end
 abstract type MultiDomainTimeController <: TimeController end
 
+# Identifier of one Schwarz interface: (own subdomain, partner subdomain, side
+# set), which is what the relaxation state below is keyed by. The partner index
+# alone does not identify an interface: a subdomain that is the partner of two
+# interfaces (the gauge between the two holders of the laser weld example) made
+# both of them blend and overwrite a single shared iterate.
+const RelaxationKey = Tuple{Int64,Int64,Int64}
+
 mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     minimum_iterations::Int64
     maximum_iterations::Int64
@@ -40,29 +47,29 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     relaxation_method::Symbol
     aitken_N0::Int
     naive_stabilized::Bool
-    # Relaxation state for the Schwarz fixed-point iteration, stored per pair
-    # AND per substep time slot within the current stop: [pair][slot], slots
-    # keyed by substep time in lambda_time and cleared at every stop. In a
-    # windowed stop (controller step larger than the relaxed side's time step)
-    # the relaxed side applies its coupling BC once per substep; a single
-    # per-pair vector would blend iterates across TIME instead of across
-    # Schwarz sweeps — a causal low-pass on the exchanged data that shifts the
-    # converged fixed point (measured on the cantilever benchmark: monotone
-    # energy drain growing with the window under fixed θ, and phase-lead
-    # energy injection under Aitken, whose residuals then compare different
-    # times). With one substep per stop a single slot exists and this reduces
-    # exactly to the classical per-pair iteration.
-    lambda_time::Vector{Vector{Float64}}
-    lambda_disp::Vector{Vector{Vector{Float64}}}
-    lambda_velo::Vector{Vector{Vector{Float64}}}
-    lambda_acce::Vector{Vector{Vector{Float64}}}
-    aitken_prev_residual_disp::Vector{Vector{Vector{Float64}}}
-    aitken_prev_residual_velo::Vector{Vector{Vector{Float64}}}
-    aitken_prev_residual_acce::Vector{Vector{Vector{Float64}}}
-    aitken_theta_disp::Vector{Vector{Float64}}
+    # Relaxation state for the Schwarz fixed-point iteration, stored per
+    # interface (RelaxationKey) AND per substep time slot within the current
+    # stop: [key][slot], slots keyed by substep time in lambda_time and cleared
+    # at every stop. In a windowed stop (controller step larger than the relaxed
+    # side's time step) the relaxed side applies its coupling BC once per
+    # substep; a single per-interface vector would blend iterates across TIME
+    # instead of across Schwarz sweeps — a causal low-pass on the exchanged data
+    # that shifts the converged fixed point (measured on the cantilever
+    # benchmark: monotone energy drain growing with the window under fixed θ,
+    # and phase-lead energy injection under Aitken, whose residuals then compare
+    # different times). With one substep per stop a single slot exists and this
+    # reduces exactly to the classical per-interface iteration.
+    lambda_time::Dict{RelaxationKey,Vector{Float64}}
+    lambda_disp::Dict{RelaxationKey,Vector{Vector{Float64}}}
+    lambda_velo::Dict{RelaxationKey,Vector{Vector{Float64}}}
+    lambda_acce::Dict{RelaxationKey,Vector{Vector{Float64}}}
+    aitken_prev_residual_disp::Dict{RelaxationKey,Vector{Vector{Float64}}}
+    aitken_prev_residual_velo::Dict{RelaxationKey,Vector{Vector{Float64}}}
+    aitken_prev_residual_acce::Dict{RelaxationKey,Vector{Vector{Float64}}}
+    aitken_theta_disp::Dict{RelaxationKey,Vector{Float64}}
     # Previous interface displacement iterate g^(n-1), used by the Aitken-secant
     # (paper eq. 9) variant to form d^(n) = g^(n) - g^(n-1) directly.
-    aitken_prev_lambda_disp::Vector{Vector{Vector{Float64}}}
+    aitken_prev_lambda_disp::Dict{RelaxationKey,Vector{Vector{Float64}}}
     is_schwarz::Bool
     schwarz_contact::Bool
     active_contact::Bool
