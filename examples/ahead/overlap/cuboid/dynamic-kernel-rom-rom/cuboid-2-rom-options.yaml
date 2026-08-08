@@ -1,0 +1,16 @@
+acceleration-computation-type: acceleration-snapshots
+boundary-truncation-type: energy
+boundary-truncation-value: 0.99999
+fom-yaml-file: ../dynamic-opinf-fom/cuboid-2.yaml 
+model-name: linear-matern-kernel-rom-2
+model-type: linear-matern
+rbf-shape-parameter: 0.1
+training-data-directories:
+- ../dynamic-opinf-fom/
+training-skip-steps: 1
+trial-space-splitting-type: combined
+truncation-type: energy
+truncation-value: 0.99999
+include-input-term: true
+forcing: true
+regularization-parameter: 1.e-3

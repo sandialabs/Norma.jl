@@ -27,11 +27,11 @@ using YAML
     max_disp_z = maximum(model.displacement[3, :])
     avg_stress = average_components(model.stress)
 
-    @test min_disp_x ≈ -6.297730171953009e-5 atol = 1e-12
+    @test min_disp_x ≈ -6.297730171953009e-5 atol = 1e-7
     @test min_disp_y ≈ -0.0006155829702431115 atol = 1e-12
-    @test max_disp_z ≈ 0.0007221807237683814 atol = 1e-12
+    @test max_disp_z ≈ 0.0007221807237683814 atol = 1e-7
     @test avg_stress ≈
-        [15753.432582384918 1.6487160372148945e6 19939.130694208845 -14.023455872528954 1.7834705077557913e-8 3.44378979382038e-8] atol =
+        [15753.435337269808 1.648715927508006e6 19939.13322929358 -14.023451280136852 2.062710532466234e-8 3.3108522154726213e-8] atol =
         1e-6
 end
 

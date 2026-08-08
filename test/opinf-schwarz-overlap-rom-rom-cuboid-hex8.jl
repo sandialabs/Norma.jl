@@ -33,10 +33,10 @@
     rm("opinf-operator-1.npz"; force=true)
     rm("opinf-operator-2.npz"; force=true)
 
-    @test model_coarse.reduced_state[1] ≈ -1.2374221236454467e-5 rtol = 1.0e-05
-    @test model_coarse.reduced_state[2] ≈ -1.2374220928969865e-5  rtol = 1.0e-05
-    @test model_coarse.reduced_state[3] ≈ -0.0008935561378236516 rtol = 1.0e-05
-    @test model_fine.reduced_state[1] ≈ 5.426516255467318e-7  rtol = 1.0e-05
-    @test model_fine.reduced_state[2] ≈ 5.426517994286153e-7 rtol = 1.0e-05
-    @test model_fine.reduced_state[3] ≈  8.172252557082351e-6 rtol = 1.0e-05
+    @test model_coarse.reduced_state[1] ≈ -4.613021714465361e-6 rtol = 1.0e-05
+    @test model_coarse.reduced_state[2] ≈ -4.61302182733745e-6 rtol = 1.0e-05
+    @test model_coarse.reduced_state[3] ≈ -0.0025875596684104265 rtol = 1.0e-05
+    @test model_fine.reduced_state[1] ≈ 5.3797637250919795e-6 rtol = 1.0e-05
+    @test model_fine.reduced_state[2] ≈ 5.3797637805063225e-6 rtol = 1.0e-05
+    @test model_fine.reduced_state[3] ≈ 7.777167189307863e-5 rtol = 1.0e-05
 end

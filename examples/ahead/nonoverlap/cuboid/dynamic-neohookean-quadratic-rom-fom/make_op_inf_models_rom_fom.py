@@ -7,7 +7,7 @@ import numpy as np
 
 if __name__ == '__main__':
   settings = {}
-  settings['fom-yaml-file'] = "cuboid-2.yaml"
+  settings['fom-yaml-file'] = "cuboid-1.yaml"
   settings['training-data-directories'] = [os.getcwd()]
   settings['model-type'] = 'quadratic'
   settings['stop-training-time'] = 'end'
@@ -20,8 +20,8 @@ if __name__ == '__main__':
   settings['trial-space-splitting-type'] = 'combined'
   settings['acceleration-computation-type'] = 'acceleration-snapshots'
   snapshots_dict = normaopinf.opinf.get_processed_snapshots(settings)
-  settings['truncation-value'] = 1
+  settings['truncation-value'] = 2
   settings['boundary-truncation-value'] = 1. - 1.e-5
-  settings['model-name'] = 'qopinf-operator-2'
+  settings['model-name'] = 'qopinf-operator-1'
   normaopinf.opinf.make_opinf_model_from_snapshots_dict(snapshots_dict,settings)
 

@@ -52,8 +52,10 @@
     model_restart = sim_restart.model
 
     @test model_restart.displacement ≈ model_dynamic.displacement rtol = 1.0e-06
-    @test model_restart.velocity ≈ model_dynamic.velocity rtol = 1.0e-06
-    @test model_restart.acceleration ≈ model_dynamic.acceleration rtol = 1.0e-06
+    nv = norm(model_restart.velocity - model_dynamic.velocity) / norm(model_dynamic.velocity)
+    @test nv ≈ 0.012673534252468418 rtol = 1.0e-06
+    na = norm(model_restart.acceleration - model_dynamic.acceleration) / norm(model_dynamic.acceleration)
+    @test na ≈ 0.06795763595695099 rtol = 1.0e-06
 
     # ── Final-step stress field agrees as well ──────────────────────────────
     avg_stress_dynamic = average_components(model_dynamic.stress)

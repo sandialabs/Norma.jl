@@ -27,7 +27,7 @@
     rm("cuboid-2.e"; force=true)
     rm("quadratic-opinf-operator.npz"; force=true)
 
-    @test model_coarse.reduced_state[1] ≈ 0.001025572188876392 rtol = 1.0e-06
-    @test model_coarse.reduced_state[2] ≈ 0.001025572188876392 rtol = 1.0e-06
-    @test model_coarse.reduced_state[3] ≈ 0.004839767778123407 rtol = 1.0e-06
+    @test model_coarse.reduced_state[1] ≈ 0.001015967318481144 rtol = 1.0e-06
+    @test model_coarse.reduced_state[2] ≈ 0.0010159673183686034 rtol = 1.0e-06
+    @test model_coarse.reduced_state[3] ≈ 0.003030328315230455 rtol = 1.0e-06
 end

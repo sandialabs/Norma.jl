@@ -249,68 +249,67 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     # .acceleration by apply_bcs. With a consistent (non-lumped) mass matrix,
     # free and fixed DOFs adjacent to the same elements are inertially
     # coupled through the Mfc off-diagonal block, so that contribution has to
-    # be subtracted from the right-hand side; omitting it is only invisible
-    # when a_fixed is exactly zero (e.g. a fresh run starting from rest).
-    if !model.restarted && !trust_schwarz
-        integrator.acceleration[free] = solve_linear(model.mass[free, free], inertial_force[free], atol, rtol)
-    else
-        fixed = .!free
-        # Schwarz-coupled fixed DOFs are excluded from this correction by
-        # default (trust_schwarz=false): this function runs once, at the very
-        # start of the simulation (or of a restart), before any subdomain has
-        # ever taken a predictor step or had its own initial acceleration
-        # computed. The Schwarz coupling machinery (coupling_weak_dbc /
-        # contact_weak_dbc / overlap variants) derives its acceleration either
-        # by reading the coupled side's integrator.acceleration directly, or —
-        # under Aitken-secant relaxation — via integrator.disp_pre, both of
-        # which are only physically meaningful once the coupled side has a real
-        # acceleration of its own. The first time this function runs for any
-        # subdomain, apply_bcs() has only ever seen every subdomain's untouched
-        # (zero) initial acceleration, so whatever value it left on
-        # Schwarz-coupled DOFs is not trustworthy and must not be allowed into
-        # this one-shot linear solve. A plain (non-Schwarz) Dirichlet BC's
-        # prescribed acceleration is exact at any time, including t=0, and is
-        # always trusted.
-        #
-        # trust_schwarz=true is used for a second, refinement pass over all
-        # subdomains of a restarted multi-domain (Schwarz) simulation — see
-        # initialize(sim::MultiDomainSimulation) in simulation.jl. By the time
-        # that second pass runs, every subdomain already has a real initial
-        # acceleration from the first pass, apply_bcs() has been re-run so
-        # Schwarz-coupled DOFs now carry a real (not stale-zero) coupled
-        # acceleration, and it is safe — indeed necessary for an accurate
-        # restart, since the true acceleration at a Schwarz interface generally
-        # is not zero mid-simulation — to include them in the correction below.
-        # This is a single Jacobi-style correction, not a fully converged fixed
-        # point; any remaining small inconsistency is absorbed by the real
-        # Newton/Schwarz iterations that run on the first actual control step.
-        schwarz_fixed = falses(length(free))
-        for bc in model.boundary_conditions
-            if bc isa SolidMechanicsSchwarzBoundaryCondition
-                for i_global in bc.global_from_local_map
-                    schwarz_fixed[(3 * i_global - 2):(3 * i_global)] .= true
-                end
+    # be subtracted from the right-hand side. This correction is applied
+    # unconditionally, including on a fresh (non-restarted) run: when a_fixed
+    # is exactly zero (e.g. a run starting at rest), the Mfc*a_fixed term
+    # vanishes and this is a no-op, but a fresh run with a nonzero prescribed
+    # boundary acceleration at t=0 needs it just as much as a restart does.
+    fixed = .!free
+    # Schwarz-coupled fixed DOFs are excluded from this correction by
+    # default (trust_schwarz=false): this function runs once, at the very
+    # start of the simulation (or of a restart), before any subdomain has
+    # ever taken a predictor step or had its own initial acceleration
+    # computed. The Schwarz coupling machinery (coupling_weak_dbc /
+    # contact_weak_dbc / overlap variants) derives its acceleration either
+    # by reading the coupled side's integrator.acceleration directly, or —
+    # under Aitken-secant relaxation — via integrator.disp_pre, both of
+    # which are only physically meaningful once the coupled side has a real
+    # acceleration of its own. The first time this function runs for any
+    # subdomain, apply_bcs() has only ever seen every subdomain's untouched
+    # (zero) initial acceleration, so whatever value it left on
+    # Schwarz-coupled DOFs is not trustworthy and must not be allowed into
+    # this one-shot linear solve. A plain (non-Schwarz) Dirichlet BC's
+    # prescribed acceleration is exact at any time, including t=0, and is
+    # always trusted.
+    #
+    # trust_schwarz=true is used for a second, refinement pass over all
+    # subdomains of a restarted multi-domain (Schwarz) simulation — see
+    # initialize(sim::MultiDomainSimulation) in simulation.jl. By the time
+    # that second pass runs, every subdomain already has a real initial
+    # acceleration from the first pass, apply_bcs() has been re-run so
+    # Schwarz-coupled DOFs now carry a real (not stale-zero) coupled
+    # acceleration, and it is safe — indeed necessary for an accurate
+    # restart, since the true acceleration at a Schwarz interface generally
+    # is not zero mid-simulation — to include them in the correction below.
+    # This is a single Jacobi-style correction, not a fully converged fixed
+    # point; any remaining small inconsistency is absorbed by the real
+    # Newton/Schwarz iterations that run on the first actual control step.
+    schwarz_fixed = falses(length(free))
+    for bc in model.boundary_conditions
+        if bc isa SolidMechanicsSchwarzBoundaryCondition
+            for i_global in bc.global_from_local_map
+                schwarz_fixed[(3 * i_global - 2):(3 * i_global)] .= true
             end
         end
-        trusted_fixed = trust_schwarz ? fixed : (fixed .& .!schwarz_fixed)
-        # Read the prescribed (Dirichlet / Schwarz-coupled) accelerations from
-        # model.acceleration rather than integrator.acceleration. apply_bcs()
-        # always writes prescribed values onto model.acceleration. For a
-        # top-level SolidMechanics simulation, integrator.acceleration is the
-        # same aliased memory (initialize_storage, simulation.jl), so this is
-        # unchanged there. But this function also runs, via the RomModel
-        # dispatch in opinf_time_integrator.jl, with model set to a ROM
-        # subdomain's fom_model and integrator set to its fom_integrator; that
-        # fom_integrator.acceleration is a separate array that is never
-        # aliased to fom_model.acceleration, so it stays zero on fixed DOFs
-        # even after the Schwarz BCs have written real prescribed values into
-        # fom_model.acceleration. Reading model.acceleration (flattened to
-        # match the node/component ordering used everywhere else) is
-        # therefore correct in both cases.
-        prescribed_acceleration = vec(model.acceleration)
-        rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * prescribed_acceleration[trusted_fixed]
-        integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
     end
+    trusted_fixed = trust_schwarz ? fixed : (fixed .& .!schwarz_fixed)
+    # Read the prescribed (Dirichlet / Schwarz-coupled) accelerations from
+    # model.acceleration rather than integrator.acceleration. apply_bcs()
+    # always writes prescribed values onto model.acceleration. For a
+    # top-level SolidMechanics simulation, integrator.acceleration is the
+    # same aliased memory (initialize_storage, simulation.jl), so this is
+    # unchanged there. But this function also runs, via the RomModel
+    # dispatch in opinf_time_integrator.jl, with model set to a ROM
+    # subdomain's fom_model and integrator set to its fom_integrator; that
+    # fom_integrator.acceleration is a separate array that is never
+    # aliased to fom_model.acceleration, so it stays zero on fixed DOFs
+    # even after the Schwarz BCs have written real prescribed values into
+    # fom_model.acceleration. Reading model.acceleration (flattened to
+    # match the node/component ordering used everywhere else) is
+    # therefore correct in both cases.
+    prescribed_acceleration = vec(model.acceleration)
+    rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * prescribed_acceleration[trusted_fixed]
+    integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
     return nothing
 end
 
