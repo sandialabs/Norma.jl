@@ -52,6 +52,6 @@ solver:
   line search decrease factor: 1.0e-04
   line search maximum iterations: 16
   minimum iterations: 1
-  maximum iterations: 16
+  maximum iterations: 32
   relative tolerance: 1.0e-07
   absolute tolerance: 1.0e-05
