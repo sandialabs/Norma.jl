@@ -39,6 +39,7 @@ include("solver.jl")
 include("io.jl")
 include("simulation.jl")
 include("swap.jl")
+include("restart.jl")     
 
 function run(input_file::String)
     open_log_file(input_file)
