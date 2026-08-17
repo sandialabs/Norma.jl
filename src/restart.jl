@@ -13,10 +13,6 @@
 # first and drops the second. Variants are built once, up front; a switch is then
 # a state transfer and a pointer repoint -- no YAML re-read, no restart file, and
 # the decision need not be known in advance.
-#
-# Variants are still built through `build_replacement_subsim` with a throwaway
-# `SwapPlan` (its criterion is never evaluated) so they get exactly the same
-# BC/projector wiring a scheduled swap would have produced.
 
 "One entry per switch that actually changed a slot's occupant."
 const SwitchRecord = NamedTuple{(:step, :slot, :from, :to),Tuple{Int64,Int64,String,String}}
@@ -39,6 +35,8 @@ struct InMemoryRestart
     variants::Vector{Dict{String,SingleDomainSimulation}}
     "Name of the variant currently occupying each slot."
     active::Vector{String}
+    "Name each variant's input file asked for, before `uniquify_swap_output!` renamed it."
+    intended::Vector{Dict{String,String}}
     history::Vector{SwitchRecord}
 end
 
@@ -48,10 +46,14 @@ function InMemoryRestart(sim::MultiDomainSimulation)
     n = length(sim.subsims)
     variants = [Dict{String,SingleDomainSimulation}(sim.subsims[i].name => sim.subsims[i]) for i in 1:n]
     active = [sim.subsims[i].name for i in 1:n]
-    return InMemoryRestart(sim, variants, active, SwitchRecord[])
+    intended = [Dict{String,String}(sim.subsims[i].name => sim.subsims[i].name) for i in 1:n]
+    return InMemoryRestart(sim, variants, active, intended, SwitchRecord[])
 end
 
-InMemoryRestart(input_file::String) = InMemoryRestart(create_simulation(input_file)::MultiDomainSimulation)
+function InMemoryRestart(input_file::String)
+    open_log_file(input_file)   # as `Norma.run` does; no-op under a session log
+    return InMemoryRestart(create_simulation(input_file)::MultiDomainSimulation)
+end
 
 """
     slot_of(r::InMemoryRestart, target) -> Int64
@@ -86,10 +88,13 @@ Build the subdomain described by `yaml_file` and register it for `target` under
 `name`, without activating it. This is the expensive step (mesh read, model and
 operator construction, BC wiring); doing it once is what makes switches cheap.
 
-The variant must be a legal replacement for the slot: same Schwarz coupling,
-same integrator family, and for a ROM a `copy_model_state!` path to and from
-whatever else may occupy it. That last one is checked here, since a `MethodError`
-at switch time would otherwise surface hundreds of steps into a run.
+The variant must be a legal replacement for the slot: same mesh and degrees of
+freedom, same Schwarz coupling, same integrator family, and for a ROM a
+`copy_model_state!` path to and from whatever else may occupy it.
+
+Only the last is checked here, by `_assert_rom_swap_supported`, since that would
+otherwise raise a `MethodError` hundreds of steps into a run. A mesh or
+degree-of-freedom mismatch is not caught until `copy_model_state!`.
 
 Registering mid-march is well defined: `build_replacement_subsim` reads the
 controller's current clock, so a variant built at step k is born aligned to it.
@@ -108,6 +113,7 @@ function register_variant!(r::InMemoryRestart, target, name::AbstractString, yam
     _assert_rom_swap_supported(new.model, "In-memory restart variant '$key'")
 
     r.variants[slot][key] = new
+    r.intended[slot][key] = stripped_name(yaml_file)
     norma_logf(0, :restart, "Registered in-memory variant '%s' for slot %d from %s", key, slot, yaml_file)
     return new
 end
@@ -123,6 +129,23 @@ function register_variants!(r::InMemoryRestart, target, pairs)
         register_variant!(r, target, name, file)
     end
     return r
+end
+
+"""
+Register `name` as resolving to `slot`, refusing to steal it from another slot.
+The in-memory counterpart of the collision guard in `apply_swap!`.
+"""
+function _claim_name!(sim::MultiDomainSimulation, slot::Int64, name::AbstractString)
+    if haskey(sim.handle_by_name, name) && sim.handle_by_name[name].id != slot
+        norma_abortf(
+            "In-memory restart: switching slot %d would register subsim name '%s', but " *
+            "that name is already claimed by slot %d. Two different subsims cannot share " *
+            "a name while both are live; rename one of the variant input files.",
+            slot, name, sim.handle_by_name[name].id,
+        )
+    end
+    sim.handle_by_name[name] = DomainHandle(slot)
+    return nothing
 end
 
 """
@@ -173,8 +196,12 @@ function switch!(r::InMemoryRestart, target, name::AbstractString)
     sim.subsims[slot] = new
     # Previous names survive as aliases (Schwarz partners resolve by slot id),
     # so `target` may keep being addressed by whichever name the caller started with.
-    sim.handle_by_name[new.name] = new.handle
+    _claim_name!(sim, slot, new.name)
     sim.name_by_handle[slot] = new.name
+    # If `uniquify_swap_output!` renamed the variant, keep the name its input
+    # file asked for resolvable too.
+    intended = get(r.intended[slot], key, new.name)
+    intended == new.name || _claim_name!(sim, slot, intended)
 
     # Same rewiring `apply_swap!` does after re-pointing a slot: partner BCs
     # cache `coupled_bc_index` and `is_dirichlet` against the old BC list, and
@@ -200,6 +227,10 @@ Take one control step and return its index. Mirrors the body of Norma's `evolve`
 loop with the scheduled-swap hook replaced by `on_step(r, step)`, called after
 the controller has advanced to the target time but before any subdomain has
 solved at it -- the window in which `switch!` is valid.
+
+Kept separate from `evolve` so this feature does not touch the core loop; if
+`evolve` gains a call, this copy must too. `test/inmem-restart-fidelity.jl`
+compares a restart march against `Norma.run`, so a divergence surfaces there.
 
 No Exodus output is written: each variant of a slot owns a separate output file,
 and interleaving frames across them is the disk round-trip this avoids. Sample
@@ -262,17 +293,21 @@ displacement_vector(r::InMemoryRestart) =
 """
     close_restart!(r::InMemoryRestart)
 
-Close the Exodus handles of every variant, active or not. Idle variants hold open
-meshes just like active ones, so skipping this leaks file descriptors and a later
-simulation in the same process will fail in `ex_create_int`.
+Close the Exodus handles of every variant, active or not, then the log file
+opened by `InMemoryRestart(input_file)`. Idle variants hold open meshes just like
+active ones, so skipping this leaks file descriptors and a later simulation in
+the same process will fail in `ex_create_int`. A close that fails is logged
+rather than discarded: teardown must not throw, but must not hide a real error.
 """
 function close_restart!(r::InMemoryRestart)
     for slot in eachindex(r.variants), subsim in values(r.variants[slot])
         try
             finalize_writing(subsim)
-        catch
-            # Handles may already be closed; teardown must not throw over it.
+        catch e
+            norma_logf(0, :warning, "In-memory restart: closing '%s' failed: %s",
+                       subsim.name, sprint(showerror, e))
         end
     end
+    close_log_file()
     return nothing
 end

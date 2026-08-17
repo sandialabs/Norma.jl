@@ -24,17 +24,18 @@
 # suite covers that.
 #
 # 2-subdomain overlapping-Schwarz clamped bar, Gaussian pulse at z = 0 travelling
-# left at c = sqrt(E/rho) = 1000 m/s. Meshes come from the shared meshes/ pool.
+# left at c = sqrt(E/rho) = 1000 m/s.
 
 using LinearAlgebra
 
 @testset "In-Memory Restart Fidelity" begin
-    mesh_dir = "../examples/ahead/overlap/clamped/meshes"
+    # The 2sd bar ships with the clamped examples; only 4sd/5sd live in meshes/.
+    mesh_dir = "../examples/ahead/overlap/clamped"
 
     TFINAL, NSTEP = 4.0e-4, 128
     DT = TFINAL / NSTEP
     RESTART_EVERY = 8                    # 16 restarts over the march
-    MESH = ("clamped-2sd-1.g", "clamped-2sd-2.g")
+    MESH = ("clamped-smaller-1.g", "clamped-larger-2.g")
     BLOCK = ("coarse", "fine")
     ZCLAMP = ("nsz-", "nsz+")
     SIDESET = ("ssz+", "ssz-")

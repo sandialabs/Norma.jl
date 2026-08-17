@@ -25,8 +25,7 @@ const TFINAL = 4.0e-4
 const NSTEP  = 128
 const DT     = (TFINAL - T0) / NSTEP
 
-# Shared mesh pool, named clamped-<N>sd-<i>.g
-const MESH    = ("../meshes/clamped-2sd-1.g", "../meshes/clamped-2sd-2.g")
+const MESH    = ("../clamped-smaller-1.g", "../clamped-larger-2.g")
 const BLOCK   = ("coarse", "fine")
 const ZCLAMP  = ("nsz-", "nsz+")   # z-clamped end of each subdomain
 const SIDESET = ("ssz+", "ssz-")   # Schwarz overlap face of each subdomain
@@ -106,7 +105,12 @@ absolute tolerance: 1.0e-08
 isfile(ROMFILE) || error("no ROM operator $ROMFILE for sd$SUBDOMAIN; " *
                          "this example ships one for sd1 only")
 
-foreach(rm, filter(f -> endswith(f, ".e") || endswith(f, ".log"), readdir()))
+# Everything this script writes; cleared on entry, removed on exit.
+const GENERATED = ["sd1fom.yaml", "sd2fom.yaml", "sd$(SUBDOMAIN)rom.yaml", "top.yaml",
+                   "sd1fom.e", "sd2fom.e", "sd$(SUBDOMAIN)rom.e",
+                   "restart_example1.log", "top.log"]
+
+foreach(f -> rm(f; force=true), GENERATED)
 write("sd1fom.yaml", subdomain_yaml(1, :fom))
 write("sd2fom.yaml", subdomain_yaml(2, :fom))
 write("sd$(SUBDOMAIN)rom.yaml", subdomain_yaml(SUBDOMAIN, :rom))
@@ -162,6 +166,9 @@ writedlm("out_modes.csv",
          vcat(["step" "mode"], hcat(1:length(modes), modes)), ',')
 Norma.close_restart!(r)
 close(log)
+
+# Keep only the CSVs the plotting script reads; the rest is regenerated.
+foreach(f -> rm(f; force=true), filter(f -> endswith(f, ".yaml") || endswith(f, ".e"), GENERATED))
 
 @printf("sd%d ran ROM over steps %d-%d of %d\n", SUBDOMAIN, A, B, NSTEP)
 for h in r.history

@@ -22,15 +22,16 @@
 # back, and the result stays finite and close to the untouched march. The
 # quantitative checks live in inmem-restart-fidelity.jl (round-off under repeated
 # restarts) and inmem-restart-vs-swap.jl (agreement with the scheduled path).
-#
-# Meshes come from the shared meshes/ pool, named clamped-<N>sd-<i>.g.
 
 using LinearAlgebra
 
 @testset "In-Memory Restart Multi-Subdomain" begin
-    mesh_dir = "../examples/ahead/overlap/clamped/meshes"
-    rom_dir = "../examples/ahead/overlap/clamped/inmem_restart"
-    rom3_dir = "../examples/ahead/overlap/clamped/dynamic-linear-elastic-opinf-3sd-fom-rom-single-swap"
+    # 2sd and 3sd bars ship with the clamped examples; only 4sd and 5sd, which
+    # nothing else uses, live in the shared pool.
+    clamped_dir = "../examples/ahead/overlap/clamped"
+    mesh_dir = "$clamped_dir/meshes"
+    rom_dir = "$clamped_dir/inmem_restart"
+    rom3_dir = "$clamped_dir/dynamic-linear-elastic-opinf-3sd-fom-rom-single-swap"
 
     TFINAL, NSTEP = 4.0e-4, 64
     DT = TFINAL / NSTEP
@@ -62,25 +63,25 @@ using LinearAlgebra
           function: "a=0.001; s=0.02; a*exp(-z*z/s/s/2)"
     """
 
-    # (label, meshes, blocks, ROM operator, switching slot, IC)
+    # (label, mesh sources, blocks, ROM operator, switching slot, IC)
     cases = [
         ("2sd",
-         ["clamped-2sd-1.g", "clamped-2sd-2.g"],
+         ["$clamped_dir/clamped-smaller-1.g", "$clamped_dir/clamped-larger-2.g"],
          ["coarse", "fine"],
          ["$rom_dir/linear-opinf-operator-1-M10.npz"],
          1, ic_travelling),
         ("3sd",
-         ["clamped-3sd-1.g", "clamped-3sd-2.g", "clamped-3sd-3.g"],
+         ["$clamped_dir/clamped-3sd-$i.g" for i in 1:3],
          ["subdomain_1", "subdomain_2", "subdomain_3"],
          ["$rom3_dir/linear-opinf-operator-M30-2.npz"],
          2, ic_from_rest),
         ("4sd",
-         ["clamped-4sd-$i.g" for i in 1:4],
+         ["$mesh_dir/clamped-4sd-$i.g" for i in 1:4],
          ["subdomain_$i" for i in 1:4],
          ["$rom_dir/linear-opinf-operator-4sd-2-M10.npz"],
          2, ic_travelling),
         ("5sd",
-         ["clamped-5sd-$i.g" for i in 1:5],
+         ["$mesh_dir/clamped-5sd-$i.g" for i in 1:5],
          ["subdomain_$i" for i in 1:5],
          ["$rom_dir/linear-opinf-operator-5sd-3-M10.npz"],
          3, ic_travelling),
@@ -154,14 +155,15 @@ using LinearAlgebra
     absolute tolerance: 1.0e-08
     """
 
-    for (label, meshes, blocks, romfiles, slot, ic) in cases
-        n = length(meshes)
+    for (label, meshsrc, blocks, romfiles, slot, ic) in cases
+        n = length(meshsrc)
         a, b = ROM_WINDOW
         romname = basename(romfiles[1])
+        meshes = basename.(meshsrc)
 
         # ── Stage ───────────────────────────────────────────────────────────
-        for m in meshes
-            cp("$mesh_dir/$m", m; force=true)
+        for m in meshsrc
+            cp(m, basename(m); force=true)
         end
         cp(romfiles[1], romname; force=true)
         for i in 1:n

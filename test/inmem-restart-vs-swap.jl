@@ -28,7 +28,8 @@
 using LinearAlgebra
 
 @testset "In-Memory Restart Matches Swap" begin
-    mesh_dir = "../examples/ahead/overlap/clamped/meshes"
+    # The 2sd bar ships with the clamped examples; only 4sd/5sd live in meshes/.
+    mesh_dir = "../examples/ahead/overlap/clamped"
     rom_dir = "../examples/ahead/overlap/clamped/inmem_restart"
 
     TFINAL, NSTEP = 4.0e-4, 128
@@ -40,7 +41,7 @@ using LinearAlgebra
     # by an ULP and the two routes fire one step apart, which shows up as a
     # ~1e-4 disagreement that has nothing to do with the mechanism.
     T_SWAP = 38.5 * DT             # both routes transition entering step 40
-    MESH = ("clamped-2sd-1.g", "clamped-2sd-2.g")
+    MESH = ("clamped-smaller-1.g", "clamped-larger-2.g")
     BLOCK = ("coarse", "fine")
     ZCLAMP = ("nsz-", "nsz+")
     SIDESET = ("ssz+", "ssz-")
