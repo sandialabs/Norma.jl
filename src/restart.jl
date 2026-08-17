@@ -37,22 +37,29 @@ struct InMemoryRestart
     active::Vector{String}
     "Name each variant's input file asked for, before `uniquify_swap_output!` renamed it."
     intended::Vector{Dict{String,String}}
+    "Whether this object opened the log file, and so is the one that must close it."
+    owns_log::Bool
     history::Vector{SwitchRecord}
 end
 
-function InMemoryRestart(sim::MultiDomainSimulation)
+function InMemoryRestart(sim::MultiDomainSimulation; owns_log::Bool=false)
     sync_control_time(sim)
     initialize(sim)
     n = length(sim.subsims)
     variants = [Dict{String,SingleDomainSimulation}(sim.subsims[i].name => sim.subsims[i]) for i in 1:n]
     active = [sim.subsims[i].name for i in 1:n]
     intended = [Dict{String,String}(sim.subsims[i].name => sim.subsims[i].name) for i in 1:n]
-    return InMemoryRestart(sim, variants, active, intended, SwitchRecord[])
+    return InMemoryRestart(sim, variants, active, intended, owns_log, SwitchRecord[])
 end
 
 function InMemoryRestart(input_file::String)
-    open_log_file(input_file)   # as `Norma.run` does; no-op under a session log
-    return InMemoryRestart(create_simulation(input_file)::MultiDomainSimulation)
+    # `open_log_file` is a no-op under a session log or an already-open one, so
+    # compare before and after rather than assume: only the call that actually
+    # opened the file may close it in `close_restart!`.
+    had_log = NORMA_LOG_FILE[] !== nothing
+    open_log_file(input_file)   # as `Norma.run` does
+    owns_log = !had_log && NORMA_LOG_FILE[] !== nothing
+    return InMemoryRestart(create_simulation(input_file)::MultiDomainSimulation; owns_log=owns_log)
 end
 
 """
@@ -293,11 +300,11 @@ displacement_vector(r::InMemoryRestart) =
 """
     close_restart!(r::InMemoryRestart)
 
-Close the Exodus handles of every variant, active or not, then the log file
-opened by `InMemoryRestart(input_file)`. Idle variants hold open meshes just like
-active ones, so skipping this leaks file descriptors and a later simulation in
-the same process will fail in `ex_create_int`. A close that fails is logged
-rather than discarded: teardown must not throw, but must not hide a real error.
+Close the Exodus handles of every variant, active or not, and the log file if
+`InMemoryRestart(input_file)` was the call that opened it. Idle variants hold open
+meshes just like active ones, so skipping this leaks file descriptors and a later
+simulation in the same process will fail in `ex_create_int`. A close that fails is
+logged rather than discarded: teardown must not throw, but must not hide a real error.
 """
 function close_restart!(r::InMemoryRestart)
     for slot in eachindex(r.variants), subsim in values(r.variants[slot])
@@ -308,6 +315,6 @@ function close_restart!(r::InMemoryRestart)
                        subsim.name, sprint(showerror, e))
         end
     end
-    close_log_file()
+    r.owns_log && close_log_file()
     return nothing
 end
