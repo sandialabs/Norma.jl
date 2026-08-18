@@ -159,6 +159,9 @@ const indexed_test_files = [
     (111, "restart-past-final-time.jl"),
     (112, "restart-inplace-checkpoint.jl"),
     (113, "schwarz-overlap-static-cuboids-restart.jl"),
+    (114, "inmem-restart-fidelity.jl"),
+    (115, "inmem-restart-vs-swap.jl"),
+    (116, "inmem-restart-multi-subdomain.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach
@@ -180,9 +183,11 @@ const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopi
 # - 100, 102, 103                        long restart cases
 # - 104      schwarz-overlap-dynamic-cantilever-impedance-energy
 # - 108      schwarz-ahead-nonoverlap-dynamic-notched-cylinder
+# - 114..116 in-memory restart cases
 const optional_test_indices = Int[
     27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
     52, 55, 78, 80, 81, 84, 85, 86, 87, 89, 90, 97, 98, 100, 102, 103, 104, 108,
+    114, 115, 116,
 ]
 
 # Quick test set (subset of all tests)
