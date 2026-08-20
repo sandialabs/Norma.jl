@@ -54,10 +54,39 @@ Each controller step performs Schwarz iterations until the interface converges.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation; omit for a fixed factor |
-| `relaxation parameter` | no | `1.0` | fixed relaxation factor θ used when `relaxation` is absent |
-| `aitken N0 parameter` | no | `1` | Schwarz iteration at which Aitken relaxation begins (Aitken methods only) |
+| `relaxation parameter` | no | `1.0` | relaxation factor θ; the constant factor under fixed relaxation, and under either Aitken method the factor used wherever an adaptive one is not yet available |
+| `aitken N0 parameter` | no | `1` | Schwarz iteration, counting from zero, at which the adaptive factor takes over from `relaxation parameter` (Aitken methods only) |
 | `interface predictor` | no | `false` | extrapolate the interface state at the start of each step |
 | `naive stabilized` | no | `false` | naive interface stabilization |
+
+Relaxation is not tied to a particular transmission condition: it applies to
+whatever datum a coupling boundary condition transmits. For `Schwarz overlap`
+and `Schwarz DN nonoverlap` the relaxed quantity is the interface displacement;
+for `Schwarz impedance nonoverlap`, and therefore for its `Schwarz RR
+nonoverlap` alias, it is the impedance right-hand side. Both Aitken forms work
+with all of them, and `relaxation parameter` and `aitken N0 parameter` mean the
+same thing in each. On the impedance and Robin conditions the acceleration is
+substantial: on the cantilever benchmark either Aitken form converges in about
+a tenth of the sweeps that a fixed factor needs.
+
+`relaxation parameter` is not ignored when `relaxation` names an Aitken method.
+It is the factor applied for Schwarz iterations below `aitken N0 parameter`,
+and the fallback whenever an adaptive factor cannot be formed, which includes
+the first iterations of every step before two iterates exist to compare.
+
+Aitken acceleration is applied only to stops with a single substep, that is
+when the controller `time step` equals the relaxed subdomain's time step. A
+windowed stop couples all of its time slots in one sweep, where the adaptive
+factors were measured to diverge or to lose to a fixed factor, so such stops
+use `relaxation parameter` throughout. This is automatic and needs no input.
+
+If a relaxation factor ever becomes small enough to leave an interface iterate
+unchanged, the sweep carries no information: every subdomain re-solves against
+the data it already had and returns the solution it already had. The
+displacement-based convergence test cannot distinguish that from convergence,
+so such a sweep is refused as evidence of convergence and the run logs
+`Relaxation factor near zero froze an interface iterate`. Seeing that message
+repeatedly means the coupling is not advancing; check `relaxation parameter`.
 
 ### Output
 
