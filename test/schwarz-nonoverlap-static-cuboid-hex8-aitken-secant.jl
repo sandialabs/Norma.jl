@@ -32,6 +32,30 @@
     @test sim.controller.relaxation_method == :aitken_secant
     @test sim.failed == false
 
+    # The first secant pair on the DN and overlap path is degenerate: a fresh
+    # slot seeds the stored iterate with the incoming datum, so the next sweep
+    # finds g^(n) == g^(n-1), d = 0, and the raw factor -dot(d, δ)/‖δ‖² is
+    # exactly zero. A zero factor freezes the interface, and in a chain of three
+    # or more subdomains that freezes the whole sweep and is read as convergence
+    # after one iteration (issue #219). The degenerate pair must fall back to
+    # the input theta instead. Replayed here on a key with no history.
+    theta0 = sim.controller.relaxation_parameter
+    degenerate_key = (97, 96, 1)
+    v = [1.0, 2.0, 3.0]
+    w = [1.5, 2.5, 3.5]
+    Norma.relaxation_aitken_secant_theta!(sim.controller, degenerate_key, 1, 0, v, v)
+    theta_second = Norma.relaxation_aitken_secant_theta!(sim.controller, degenerate_key, 1, 1, w, v)
+    @test theta_second == theta0
+    @test theta_second != 0.0
+
+    # A frozen update is recorded so the convergence criterion can refuse it.
+    sim.controller.relaxation_frozen = false
+    Norma.frozen_relaxation_update!(sim.controller, 0.5)
+    @test sim.controller.relaxation_frozen == false
+    Norma.frozen_relaxation_update!(sim.controller, 0.0)
+    @test sim.controller.relaxation_frozen == true
+    sim.controller.relaxation_frozen = false
+
     # Aitken secant must reach the same physical solution as classical
     # relaxation and the Aitken-recursive Irons-Tuck form.
     min_disp_x_fine = minimum(model_fine.displacement[1, :])

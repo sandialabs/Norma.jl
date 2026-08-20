@@ -29,6 +29,20 @@ self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsim
 # negative excursions that accelerate convergence.
 const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
 
+# A relaxation factor at or below this magnitude leaves the interface iterate
+# unchanged to working precision. Every subdomain then re-solves against the
+# coupling data it already used and returns the solution it already had, so the
+# displacement-based Schwarz criterion sees no update and reads it as
+# convergence, however large the interface residual still is. Record such a
+# sweep on the controller so the criterion can refuse to convert it into
+# convergence (see update_schwarz_convergence_criterion).
+const FROZEN_THETA = 1.0e-12
+
+function frozen_relaxation_update!(controller::MultiDomainTimeController, θ::Float64)
+    abs(θ) <= FROZEN_THETA && (controller.relaxation_frozen = true)
+    return θ
+end
+
 # Name a relaxation method the way the `relaxation` input value spells it, so a
 # log line maps straight back to the input file. Defined once and used by both
 # the start-up echo and the per-iteration factor lines, which previously spelled
@@ -201,7 +215,15 @@ function relaxation_aitken_secant_theta!(
         δ = residual .- prev_residual                     # δ^(n)
         d = lambda_prev .- prev_lambda                    # d^(n) = g^(n) - g^(n-1)
         δ_sq = dot(δ, δ)
-        if δ_sq > AITKEN_DELTA_SQ_FLOOR
+        # A pair whose iterate did not move carries no secant information: d = 0
+        # gives θ = 0 exactly, which freezes the interface. That is not a rare
+        # numerical coincidence but the normal state of the first pair on the
+        # DN and overlap path, where a fresh slot seeds g^(n-1) with the very
+        # datum it is compared against (see the `isempty` fallback in apply_bc),
+        # so r = 0, the written iterate equals the incoming one whatever θ is,
+        # and the next sweep finds g^(n) == g^(n-1). Fall back to the input
+        # theta; the sweep after that has two genuine iterates to differentiate.
+        if δ_sq > AITKEN_DELTA_SQ_FLOOR && dot(d, d) > AITKEN_DELTA_SQ_FLOOR
             # Pure Aitken-secant factor, paper eq. (9): no value clamp, so the factor is
             # free to take the large/negative excursions that accelerate (or
             # damp) convergence. The δ_sq floor above is kept only to guard the
@@ -321,6 +343,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
                 relaxation_aitken_secant_theta!(controller, key, slot_k, iter, candidate, g) :
                 relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, candidate, g)
         end
+        frozen_relaxation_update!(controller, theta)
         g_slots[slot_k] = copy(model.boundary_force)
         for comp in 1:3
             Z_W_vdot = Z * (W * dst_velo[comp, :])
@@ -1849,10 +1872,12 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
             θ = relaxation_aitken_secant_theta!(controller, key, slot_k, iter, interp_disp, λ_u_prev)
+            frozen_relaxation_update!(controller, θ)
             disp_slots[slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
             recover_interface_kinematics!(controller, key, slot_k, coupled_integrator, interp_velo, interp_acce)
         else
             θ = relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, interp_disp, λ_u_prev)
+            frozen_relaxation_update!(controller, θ)
 
             disp_slots[slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
             velo_slots[slot_k] = θ * interp_velo + (1 - θ) * λ_v_prev

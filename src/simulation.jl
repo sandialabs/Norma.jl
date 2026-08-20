@@ -850,6 +850,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_∂Ω_f,
         prev_stop_disp,
         prev_stop_∂Ω_f,
+        false,   # relaxation_frozen, set per sweep
     )
 end
 
@@ -1298,9 +1299,24 @@ function schwarz(sim::MultiDomainSimulation)
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
+        # Recorded by the coupling BCs as they apply their relaxation factors.
+        sim.controller.relaxation_frozen = false
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
+        if sim.controller.converged && sim.controller.relaxation_frozen
+            # A relaxation factor of essentially zero left an interface iterate
+            # unchanged, so every subdomain re-solved against the data it
+            # already had and returned the solution it already had. The small
+            # update that follows measures the frozen blend, not the interface
+            # residual, and must not be read as convergence.
+            norma_log(
+                0,
+                :schwarz,
+                "Relaxation factor near zero froze an interface iterate; update is not convergence.",
+            )
+            sim.controller.converged = false
+        end
         if sim.controller.converged
             jump_rel = paired_impedance_jump(sim)
             if jump_rel > sim.controller.relative_tolerance

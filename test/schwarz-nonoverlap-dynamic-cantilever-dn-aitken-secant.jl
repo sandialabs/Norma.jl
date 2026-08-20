@@ -75,10 +75,16 @@ end
     avg_clamped = sum(m_clamped.displacement[2, iface_clamped]) / length(iface_clamped)
     @test avg_free ≈ avg_clamped rtol = 1.0e-02
 
-    # The pure (unclamped) Aitken secant should accelerate at least as well as
-    # the Aitken-recursive Irons-Tuck form on this problem.
+    # Sweep counts. The secant and the Aitken-recursive Irons-Tuck form cost
+    # essentially the same here, 41 sweeps against 40 over these 10 steps, the
+    # difference being one extra sweep in the first step. The secant used to
+    # take 20, but that margin came from the degenerate first pair fixed for
+    # issue #219: its zero factor discarded the first interface iterate, which
+    # happened to help this problem while silently returning a wrong answer on
+    # subdomain chains. The bound is the recursive count plus that one sweep, so
+    # a genuine regression in the secant factor still fails it.
     iters_secant = sim_secant.controller.schwarz_iters[1:num_steps]
     iters_aitken = sim_aitken.controller.schwarz_iters[1:num_steps]
     @test all(iters_secant .≤ 10)
-    @test sum(iters_secant) ≤ sum(iters_aitken)
+    @test sum(iters_secant) ≤ sum(iters_aitken) + 1
 end

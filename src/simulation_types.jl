@@ -82,6 +82,13 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     predictor_∂Ω_f::Vector{Vector{Float64}}
     prev_stop_disp::Vector{Vector{Float64}}
     prev_stop_∂Ω_f::Vector{Vector{Float64}}
+    # Set during a sweep in which a relaxation factor of essentially zero froze
+    # an interface iterate. Such a sweep re-solves every subdomain against
+    # unchanged coupling data and reproduces the previous solution, so its
+    # update is not evidence of convergence: the interface residual it leaves
+    # behind is invisible to the displacement-based criterion. Cleared at the
+    # start of each sweep; see `frozen_relaxation_update!`.
+    relaxation_frozen::Bool
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController
