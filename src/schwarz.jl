@@ -29,6 +29,16 @@ self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsim
 # negative excursions that accelerate convergence.
 const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
 
+# Name a relaxation method the way the `relaxation` input value spells it, so a
+# log line maps straight back to the input file. Defined once and used by both
+# the start-up echo and the per-iteration factor lines, which previously spelled
+# the same method two ways (issue #217).
+function relaxation_method_name(method::Symbol)
+    method === :aitken_recursive && return "Aitken recursive"
+    method === :aitken_secant && return "Aitken secant"
+    return "fixed"
+end
+
 # Identify the interface a Schwarz BC belongs to, for the relaxation state (see
 # RelaxationKey): one key per (own subdomain, partner subdomain, side set), not
 # one per partner subdomain, which aliases whenever a subdomain is the partner
@@ -125,7 +135,8 @@ function relaxation_aitken_recursive_theta!(
     if iter < aitken_N0
         theta_slots[slot_k] = controller.relaxation_parameter
         residual_slots[slot_k] = Float64[]
-        norma_logf(1, :schwarz, "Aitken-recursive θ[iter=%d] = %.4e", iter, 1.0)
+        norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
+            relaxation_method_name(controller.relaxation_method), iter, 1.0)
         return 1.0
     end
     residual = interp_disp .- lambda_prev
@@ -143,7 +154,8 @@ function relaxation_aitken_recursive_theta!(
     end
     residual_slots[slot_k] = residual
     theta_slots[slot_k] = θ
-    norma_logf(1, :schwarz, "Aitken-recursive θ[iter=%d] = %.4e", iter, θ)
+    norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
+        relaxation_method_name(controller.relaxation_method), iter, θ)
     return θ
 end
 
@@ -194,7 +206,8 @@ function relaxation_aitken_secant_theta!(
     end
     residual_slots[slot_k] = residual
     lambda_slots[slot_k] = copy(lambda_prev)
-    norma_logf(1, :schwarz, "Aitken-secant θ[iter=%d] = %.4e", iter, θ)
+    norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
+        relaxation_method_name(controller.relaxation_method), iter, θ)
     return θ
 end
 

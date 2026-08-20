@@ -766,11 +766,11 @@ function SolidMultiDomainTimeController(params::Parameters)
     # Echo the effective relaxation settings once, so a misspelled or misplaced
     # YAML key (silently ignored, like all unrecognized keys) is visible at startup.
     if relaxation_method === :fixed
-        norma_logf(0, :schwarz, "Relaxation: fixed, θ = %.4e", relaxation_parameter)
+        norma_logf(0, :schwarz, "Relaxation: %s, θ = %.4e",
+            relaxation_method_name(relaxation_method), relaxation_parameter)
     else
         norma_logf(0, :schwarz, "Relaxation: %s, θ₀ = %.4e, N0 = %d",
-            relaxation_method === :aitken_recursive ? "Aitken recursive" : "Aitken secant",
-            relaxation_parameter, aitken_N0)
+            relaxation_method_name(relaxation_method), relaxation_parameter, aitken_N0)
     end
     naive_stabilized = get(params, "naive stabilized", false)
     # Keyed per interface and filled on demand, as the interfaces are known to
