@@ -74,6 +74,17 @@ end
     @test sim.controller.relaxation_method == :aitken_recursive
     @test sim.failed == false
 
+    # Below N0 the relaxation factor is the input theta, not 1: this run sets
+    # `relaxation parameter: 0.1` and `aitken N0 parameter: 2`, so the first two
+    # sweeps of every step must relax by 0.1 (issue #218). A key with no
+    # relaxation history reaches the same branch those sweeps take.
+    fresh_key = (99, 98, 1)
+    zero_iterate = zeros(3)
+    for iter in 0:1
+        @test Norma.relaxation_aitken_recursive_theta!(
+            sim.controller, fresh_key, 1, iter, zero_iterate, zero_iterate) == 0.1
+    end
+
     # Aitken must reach the same physical solution as classical relaxation.
     min_disp_x_fine = minimum(model_fine.displacement[1, :])
     min_disp_y_fine = minimum(model_fine.displacement[2, :])

@@ -133,11 +133,16 @@ function relaxation_aitken_recursive_theta!(
     ensure_slot!(residual_slots, slot_k)
     ensure_slot!(theta_slots, slot_k, controller.relaxation_parameter)
     if iter < aitken_N0
-        theta_slots[slot_k] = controller.relaxation_parameter
+        # Below N0 the input theta is the relaxation factor, as it is for the
+        # secant form. This used to store the input theta as theta^(n-1) for the
+        # recursion but apply and report 1.0, so the first N0 sweeps of every
+        # run were unrelaxed whatever the input file asked for (issue #218).
+        θ = controller.relaxation_parameter
+        theta_slots[slot_k] = θ
         residual_slots[slot_k] = Float64[]
         norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
-            relaxation_method_name(controller.relaxation_method), iter, 1.0)
-        return 1.0
+            relaxation_method_name(controller.relaxation_method), iter, θ)
+        return θ
     end
     residual = interp_disp .- lambda_prev
     prev_residual = residual_slots[slot_k]
