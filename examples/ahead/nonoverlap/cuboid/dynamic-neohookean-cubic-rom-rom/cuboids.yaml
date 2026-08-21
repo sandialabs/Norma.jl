@@ -6,7 +6,7 @@ initial time: 0.0
 final time: 1.0
 time step: 0.01
 minimum iterations: 1
-maximum iterations: 16
+maximum iterations: 64
 relative tolerance: 1.0e-12
 absolute tolerance: 1.0e-08
   #relaxation parameter: 0.473
