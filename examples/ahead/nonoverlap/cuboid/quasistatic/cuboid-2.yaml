@@ -31,7 +31,6 @@ boundary conditions:
       source side set: ssz+
       default BC type: Neumann
 solver:
-solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1

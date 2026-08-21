@@ -29,7 +29,6 @@ boundary conditions:
       source: cuboid-1
       source block: fine
 solver:
-solver:
   type: Hessian minimizer
   step: full Newton
   minimum iterations: 1

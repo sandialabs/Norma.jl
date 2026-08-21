@@ -33,9 +33,6 @@ boundary conditions:
 solver:
   type: Hessian minimizer
   step: full Newton
-solver:
-  type: Hessian minimizer
-  step: full Newton
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-10
