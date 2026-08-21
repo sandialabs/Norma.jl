@@ -66,6 +66,15 @@ mutable struct SteepestDescent <: MatrixFree
     failed::Bool
     step::Step
     line_search::BackTrackLineSearch
+    # Energy stagnation exit for mesh smoothing (issue #220).  A window of 0
+    # disables the criterion.  The history holds the energy at the end of each
+    # iteration of the current solve; the streak counts consecutive iterations
+    # whose windowed relative energy decrease fell below the tolerance.
+    energy_stagnation_window::Int64
+    energy_stagnation_tolerance::Float64
+    energy_history::Vector{Float64}
+    energy_stagnation_streak::Int64
+    stagnated::Bool
 end
 
 struct NewtonStep <: Step

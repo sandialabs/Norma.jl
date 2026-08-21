@@ -1050,3 +1050,176 @@ end
         rm(mesh; force=true); rm(out; force=true)
     end
 end
+
+@testset "energy_stagnation_criterion" begin
+    # Mechanism-level tests for the energy stagnation exit (issue #220), driving
+    # update_energy_stagnation_criterion by hand on a real solver so the window
+    # fill, the streak reset on resurgence, the trigger, and the converged
+    # reassertion are each pinned deterministically.  The integration test on a
+    # genuinely stagnating mesh is smoothing-energy-stagnation.jl.
+    a = 1
+    tet_coords = reg_tet_coords + [
+        0.0 0.0 0.0 0.05
+        0.0 0.0 0.0 0.05
+        0.0 0.0 0.0 0.0
+    ]
+    node_sets = Dict{String,Vector}("base" => tet_base)
+    num_dim, num_nodes = size(tet_coords)
+    num_elems = size(tet_conn, 2)
+
+    stagnation_params(window) = begin
+        p = deepcopy(base_params)
+        p["solver"]["step"] = "lbfgs"
+        p["solver"]["memory"] = 10
+        p["name"] = "tet_smoothing_stagnation"
+        p["input mesh file"] = input_mesh_file
+        p["output mesh file"] = output_mesh_file
+        p["boundary conditions"] = Dict{String,Any}(
+            "Dirichlet" => [
+                Dict{String,Any}("node set" => "base", "component" => c, "function" => "0.0") for
+                c in ("x", "y", "z")
+            ],
+        )
+        p["model"]["material"]["elastic"]["shear modulus"] = 1.0
+        p["model"]["material"]["elastic"]["bulk modulus"] = 0.0
+        p["model"]["smooth reference"] = "equal volume"
+        window === nothing || (p["solver"]["energy stagnation window"] = window)
+        p
+    end
+
+    try
+        tet_init = Initialization{Int32}(
+            Int32(num_dim), Int32(num_nodes), Int32(num_elems), Int32(1), Int32(length(node_sets)), Int32(0)
+        )
+        rm(input_mesh_file; force=true)
+        rm(output_mesh_file; force=true)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
+        write_coordinates(tet_exo, tet_coords)
+        write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
+        write_name(tet_exo, Block, 1, "block")
+        for (i, (node_set_name, ns)) in enumerate(node_sets)
+            node_set = NodeSet(i, Vector{Int32}(ns))
+            write_set(tet_exo, node_set)
+            write_name(tet_exo, node_set, node_set_name)
+        end
+        close(tet_exo)
+
+        # --- Hand-driven mechanism checks, window of 3 for short sequences.
+        # Each simulation's output handle must be closed before the next
+        # simulation opens the same output path (HDF5 locks the open file).
+        sim = Norma.create_simulation(stagnation_params(3))
+        solver = sim.solver
+        @test solver.energy_stagnation_window == 3
+        @test solver.energy_stagnation_tolerance == 1.0e-06
+        @test solver.stagnated == false
+
+        drive!(solver, energies) = begin
+            for (i, e) in enumerate(energies)
+                solver.value = e
+                Norma.update_energy_stagnation_criterion(solver, i)
+            end
+        end
+
+        # Healthy geometric decrease: window decrease stays far above the
+        # tolerance, no streak, no trigger.
+        solver.value = 100.0
+        Norma.reset_energy_stagnation!(solver)
+        @test solver.energy_history == [100.0]
+        drive!(solver, [50.0, 25.0, 12.5, 6.25, 3.125])
+        @test solver.energy_stagnation_streak == 0
+        @test solver.stagnated == false
+
+        # Constant energy: the first check needs a full window of history, so
+        # checks begin on the third stalled iteration, and the trigger needs a
+        # full window of consecutive quiet checks, so with a window of 3 the
+        # flag rises on the fifth stalled iteration.
+        solver.value = 100.0
+        Norma.reset_energy_stagnation!(solver)
+        drive!(solver, fill(100.0, 4))
+        @test solver.energy_stagnation_streak == 2
+        @test solver.stagnated == false
+        drive!(solver, [100.0])
+        @test solver.stagnated == true
+        @test solver.converged == true
+
+        # Once stagnated, the exit stays asserted even though the residual
+        # criterion recomputes converged on every iteration.
+        solver.converged = false
+        Norma.update_energy_stagnation_criterion(solver, 7)
+        @test solver.converged == true
+
+        # A resurgence of real decrease inside a quiet stretch resets the
+        # streak, so a transient lull does not trigger; only a full quiet
+        # window after the resurgence does.
+        solver.value = 100.0
+        Norma.reset_energy_stagnation!(solver)
+        solver.converged = false
+        drive!(solver, [100.0, 100.0, 100.0, 100.0, 50.0, 50.0, 50.0, 50.0, 50.0])
+        @test solver.energy_stagnation_streak == 2
+        @test solver.stagnated == false  # one quiet check short after the resurgence
+        drive!(solver, [50.0])
+        @test solver.stagnated == true
+
+        # Reset clears everything for the next solve.
+        solver.value = 42.0
+        Norma.reset_energy_stagnation!(solver)
+        @test solver.energy_history == [42.0]
+        @test solver.energy_stagnation_streak == 0
+        @test solver.stagnated == false
+
+        # --- Disabled by default: no keys, no state, flag never rises.
+        Norma.finalize_writing(sim)
+        sim_off = Norma.create_simulation(stagnation_params(nothing))
+        @test sim_off.solver.energy_stagnation_window == 0
+        Norma.finalize_writing(sim_off)
+
+        # --- Negative control: the criterion enabled on a solve that converges
+        # to a genuine minimizer (the single-tet shear case reaches the regular
+        # tet, where the energy floor is zero) must not fire, and the solve must
+        # still land on the known solution.
+        sim_ctrl = Norma.run(stagnation_params(10))
+        @test sim_ctrl.solver.stagnated == false
+        @test sim_ctrl.solver.converged == true
+        @test sim_ctrl.integrator.displacement ≈ vec(reg_tet_coords - tet_coords) atol = a * 1.0e-6
+
+        # --- Input validation.  The abort fires in the solver constructor,
+        # after the output mesh is already open, so each case gets its own
+        # output path to keep the leaked handle from blocking the next case.
+        abort_output(i) = "tet_smoothing_abort_$i.e"
+        Norma.NORMA_TEST_MODE[] = true
+        try
+            p = stagnation_params(10)
+            p["solver"]["type"] = "Hessian minimizer"
+            p["solver"]["step"] = "full Newton"
+            p["output mesh file"] = abort_output(1)
+            @test_throws Norma.NormaAbortException Norma.create_simulation(p)
+
+            p = stagnation_params(10)
+            p["model"]["type"] = "solid mechanics"
+            p["output mesh file"] = abort_output(2)
+            @test_throws Norma.NormaAbortException Norma.create_simulation(p)
+
+            p = stagnation_params(nothing)
+            p["solver"]["energy stagnation tolerance"] = 1.0e-06
+            p["output mesh file"] = abort_output(3)
+            @test_throws Norma.NormaAbortException Norma.create_simulation(p)
+
+            p = stagnation_params(-1)
+            p["output mesh file"] = abort_output(4)
+            @test_throws Norma.NormaAbortException Norma.create_simulation(p)
+
+            p = stagnation_params(10)
+            p["solver"]["energy stagnation tolerance"] = 0.0
+            p["output mesh file"] = abort_output(5)
+            @test_throws Norma.NormaAbortException Norma.create_simulation(p)
+        finally
+            Norma.NORMA_TEST_MODE[] = false
+        end
+    finally
+        rm(input_mesh_file; force=true)
+        rm(output_mesh_file; force=true)
+        for i in 1:5
+            rm("tet_smoothing_abort_$i.e"; force=true)
+        end
+    end
+end
