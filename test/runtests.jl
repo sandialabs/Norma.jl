@@ -164,6 +164,7 @@ const indexed_test_files = [
     (116, "inmem-restart-multi-subdomain.jl"),
     (117, "schwarz-ahead-overlap-quasistatic-cuboid.jl"),
     (118, "schwarz-ahead-nonoverlap-quasistatic-cuboid.jl"),
+    (119, "smoothing-energy-stagnation.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

@@ -44,10 +44,12 @@ solver:
   step: lbfgs
   memory: 10
   minimum iterations: 1
-  maximum iterations: 64
+  maximum iterations: 1024
   relative tolerance: 1.0e-12
   absolute tolerance: 1.0e-08
   step length: 1.0e-3
+  energy stagnation window: 10
+  energy stagnation tolerance: 1.0e-06
   use line search: true
   line search backtrack factor: 0.5
   line search decrease factor: 1.0e-04

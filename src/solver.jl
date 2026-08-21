@@ -96,7 +96,29 @@ function SteepestDescent(params::Parameters, model::Model)
     ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
     ls_max_iters = get(solver_params, "line search maximum iterations", 16)
     line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
-    line_search = BackTrackLineSearch(ls_backtrack_factor, ls_decrease_factor, ls_max_iters)
+    # Energy stagnation exit for mesh smoothing (issue #220): stop when a full
+    # window of consecutive iterations has each gained less than the tolerance
+    # in energy, relative to the current energy.  Opt-in; a window of 0 (the
+    # default when the key is absent) disables it.
+    energy_stagnation_window = get(solver_params, "energy stagnation window", 0)
+    energy_stagnation_tolerance = get(solver_params, "energy stagnation tolerance", 1.0e-06)
+    if haskey(solver_params, "energy stagnation tolerance") == true &&
+        haskey(solver_params, "energy stagnation window") == false
+        norma_abort("energy stagnation tolerance is set but has no effect without energy stagnation window.")
+    end
+    if energy_stagnation_window < 0
+        norma_abort("energy stagnation window must be positive, got $energy_stagnation_window.")
+    end
+    if energy_stagnation_tolerance ≤ 0.0
+        norma_abortf("energy stagnation tolerance must be positive, got %.2e.", energy_stagnation_tolerance)
+    end
+    is_mesh_smoothing = model isa SolidMechanics && model.mesh_smoothing == true
+    if energy_stagnation_window > 0 && is_mesh_smoothing == false
+        norma_abort(
+            "The energy stagnation criterion applies to mesh smoothing solves only. " *
+            "Remove energy stagnation window or set the model type to mesh smoothing.",
+        )
+    end
     return SteepestDescent(
         minimum_iterations,
         maximum_iterations,
@@ -112,12 +134,22 @@ function SteepestDescent(params::Parameters, model::Model)
         failed,
         step,
         line_search,
+        energy_stagnation_window,
+        energy_stagnation_tolerance,
+        Float64[],
+        0,
+        false,
     )
 end
 
 function create_solver(params::Parameters, model::SolidMechanics)
     solver_params = params["solver"]
     solver_name = solver_params["type"]
+    has_stagnation_keys =
+        haskey(solver_params, "energy stagnation window") || haskey(solver_params, "energy stagnation tolerance")
+    if has_stagnation_keys == true && solver_name != "steepest descent"
+        norma_abort("The energy stagnation criterion requires the steepest descent solver, got $solver_name.")
+    end
     if solver_name == "Hessian minimizer"
         return HessianMinimizer(params, model)
     elseif solver_name == "explicit solver"
@@ -510,6 +542,74 @@ function update_solver_convergence_criterion(solver::ExplicitSolver, _::Float64)
     return solver.converged = true
 end
 
+# Energy stagnation exit for mesh smoothing (issue #220).  The residual
+# tolerances measure first-order stationarity, but a mesh at the energy floor
+# its topology permits keeps reducing the gradient along the floor without
+# reducing the energy, so those tolerances stop the solve far too late or not
+# at all.  The energy is the quantity smoothing minimizes and is the signal
+# that knows the floor has been reached: near the floor the energy converges
+# geometrically, so its windowed relative decrease
+#
+#     (E[k - W] - E[k]) / E[k]
+#
+# decays geometrically as well, and crosses any small tolerance exactly when
+# per-window progress has collapsed.  The energy still recoverable past the
+# crossing is of the order of the tolerance times the energy itself, which
+# makes the tolerance directly interpretable.  The decrease is not monotone at
+# the floor (L-BFGS occasionally finds a small pocket after a flat stretch),
+# so the criterion requires a full window of consecutive quiet iterations
+# before it declares stagnation.  On trigger the solve is accepted as done and
+# the solver is flagged, since the remedy is topology modification with an
+# external tool, not more iterations.
+update_energy_stagnation_criterion(::Solver, ::Int64) = nothing
+
+function update_energy_stagnation_criterion(solver::SteepestDescent, iteration_number::Int64)
+    window = solver.energy_stagnation_window
+    window == 0 && return nothing
+    if solver.stagnated == true
+        # Keep the exit asserted if minimum iterations forced the loop onward:
+        # the residual criterion recomputes converged every iteration.
+        solver.converged = true
+        return nothing
+    end
+    push!(solver.energy_history, solver.value)
+    number_energies = length(solver.energy_history)
+    number_energies > window || return nothing
+    decrease = solver.energy_history[number_energies - window] - solver.energy_history[number_energies]
+    relative_decrease = decrease / max(abs(solver.value), floatmin(Float64))
+    if relative_decrease < solver.energy_stagnation_tolerance
+        solver.energy_stagnation_streak += 1
+    else
+        solver.energy_stagnation_streak = 0
+    end
+    solver.energy_stagnation_streak < window && return nothing
+    solver.stagnated = true
+    solver.converged = true
+    norma_logf(
+        8,
+        :solve,
+        "Energy stagnated at iteration [%d]: decrease over %d iterations is %.2e relative, below %.2e.",
+        iteration_number,
+        window,
+        relative_decrease,
+        solver.energy_stagnation_tolerance,
+    )
+    norma_log(8, :solve, "Node motion is exhausted; improving the mesh further requires topology modification.")
+    return nothing
+end
+
+# Clear the per-solve stagnation state and seed the history with the energy of
+# the predicted state, so the first window measures real iterations.
+reset_energy_stagnation!(::Solver) = nothing
+
+function reset_energy_stagnation!(solver::SteepestDescent)
+    empty!(solver.energy_history)
+    solver.energy_stagnation_streak = 0
+    solver.stagnated = false
+    solver.energy_stagnation_window > 0 && push!(solver.energy_history, solver.value)
+    return nothing
+end
+
 function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
     if solver.failed == true
         return true
@@ -587,6 +687,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     solver.failed = solver.failed || model.failed
     step_type = solver.step
     reset_step!(step_type)  # clear any per-solve state (e.g. L-BFGS curvature history)
+    reset_energy_stagnation!(solver)
     while true
         step = compute_step(integrator, model, solver, step_type)
         solver.solution[model.free_dofs] += step
@@ -598,6 +699,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         residual = solver.gradient
         norm_residual = norm(residual[model.free_dofs])
         update_solver_convergence_criterion(solver, norm_residual)
+        update_energy_stagnation_criterion(solver, iteration_number)
         if is_explicit_dynamic == false
             raw_status = solver.converged ? "[DONE]" : "[WAIT]"
             status = colored_status(raw_status)

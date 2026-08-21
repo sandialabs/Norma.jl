@@ -72,6 +72,24 @@ solver:
 | `line search backtrack factor` | no | `0.5` | step-reduction factor per backtrack |
 | `line search decrease factor` | no | `1.0e-04` | Armijo sufficient-decrease coefficient |
 | `line search maximum iterations` | no | `16` | maximum backtracking iterations |
+| `energy stagnation window` | no | `0` (disabled) | mesh smoothing only: window length for the energy stagnation exit |
+| `energy stagnation tolerance` | no | `1.0e-06` | mesh smoothing only: relative energy decrease below which a window counts as stalled |
+
+### Energy stagnation exit (mesh smoothing)
+
+A mesh being smoothed can reach the energy floor its topology permits long
+before the residual tolerances are met: near that floor the solver keeps
+reducing the gradient without reducing the energy, since the remedy is
+topology modification with an external tool, not more iterations. With
+`energy stagnation window` set to ``W > 0``, the solve stops once the energy
+decrease over the last ``W`` iterations, relative to the current energy, stays
+below `energy stagnation tolerance` for ``W`` consecutive iterations. The
+energy still recoverable past that point is of the order of the tolerance
+times the energy itself. On trigger the step is accepted as converged, a
+message advising topology modification is logged, and the solver's
+`stagnated` flag is raised. The criterion applies to `mesh smoothing` models
+with the `steepest descent` solver only; setting the keys anywhere else
+aborts. See `examples/ems/awful-cube/awful-cube-lbfgs.yaml`.
 
 ## Steps
 
