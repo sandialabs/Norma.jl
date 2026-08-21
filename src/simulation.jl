@@ -1405,6 +1405,7 @@ function schwarz(sim::MultiDomainSimulation)
                 plural = iteration_number == 1 ? "" : "s"
                 norma_log(0, :schwarz, "Performed $iteration_number Schwarz Iteration" * plural)
                 sim.controller.schwarz_iters[sim.controller.stop] = iteration_number
+                sim.controller.converged || report_unconverged_step(sim, iteration_number)
                 report_overlap_l2_errors(sim)
                 break
             end
@@ -1706,6 +1707,40 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     conv_rel = controller.relative_error ≤ controller.relative_tolerance
     controller.converged = conv_abs || conv_rel
     return controller.absolute_error, controller.relative_error
+end
+
+# A step that leaves the Schwarz loop without meeting either tolerance has
+# exhausted `maximum iterations`, and until this was reported the run said
+# nothing: the log ended in "Simulation Complete" and the simulation was not
+# marked failed, so an interface still far from converged was indistinguishable
+# from a converged one. Announce it, and let the input file promote it to an
+# abort, mirroring `stalled interface jump action` for the impedance condition.
+function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::Int64)
+    controller = sim.controller
+    action = get(sim.params, "unconverged step action", "warn")
+    if action == "abort"
+        norma_abortf(
+            "Schwarz did not converge at stop %d in %d iterations: |ΔU| = %.2e against " *
+            "absolute tolerance %.2e, |ΔU|/|U| = %.2e against relative tolerance %.2e, and " *
+            "`unconverged step action: abort` is set. Raise `maximum iterations`, loosen the " *
+            "tolerances, or change the relaxation.",
+            controller.stop, iteration_number, controller.absolute_error,
+            controller.absolute_tolerance, controller.relative_error, controller.relative_tolerance,
+        )
+    elseif action != "warn"
+        norma_abort(
+            "Unknown `unconverged step action: $(action)`. Valid values are `warn` (default) and `abort`.",
+        )
+    end
+    norma_logf(
+        0,
+        :warning,
+        "Schwarz did not converge at stop %d in %d iterations: |ΔU| = %.2e > %.2e and " *
+        "|ΔU|/|U| = %.2e > %.2e; continuing.",
+        controller.stop, iteration_number, controller.absolute_error,
+        controller.absolute_tolerance, controller.relative_error, controller.relative_tolerance,
+    )
+    return nothing
 end
 
 function stop_schwarz(sim::MultiDomainSimulation, iteration_number::Int64)

@@ -7,7 +7,7 @@
 using YAML
 
 # Run the Robin-Robin DD cuboid with the requested relaxation method.
-function run_robin_robin(relaxation)
+function run_robin_robin(relaxation; overrides=Dict{String,Any}(), expect_abort=false)
     src = "../examples/nonoverlap/static-same-step/cuboids-robin-robin"
     for f in ["cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml"]
         cp("$src/$f", f; force=true)
@@ -17,7 +17,20 @@ function run_robin_robin(relaxation)
     params = YAML.load_file("cuboids.yaml"; dicttype=Norma.Parameters)
     params["name"] = "cuboids.yaml"
     relaxation !== nothing && (params["relaxation"] = relaxation)
-    sim = Norma.run(params)
+    for (k, v) in overrides
+        params[k] = v
+    end
+    local sim
+    if expect_abort
+        Norma.NORMA_TEST_MODE[] = true
+        try
+            sim = @test_throws Norma.NormaAbortException Norma.run(params)
+        finally
+            Norma.NORMA_TEST_MODE[] = false
+        end
+    else
+        sim = Norma.run(params)
+    end
     for f in ["cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml",
               "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e"]
         rm(f; force=true)
@@ -60,4 +73,30 @@ end
     iters_fixed = sum(sim_fixed.controller.schwarz_iters)
     @test sum(sim_aitken.controller.schwarz_iters) ≤ iters_fixed
     @test sum(sim_secant.controller.schwarz_iters) ≤ iters_fixed
+end
+
+# A step that exhausts `maximum iterations` used to end in "Simulation Complete"
+# with nothing said, so an interface far from converged looked like a converged
+# one. It now warns, and `unconverged step action: abort` promotes that to an
+# abort, mirroring `stalled interface jump action`.
+@testset "Schwarz Nonoverlap Unconverged Step Action" begin
+    capped = Dict{String,Any}("maximum iterations" => 1)
+
+    # Default: the run finishes, and says it did not converge.
+    sim = run_robin_robin(nothing; overrides=capped)
+    @test sim.controller.converged == false
+    @test sim.controller.absolute_error > sim.controller.absolute_tolerance
+    @test sim.controller.relative_error > sim.controller.relative_tolerance
+
+    # Opting in turns the same step into an abort.
+    run_robin_robin(nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "abort")),
+                    expect_abort=true)
+
+    # An unrecognized value is rejected rather than silently treated as `warn`.
+    run_robin_robin(nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "shrug")),
+                    expect_abort=true)
+
+    # A converged run is unaffected: no cap, no warning, no abort.
+    sim_ok = run_robin_robin(nothing)
+    @test sim_ok.controller.converged == true
 end

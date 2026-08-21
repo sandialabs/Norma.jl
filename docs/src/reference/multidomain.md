@@ -48,6 +48,12 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
 | `absolute tolerance` | yes | — | absolute interface convergence tolerance |
 | `relative tolerance` | yes | — | relative interface convergence tolerance |
+| `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
+
+A step that reaches `maximum iterations` without converging reports the errors
+it stopped at against both tolerances. Under the default it says so and the run
+continues, which is the historical behavior made visible; `abort` stops the run
+instead, for cases where an unconverged interface must not be carried forward.
 
 ### Relaxation and acceleration
 
