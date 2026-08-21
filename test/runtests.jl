@@ -162,6 +162,8 @@ const indexed_test_files = [
     (114, "inmem-restart-fidelity.jl"),
     (115, "inmem-restart-vs-swap.jl"),
     (116, "inmem-restart-multi-subdomain.jl"),
+    (117, "schwarz-ahead-overlap-quasistatic-cuboid.jl"),
+    (118, "schwarz-ahead-nonoverlap-quasistatic-cuboid.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach
