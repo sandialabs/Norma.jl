@@ -18,7 +18,12 @@ end
 
     base_params = Norma.Parameters("elastic modulus" => 1.0, "Poisson's ratio" => 0.3, "density" => 1.0)
     sh_params = merge(base_params, Norma.Parameters("m" => 2, "n" => 2))
-    models = [Norma.Neohookean(base_params), Norma.SaintVenant_Kirchhoff(base_params), Norma.SethHill(sh_params)]
+    models = [
+        Norma.Neohookean(base_params),
+        Norma.SaintVenant_Kirchhoff(base_params),
+        Norma.SethHill(sh_params),
+        Norma.Hencky(base_params),
+    ]
     F_n = 10
     dF_n = 10
 

@@ -58,6 +58,7 @@ and case-sensitive:
 | `Saint-Venant Kirchhoff` | Saint-Venant–Kirchhoff | finite strain |
 | `neohookean` | Neohookean | finite strain |
 | `seth-hill` | Seth-Hill generalized hyperelastic | finite strain |
+| `hencky` | Hencky (logarithmic strain) hyperelastic | finite strain |
 | `j2 plasticity` | J2 (von Mises) plasticity | finite strain |
 
 ### Linear elastic
@@ -116,6 +117,30 @@ n: 2
 
 Parameters: two elastic constants, optional `density`, required integers `m` and
 `n`.
+
+### Hencky
+
+Hyperelasticity quadratic in the logarithmic strain,
+
+```math
+\psi = \tfrac{\kappa}{2}\,(\operatorname{tr}\mathbf{E})^2
+      + \mu\,\operatorname{dev}\mathbf{E} : \operatorname{dev}\mathbf{E},
+\qquad \mathbf{E} = \tfrac{1}{2}\log\mathbf{C}.
+```
+
+Under uniaxial stress the lateral log stretch is exactly ``-\nu`` times the
+axial one and the Kirchhoff stress is exactly ``E \log\lambda`` at any
+stretch, which makes this model useful for testing strong nonlinearities
+against closed-form answers.
+
+```yaml
+model: hencky
+elastic modulus: 1.0e+09
+Poisson's ratio: 0.25
+density: 1000.0
+```
+
+Parameters: two elastic constants, optional `density`.
 
 ### J2 plasticity
 

@@ -153,6 +153,26 @@ mutable struct SethHill <: Elastic
     end
 end
 
+# Hencky (logarithmic strain) hyperelasticity (issue #71):
+#   ψ = κ/2 (tr E)² + μ devE : devE,  E = ½ log C
+# The quadratic energy in logarithmic strain makes uniaxial stress exactly
+# linear in log stretch at any deformation, which is what makes this model
+# useful for testing strong nonlinearities.  Formulation cross-validated
+# against the Hencky model in ConstitutiveModels (Carina).
+mutable struct Hencky <: Elastic
+    E::Float64
+    ν::Float64
+    κ::Float64
+    λ::Float64
+    μ::Float64
+    ρ::Float64
+    function Hencky(params::Parameters)
+        E, ν, κ, λ, μ = elastic_constants(params)
+        ρ = get(params, "density", 0.0)
+        return new(E, ν, κ, λ, μ, ρ)
+    end
+end
+
 # ---------------------------------------------------------------------------
 # J2 plasticity — finite deformation, multiplicative split F = Fᵉ * Fᵖ,
 # Hencky (logarithmic) elasticity, radial-return in Mandel-stress space,
@@ -338,6 +358,69 @@ function strain_energy(material::SethHill, F::SMatrix{3,3,T,9}) where {T<:Number
     return Wbulk + Wshear
 end
 
+# Principal square root of a symmetric positive definite matrix by the
+# Denman-Beavers iteration.  Pure matrix arithmetic (no eigendecomposition),
+# quadratically convergent from any SPD start, so a fixed iteration count
+# reaches machine precision with a wide margin; extra iterations are
+# stationary at the fixed point.  Forward-mode AD passes through: the dual
+# parts converge along with the values.
+function sqrt_spd(A::SMatrix{3,3,T,9}) where {T<:Number}
+    Y = A
+    Z = SMatrix{3,3,T,9}(I)
+    # The iteration averages exponents at rate one bit per step before its
+    # quadratic phase, so the count must cover log2 of the condition number.
+    for _ in 1:32
+        Y, Z = 0.5 * (Y + inv(Z)), 0.5 * (Z + inv(Y))
+    end
+    return 0.5 * (Y + Y')
+end
+
+# Matrix logarithm of a symmetric positive definite matrix by inverse scaling
+# and squaring: square roots bring the spectrum near one, an atanh series
+# evaluates the logarithm there, and the roots are undone by doubling.  With
+# ‖A - I‖_F ≤ 1/4 every eigenvalue b of B = (A - I)(A + I)⁻¹ satisfies
+# |b| ≤ (1/4)/(2 - 1/4) = 1/7, so the series through B¹⁷ truncates below
+# machine precision.  No eigendecomposition and no branches on the spectrum,
+# so the result is smooth at repeated eigenvalues, including C = I, the
+# reference state of every simulation, where it returns exactly zero.
+# LinearAlgebra's matrix logarithm is LAPACK-bound and Float64-only; this one
+# is generic in the element type so ForwardDiff can differentiate through it
+# (stress_ad and tangent_ad).  Comparisons on dual numbers use their value
+# parts, which is exactly the branch semantics wanted here.
+function log_spd(C::SMatrix{3,3,T,9}) where {T<:Number}
+    I3 = SMatrix{3,3,T,9}(I)
+    A = 0.5 * (C + C')
+    # Factor out the determinant: log C = log Ĉ + ⅓ log(det C) I with Ĉ
+    # unimodular.  The scalar part is exact, pure scalings need no matrix
+    # work at all, and the remaining spectrum is centered on one, which
+    # shortens both the square-root loop and each Denman-Beavers run.
+    d = det(A)
+    d > 0 || norma_abort("Matrix logarithm requires a positive definite input.")
+    A = A / cbrt(d)
+    k = 0
+    while norm(A - I3) > 0.25
+        k == 32 && norma_abort("Matrix logarithm did not converge; the input is not positive definite.")
+        A = sqrt_spd(A)
+        k += 1
+    end
+    B = (A - I3) * inv(A + I3)
+    B² = B * B
+    # log A = 2 (B + B³/3 + B⁵/5 + ... + B¹⁷/17), Horner in B².
+    S = B² / 17
+    for c in (15, 13, 11, 9, 7, 5, 3)
+        S = B² * (S + I3 / c)
+    end
+    return 2.0^(k + 1) * (B * (S + I3)) + log(d) / 3 * I3
+end
+
+function strain_energy(material::Hencky, F::SMatrix{3,3,T,9}) where {T<:Number}
+    C = F' * F
+    E = 0.5 * log_spd(C)
+    trE = tr(E)
+    devE = E - trE / 3 * SMatrix{3,3,T,9}(I)
+    return 0.5 * material.κ * trE * trE + material.μ * sum(devE .* devE)
+end
+
 function constitutive(material::SaintVenant_Kirchhoff, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     C = F' * F
     E = 0.5 .* (C - I3)
@@ -464,6 +547,25 @@ function constitutive(material::SethHill, F::SMatrix{3,3,Float64,9}; need_tangen
         material.μ / material.n *
         (1 / 3 * (-trCbar²ⁿ + trCbarⁿ + trCbar⁻²ⁿ - trCbar⁻ⁿ) * F⁻ᵀ + F⁻ᵀ * (Cbar²ⁿ - Cbarⁿ - Cbar⁻²ⁿ + Cbar⁻ⁿ))
     P = Pbulk + Pshear
+    need_tangent || return W, P, ZERO_TANGENT
+    AA = tangent_ad(material, F)
+    return W, P, AA
+end
+
+function constitutive(material::Hencky, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
+    κ = material.κ
+    μ = material.μ
+    I3 = SMatrix{3,3,Float64,9}(I)
+    C = F' * F
+    E = 0.5 * log_spd(C)
+    trE = tr(E)
+    devE = E - trE / 3 * I3
+    W = 0.5 * κ * trE * trE + μ * sum(devE .* devE)
+    # For isotropic ψ(E) with E = ½ log C, the work-conjugate stress
+    # M = ∂ψ/∂E commutes with C, so S = 2 ∂ψ/∂C = C⁻¹ M exactly.
+    M = κ * trE * I3 + 2.0 * μ * devE
+    S = inv(C) * M
+    P = F * S
     need_tangent || return W, P, ZERO_TANGENT
     AA = tangent_ad(material, F)
     return W, P, AA
@@ -766,6 +868,8 @@ function create_material(params::Parameters)
         return Neohookean(params)
     elseif model_name == "seth-hill"
         return SethHill(params)
+    elseif model_name == "hencky"
+        return Hencky(params)
     elseif model_name == "j2 plasticity"
         return J2Plasticity(params)
     else
@@ -782,6 +886,8 @@ function get_kinematics(material::Solid)
     elseif material isa Neohookean
         return Finite
     elseif material isa SethHill
+        return Finite
+    elseif material isa Hencky
         return Finite
     elseif material isa J2Plasticity
         return Finite
