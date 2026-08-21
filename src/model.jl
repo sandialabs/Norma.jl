@@ -336,11 +336,15 @@ function create_smooth_reference(
             h = avg_edge_length_tet_h(u, v, w)
         elseif smooth_reference == "max"
             h = max(avg_edge_length_tet_h(u, v, w), equal_volume_tet_h(u, v, w))
-        elseif smooth_reference == "size field"
+        elseif smooth_reference == "size field restricted"
             # Target edge length from the user-defined size field at the element
             # reference centroid, combined with the volume criterion (max) to
             # anchor the reference size and avoid sliver pathologies.
             h = max(size_field_tet_h(size_field, element_ref_pos, time), equal_volume_tet_h(u, v, w))
+        elseif smooth_reference == "size field"
+            # Target edge length from the user-defined size field at the element
+            # reference centroid
+            h = size_field_tet_h(size_field, element_ref_pos, time)
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end

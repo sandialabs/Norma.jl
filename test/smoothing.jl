@@ -142,6 +142,38 @@ end
     @test_throws Exception Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, bad, 0.0)
 end
 
+    big = Norma.create_size_field("size field restricted", "5.0")
+    ref_big = Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, big, 0.0)
+    for e in tet_edges(ref_big)
+        @test e ≈ 5.0 atol = 1.0e-12
+    end
+
+    # A tiny constant size field is dominated by the volume criterion (max), so
+    # the reference matches the equal-volume reference instead.
+    tiny = Norma.create_size_field("size field restricted", "1.0e-6")
+    ref_tiny = Norma.create_smooth_reference("size field restricted", Norma.TETRA4, reg_tet_coords, tiny, 0.0)
+    ref_vol = Norma.create_smooth_reference("equal volume", Norma.TETRA4, reg_tet_coords)
+    @test norm(ref_tiny[:, 1] - ref_tiny[:, 2]) ≈ norm(ref_vol[:, 1] - ref_vol[:, 2]) atol = 1.0e-12
+
+    # A spatially varying field is evaluated at the element reference centroid.
+    sfx = Norma.create_size_field("size field restricted", "10.0*x")
+    for shift in (1.0, 2.5, 4.0)
+        coords = reg_tet_coords .+ [shift; 0.0; 0.0]
+        centroid_x = sum(coords[1, :]) / 4
+        ref = Norma.create_smooth_reference("size field restricted", Norma.TETRA4, coords, sfx, 0.0)
+        for e in tet_edges(ref)
+            @test e ≈ 10.0 * centroid_x atol = 1.0e-10
+        end
+    end
+
+    # A time-varying field uses the supplied time argument.
+    sft = Norma.create_size_field("size field restricted", "2.0 + t")
+    for time in (0.0, 1.0, 3.0)
+        ref = Norma.create_smooth_reference("size field restricted", Norma.TETRA4, reg_tet_coords, sft, time)
+        @test norm(ref[:, 1] - ref[:, 2]) ≈ (2.0 + time) atol = 1.0e-12
+    end
+
+
 base_params = Dict{String,Any}(
     "type" => "single",
     "model" => Dict{String,Any}(
