@@ -1477,7 +1477,12 @@ function restore_prev_state(sim::SingleDomainSimulation)
     set_internal_force!(sim.model, copy(integrator.prev_∂Ω_f))
     # Restore the per-QP material state saved by save_curr_state so the retry
     # begins from the correct internal-variable state at the start of the step.
-    if !isempty(sim.model.prev_state_old)
+    # Guard: only SolidMechanics has prev_state_old; ROM models do not.  This
+    # mirrors the guard in save_curr_state -- ROM subdomains have no
+    # per-quadrature-point state of their own to roll back (their fom_model is
+    # a reconstruction target for output/BCs only, not part of the reduced
+    # time integration), so there is nothing to restore for them here.
+    if sim.model isa SolidMechanics && !isempty(sim.model.prev_state_old)
         sim.model.state_old = deepcopy(sim.model.prev_state_old)
     end
     return nothing
