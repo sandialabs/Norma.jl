@@ -78,8 +78,8 @@ accepted and cause an error; use the `nodal recovery` block above.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `mesh smoothing` | no | `false` | enable mesh smoothing (set automatically when `type: mesh smoothing`); a top-level key |
-| `smooth reference` | no | `""` | reference-metric rule for TETRA4 smoothing: `equal volume`, `average edge length`, `max`, or `size field` |
-| `size field` | required if `smooth reference: size field` | `nothing` | expression in `t, x, y, z` giving the target element size |
+| `smooth reference` | no | `""` | reference-metric rule for TETRA4 smoothing: `equal volume`, `average edge length`, `max`, `size field`, or `size field unrestricted` |
+| `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size |
 
 Mesh smoothing is a specialized capability; most simulations omit these keys.
 See `examples/ems/` for smoothing cases.
