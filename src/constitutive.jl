@@ -150,6 +150,7 @@ mutable struct Reciprocal_Neohookean <: Elastic
         return new(E, ν, κ, λ, μ, ρ)
     end
 end
+
 mutable struct SethHill <: Elastic
     E::Float64
     ν::Float64
@@ -524,8 +525,6 @@ end
 
 function constitutive(material::Reciprocal_Neohookean, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
     C = F' * F
-    F⁻¹ = inv(F)
-    F⁻ᵀ = F⁻¹'
     J = det(F)
     J² = J * J
     J⁻¹ = 1.0 / J
@@ -538,16 +537,15 @@ function constitutive(material::Reciprocal_Neohookean, F::SMatrix{3,3,Float64,9}
     Wdev = 0.5 * μ * (Jm23 * trC - 3.0)
     W = Wvol + Wdev
     IC = inv(C)
-    Svol = 0.5 * κ * (J² - J - J⁻² + J⁻¹) .* IC  
+    Svol = 0.5 * κ * (J² - J - J⁻² + J⁻¹) .* IC
     Sdev = μ .* Jm23 .* (I3 .- (IC .* (trC / 3.0)))
     S = Svol .+ Sdev
     P = F * S
     need_tangent || return W, P, ZERO_TANGENT
-    S = F⁻¹ * P
     ICxIC = ox(IC, IC)
     ICoIC = odot(IC, IC)
     μJ2n = 2.0 * μ * Jm23 / 3.0
-    CCvol = 0.5 * κ .* (2.0 * J² - J + 2.0 * J⁻² - J⁻¹) .* ICxIC .-κ .* (J² - J - J⁻² + J⁻¹) .* ICoIC
+    CCvol = 0.5 * κ .* (2.0 * J² - J + 2.0 * J⁻² - J⁻¹) .* ICxIC .- κ .* (J² - J - J⁻² + J⁻¹) .* ICoIC
     CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
     CC = CCvol .+ CCdev
     AA = convect_tangent(CC, S, F)
