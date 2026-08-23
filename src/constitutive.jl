@@ -137,6 +137,19 @@ mutable struct Neohookean <: Elastic
     end
 end
 
+mutable struct Reciprocal_Neohookean <: Elastic
+    E::Float64
+    ν::Float64
+    κ::Float64
+    λ::Float64
+    μ::Float64
+    ρ::Float64
+    function Reciprocal_Neohookean(params::Parameters)
+        E, ν, κ, λ, μ = elastic_constants(params)
+        ρ = get(params, "density", 0.0)
+        return new(E, ν, κ, λ, μ, ρ)
+    end
+end
 mutable struct SethHill <: Elastic
     E::Float64
     ν::Float64
@@ -338,6 +351,20 @@ function strain_energy(material::Neohookean, F::SMatrix{3,3,T,9}) where {T<:Numb
     return Wvol + Wdev
 end
 
+function strain_energy(material::Reciprocal_Neohookean, F::SMatrix{3,3,T,9}) where {T<:Number}
+    C = F' * F
+    J = det(F)
+    J² = J * J
+    J⁻¹ = 1.0 / J
+    Jm23 = inv(cbrt(J²))
+    trC = tr(C)
+    κ = material.κ
+    μ = material.μ
+    Wvol = 0.25 * κ * ((J - 1.0)^2 + (J⁻¹ - 1)^2)
+    Wdev = 0.5 * μ * (Jm23 * trC - 3.0)
+    return Wvol + Wdev
+end
+
 function strain_energy(material::SethHill, F::SMatrix{3,3,T,9}) where {T<:Number}
     C = F' * F
     F⁻¹ = inv(F)
@@ -489,6 +516,38 @@ function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9}; need_tang
     ICoIC = odot(IC, IC)
     μJ2n = 2.0 * μ * Jm23 / 3.0
     CCvol = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC)
+    CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
+    CC = CCvol .+ CCdev
+    AA = convect_tangent(CC, S, F)
+    return W, P, AA
+end
+
+function constitutive(material::Reciprocal_Neohookean, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
+    C = F' * F
+    F⁻¹ = inv(F)
+    F⁻ᵀ = F⁻¹'
+    J = det(F)
+    J² = J * J
+    J⁻¹ = 1.0 / J
+    J⁻² = J⁻¹ * J⁻¹
+    Jm23 = inv(cbrt(J²))
+    trC = tr(C)
+    κ = material.κ
+    μ = material.μ
+    Wvol = 0.25 * κ * ((J - 1.0)^2 + (J⁻¹ - 1)^2)
+    Wdev = 0.5 * μ * (Jm23 * trC - 3.0)
+    W = Wvol + Wdev
+    IC = inv(C)
+    Svol = 0.5 * κ * (J² - J - J⁻² + J⁻¹) .* IC  
+    Sdev = μ .* Jm23 .* (I3 .- (IC .* (trC / 3.0)))
+    S = Svol .+ Sdev
+    P = F * S
+    need_tangent || return W, P, ZERO_TANGENT
+    S = F⁻¹ * P
+    ICxIC = ox(IC, IC)
+    ICoIC = odot(IC, IC)
+    μJ2n = 2.0 * μ * Jm23 / 3.0
+    CCvol = 0.5 * κ .* (2.0 * J² - J + 2.0 * J⁻² - J⁻¹) .* ICxIC .-κ .* (J² - J - J⁻² + J⁻¹) .* ICoIC
     CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
     CC = CCvol .+ CCdev
     AA = convect_tangent(CC, S, F)
@@ -866,6 +925,8 @@ function create_material(params::Parameters)
         return SaintVenant_Kirchhoff(params)
     elseif model_name == "neohookean"
         return Neohookean(params)
+    elseif model_name == "r-neohookean"
+        return Reciprocal_Neohookean(params)
     elseif model_name == "seth-hill"
         return SethHill(params)
     elseif model_name == "hencky"
@@ -884,6 +945,8 @@ function get_kinematics(material::Solid)
     elseif material isa SaintVenant_Kirchhoff
         return Finite
     elseif material isa Neohookean
+        return Finite
+    elseif material isa Reciprocal_Neohookean
         return Finite
     elseif material isa SethHill
         return Finite
