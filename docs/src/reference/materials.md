@@ -57,6 +57,7 @@ and case-sensitive:
 | `linear elastic` | Linear elastic | infinitesimal strain |
 | `Saint-Venant Kirchhoff` | Saint-Venant–Kirchhoff | finite strain |
 | `neohookean` | Neohookean | finite strain |
+| `r-neohookean` | Reciprocal Neohookean | finite strain |
 | `seth-hill` | Seth-Hill generalized hyperelastic | finite strain |
 | `hencky` | Hencky (logarithmic strain) hyperelastic | finite strain |
 | `j2 plasticity` | J2 (von Mises) plasticity | finite strain |

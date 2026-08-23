@@ -20,6 +20,7 @@ end
     sh_params = merge(base_params, Norma.Parameters("m" => 2, "n" => 2))
     models = [
         Norma.Neohookean(base_params),
+        Norma.Reciprocal_Neohookean(base_params),
         Norma.SaintVenant_Kirchhoff(base_params),
         Norma.SethHill(sh_params),
         Norma.Hencky(base_params),

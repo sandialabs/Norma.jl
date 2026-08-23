@@ -151,6 +151,15 @@ const I3 = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
         @test size(AA) == (3, 3, 3, 3)
     end
 
+    @testset "Reciprocal_Neohookean" begin
+        params = Norma.Parameters("elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0)
+        mat = Norma.Reciprocal_Neohookean(params)
+        W, P, AA = Norma.constitutive(mat, F)
+        @test isapprox(W, 0.0; atol=1e-12)
+        @test size(P) == (3, 3)
+        @test size(AA) == (3, 3, 3, 3)
+    end
+
     @testset "Seth Hill" begin
         params = Norma.Parameters(
             "elastic modulus" => 100.0, "Poisson's ratio" => 0.3, "density" => 7800.0, "m" => 1, "n" => 1
