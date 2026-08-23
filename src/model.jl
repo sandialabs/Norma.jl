@@ -306,12 +306,12 @@ end
 # Reuses the same Symbolics pipeline as boundary/initial conditions; the module
 # variables t, x, y, z are declared in boundary_conditions.jl.
 function create_size_field(smooth_reference::String, expression)
-    if smooth_reference != "size field"
+    if smooth_reference ∉ ("size field", "size field unrestricted")
         return nothing
     end
     if expression === nothing
         norma_abort(
-            "smooth reference = \"size field\" requires a \"size field\" expression under the model parameters",
+            "smooth reference = \"$smooth_reference\" requires a \"size field\" expression under the model parameters",
         )
     end
     size_num = eval(Meta.parse(string(expression)))
@@ -341,6 +341,10 @@ function create_smooth_reference(
             # reference centroid, combined with the volume criterion (max) to
             # anchor the reference size and avoid sliver pathologies.
             h = max(size_field_tet_h(size_field, element_ref_pos, time), equal_volume_tet_h(u, v, w))
+        elseif smooth_reference == "size field unrestricted"
+            # Target edge length from the user-defined size field at the element
+            # reference centroid
+            h = size_field_tet_h(size_field, element_ref_pos, time)
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
@@ -372,7 +376,7 @@ end
 # and finite to yield a valid (non-degenerate) reference element.
 function size_field_tet_h(size_field::Union{Function,Nothing}, element_ref_pos::Matrix{Float64}, time::Float64)
     if size_field === nothing
-        norma_abort("smooth reference = \"size field\" selected but no size field was compiled")
+        norma_abort("smooth reference = \"size field\" or \"size field unrestricted\" selected but no size field was compiled")
     end
     centroid = vec(sum(element_ref_pos; dims=2) / size(element_ref_pos, 2))
     h = size_field((time, centroid[1], centroid[2], centroid[3]))
