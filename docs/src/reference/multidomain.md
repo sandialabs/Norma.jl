@@ -148,7 +148,7 @@ dashpot term, making the interface energy exchange dissipative. See
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `source side set` | yes | — | partner interface surface |
-| `robin parameter` | no | `0.0` | Robin coefficient α; must be identical on both sides; affects convergence rate only, not the converged solution |
+| `robin parameter` | no | `0.0` | Robin coefficient α; must be identical on both sides under `adjoint pairing` (the default), where it affects the convergence rate only, not the converged solution; per-side values are allowed with `adjoint pairing: false` |
 | `impedance scale` | no | `1.0` | scalar scaling of the dashpot impedance (`0.0` disables it); must be ≥ 0 |
 | `adjoint pairing` | no | `true` | use the adjoint-paired shared cross-mass transfer (recommended); `false` restores the legacy per-side transfer |
 
