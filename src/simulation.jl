@@ -11,6 +11,7 @@ using YAML
 function create_simulation(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
+    validate_input_parameters(params, input_file)
     basename = stripped_name(input_file)
     params["name"] = basename
     return create_simulation(params)
@@ -663,6 +664,7 @@ function MultiDomainSimulation(params::Parameters)
             domain_name = stripped_name(domain_path)
             norma_log(4, :domain, domain_name)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
+            validate_input_parameters(subparams, domain_path)
             subparams["name"] = domain_name
             if haskey(params, "_multidomain_restart_index")
                 subparams["restart"] = Parameters("index" => params["_multidomain_restart_index"])

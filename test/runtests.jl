@@ -167,6 +167,7 @@ const indexed_test_files = [
     (119, "smoothing-energy-stagnation.jl"),
     (120, "hencky-material.jl"),
     (121, "schwarz-ahead-nonoverlap-dynamic-cuboid-quadratic-rom-rom.jl"),
+    (122, "input-validation.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

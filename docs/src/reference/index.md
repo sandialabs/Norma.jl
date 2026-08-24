@@ -105,3 +105,20 @@ solver:
   `t, x, y, z`.
 - Every reference page links to a canonical file under `examples/` that
   exercises the feature.
+
+## Keyword validation
+
+Every loaded input file is checked against the set of keys Norma actually
+reads. A key that no parser recognizes — a misspelling, a stale key from an
+older input format, or a key placed in the wrong section — produces a warning
+with a suggestion:
+
+```text
+[WARNING] Input file 'cuboid-1.yaml': unknown key "adjoint paring" in
+          Schwarz impedance nonoverlap boundary condition 1.
+          Did you mean "adjoint pairing"?
+```
+
+Unknown keys warn rather than abort, and the run proceeds with the unknown
+key ignored, exactly as before. Missing required keys and invalid values
+remain hard errors reported by the section that reads them.

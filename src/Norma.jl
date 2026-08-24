@@ -23,6 +23,7 @@ include("swap_types.jl")                # SwapCriterion, SwapPlan
 include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model, SwapPlan
 
 # --- Methods ---
+include("input_validation.jl")
 include("constitutive.jl")
 include("interpolation.jl")
 include("opinf/opinf_model.jl")

@@ -7,7 +7,7 @@ model:
   nodal recovery:
     method: consistent
     von mises stress: true
-    eqps: true
+    internal variables: true
   material:
     blocks:
       tension: plastic

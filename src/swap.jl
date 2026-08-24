@@ -709,6 +709,7 @@ end
 
 function build_replacement_subsim(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     subparams = YAML.load_file(plan.replacement_file; dicttype=Parameters)
+    validate_input_parameters(subparams, plan.replacement_file)
     subparams["name"] = stripped_name(plan.replacement_file)
 
     integrator_params = subparams["time integrator"]
@@ -847,6 +848,7 @@ end
 
 function build_replacement_single_domain_sim(sim::SingleDomainSimulation, plan::SwapPlan)
     subparams = YAML.load_file(plan.replacement_file; dicttype=Parameters)
+    validate_input_parameters(subparams, plan.replacement_file)
     subparams["name"] = stripped_name(plan.replacement_file)
 
     integrator_params = subparams["time integrator"]

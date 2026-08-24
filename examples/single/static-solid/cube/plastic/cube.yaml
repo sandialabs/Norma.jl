@@ -12,7 +12,7 @@ model:
       elastic modulus: 200e9
       Poisson's ratio: 0.25
       density: 1000.0
-      initial yield: 1e9
+      yield stress: 1e9
       hardening modulus: 20e9
 time integrator:
   type: quasi static

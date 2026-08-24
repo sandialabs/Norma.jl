@@ -34,7 +34,6 @@ boundary conditions:
   Schwarz contact:
     - side set: ssx-
       source: src
-      source block: src
       source side set: ssx+
       friction type: frictionless
 solver:
