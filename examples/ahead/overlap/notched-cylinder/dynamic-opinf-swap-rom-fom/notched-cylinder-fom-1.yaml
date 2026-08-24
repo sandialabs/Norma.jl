@@ -11,8 +11,6 @@ model:
       elastic modulus: 70.0e+09
       Poisson's ratio: 0.25
       density: 1000.0
-      yield stress: 250.0e+06
-      hardening modulus: 0.7e+09
 time integrator:
   type: Newmark
   β: 0.25

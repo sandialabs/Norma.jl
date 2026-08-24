@@ -118,16 +118,34 @@ using YAML
         @test isempty(Norma.validate_input_parameters(params, "test.yaml"))
     end
 
+    # Guard against schema drift: a keyword added to a parser and used in a
+    # shipped example fails here until the matching known-key set in
+    # input_validation.jl learns it. Every Norma input file under examples/
+    # is swept — files with a top-level `type: single` or `type: multi`;
+    # everything else (e.g. the OpInf training configs consumed by the
+    # Python scripts) is not Norma input and is skipped.
     @testset "Shipped examples are clean" begin
-        for input_file in (
-            "../examples/contact/implicit-dynamic/2-bars/bars.yaml",
-            "../examples/contact/implicit-dynamic/2-bars/bar-1.yaml",
-            "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboids.yaml",
-            "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboid-1.yaml",
-            "../examples/single/static-solid/cube/plastic/cube.yaml",
-        )
-            params = YAML.load_file(input_file; dicttype=Norma.Parameters)
-            @test isempty(Norma.validate_input_parameters(params, input_file))
+        checked = 0
+        for (root, dirs, files) in walkdir("../examples")
+            for file in files
+                endswith(file, ".yaml") || continue
+                input_file = joinpath(root, file)
+                params = try
+                    YAML.load_file(input_file; dicttype=Norma.Parameters)
+                catch
+                    continue
+                end
+                params isa Norma.Parameters || continue
+                get(params, "type", "") in ("single", "multi") || continue
+                checked += 1
+                messages = Norma.validate_input_parameters(params, input_file)
+                if !isempty(messages)
+                    @error "Unknown input keys in shipped example" input_file messages
+                end
+                @test isempty(messages)
+            end
         end
+        # A broken walkdir path or filter must not pass as an empty sweep.
+        @test checked > 400
     end
 end
