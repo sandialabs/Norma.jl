@@ -519,8 +519,9 @@ function compute_paired_impedance_schwarz_projectors!(
     src_bc.square_projector = W2
     src_bc.dirichlet_projector = P2
     src_bc.neumann_projector = Matrix(transpose(P1))
-    # Shared pair impedance and Robin parameter. A zero pair impedance is the
-    # pure-Robin opt-in (`impedance scale: 0`); guard the harmonic mean.
+    # Shared pair impedance and Robin parameter. A zero pair impedance arises
+    # only from `Schwarz RR nonoverlap` (the classical Robin condition forces
+    # Z = 0) with `adjoint pairing: true`; guard the harmonic mean.
     Z1 = dst_bc.impedance
     Z2 = src_bc.impedance
     Z_pair = Z1 + Z2 > 0.0 ? 2.0 * Z1 * Z2 / (Z1 + Z2) : 0.0

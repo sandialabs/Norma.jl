@@ -23,7 +23,7 @@
 Transmission Conditions, Interface Energy,\\
 and Energy-Consistent Design}
 \author{Alejandro Mota}
-\date{July 2026}
+\date{July--August 2026}
 
 \begin{document}
 \maketitle
@@ -118,7 +118,11 @@ built from that interior state (Sec.~\ref{sec:overlap-tc}).
 Throughout, $~W_k = \int_{\Gamma_k} ~N_k\,~N_k^\top\,\dd\Gamma$ denotes the
 boundary mass matrix of side $k$, $~P$ a kinematic transfer operator mapping
 partner data to a side's interface nodes, a subscript $j$ the partner of
-side $k$, and $\jump{\cdot}$ an interface jump.
+side $k$, and $\jump{\cdot}$ an interface jump. All interface operators
+($~W_k$, the transfer operators, and the cross-mass matrix of
+Sec.~\ref{sec:paired}) are assembled once at initialization, on the
+reference configuration, with the standard facet Gauss rule of the
+receiving side set; they are not updated with the deformation.
 
 \subsection{Benchmark and energy metrics}
 \label{sec:benchmark}
@@ -255,6 +259,27 @@ value minimizes the contraction factor of the Schwarz iteration (fastest
 convergence), and in practice the scaling $\alpha \sim E/h$ has been
 effective.
 
+\paragraph{Invocation and guards.} In Norma the Robin condition is the
+input keyword \code{Schwarz RR nonoverlap}. Since 2026-08-25 this keyword
+is no longer an alias for the impedance condition: it forces $Z = 0$,
+requires a positive \code{robin parameter} (the Robin spring is the
+condition's only coupling term), rejects the \code{impedance scale} key
+with a hard error pointing at \code{Schwarz impedance nonoverlap}, and
+defaults to \code{adjoint pairing: false}, so per-side values of $\alpha$
+are allowed as in the classical Robin--Robin literature.
+\code{adjoint pairing: true} remains available and makes the Robin spring
+a conservative paired interface spring with one shared $\alpha$
+(Sec.~\ref{sec:paired}). Because the condition is fully reflecting
+(Sec.~\ref{sec:reflection}) and can pump energy at a dynamic interface
+(observed as a growing interface mode under pure torsion; Norma issue
+\#176), a warning is issued whenever it is combined with a dynamic time
+integrator; the keyword is intended for quasi-statics and for comparison
+studies. Both nonoverlap keywords are implemented by the same
+boundary-condition type --- the Robin condition is the $Z = 0$ member of
+the impedance family --- and differ only in their defaults and input
+guards, so the degenerate exchange with neither dashpot nor Robin spring
+is unreachable from either keyword.
+
 \subsection{Impedance coupling}
 \label{sec:imp}
 
@@ -283,7 +308,16 @@ impedance. The impedance Schwarz condition augments
 At the fixed point the impedance and displacement terms cancel and
 \eqref{eq:impedance} again reproduces continuity and traction balance; the
 impedance is computed from material data and requires no input, while
-$\alpha$ remains an optional input parameter.
+$\alpha$ remains an optional input parameter. Concretely, each side's
+estimate is $Z_k = \sqrt{\rho_k(\lambda_k + 2\mu_k)}$ from its own
+subdomain's material constants (the implementation reads the material
+assigned to the first entry of the subdomain's block--material mapping, so
+each subdomain is treated as acoustically homogeneous for this estimate),
+multiplied by the input \code{impedance scale} (default $1$; required
+positive --- a zero scale would degenerate to the Robin condition, which
+has its own keyword). The input keyword is
+\code{Schwarz impedance nonoverlap}, with \code{adjoint pairing: true} as
+its default (Sec.~\ref{sec:paired}).
 
 Under Newmark integration with parameters $\beta$, $\gamma$ the new-step
 velocity is linear in the new-step displacement with coefficient
@@ -1260,13 +1294,17 @@ the legacy transfer) changes three things:
   \eqref{eq:adjoint};
 \item the pair shares one impedance --- the harmonic mean
   $2Z_1 Z_2/(Z_1 + Z_2)$ of the per-side material impedances
-  $Z_k = \rho_k c_{p,k}$, the Riemann-solver weighting
+  $Z_k = \rho_k c_{p,k}$ (each multiplied by its side's
+  \code{impedance scale} before the mean), the Riemann-solver weighting
   of~\cite{DuruEtAl2021,LiuEtAl2023} --- and one Robin parameter $\alpha$.
 \end{enumerate}
 
 On parameter selection: the impedance is \emph{estimated} from material
-data, the Robin parameter is \emph{prescribed} in the input
-(\code{robin parameter}, default $0$), and no estimate of $\alpha$ is
+data (Sec.~\ref{sec:imp}), the Robin parameter is \emph{prescribed} in
+the input (\code{robin parameter}, default $0$ under
+\code{Schwarz impedance nonoverlap}; the classical
+\code{Schwarz RR nonoverlap} keyword instead requires it positive,
+Sec.~\ref{sec:rr}), and no estimate of $\alpha$ is
 attempted because none is needed for consistency. At the Schwarz fixed point
 the two Robin conditions add to traction balance and subtract to
 $Z\,\dot{~\delta} + \alpha\,~\delta = ~0$ for the interface jump $~\delta$;
@@ -1282,6 +1320,61 @@ forces pair through the same coefficient. Mismatched values under pairing
 are therefore rejected as an input error --- Norma aborts, naming both side sets and
 values --- since silently averaging them would apply a condition neither
 side stated.
+
+\paragraph{Discrete exchange and assembly.} For reproduction in another
+code, the complete discrete construction is as follows. The cross-mass
+matrix $~B$ of \eqref{eq:adjoint} is integrated over the facets of the
+\emph{finer} side (identified as the side with more interface nodes):
+each facet quadrature point of the finer side is mapped to the partner
+surface by closest-point projection onto the partner's side set in the
+reference configuration, and the partner's facet shape functions are
+evaluated at the projected point. This finer-side facet rule approximates
+the common-refinement integral of \eqref{eq:adjoint}: it is exact when
+the coarser trace mesh is nested in the finer facets, and carries
+facet-quadrature error wherever a coarse basis function kinks inside a
+fine facet. The partition-of-unity errors
+$\max_i \lvert (\Pi_k \mathbf{1} - \mathbf{1})_i \rvert$ are computed and
+logged at setup as a quadrature certificate (zero on conforming and
+nested interfaces); the non-nested failure window of
+Sec.~\ref{sec:tenms} is the regime where this certificate is worst. The
+kinematic transfers are the dense solves $\Pi_1 = ~W_1^{-1}~B$ and
+$\Pi_2 = ~W_2^{-1}~B^{T}$, the force transfers their partner adjoints
+$N_1 = \Pi_2^{T}$ and $N_2 = \Pi_1^{T}$, and all transfers are scalar,
+applied componentwise to the three Cartesian components.
+
+The weak partner reaction of side $j$ is
+\begin{equation}
+  \lambda_j \;=\; -\bigl(~M_j\,\ddot{~u}_j + ~f^{\mathrm{int}}_j
+   - ~f^{\mathrm{body}}_j\bigr)\big|_{\Gamma},
+  \label{eq:dalembert}
+\end{equation}
+the restriction to side $j$'s interface degrees of freedom of its
+assembled global d'Alembert residual, with $~M_j$ the mass matrix side
+$j$'s integrator uses (consistent for Newmark, lumped for central
+difference). Side $k$'s boundary force receives the partner datum
+\begin{equation}
+  ~g_k \;=\; N_k\,\lambda_j
+   \;+\; Z\,~W_k\,\Pi_k\,\dot{~u}_j
+   \;+\; \alpha\,~W_k\,\Pi_k\,~u_j
+  \;=\; N_k\,\lambda_j \;+\; Z\,~B_k\,\dot{~u}_j
+   \;+\; \alpha\,~B_k\,~u_j,
+  \label{eq:paired-rhs}
+\end{equation}
+where $~B_1 = ~B$ and $~B_2 = ~B^{T}$ (the second form uses
+$~W_k \Pi_k = ~B_k$), and all partner fields
+are evaluated at side $k$'s current substep time through the temporal
+interpolation of Sec.~\ref{sec:subcycle} (in a same-step run the
+interpolation is trivial at the shared stop end). The self terms are not
+part of this datum: the tangent contribution $(Z c_v + \alpha)\,~W_k$ and
+the self force $~W_k(Z\,\dot{~u}_k + \alpha\,~u_k)$ are assembled
+together with the subdomain's internal force at every residual
+evaluation, so the Newton (or explicit-update) residual sees the
+transmission condition exactly. When the Schwarz iteration relaxes this
+exchange, the relaxed iterate is the assembled datum $~g_k$ itself, on
+one side of the pair only (the later-listed subdomain of the pair); a
+fresh relaxation slot starts from zero rather than seeding with the
+incoming datum, which is why this path has no degenerate first-sweep
+fixed point.
 
 \begin{table}[htbp]
 \centering
@@ -1356,7 +1449,17 @@ a small symmetric-positive-definite solve per interface (reused for the
 three components) while the interior stays matrix-free explicit
 (\code{imex\_interface\_acceleration!}); the dashpot then acts on the
 end-of-step velocity and the Schwarz iteration synchronizes both sides at
-$t_{n+1}$ exactly as in the implicit--implicit case.
+$t_{n+1}$ exactly as in the implicit--implicit case. In \eqref{eq:imex},
+$~M\big|_\Gamma$ is the diagonal (lumped) mass restricted to the
+interface rows, $~W$ the side's own boundary mass matrix, $\gamma$ the
+central-difference velocity-update coefficient ($\tfrac12$), and
+$~a^{\mathrm{expl}}$ the plain explicit acceleration update, whose
+right-hand side already contains the dashpot evaluated at the predictor
+velocity $\tilde{~v}$ and the Robin spring at the (known) end-of-step
+displacement --- the interface solve replaces the predictor-velocity
+dashpot by the end-of-step one on the interface rows only. Interface
+degrees of freedom held by Dirichlet conditions keep their prescribed
+acceleration and enter the free rows' right-hand side as data.
 
 \begin{table}[htbp]
 \centering
@@ -1398,10 +1501,22 @@ fixed-point argument predicts.
 \label{sec:subcycle}
 
 Different time steps per subdomain require no new exchange machinery: each
-subdomain records its per-substep trajectory (kinematics and internal
-force) during every Schwarz iteration, the coupling evaluates the partner's
-state in time at each of its own substeps, and the paired d'Alembert
-traction follows. (Enabling this exposed a progressive time-step reduction defect in the
+subdomain records its per-substep trajectory during every Schwarz
+iteration, the coupling evaluates the partner's state in time at each of
+its own substeps, and the paired d'Alembert traction follows. The
+recorded trajectory consists of full-field snapshots of displacement,
+velocity, acceleration, and assembled internal force at every substep,
+anchored by a snapshot of the stop-start state pushed before the first
+substep (without the anchor, a non-subcycling partner's history is a
+single end-of-stop entry and the exchange degenerates to constant,
+end-sampled data). When a coupling condition is evaluated at time $t$,
+each recorded field is interpolated piecewise-linearly to $t$ (queries
+at or beyond the history endpoints clamp to the endpoint values); the
+partner model's state is temporarily replaced by the interpolants, the
+coupling terms are evaluated --- so the d'Alembert reaction
+\eqref{eq:dalembert} is formed from the \emph{interpolated} acceleration
+and internal force with the constant mass matrix, not by interpolating a
+stored reaction --- and the partner state is then restored. (Enabling this exposed a progressive time-step reduction defect in the
 subcycler --- the stop-aligned remainder step persisted as the nominal step
 and the Schwarz re-integration amplified the floating-point remainder
 geometrically --- fixed independently of the pairing.)
@@ -1916,9 +2031,12 @@ Correction-sequence study and instrumentation:
 sweep, $10$\,ms horizon, controller-step sweep, figures, and run harness:
 \code{\char`~/cantilever-energy-study/} (\code{ratio-sweep/},
 \code{*-10ms}, \code{controller-step-sweep/}, \code{wccm-plots/},
-\code{drift-table-10ms.txt}). Regression tests: 103/104 (overlap
-projectors and consistent traction), 105 (content-absorption
-dissipativity), 109 (adjoint pairing and windowed equivalence,
+\code{drift-table-10ms.txt}). Regression tests (indices as of 2026-08):
+104 (overlap impedance energy and consistent-traction patch,
+\code{schwarz-overlap-dynamic-cantilever-impedance-energy.jl}), 105
+(tensor impedance cross-scaling), 106 (variational transfer projectors
+and content-absorption dissipativity), 110 (adjoint pairing, windowed
+equivalence, and the keyword guards,
 \code{test/schwarz-nonoverlap-impedance-adjoint-pairing.jl}).
 
 \begin{thebibliography}{99}
