@@ -29,7 +29,6 @@ boundary conditions:
   Schwarz RR nonoverlap:
     - side set: ssz+
       source: cuboid-2
-      source block: coarse
       source side set: ssz-
       robin parameter: 3.0e+09
 solver:

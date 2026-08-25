@@ -25,7 +25,6 @@ boundary conditions:
   Schwarz RR nonoverlap:
     - side set: ssx-
       source: cantilever-clamped
-      source block: cantilever_clamped
       source side set: ssx+
       robin parameter: 1.0e+09
 solver:

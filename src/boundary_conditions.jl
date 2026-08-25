@@ -533,8 +533,6 @@ function SMCouplingSchwarzBC(
         # tensor impedance from the NEIGHBOR's material, per the
         # optimized-Schwarz cross-scaling principle (each side's optimal
         # transmission operator approximates the neighbor's DtN map).
-        impedance, _ = _ps_impedances(subsim)
-        impedance_p_coupled, impedance_s_coupled = _ps_impedances(coupled_subsim)
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
         raw_scale = get(bc_params, "impedance scale", 1.0)
         if raw_scale isa AbstractVector
@@ -543,49 +541,74 @@ function SMCouplingSchwarzBC(
             impedance_scale = [Float64(raw_scale)]
         end
         if bc_type == "Schwarz RR nonoverlap"
-            # The displacement-Robin transmission condition (t + α u = g) has no
-            # impedance interpretation in elastodynamics and pumps energy at the
-            # interface (issue #176: growing interface mode, lateral kink of the
-            # bar axis under pure torsion). It is retained as an input alias that
-            # maps onto the impedance condition t + Z u̇ + α W u = g, which is
-            # dissipative in the interface jump for any Z > 0 and reduces to the
-            # old Robin condition for quasi-statics (u̇ = 0).
-            norma_log(
-                0,
-                :warning,
-                "`Schwarz RR nonoverlap` now applies the impedance transmission " *
-                "condition t + Z u̇ + α W u = g (Z from this subdomain's material); " *
-                "prefer `Schwarz impedance nonoverlap`.",
+            # Classical Robin-Robin transmission condition t + α W u = g: no
+            # dashpot, and by default the legacy per-side transfer with
+            # per-side Robin parameters, as in the classical Robin-Robin
+            # literature. The condition has no absorbing mechanism and can
+            # pump energy at the interface in elastodynamics (issue #176:
+            # growing interface mode, lateral kink of the bar axis under pure
+            # torsion), so it is intended for quasi-statics and for comparison
+            # studies; `Schwarz impedance nonoverlap` is the recommended
+            # condition for dynamics.
+            if haskey(bc_params, "impedance scale")
+                norma_abort(
+                    "`impedance scale` is not a `Schwarz RR nonoverlap` key: this " *
+                    "condition has no dashpot. For the impedance condition " *
+                    "t + Z u̇ + α W u = g use `Schwarz impedance nonoverlap`.",
+                )
+            end
+            if robin_parameter <= 0.0
+                norma_abort(
+                    "`Schwarz RR nonoverlap` requires a positive `robin parameter` " *
+                    "(the Robin spring is this condition's only coupling term).",
+                )
+            end
+            if get(get(subsim.params, "time integrator", Parameters()), "type", "") != "quasi static"
+                norma_log(
+                    0,
+                    :warning,
+                    "`Schwarz RR nonoverlap` applies the classical Robin condition " *
+                    "t + α W u = g, which is not absorbing and can pump energy at " *
+                    "the interface in elastodynamics (issue #176). For dynamics " *
+                    "prefer `Schwarz impedance nonoverlap`.",
+                )
+            end
+            # `adjoint pairing: true` remains available: it makes the Robin
+            # spring a conservative interface spring built from the shared
+            # cross-mass transfer, and requires ONE α per interface.
+            adjoint_pairing = Bool(get(bc_params, "adjoint pairing", false))
+            SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
+                input_mesh,
+                side_set_name,
+                coupled_side_set_name,
+                side_set_id,
+                side_set_node_indices,
+                num_nodes_sides,
+                coupled_subsim,
+                subsim,
+                0.0,
+                robin_parameter,
+                adjoint_pairing,
             )
-        end
-        if bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz RR nonoverlap"
-            # Scalar dashpot scaling for the nonoverlap variant. The explicit
-            # opt-in `impedance scale: 0.0` recovers the classical pure
-            # displacement-Robin coupling t + α W u = g. That condition has no
-            # absorbing mechanism and pumps energy at the interface in
-            # elastodynamics (issue #176: growing interface mode under pure
-            # torsion), which is why it is not reachable by default; it
-            # remains legitimate for quasi-statics and for comparison studies
-            # against the classical Robin-Robin literature.
+        elseif bc_type == "Schwarz impedance nonoverlap"
+            # Scalar dashpot scaling for the nonoverlap variant. A zero scale
+            # would degenerate to the classical pure displacement-Robin
+            # coupling, which has its own keyword; keep each keyword meaning
+            # its condition.
             if length(impedance_scale) != 1
                 norma_abort(
                     "`impedance scale` for `$bc_type` must be a scalar " *
                     "(the P/S-split schedule is an overlap-variant feature).",
                 )
             end
-            if impedance_scale[1] < 0.0
-                norma_abort("`impedance scale` must be nonnegative (got $(impedance_scale[1])).")
-            end
-            if impedance_scale[1] == 0.0
-                norma_log(
-                    0,
-                    :warning,
-                    "`impedance scale: 0` disables the interface dashpot: this is the " *
-                    "classical pure Robin coupling t + α W u = g, which is not " *
-                    "absorbing and can pump energy at the interface in elastodynamics " *
-                    "(issue #176). Intended for quasi-statics and comparison studies.",
+            if impedance_scale[1] <= 0.0
+                norma_abort(
+                    "`impedance scale` must be positive for `$bc_type` " *
+                    "(got $(impedance_scale[1])). For the classical pure Robin " *
+                    "condition t + α W u = g (no dashpot) use `Schwarz RR nonoverlap`.",
                 )
             end
+            impedance, _ = _ps_impedances(subsim)
             impedance *= impedance_scale[1]
             # Adjoint pairing is the default: both sides derive their transfer
             # operators from one shared cross-mass matrix, share one impedance
@@ -612,6 +635,7 @@ function SMCouplingSchwarzBC(
                 adjoint_pairing,
             )
         else
+            impedance_p_coupled, impedance_s_coupled = _ps_impedances(coupled_subsim)
             coupled_block_name = bc_params["source block"]
             tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
             partner_traction_mode = get(bc_params, "partner traction", "auto")

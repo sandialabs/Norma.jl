@@ -243,7 +243,10 @@ const BC_ENTRY_KEYS = Dict(
         "compute overlap L2 relative error",
     ]),
 )
-# The RR alias reads the same entry keys as the impedance condition.
+# The classical Robin-Robin condition accepts a subset of the impedance keys:
+# `impedance scale` is rejected by its parser with a hard abort that points at
+# `Schwarz impedance nonoverlap`. Share the impedance key set here so that
+# abort is not preceded by a spurious unknown-key warning.
 BC_ENTRY_KEYS["Schwarz RR nonoverlap"] = BC_ENTRY_KEYS["Schwarz impedance nonoverlap"]
 
 const BC_TYPE_KEYS = Set(keys(BC_ENTRY_KEYS))

@@ -68,8 +68,8 @@ instead, for cases where an unconverged interface must not be carried forward.
 Relaxation is not tied to a particular transmission condition: it applies to
 whatever datum a coupling boundary condition transmits. For `Schwarz overlap`
 and `Schwarz DN nonoverlap` the relaxed quantity is the interface displacement;
-for `Schwarz impedance nonoverlap`, and therefore for its `Schwarz RR
-nonoverlap` alias, it is the impedance right-hand side. Both Aitken forms work
+for `Schwarz impedance nonoverlap` and `Schwarz RR nonoverlap` it is the
+interface force right-hand side. Both Aitken forms work
 with all of them, and `relaxation parameter` and `aitken N0 parameter` mean the
 same thing in each. On the impedance and Robin conditions the acceleration is
 substantial: on the cantilever benchmark either Aitken form converges in about
@@ -149,10 +149,24 @@ dashpot term, making the interface energy exchange dissipative. See
 |---|---|---|---|
 | `source side set` | yes | — | partner interface surface |
 | `robin parameter` | no | `0.0` | Robin coefficient α; must be identical on both sides under `adjoint pairing` (the default), where it affects the convergence rate only, not the converged solution; per-side values are allowed with `adjoint pairing: false` |
-| `impedance scale` | no | `1.0` | scalar scaling of the dashpot impedance (`0.0` disables it); must be ≥ 0 |
+| `impedance scale` | no | `1.0` | scalar scaling of the dashpot impedance; must be > 0 |
 | `adjoint pairing` | no | `true` | use the adjoint-paired shared cross-mass transfer (recommended); `false` restores the legacy per-side transfer |
 
-`Schwarz RR nonoverlap` is a deprecated alias for this condition.
+### `Schwarz RR nonoverlap`
+
+The classical Robin-Robin coupling `traction + α·displacement = data`: the
+Robin spring is the only coupling term and there is no dashpot (`impedance
+scale` is rejected under this keyword). The condition is not absorbing, so in
+elastodynamics it can pump energy at the interface (issue #176); it is intended
+for quasi-statics and for comparison against the classical Robin-Robin
+literature, and the run warns when it is used with a dynamic time integrator.
+For dynamics prefer `Schwarz impedance nonoverlap`.
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `source side set` | yes | — | partner interface surface |
+| `robin parameter` | yes | — | Robin coefficient α (positive); the two sides may use different values under `adjoint pairing: false` (the default) |
+| `adjoint pairing` | no | `false` | `true` uses the adjoint-paired shared cross-mass transfer, which makes the Robin spring a conservative interface spring and requires one shared α per interface |
 
 ### `Schwarz impedance overlap`
 

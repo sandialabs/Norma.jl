@@ -473,18 +473,35 @@ reject_restart_with_contact(::SingleDomainSimulation) = nothing
 
 function create_simulation(params::Parameters)
     sim_type = params["type"]
+    # A failure after construction (e.g. an abort while creating coupling
+    # boundary conditions) must close the Exodus handles the constructors
+    # opened: libexodus refuses to create a new file with the same path as a
+    # leaked open one, so a leak poisons any later simulation in the same
+    # process that reuses the file names (test-mode aborts in particular).
     if sim_type == "single"
         sim = SingleDomainSimulation(params)
-        create_bcs(sim)
-        initialize_storage(sim)
+        try
+            create_bcs(sim)
+            initialize_storage(sim)
+        catch
+            try; finalize_writing(sim); catch; end
+            rethrow()
+        end
         return sim
     elseif sim_type == "multi"
         sim = MultiDomainSimulation(params)
-        create_bcs(sim)
-        validate_swap_criteria(sim)
-        warn_restart_with_nonoverlap_schwarz(sim)
-        reject_restart_with_contact(sim)
-        initialize_storage(sim)
+        try
+            create_bcs(sim)
+            validate_swap_criteria(sim)
+            warn_restart_with_nonoverlap_schwarz(sim)
+            reject_restart_with_contact(sim)
+            initialize_storage(sim)
+        catch
+            for subsim in sim.subsims
+                try; finalize_writing(subsim); catch; end
+            end
+            rethrow()
+        end
         return sim
     else
         norma_abort("Unknown type of simulation: $sim_type")

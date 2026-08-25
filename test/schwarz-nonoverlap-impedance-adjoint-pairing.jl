@@ -216,11 +216,11 @@ end
         rm(f; force=true)
     end
 
-    # `impedance scale` on the nonoverlap variant scales the dashpot; 0 is the
-    # explicit pure-Robin opt-in (t + α W u = g, issue #176 warns) and must
-    # produce a zero pair impedance without dividing by zero in the harmonic
-    # mean. Both runs are short; pure Robin is not exercised at 1 ms here.
-    for (scale, factor) in (("0.5", 0.5), ("0.0", 0.0))
+    # `impedance scale` on the nonoverlap variant scales the dashpot and must
+    # be positive: a zero scale would degenerate to the classical pure Robin
+    # condition, which has its own keyword (`Schwarz RR nonoverlap`), so it
+    # aborts instead of masquerading as the impedance condition.
+    for (scale, factor) in (("0.5", 0.5), ("0.0", nothing))
         for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
                   "cantilever-clamped.g", "cantilever-free.g"]
             cp("$cantilever_imp_nc_example/$f", f; force=true)
@@ -232,10 +232,19 @@ end
         params_scaled = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
         params_scaled["name"] = "cantilever-multi.yaml"
         params_scaled["final time"] = 3 * 5.0e-07
-        sim_scaled = Norma.run(params_scaled)
-        @test sim_scaled.failed == false
-        bc_scaled = impedance_bc_of(sim_scaled.subsims[1])
-        @test bc_scaled.impedance ≈ factor * bc1.impedance
+        if factor === nothing
+            Norma.NORMA_TEST_MODE[] = true
+            try
+                @test_throws Norma.NormaAbortException Norma.run(params_scaled)
+            finally
+                Norma.NORMA_TEST_MODE[] = false
+            end
+        else
+            sim_scaled = Norma.run(params_scaled)
+            @test sim_scaled.failed == false
+            bc_scaled = impedance_bc_of(sim_scaled.subsims[1])
+            @test bc_scaled.impedance ≈ factor * bc1.impedance
+        end
         for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
                   "cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
                   "cantilever-multi-energy.csv"]
