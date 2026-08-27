@@ -1721,10 +1721,21 @@ function coupling_weak_overlap_dbc(model::SolidMechanics, bc::SolidMechanicsOver
 end
 
 function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
-    nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
+    # Transfer the projected DISPLACEMENT, not the projected current position.
+    # On a curved interface the two sides discretize the geometry as different
+    # facet polyhedra, so the projector does not map the source reference onto
+    # the destination reference (P x_src ≠ x_dst; the gap is the coarser
+    # side's facet sagitta). Position transfer injects that geometric mismatch
+    # as a spurious scalloped Dirichlet displacement at the coarse-facet
+    # frequency; displacement transfer leaves each side its own reference
+    # geometry and its error is O(h²) in the field. On flat interfaces the two
+    # forms coincide because the L2 projection reproduces linear functions.
+    # (Contact keeps position transfer: closure there is coincidence of the
+    # CURRENT surfaces, see contact_weak_dbc.)
+    _, nodal_disp, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
-        @inbounds model.displacement[:, i_global] = nodal_curr[:, i_local] - model.reference[:, i_global]
+        @inbounds model.displacement[:, i_global] = nodal_disp[:, i_local]
         @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
         @inbounds model.acceleration[:, i_global] = nodal_acce[:, i_local]
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)

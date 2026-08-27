@@ -130,7 +130,22 @@ the shared overlap region.
 ### `Schwarz DN nonoverlap`
 
 Non-overlapping Dirichlet–Neumann coupling across a shared interface. The two
-sides must take opposite roles.
+sides must take opposite roles. The Dirichlet side receives the partner's
+projected interface *displacement* (not the projected current position): on a
+curved interface the two sides discretize the geometry as different facet
+polyhedra, so a position transfer would inject the chordal mismatch between
+the two trace meshes — of the order of the coarser side's facet sagitta — as
+a spurious scalloped interface displacement at the coarse-facet frequency. On
+flat interfaces the two forms coincide, because the L2 projection reproduces
+linear functions. Regression: test 123
+(`schwarz-nonoverlap-static-inclusion-curved-interface.jl`, a stiffer
+circular inclusion in a square matrix with a 36:20 non-conformal interface
+discretization).
+
+Note that for a stiff inclusion fully embedded in a softer matrix the DN
+fixed-point map has gain greater than one, so *fixed* relaxation diverges for
+every relaxation parameter; use Aitken relaxation
+(`relaxation: aitken secant` or `aitken recursive` on the controller).
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|

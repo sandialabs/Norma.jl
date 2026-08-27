@@ -1,0 +1,67 @@
+type: single
+input mesh file: square.g
+output mesh file: square.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      square: matrix
+    matrix:
+      model: neohookean
+      elastic modulus: 1.44e+09
+      Poisson's ratio: 0.3
+      density: 1000.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "-0.005"
+    - node set: nsx+
+      component: x
+      function: "0.005"
+    - node set: nsy-
+      component: x
+      function: "0.005 * x"
+    - node set: nsy+
+      component: x
+      function: "0.005 * x"
+    - node set: nsx-
+      component: y
+      function: "0.0"
+    - node set: nsx+
+      component: y
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsx-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: z
+      function: "0.0"
+    - node set: nsy-
+      component: z
+      function: "0.0"
+    - node set: nsy+
+      component: z
+      function: "0.0"
+  Schwarz DN nonoverlap:
+    - side set: hole
+      source: circle
+      source block: circle
+      source side set: interface
+      default BC type: Neumann
+      swap BC types: false
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

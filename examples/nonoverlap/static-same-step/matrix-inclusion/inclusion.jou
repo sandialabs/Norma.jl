@@ -1,0 +1,48 @@
+# Square elastic matrix with a stiffer circular inclusion, meshed as two
+# nonoverlapping subdomains with a deliberately non-conformal curved
+# interface: the inclusion discretizes the circle with 36 intervals, the
+# matrix hole with 20. The chordal mismatch (coarse-facet sagitta
+# R(1 - cos(pi/20)) = 4.3e-3) is comparable to the applied displacement
+# (5.0e-3), so any coupling that transfers interface positions instead of
+# displacements produces a large scalloped artifact at the coarse-facet
+# frequency. Used by the curved-interface DN regression test.
+${R = 0.35}
+${H = 0.1}
+
+reset
+create cylinder radius {R} z {H}
+volume 1 scheme tetmesh
+volume 1 size 0.07
+curve 1 2 interval 36
+mesh volume 1
+block 1 volume 1
+block 1 element type tetra4
+block 1 name "circle"
+sideset 1 surface 1
+sideset 1 name "interface"
+set large exodus file off
+export mesh "circle.g" overwrite
+
+reset
+create brick x 2 y 2 z {H}
+create cylinder radius {R} z {H}
+subtract volume 2 from volume 1
+volume 1 scheme tetmesh
+volume 1 size 0.16
+curve 15 16 interval 20
+mesh volume 1
+block 2 volume 1
+block 2 element type tetra4
+block 2 name "square"
+sideset 1 surface 10
+sideset 1 name "hole"
+nodeset 1 surface with x_coord < -0.99
+nodeset 1 name "nsx-"
+nodeset 2 surface with x_coord > 0.99
+nodeset 2 name "nsx+"
+nodeset 3 surface with y_coord < -0.99
+nodeset 3 name "nsy-"
+nodeset 4 surface with y_coord > 0.99
+nodeset 4 name "nsy+"
+set large exodus file off
+export mesh "square.g" overwrite
