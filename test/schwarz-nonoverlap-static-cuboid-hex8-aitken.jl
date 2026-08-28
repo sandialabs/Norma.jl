@@ -76,8 +76,8 @@ end
 
     # Below N0 the relaxation factor is the input theta, not 1: this run sets
     # `relaxation parameter: 0.1` and `aitken N0 parameter: 2`, so the first two
-    # sweeps of every step must relax by 0.1 (issue #218). A key with no
-    # relaxation history reaches the same branch those sweeps take.
+    # Schwarz iterations of every step must relax by 0.1 (issue #218). A key with
+    # no relaxation history reaches the same branch those iterations take.
     fresh_key = (99, 98, 1)
     zero_iterate = zeros(3)
     for iter in 0:1

@@ -73,7 +73,7 @@ interface force right-hand side. Both Aitken forms work
 with all of them, and `relaxation parameter` and `aitken N0 parameter` mean the
 same thing in each. On the impedance and Robin conditions the acceleration is
 substantial: on the cantilever benchmark either Aitken form converges in about
-a tenth of the sweeps that a fixed factor needs.
+a tenth of the Schwarz iterations that a fixed factor needs.
 
 `relaxation parameter` is not ignored when `relaxation` names an Aitken method.
 It is the factor applied for Schwarz iterations below `aitken N0 parameter`,
@@ -82,15 +82,15 @@ the first iterations of every step before two iterates exist to compare.
 
 Aitken acceleration is applied only to stops with a single substep, that is
 when the controller `time step` equals the relaxed subdomain's time step. A
-windowed stop couples all of its time slots in one sweep, where the adaptive
+windowed stop couples all of its time slots in one Schwarz iteration, where the adaptive
 factors were measured to diverge or to lose to a fixed factor, so such stops
 use `relaxation parameter` throughout. This is automatic and needs no input.
 
 If a relaxation factor ever becomes small enough to leave an interface iterate
-unchanged, the sweep carries no information: every subdomain re-solves against
+unchanged, the Schwarz iteration carries no information: every subdomain re-solves against
 the data it already had and returns the solution it already had. The
 displacement-based convergence test cannot distinguish that from convergence,
-so such a sweep is refused as evidence of convergence and the run logs
+so such an iteration is refused as evidence of convergence and the run logs
 `Relaxation factor near zero froze an interface iterate`. Seeing that message
 repeatedly means the coupling is not advancing; check `relaxation parameter`.
 

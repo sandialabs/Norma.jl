@@ -76,12 +76,12 @@ end
     @test avg_free ≈ avg_clamped rtol = 1.0e-02
 
     # Sweep counts. The secant and the Aitken-recursive Irons-Tuck form cost
-    # essentially the same here, 41 sweeps against 40 over these 10 steps, the
-    # difference being one extra sweep in the first step. The secant used to
+    # essentially the same here, 41 Schwarz iterations against 40 over these 10 steps, the
+    # difference being one extra iteration in the first step. The secant used to
     # take 20, but that margin came from the degenerate first pair fixed for
     # issue #219: its zero factor discarded the first interface iterate, which
     # happened to help this problem while silently returning a wrong answer on
-    # subdomain chains. The bound is the recursive count plus that one sweep, so
+    # subdomain chains. The bound is the recursive count plus that one iteration, so
     # a genuine regression in the secant factor still fails it.
     iters_secant = sim_secant.controller.schwarz_iters[1:num_steps]
     iters_aitken = sim_aitken.controller.schwarz_iters[1:num_steps]

@@ -53,7 +53,7 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     # at every stop. In a windowed stop (controller step larger than the relaxed
     # side's time step) the relaxed side applies its coupling BC once per
     # substep; a single per-interface vector would blend iterates across TIME
-    # instead of across Schwarz sweeps — a causal low-pass on the exchanged data
+    # instead of across Schwarz iterations — a causal low-pass on the exchanged data
     # that shifts the converged fixed point (measured on the cantilever
     # benchmark: monotone energy drain growing with the window under fixed θ,
     # and phase-lead energy injection under Aitken, whose residuals then compare
@@ -82,12 +82,12 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     predictor_∂Ω_f::Vector{Vector{Float64}}
     prev_stop_disp::Vector{Vector{Float64}}
     prev_stop_∂Ω_f::Vector{Vector{Float64}}
-    # Set during a sweep in which a relaxation factor of essentially zero froze
-    # an interface iterate. Such a sweep re-solves every subdomain against
+    # Set during a Schwarz iteration in which a relaxation factor of essentially
+    # zero froze an interface iterate. Such an iteration re-solves every subdomain against
     # unchanged coupling data and reproduces the previous solution, so its
     # update is not evidence of convergence: the interface residual it leaves
     # behind is invisible to the displacement-based criterion. Cleared at the
-    # start of each sweep; see `frozen_relaxation_update!`.
+    # start of each Schwarz iteration; see `frozen_relaxation_update!`.
     relaxation_frozen::Bool
 end
 

@@ -54,10 +54,10 @@ using YAML
     @test avg_stress_cuboid2 ≈
         [109.33375660144678 109.86672529857776 5.210641414825372e8 17.864402889957972 17.594121247470817 73.01888543796987] atol =
         1.0e1
-    # The sweeps this case needs are nondeterministic at the last count: the
+    # The Schwarz iterations this case needs are nondeterministic at the last count: the
     # quadratic OpInf residual jitters at the 1.0e-12 relative tolerance, so a
     # stop lands on either side of the threshold depending on the platform.
-    # Measured on the CI matrix, every stop is within one sweep of the profile
+    # Measured on the CI matrix, every stop is within one Schwarz iteration of the profile
     # below and the totals span 1616 to 1619, so pin the profile with a band of
     # one rather than the exact vector.  This was hidden until the cap went from
     # 16 to 64, which clipped nearly every stop to a constant.

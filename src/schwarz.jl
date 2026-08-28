@@ -34,7 +34,7 @@ const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
 # coupling data it already used and returns the solution it already had, so the
 # displacement-based Schwarz criterion sees no update and reads it as
 # convergence, however large the interface residual still is. Record such a
-# sweep on the controller so the criterion can refuse to convert it into
+# Schwarz iteration on the controller so the criterion can refuse to convert it into
 # convergence (see update_schwarz_convergence_criterion).
 const FROZEN_THETA = 1.0e-12
 
@@ -72,11 +72,11 @@ end
 
 # Resolve the relaxation time slot for interface `key` at substep time t,
 # appending a new slot when t is not yet keyed. The relaxation state must be
-# compared across Schwarz sweeps AT THE SAME SUBSTEP TIME: with a windowed
+# compared across Schwarz iterations AT THE SAME SUBSTEP TIME: with a windowed
 # controller stop the relaxed side applies its BC once per substep, and a
 # single per-interface state would blend iterates across time — a causal
 # low-pass on the exchanged data that shifts the converged fixed point. Substep
-# times repeat bitwise across sweeps (subcycle() restores the nominal step every
+# times repeat bitwise across Schwarz iterations (subcycle() restores the nominal step every
 # pass), so the equality test hits; the isapprox fallback and the fresh-slot
 # path only engage if the substep grid is perturbed mid-stop (e.g. adaptive
 # stepping), where the new slot restarts that time's relaxation from scratch.
@@ -112,13 +112,13 @@ function ensure_slot!(state::Vector{Float64}, k::Int, default::Float64)
 end
 
 # Aitken acceleration applies only to single-slot (same-step) stops. In a
-# windowed stop the sweep map couples all time slots, and every Aitken policy
+# windowed stop the Schwarz iteration map couples all time slots, and every Aitken policy
 # measured on the 10 ms cantilever benchmark fails or loses there: per-slot
 # θs take unclamped excursions that hand the solver a divergent interface
 # force (deaths at 3.9/5.7 ms where fixed θ and θ = 1 ran clean), and pooling
-# the residual inner products over the sweep's slots (waveform Aitken,
-# Irons–Tuck base frozen per sweep) survived on the implicit pair but cost
-# 55 sweeps/stop against 47.5 for fixed θ = 0.5 and 19.1 for θ = 1, while
+# the residual inner products over the iteration's slots (waveform Aitken,
+# Irons–Tuck base frozen per Schwarz iteration) survived on the implicit pair but cost
+# 55 iterations/stop against 47.5 for fixed θ = 0.5 and 19.1 for θ = 1, while
 # locking θ persistently negative on the explicit pair (dead at 0.33 ms).
 # Windowed stops therefore use the configured relaxation parameter; for the
 # dashpot-stabilized impedance exchange θ = 1 is the measured optimum there.
@@ -149,7 +149,7 @@ function relaxation_aitken_recursive_theta!(
     if iter < aitken_N0
         # Below N0 the input theta is the relaxation factor, as it is for the
         # secant form. This used to store the input theta as theta^(n-1) for the
-        # recursion but apply and report 1.0, so the first N0 sweeps of every
+        # recursion but apply and report 1.0, so the first N0 Schwarz iterations of every
         # run were unrelaxed whatever the input file asked for (issue #218).
         θ = controller.relaxation_parameter
         theta_slots[slot_k] = θ
@@ -221,8 +221,8 @@ function relaxation_aitken_secant_theta!(
         # DN and overlap path, where a fresh slot seeds g^(n-1) with the very
         # datum it is compared against (see the `isempty` fallback in apply_bc),
         # so r = 0, the written iterate equals the incoming one whatever θ is,
-        # and the next sweep finds g^(n) == g^(n-1). Fall back to the input
-        # theta; the sweep after that has two genuine iterates to differentiate.
+        # and the next Schwarz iteration finds g^(n) == g^(n-1). Fall back to the input
+        # theta; the iteration after that has two genuine iterates to differentiate.
         if δ_sq > AITKEN_DELTA_SQ_FLOOR && dot(d, d) > AITKEN_DELTA_SQ_FLOOR
             # Pure Aitken-secant factor, paper eq. (9): no value clamp, so the factor is
             # free to take the large/negative excursions that accelerate (or
@@ -315,7 +315,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
         end
     else  # left subdomain (with relaxation)
         # The relaxation state is per substep time slot (see relaxation_slot!):
-        # relaxing against the previous sweep's RHS at the SAME time keeps the
+        # relaxing against the previous Schwarz iteration's RHS at the SAME time keeps the
         # windowed exchange waveform-consistent. A fresh slot (every slot on
         # iteration 0, since the state resets at each stop) has no previous
         # iterate and starts from zero, as before.
@@ -1408,7 +1408,7 @@ end
 
 # Maximum relative kinematic jump across all adjoint-paired impedance
 # interfaces, each side measuring the partner trace through its own transfer
-# operator. The paired exchange has a slow interface-jump mode whose per-sweep
+# operator. The paired exchange has a slow interface-jump mode whose per-Schwarz-iteration
 # displacement increment is far smaller than its remaining distance to the
 # fixed point, so the ΔU-based Schwarz criterion alone can declare convergence
 # while the interface still carries an O(10%) kinematic jump — which the
@@ -1862,7 +1862,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     if is_swappable_dn_schwarz(bc) && bc.is_dirichlet
         iter = controller.iteration_number
         # Per-substep-time relaxation slot (see relaxation_slot!): the previous
-        # iterate must come from the previous Schwarz sweep at the SAME time. A
+        # iterate must come from the previous Schwarz iteration at the SAME time. A
         # fresh slot (every slot on iteration 0) has no previous iterate and
         # falls back to the interpolated partner state, as before.
         key = relaxation_key(bc)

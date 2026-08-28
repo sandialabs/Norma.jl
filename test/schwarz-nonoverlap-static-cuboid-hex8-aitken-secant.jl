@@ -33,10 +33,10 @@
     @test sim.failed == false
 
     # The first secant pair on the DN and overlap path is degenerate: a fresh
-    # slot seeds the stored iterate with the incoming datum, so the next sweep
+    # slot seeds the stored iterate with the incoming datum, so the next Schwarz iteration
     # finds g^(n) == g^(n-1), d = 0, and the raw factor -dot(d, δ)/‖δ‖² is
     # exactly zero. A zero factor freezes the interface, and in a chain of three
-    # or more subdomains that freezes the whole sweep and is read as convergence
+    # or more subdomains that freezes the whole Schwarz iteration and is read as convergence
     # after one iteration (issue #219). The degenerate pair must fall back to
     # the input theta instead. Replayed here on a key with no history.
     theta0 = sim.controller.relaxation_parameter

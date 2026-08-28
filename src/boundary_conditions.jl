@@ -762,7 +762,7 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBounda
 end
 
 # The surface constraint neither prescribes DOFs nor sets a boundary force in the
-# apply_bcs sweep: it enters the residual as a penalty force built in
+# apply_bcs pass: it enters the residual as a penalty force built in
 # apply_surface_penalty_internal_force! during evaluate().  The nodes remain free
 # to slide, so nothing is done here.
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsSurfaceBoundaryCondition)
