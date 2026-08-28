@@ -118,7 +118,8 @@ built from that interior state (Sec.~\ref{sec:overlap-tc}).
 Throughout, $~W_k = \int_{\Gamma_k} ~N_k\,~N_k^\top\,\dd\Gamma$ denotes the
 boundary mass matrix of side $k$, $~P$ a kinematic transfer operator mapping
 partner data to a side's interface nodes, a subscript $j$ the partner of
-side $k$, and $\jump{\cdot}$ an interface jump. All interface operators
+side $k$, and $\jump{~q} = ~q_k - ~q_j$ the interface jump of a field $~q$,
+own side minus partner, evaluated on side $k$'s coupling surface. All interface operators
 ($~W_k$, the transfer operators, and the cross-mass matrix of
 Sec.~\ref{sec:paired}) are assembled once at initialization, on the
 reference configuration, with the standard facet Gauss rule of the
@@ -407,7 +408,22 @@ optimized-Schwarz transmission condition,
   \label{eq:imp-overlap}
 \end{equation}
 where $~t_j = ~\sigma_j\,~n_k$ is the partner's traction evaluated on
-$\Gamma_k$ with $\Omega_k$'s outward normal, and the impedance is the
+$\Gamma_k$ with $\Omega_k$'s outward normal, so that in the jump notation of
+Sec.~\ref{sec:setting} the condition reads
+$~t_k - ~t_j + ~Z\,\jump{\dot{~u}} + \alpha\,\jump{~u} = ~0$.
+Two remarks on this form. First, the sign convention differs from the
+nonoverlap sections: there $\Omega_j$ has an outward normal on the shared
+interface and $~t_j = ~\sigma_j\,~n_j$, so traction balance reads
+$~t_k + ~t_j = ~0$; on an overlap boundary $\Omega_j$ has no boundary at
+all, the only meaningful normal is $~n_k$, and the converged state satisfies
+$~t_k = ~t_j$. Second, $~t_k - ~t_j$ is not evaluated as a difference of two
+recovered tractions: $~t_k$ is never computed. It is the natural boundary term
+of $\Omega_k$'s own weak form (the boundary part of its assembled internal
+force), and the condition is imposed by adding the partner datum
+$~W(~t_j + ~Z\,\dot{~u}_j + \alpha\,~u_j)$ as a Neumann load and the self
+terms $~W(~Z\,\dot{~u}_k + \alpha\,~u_k)$ as an interface force on the
+same residual (discrete assembly below). Only $~t_j$ is computed, and only on
+$\Gamma_k$. The impedance is the
 P/S-split tensor
 \begin{equation}
   ~Z \;=\; Z_p\, ~n_k \otimes ~n_k
@@ -550,7 +566,7 @@ Reflection $\lvert R \rvert$ &
 \midrule
 Boundary condition &
   $~u_k = ~u_j$ (pointwise or $L^2$) &
-  $~t_k - ~t_j + ~Z\,\jump{\dot{~u}} + \alpha\,\jump{~u} = ~0$ \\[0.3em]
+  $~t_k - ~t_j + ~Z\,(\dot{~u}_k - \dot{~u}_j) + \alpha\,(~u_k - ~u_j) = ~0$ \\[0.3em]
 Self tangent &
   (DOFs constrained) &
   $W_{ij}\,\bigl(c_v\, ~Z(~n_j) + \alpha\, ~I\bigr)$ \\[0.3em]
