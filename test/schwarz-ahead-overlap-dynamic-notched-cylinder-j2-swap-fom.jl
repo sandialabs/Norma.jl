@@ -99,7 +99,12 @@ using YAML
 
     # ── Regression values ───────────────────────────────────────────────────
     # Reference values obtained from a verified run on the notched-cylinder
-    # coarse mesh with the parameters above.  This stiff J2 + Schwarz problem
+    # coarse mesh with the parameters above.  Regenerated 2026-08-28 after the
+    # J2 state-commit fix: state and state_old used to alias the same arrays,
+    # so plastic state was committed on every residual assembly (every Newton
+    # iteration and every Schwarz iteration) instead of on step acceptance;
+    # this Schwarz-coupled plastic problem integrated its internal variables
+    # from each iteration's trial history and the old values reflect that.  This stiff J2 + Schwarz problem
     # is highly sensitive to floating-point rounding: the converged stresses
     # vary by up to ~3 % across platforms (BLAS/CPU differences amplified
     # through the nonlinear and Schwarz iterations), with the Schwarz-coupled
@@ -110,20 +115,20 @@ using YAML
     avg_stress_2 = average_components(model_2.stress)
 
     # Domain 1 (notched region)
-    @test avg_stress_1[1] ≈ 1.0964483018850446e7 rtol = 5.0e-2   # σ_xx
-    @test avg_stress_1[2] ≈ 1.1150219428810084e7 rtol = 5.0e-2   # σ_yy
-    @test avg_stress_1[3] ≈ 1.9445135097540456e8 rtol = 5.0e-2   # σ_zz (axial, dominant)
-    @test avg_stress_1[4] ≈ 4.2460735417383365e7 rtol = 5.0e-2   # σ_yz
-    @test avg_stress_1[5] ≈ 4.18522122367237e7 rtol = 5.0e-2   # σ_xz
-    @test avg_stress_1[6] ≈ 1.5924247739358567e7 rtol = 5.0e-2   # σ_xy
+    @test avg_stress_1[1] ≈ 3.551515280362134e7 rtol = 5.0e-2   # σ_xx
+    @test avg_stress_1[2] ≈ 3.577406231880717e7 rtol = 5.0e-2   # σ_yy
+    @test avg_stress_1[3] ≈ 2.3412178041665545e8 rtol = 5.0e-2   # σ_zz (axial, dominant)
+    @test avg_stress_1[4] ≈ 4.49667130971914e7 rtol = 5.0e-2   # σ_yz
+    @test avg_stress_1[5] ≈ 4.4320888713590436e7 rtol = 5.0e-2   # σ_xz
+    @test avg_stress_1[6] ≈ 2.2459202815243542e7 rtol = 5.0e-2   # σ_xy
 
     # Domain 2 (away from notch)
     @test avg_stress_2[1] ≈ -2.069915563053306e7 rtol = 5.0e-2   # σ_xx
     @test avg_stress_2[2] ≈ -2.050951210213198e7 rtol = 5.0e-2   # σ_yy
-    @test avg_stress_2[3] ≈ -6.037500861024235e7 rtol = 5.0e-2   # σ_zz (axial)
-    @test avg_stress_2[4] ≈ 2.5091782610498164e7 rtol = 5.0e-2   # σ_yz
-    @test avg_stress_2[5] ≈ 2.4768775784023814e7 rtol = 5.0e-2   # σ_xz
-    @test avg_stress_2[6] ≈ 1.0446491151593601e7 rtol = 5.0e-2   # σ_xy
+    @test avg_stress_2[3] ≈ 1.4799049836122042e8 rtol = 5.0e-2   # σ_zz (axial)
+    @test avg_stress_2[4] ≈ 1.3364302745664774e7 rtol = 5.0e-2   # σ_yz
+    @test avg_stress_2[5] ≈ 1.3137457764035271e7 rtol = 5.0e-2   # σ_xz
+    @test avg_stress_2[6] ≈ 8.245908260137818e6 rtol = 5.0e-2   # σ_xy
 
     # Displacements
     min_disp_x_1 = minimum(model_1.displacement[1, :])
@@ -133,12 +138,12 @@ using YAML
     min_disp_y_2 = minimum(model_2.displacement[2, :])
     min_disp_z_2 = minimum(model_2.displacement[3, :])
 
-    @test min_disp_x_1 ≈ -0.00028304901364216775 rtol = 5.0e-3
-    @test min_disp_y_1 ≈ -0.0002823227653864747 rtol = 5.0e-3
-    @test max_disp_z_1 ≈ 0.0006669064708275385 rtol = 5.0e-3
-    @test min_disp_x_2 ≈ -0.0004544495076475023 rtol = 5.0e-3
-    @test min_disp_y_2 ≈ -0.0004544766124815216 rtol = 5.0e-3
-    @test min_disp_z_2 ≈ 0.0002320204347941307 rtol = 5.0e-3
+    @test min_disp_x_1 ≈ -0.0008581867167312236 rtol = 5.0e-3
+    @test min_disp_y_1 ≈ -0.0008545716050116027 rtol = 5.0e-3
+    @test max_disp_z_1 ≈ 0.0012634193505906832 rtol = 5.0e-3
+    @test min_disp_x_2 ≈ -0.00016698327118298134 rtol = 5.0e-3
+    @test min_disp_y_2 ≈ -0.00016694097282405826 rtol = 5.0e-3
+    @test min_disp_z_2 ≈ 0.0009764701314749769 rtol = 5.0e-3
 
     # Schwarz iteration counts should be non-trivial (coupling active)
     @test all(sim.controller.schwarz_iters .>= 0)

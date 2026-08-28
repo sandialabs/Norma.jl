@@ -98,9 +98,12 @@ using YAML
     @test avg_stress[3] ≈ 1.6488216849331063e8 rtol = 1.0e-1   # tension in z
 
     # Lateral stresses
-    @test avg_stress[1] ≈ -125706.92506072065 rtol = 1.0e-1   # tension in z
-    @test avg_stress[2] ≈ -175334.19977541023 rtol = 1.0e-1   # tension in z
+    # Regression values regenerated 2026-08-28 after the J2 state-commit fix
+    # (plastic state used to be committed on every residual assembly instead
+    # of on step acceptance; see commit_state in simulation.jl).
+    @test avg_stress[1] ≈ -104242.64952108214 rtol = 1.0e-1   # tension in z
+    @test avg_stress[2] ≈ -144103.8564794567 rtol = 1.0e-1   # tension in z
 
     # Average z-displacement
-    @test avg_disp[3] ≈ 0.0011996028598107954 rtol = 1.0e-5
+    @test avg_disp[3] ≈ 0.0011991480328001718 rtol = 1.0e-5
 end

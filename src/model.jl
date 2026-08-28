@@ -95,6 +95,7 @@ function SolidMechanics(params::Parameters)
     state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
     prev_state_old = Vector{Vector{Vector{Vector{Float64}}}}()  # empty until first save_curr_state
+    stop_state_old = Vector{Vector{Vector{Vector{Float64}}}}()  # empty until first save_stop_state
     stored_energy = Vector{Vector{Float64}}()
     num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
     num_int_pts = Vector{Int}(undef, num_blocks)
@@ -121,7 +122,7 @@ function SolidMechanics(params::Parameters)
             element_state = Vector{Vector{Float64}}()
             for _ in 1:num_points
                 push!(element_stress, zeros(6))
-                push!(element_state, point_init_state)
+                push!(element_state, copy(point_init_state))
             end
             push!(block_stress, element_stress)
             push!(block_state, element_state)
@@ -129,8 +130,19 @@ function SolidMechanics(params::Parameters)
             push!(block_stored_energy, element_stored_energy)
         end
         push!(stress, block_stress)
+        # state_old and state must be INDEPENDENT copies: state_old is the
+        # converged state at the start of the step (what the constitutive
+        # return mapping integrates from) and state is the trial state of the
+        # current iterate. They used to alias the same nested arrays, so every
+        # residual assembly committed its trial state instantly — each Newton
+        # iteration (and each Schwarz iteration) restarted the return mapping from
+        # the previous ITERATE's plastic state instead of the previous step's.
+        # An early un-equilibrated iterate that fake-yields then corrupts
+        # state_old and Newton stalls chasing a residual that moves with it.
+        # The explicit commit lives in commit_state (simulation.jl), called
+        # only when a step is accepted.
         push!(state_old, block_state)
-        push!(state, block_state)
+        push!(state, deepcopy(block_state))
         push!(stored_energy, block_stored_energy)
     end
     strain_energy = 0.0
@@ -223,6 +235,7 @@ function SolidMechanics(params::Parameters)
         state_old,
         state,
         prev_state_old,
+        stop_state_old,
         stress,
         stored_energy,
         strain_energy,

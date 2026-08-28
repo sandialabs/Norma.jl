@@ -73,9 +73,12 @@
         max_vm = max(max_vm, σ_vm)
     end
     @test max_vm > σy
-    @test max_vm ≈ 3.5881930634208214e8  rtol = 1.0e-3
+    # Regression values regenerated 2026-08-28 after the J2 state-commit fix
+    # (plastic state used to be committed on every residual assembly instead
+    # of on step acceptance; see commit_state in simulation.jl).
+    @test max_vm ≈ 3.578036849895821e8  rtol = 1.0e-3
 
     # Average y-displacement
     avg_disp = average_components(sim.integrator.displacement)
-    @test avg_disp[2] ≈ 0.0008275441639697702 rtol = 1.0e-8
+    @test avg_disp[2] ≈ 0.0008285967450505806 rtol = 1.0e-8
 end

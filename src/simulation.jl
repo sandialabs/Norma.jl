@@ -869,7 +869,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_∂Ω_f,
         prev_stop_disp,
         prev_stop_∂Ω_f,
-        false,   # relaxation_frozen, set per sweep
+        false,   # relaxation_frozen, set per Schwarz iteration
     )
 end
 
@@ -1001,6 +1001,7 @@ function advance_one_step(sim::SingleDomainSimulation)
         end
         if sim.failed == false
             increase_time_step(sim)
+            commit_state(sim)
             save_curr_state(sim)
             break
         end
@@ -1130,10 +1131,10 @@ function initialize(sim::MultiDomainSimulation)
     # is false — including the DOFs where the ROM's own Schwarz coupling
     # prescribes values from a *different* neighbor. Whether those DOFs
     # hold real or still-placeholder data by the time some other subdomain
-    # reads them within a single apply_bcs(sim) sweep depends on whether
+    # reads them within a single apply_bcs(sim) pass depends on whether
     # that ROM's own coupling BC happened to already run earlier in the
-    # same sweep — i.e. on sim.subsims order, not physics. A second
-    # sweep removes that order-dependence: every subdomain enters it with
+    # same pass — i.e. on sim.subsims order, not physics. A second
+    # pass removes that order-dependence: every subdomain enters it with
     # a real (round-1-refined) acceleration already in place, so every
     # reconstruction this time reads real data no matter which subdomain
     # is processed first.
@@ -1312,7 +1313,7 @@ function schwarz(sim::MultiDomainSimulation)
     # (schwarz.jl). The gate holds convergence only while the jump is actually
     # contracting: a jump mode with no dashpot authority (e.g. a quiescent
     # interface) can stall above the tolerance, and holding then just rides
-    # the sweep cap without improving the answer, so a stalled jump is
+    # the Schwarz iteration cap without improving the answer, so a stalled jump is
     # accepted with a warning instead.
     prev_jump_rel = -1.0
     while true
@@ -1341,7 +1342,7 @@ function schwarz(sim::MultiDomainSimulation)
             if jump_rel > sim.controller.relative_tolerance
                 if prev_jump_rel ≥ 0.0 && jump_rel > 0.95 * prev_jump_rel
                     # A stalled jump is a representability floor of the pair's
-                    # trace spaces: no further sweeping reduces it, and the
+                    # trace spaces: no further Schwarz iteration reduces it, and the
                     # dashpot dissipates it at a rate the tolerance no longer
                     # bounds. The default accepts it loudly; "abort" is for
                     # runs where that dissipation is unacceptable and the
@@ -1469,6 +1470,18 @@ function write_overlap_l2_error_screen(domain_name::String, side_set_name::Strin
 end
 
 
+# Commit the per-QP material state of the accepted step: the trial states the
+# final residual assembly left in model.state become the converged state_old
+# the next step's constitutive return mapping integrates from. Called only
+# when a step is accepted (advance_one_step success branch); an abandoned
+# iterate's trial states are simply overwritten by the next assembly.
+function commit_state(sim::SingleDomainSimulation)
+    if sim.model isa SolidMechanics
+        sim.model.state_old = deepcopy(sim.model.state)
+    end
+    return nothing
+end
+
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
     integrator.prev_disp = copy(integrator.displacement)
@@ -1527,6 +1540,15 @@ function save_stop_state(sim::MultiDomainSimulation)
         controller.stop_velo[i] = copy(subsim.integrator.velocity)
         controller.stop_acce[i] = copy(subsim.integrator.acceleration)
         controller.stop_∂Ω_f[i] = copy(get_internal_force(subsim.model))
+        # Per-QP material state must roll back with the kinematic state: every
+        # Schwarz iteration re-integrates the stop from the same converged
+        # starting state, and advance_one_step commits state per accepted
+        # substep within a Schwarz iteration. Without this rollback each iteration
+        # would integrate its internal variables from the previous ITERATION's trial
+        # history instead of the converged previous stop.
+        if subsim.model isa SolidMechanics
+            subsim.model.stop_state_old = deepcopy(subsim.model.state_old)
+        end
     end
 end
 
@@ -1541,6 +1563,9 @@ function restore_stop_state(sim::MultiDomainSimulation)
         subsim.integrator.velocity .= controller.stop_velo[i]
         subsim.integrator.acceleration .= controller.stop_acce[i]
         set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
+        if subsim.model isa SolidMechanics && !isempty(subsim.model.stop_state_old)
+            subsim.model.state_old = deepcopy(subsim.model.stop_state_old)
+        end
         if subsim.model isa RomModel
             reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)
         end
