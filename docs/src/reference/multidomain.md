@@ -245,6 +245,8 @@ restart:
 ## Canonical examples
 
 - Overlapping Schwarz: `examples/overlap/`
+- Overlapping Schwarz with J2 plasticity (circular laser weld, graded pair):
+  `examples/overlap/static-same-step/clw/`
 - Non-overlapping impedance (same and subcycled steps):
   `examples/nonoverlap/dynamic-same-step/`,
   `examples/nonoverlap/dynamic-different-steps/`

@@ -1,0 +1,180 @@
+reset
+
+###########################################################################
+# SPECIMEN VARIABLES
+###########################################################################
+
+#{units_scale = 1}
+#{sqrt2=sqrt(2)}
+#{specimen_length_nom = 3.5*units_scale}
+#{specimen_length_tol=0.000}                        #0.0001?
+#{specimen_length = (specimen_length_tol+specimen_length_nom)/2}
+
+#{specimen_width_nom=2.875*units_scale}
+#{specimen_width_tol=0}                                #0.000?
+#{specimen_width=(specimen_width_nom+specimen_width_tol)/2}
+
+#{specimen_thickness_nom=0.0604*units_scale}
+#{specimen_thickness_tol= 0.0}                      #0.0000?
+#{specimen_thickness=(specimen_thickness_nom+specimen_thickness_tol)}
+#{pi = 3.141592653}
+
+#{circle_radius = 0.75*units_scale}
+#{circle_thickness = specimen_thickness}
+
+###########################################################################
+# SCHWARZ VARIABLES
+###########################################################################
+
+#{outer_overlap_center_distance=0.30}
+#{inner_overlap_center_distance=0.30}
+
+#{outer_overlap_thickness=0.050}
+#{inner_overlap_thickness=0.050}
+
+#{plate_mesh_size=specimen_thickness/3}
+#{weld_mesh_size=specimen_thickness/10}
+
+###########################################################################
+# INTERMEDIATE VARIABLES
+###########################################################################
+#{outer_schwarz_overlap_radius=circle_radius+outer_overlap_center_distance}
+#{inner_schwarz_overlap_radius=circle_radius-inner_overlap_center_distance}
+
+###########################################################################
+# BUILD LASER WELD GEOMETRY
+###########################################################################
+play 'clw-geo.jou'
+
+###########################################################################
+# BUILD DOMAIN 1: PLATE
+###########################################################################
+# Cut the body at the overlap radii and set thicknesses
+
+# We SUBTRACT the outer radius and SUM the inner radius for the plate  
+create vertex 0 {outer_schwarz_overlap_radius-outer_overlap_thickness} {-specimen_thickness/2}
+create vertex 0 {outer_schwarz_overlap_radius-outer_overlap_thickness} {specimen_thickness/2}
+
+create vertex 0 {inner_schwarz_overlap_radius+inner_overlap_thickness} {-specimen_thickness/2}
+create vertex 0 {inner_schwarz_overlap_radius+inner_overlap_thickness} {specimen_thickness/2}
+
+create curve vertex 141 142
+create curve vertex 143 144
+
+# Create webcuts for the original 
+webcut volume 1 sweep curve 212 along curve 39 through_all
+webcut volume 3 sweep curve 213 along curve 39 through_all
+
+del curve 212 213
+
+# In the plate, we only want volumes 1 and 19
+del vol 2 to 18
+
+# Add relavant sets
+nodeset 1 add surface with y_coord = {specimen_length}
+nodeset 1 name "top_surface"
+
+nodeset 2 surface with x_coord = 0
+nodeset 2 name "x_symmetry_surface"
+
+nodeset 3 surface with y_coord = 0
+nodeset 3 name "y_symmetry_surface"
+
+nodeset 4 curve with y_coord = {specimen_length} and z_coord = {-specimen_thickness_nom/2}
+nodeset 4 name "z_fixed_line"
+
+# Needs to be hard coded
+nodeset 5 surface 124 139
+nodeset 5 name "schwarz_coarse_ns"
+
+sideset 1 surface 124 139
+sideset 1 name "schwarz_coarse_ss"
+
+
+imprint volume all
+merge volume all
+volume all size {plate_mesh_size}
+mesh volume all
+
+block 1 volume all
+block 1 name "base_material"
+
+volume all scale 0.0254
+export mesh "clw-coarse.g" overwrite
+
+
+###########################################################################
+# BUILD DOMAIN 2: LASER WELD
+###########################################################################
+reset
+play 'clw-geo.jou'
+
+# Cut the body at the overlap radii and set thicknesses
+
+# We ADD the outer radius and SUBTRACT the inner radius for the plate  
+create vertex 0 {outer_schwarz_overlap_radius+outer_overlap_thickness} {-specimen_thickness/2}
+create vertex 0 {outer_schwarz_overlap_radius+outer_overlap_thickness} {specimen_thickness/2}
+
+create vertex 0 {inner_schwarz_overlap_radius-inner_overlap_thickness} {-specimen_thickness/2}
+create vertex 0 {inner_schwarz_overlap_radius-inner_overlap_thickness} {specimen_thickness/2}
+
+create curve vertex 141 142
+create curve vertex 143 144
+
+# Create webcuts for the original 
+webcut volume 1 sweep curve 212 along curve 39 through_all
+webcut volume 3 sweep curve 213 along curve 39 through_all
+
+del curve 212 213
+
+# Delete the plate
+del vol 1 19
+
+# Add relavant sets, hardcode if needed
+nodeset 1 surface with x_coord = 0
+nodeset 1 name "x_symmetry_surface"
+
+nodeset 2 surface with y_coord = 0
+nodeset 2 name "y_symmetry_surface"
+
+sideset 1 surface 22 33
+sideset 1 name "weld_root"
+
+sideset 2 surface with z_coord = {-specimen_thickness_nom/2} in vol 4 to 17
+sideset 2 name "weld_surface"
+
+# Hard code the blocks
+block 1 volume 3 18 10 11 12 13 14 15 16 17
+block 1 name "base_material"
+
+imprint volume all
+merge volume all
+
+# Match the monolithic journal's notch resolution (clw.jou): weld and HAZ
+# volumes at mesh_small/1.5 and the notch arc curves at the same interval
+# the single-domain mesh uses, so peak eqps at the notch root is compared
+# at equal resolution.
+#{mesh_small = specimen_thickness/9}
+#{notch_radius_interval = ceil((outer_notch_radius*2*pi*outer_notch_theta/360)/(mesh_small/3))}
+# Gradation: base-material rings of the fine domain (volumes 3, 18) may be
+# meshed coarser than the weld zone to cut element count; fine_ring_divisor = 10
+# reproduces the ungraded mesh (ring size = weld_mesh_size = t/10).
+#{fine_ring_divisor = 4}
+volume all size {weld_mesh_size}
+volume 3 18 size {specimen_thickness/fine_ring_divisor}
+volume 10 11 12 13 14 15 16 17 size {mesh_small/1.5}
+curve 60 40 41 58 interval {notch_radius_interval}
+curve 105 104 interval {ceil(weld_surf_radius/mesh_small)}
+mesh volume all
+
+# Needs to be hard coded
+nodeset 3 surface 129 134
+nodeset 3 name "schwarz_fine_ns"
+
+sideset 3 surface 129 134
+sideset 3 name "schwarz_fine_ss"
+
+
+volume all scale 0.0254
+export mesh "clw-fine.g" overwrite
+

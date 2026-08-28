@@ -1,0 +1,43 @@
+type: single
+input mesh file: clw-coarse.g
+output mesh file: clw-coarse.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      base_material: steel
+    steel:
+      model: j2 plasticity
+      elastic modulus: 200.0e+09
+      Poisson's ratio: 0.25
+      density: 7800.0
+      yield stress: 1.0e+09
+      hardening modulus: 20.0e+09
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: x_symmetry_surface
+      component: x
+      function: "0.0"
+    - node set: y_symmetry_surface
+      component: y
+      function: "0.0"
+    - node set: z_fixed_line
+      component: z
+      function: "0.0"
+    - node set: top_surface
+      component: y
+      function: "0.005 * (0.5 - 0.5 * cos(pi * t))"
+  Schwarz overlap:
+    - side set: schwarz_coarse_ss
+      source: clw-fine
+      source block: base_material
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  use line search: true
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-08
+  absolute tolerance: 1.0e-12

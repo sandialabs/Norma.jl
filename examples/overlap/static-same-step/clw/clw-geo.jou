@@ -1,0 +1,102 @@
+###########################################################################
+######################### HARD CODE WELD GEOMETRY #########################
+###########################################################################
+
+reset
+
+create brick x {specimen_width} y {specimen_length} z {specimen_thickness}
+move volume 1 x {specimen_width/2} y {specimen_length/2} z 0
+
+
+create cylinder height {circle_thickness} radius {circle_radius}
+
+webcut volume 1 tool volume 2
+delete volume 2
+
+#create weld notch - five vertices and a circular curve:
+#1. one at the weld radius and root of the notch
+#2 - 3. At the plate exterior surface at the +/- the radius of the notch to creat the enterance of the notch at the front of the plate
+#4 - 5. At the notch it self at +/- the notch radius to creat the circular notch
+
+#{weld_ligament_length = 0.0294*units_scale}
+#{weld_notch_depth = specimen_thickness - weld_ligament_length}
+#{notch_radius = 0.002*units_scale}
+create vertex 0.0 {circle_radius} {specimen_thickness/2 - weld_notch_depth}                                                   #1
+create vertex 0.0 {circle_radius + notch_radius} {specimen_thickness/2}                                                          #2
+create vertex 0.0 {circle_radius - notch_radius} {specimen_thickness/2}                                                           #3
+create vertex 0.0 {circle_radius-notch_radius} {specimen_thickness/2 - weld_notch_depth+notch_radius}       #4
+create vertex 0.0 {circle_radius+notch_radius} {specimen_thickness/2 - weld_notch_depth+notch_radius}      #5
+
+#create notch curve
+create curve arc three vertex 22 19 23
+delete vertex 19    #delete center notch vertex
+
+#create a surface using the above entities and sweep-cut along the weld circumference
+create curve polyline vertex 22 21 20 23
+create surface curve 31 32 33 34
+webcut volume 1 3 sweep surface 20 along curve 24
+delete volume 4 5 6
+
+#{weld_surf_radius = .033/2.0*units_scale}
+
+#create the large circular part of the weld furthest from the notch root with radius
+#weld_surf_radius
+
+create vertex 0 {circle_radius+weld_surf_radius} {-specimen_thickness/2}
+create vertex 0 {circle_radius-weld_surf_radius} {-specimen_thickness/2}
+create vertex 0 {circle_radius} {-specimen_thickness/2 + weld_surf_radius}
+
+create curve arc three vertex 52 54 53
+
+
+#create outersurface around notch for meshing
+#{outer_notch_radius = notch_radius*3.0}
+#{outer_notch_theta = 60}
+create vertex 0 {circle_radius+outer_notch_radius*sin(pi/180*outer_notch_theta)} {specimen_thickness/2 + notch_radius- weld_notch_depth-outer_notch_radius*cos(pi/180*outer_notch_theta)}
+create vertex 0 {circle_radius-outer_notch_radius*sin(pi/180*outer_notch_theta)} {specimen_thickness/2 +notch_radius- weld_notch_depth-outer_notch_radius*cos(pi/180*outer_notch_theta)}
+create vertex 0 {circle_radius} {specimen_thickness/2 - weld_notch_depth+notch_radius}
+
+create curve arc center vertex 57 55 56
+
+create curve vertex 31 55
+create curve vertex 42 56
+
+
+#create section to connect circular part of weld to outer notch radius
+#{weld_surf_theta=35}
+
+create vertex 0 {circle_radius+weld_surf_radius*sin(pi/180*weld_surf_theta)} {-specimen_thickness/2+weld_surf_radius*cos(pi/180*weld_surf_theta)}
+create vertex 0 {circle_radius-weld_surf_radius*sin(pi/180*weld_surf_theta)} {-specimen_thickness/2+weld_surf_radius*cos(pi/180*weld_surf_theta)}
+
+create curve vertex 55 62
+create curve vertex 56 63
+
+create curve vertex 53 52  
+create curve arc center vertex 15 62 63
+
+create surface curve 79 85
+create surface curve 80 83 84 86
+create surface curve 41 58 80 81 82
+
+webcut volume 1 3 sweep surface 45 along curve 39
+webcut volume 1 3 sweep surface 46 along curve 39
+webcut volume 1 3 sweep surface 47 along curve 39
+
+delete vertex 54 57 
+delete body 7 8 9
+
+#{outer_weld_zone_radius = specimen_thickness*.65}
+create vertex 0 {circle_radius+notch_radius} {0.00101988/0.0254-specimen_thickness/2} # get z position from the tension laser weld model - can be determined from geometry if needed
+create vertex 0 {circle_radius-notch_radius} {0.00101988/0.0254-specimen_thickness/2} # get z position from the tension laser weld model - can be determined from geometry if needed
+
+create vertex 0 {circle_radius-outer_weld_zone_radius/2.5+outer_weld_zone_radius} {-specimen_thickness/2}
+create vertex 0 {circle_radius+outer_weld_zone_radius/2.5-outer_weld_zone_radius} {-specimen_thickness/2}
+
+
+create curve arc vertex 123 121 radius {outer_weld_zone_radius} normal 1 0 0
+create curve arc vertex 122 124 radius {outer_weld_zone_radius} normal 1 0 0
+
+
+webcut volume 3 1 sweep curve 178 179 along curve 39 through_all
+
+delete curve 178 179

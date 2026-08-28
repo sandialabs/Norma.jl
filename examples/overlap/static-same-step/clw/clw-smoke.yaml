@@ -1,0 +1,10 @@
+type: multi
+domains: ["clw-coarse.yaml", "clw-fine.yaml"]
+initial time: 0.0
+final time: 0.04
+time step: 0.02
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-03
+absolute tolerance: 1.0e-09
+Exodus output interval: 0.1
