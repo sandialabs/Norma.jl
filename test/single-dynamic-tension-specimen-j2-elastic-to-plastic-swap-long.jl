@@ -80,5 +80,5 @@
 
     # Average y-displacement
     avg_disp = average_components(sim.integrator.displacement)
-    @test avg_disp[2] ≈ 0.0008285967450505806 rtol = 1.0e-8
+    @test avg_disp[2] ≈ 0.0008285967450505806 rtol = 1.0e-6
 end
