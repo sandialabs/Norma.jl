@@ -26,6 +26,7 @@ include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model, Sw
 include("input_validation.jl")
 include("constitutive.jl")
 include("interpolation.jl")
+include("three_field.jl")          # needs constitutive.jl, interpolation.jl
 include("opinf/opinf_model.jl")
 include("kroms/krom_model.jl")
 include("model.jl")
