@@ -59,6 +59,7 @@ using YAML
     rm("notched-cylinder-j2-elastic-to-plastic-swap.yaml";        force=true)
     rm("notched-cylinder-j2-elastic-to-plastic-swap-phase2.yaml"; force=true)
     rm("../notched-cylinder-coarse.g";                            force=true)
+    rm("../notched-cylinder-coarse-2.g";                          force=true)
     rm("notched-cylinder-coarse-j2-elastic-to-plastic-swap.e";        force=true)
     rm("notched-cylinder-coarse-j2-elastic-to-plastic-swap-phase2.e"; force=true)
 
