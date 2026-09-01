@@ -45,11 +45,17 @@ using StaticArrays
 # the classical element-constant dilatation; order 1 is linear, which on a
 # quadratic tetrahedron matches the dimension of the volumetric strain the
 # displacement space can actually produce.
+@inline pressure_shape(::Val{0}, ξ::AbstractVector) = SVector{1,Float64}(1.0)
+@inline pressure_shape(::Val{1}, ξ::AbstractVector) = SVector{4,Float64}(1.0, ξ[1], ξ[2], ξ[3])
+
+# Integer entry point.  Its return type is a Union of the two SVector sizes, so
+# anything that calls it in a loop must go through `Val` instead -- see
+# `projected_theta`.
 @inline function pressure_shape(order::Int, ξ::AbstractVector)
     if order == 0
-        return SVector{1,Float64}(1.0)
+        return pressure_shape(Val(0), ξ)
     elseif order == 1
-        return SVector{4,Float64}(1.0, ξ[1], ξ[2], ξ[3])
+        return pressure_shape(Val(1), ξ)
     end
     return error("three-field pressure order must be 0 or 1, got $order")
 end
@@ -92,11 +98,24 @@ for order 1 a 4×4 solve -- small enough that forming it per element per
 evaluation costs nothing measurable next to the constitutive work.
 """
 function projected_theta(order::Int, ξ, θs::AbstractVector{T}, dvols) where {T}
-    m = pressure_dim(order)
+    # Branch on the order ONCE, here, and hand a Val to the kernel.  Calling
+    # pressure_shape(::Int, ...) inside the loop would infer φ as a Union of
+    # SVector{1} and SVector{4} and send every use of it through a dynamic
+    # dispatch.
+    if order == 0
+        return _projected_theta(Val(0), ξ, θs, dvols)
+    elseif order == 1
+        return _projected_theta(Val(1), ξ, θs, dvols)
+    end
+    return error("three-field pressure order must be 0 or 1, got $order")
+end
+
+function _projected_theta(v::Val{K}, ξ, θs::AbstractVector{T}, dvols) where {K,T}
+    m = pressure_dim(K)
     M = zeros(T, m, m)
     b = zeros(T, m)
     for q in eachindex(θs)
-        φ = pressure_shape(order, view(ξ, :, q))
+        φ = pressure_shape(v, view(ξ, :, q))
         w = dvols[q]
         for i in 1:m
             b[i] += w * φ[i] * θs[q]
@@ -106,7 +125,7 @@ function projected_theta(order::Int, ξ, θs::AbstractVector{T}, dvols) where {T
         end
     end
     c = M \ b
-    return [dot(pressure_shape(order, view(ξ, :, q)), c) for q in eachindex(θs)]
+    return [dot(pressure_shape(v, view(ξ, :, q)), c) for q in eachindex(θs)]
 end
 
 """
