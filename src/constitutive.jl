@@ -648,8 +648,11 @@ function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9}; need_tangent
 end
 
 # Deviatoric part of a matrix.  Used by the Simo-Hughes J2 model below.
+# Subtracts through UniformScaling rather than I(3): the latter builds a
+# Diagonal{Bool,Vector{Bool}}, which allocates, and this sits on the hot path
+# of every plastic quadrature point.
 function _dev(A::AbstractMatrix{T}) where {T}
-    return A .- (tr(A) / 3) .* I(3)
+    return A - (tr(A) / 3) * I
 end
 
 # ---------------------------------------------------------------------------
@@ -846,54 +849,59 @@ function _sh_j2_tangent(
     coeff_1x1 = κ * J * (2J - 1.0)
     coeff_I   = 2.0 * κ * J * (J - 1.0)
 
-    # Unit normal
-    n = s_trial_norm > 0.0 ? μ * _dev(be_bar_tr) / s_trial_norm : zeros(3, 3)
+    # Unit normal.  Both branches must yield the same concrete type; a bare
+    # zeros(3,3) here widens n to a Union and sends every use below through a
+    # dynamic dispatch.
+    n = s_trial_norm > 0.0 ?
+        SMatrix{3,3,Float64,9}(μ * _dev(be_bar_tr) / s_trial_norm) :
+        zero(SMatrix{3,3,Float64,9})
 
     f_trial = s_trial_norm - sqrt(2.0/3.0) * (σy + K * α_n)
+    plastic = f_trial > 0.0
 
-    # Assemble spatial tangent c_{ijkl} as 81-element 4th-order tensor
-    CC_spatial = zeros(3, 3, 3, 3)
-
-    # Volumetric: coeff_1x1 δ_ij δ_kl - coeff_I I_ijkl_sym
-    for i in 1:3, j in 1:3, k in 1:3, l in 1:3
-        δij = Float64(i == j); δkl = Float64(k == l)
-        δik = Float64(i == k); δjl = Float64(j == l)
-        δil = Float64(i == l); δjk = Float64(j == k)
-        I_sym = 0.5 * (δik * δjl + δil * δjk)
-
-        CC_spatial[i,j,k,l] += coeff_1x1 * δij * δkl - coeff_I * I_sym
+    # BOX 9.2, Steps 2-3: plastic correction coefficients, and dev(n²).  None
+    # of these depend on (i,j,k,l), so they are computed once here rather than
+    # 81 times inside the assembly loop.
+    β₁ = 0.0
+    β₃ = 0.0
+    β₄ = 0.0
+    n_sq_dev = zero(SMatrix{3,3,Float64,9})
+    if plastic
+        β₀ = 1.0 + K / (3μ̄)
+        β₁ = 2μ̄ * Δγ / s_trial_norm
+        β₂ = (1.0 - 1.0/β₀) * 2.0/3.0 * s_trial_norm / μ * Δγ
+        β₃ = 1.0/β₀ - β₁ + β₂
+        β₄ = (1.0/β₀ - β₁) * s_trial_norm / μ̄
+        n_sq_dev = SMatrix{3,3,Float64,9}(_dev(n * n))
     end
 
-    # Deviatoric trial tangent: C̄_trial
-    # C̄ = 2μ̄[I_sym - (1/3)1⊗1] - (2/3)‖s_trial‖[n⊗1 + 1⊗n]
+    # Spatial tangent c_{ijkl}: volumetric (BOX 9.2 Step 1) + deviatoric trial,
+    # plus the plastic correction when the step yielded.  Assembled in a single
+    # pass into a stack-allocated MArray; the previous form made two passes over
+    # a heap zeros(3,3,3,3).
+    CC_spatial = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3, j in 1:3, k in 1:3, l in 1:3
         δij = Float64(i == j); δkl = Float64(k == l)
         δik = Float64(i == k); δjl = Float64(j == l)
         δil = Float64(i == l); δjk = Float64(j == k)
         I_sym = 0.5 * (δik * δjl + δil * δjk)
 
+        # C = (JU')'·J · (1⊗1) − 2·J·U' · I_sym,  for U(J) = κ/2 (J-1)²
+        c = coeff_1x1 * δij * δkl - coeff_I * I_sym
+
+        # C̄_trial = 2μ̄[I_sym - (1/3)1⊗1] - (2/3)‖s_trial‖[n⊗1 + 1⊗n]
         c_dev = 2μ̄ * (I_sym - 1.0/3.0 * δij * δkl) -
                 2.0/3.0 * s_trial_norm * (n[i,j] * δkl + δij * n[k,l])
 
-        if f_trial ≤ 0.0
-            CC_spatial[i,j,k,l] += c_dev
-        else
-            # BOX 9.2, Step 2-3: Plastic correction
-            β₀ = 1.0 + K / (3μ̄)
-            β₁ = 2μ̄ * Δγ / s_trial_norm
-            β₂ = (1.0 - 1.0/β₀) * 2.0/3.0 * s_trial_norm / μ * Δγ
-            β₃ = 1.0/β₀ - β₁ + β₂
-            β₄ = (1.0/β₀ - β₁) * s_trial_norm / μ̄
-
-            n_sq = n * n
-            n_sq_dev = _dev(n_sq)
-
+        if plastic
             c_dev_n2 = 0.5 * (n[i,j] * n_sq_dev[k,l] + n_sq_dev[i,j] * n[k,l])
-
-            CC_spatial[i,j,k,l] += (1.0 - β₁) * c_dev -
-                                    2μ̄ * β₃ * n[i,j] * n[k,l] -
-                                    2μ̄ * β₄ * c_dev_n2
+            c += (1.0 - β₁) * c_dev -
+                 2μ̄ * β₃ * n[i,j] * n[k,l] -
+                 2μ̄ * β₄ * c_dev_n2
+        else
+            c += c_dev
         end
+        CC_spatial[i,j,k,l] = c
     end
 
     # Pull-back: spatial → material (CC_mat = F⁻¹ ⊗ F⁻¹ : CC_spatial : F⁻¹ ⊗ F⁻¹)
