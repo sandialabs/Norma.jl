@@ -264,10 +264,21 @@ end
     @test isapprox(σvm, σy; rtol=1e-3)
 end
 
-@testset "J2Plasticity FD Tangent" begin
-    # Verify _j2_tangent_fd agrees with the analytical tangent for both
-    # elastic and plastic steps. This keeps coverage on the FD helper,
-    # which is retained as a reference implementation for future models.
+@testset "J2Plasticity Consistent Tangent" begin
+    # Verify the LIVE Simo-Hughes tangent (_sh_j2_tangent, reached through
+    # constitutive) against a central-difference Jacobian of the stress update.
+    #
+    # Elastic branch: the tangent is the exact Jacobian.
+    #
+    # Plastic branch: it is exactly the MAJOR-SYMMETRIC PART of the exact
+    # Jacobian, and not the Jacobian itself.  The Simo-Hughes return map
+    # evaluates the effective shear modulus μ̄ = μ tr(b̄ᵉ_trial)/3 at the trial
+    # state, so the discrete update is not exactly variational and its true
+    # Jacobian carries a small antisymmetric part.  BOX 9.2 discards that part
+    # by construction, which is what a symmetric solver wants.  Measured below:
+    # the symmetric part matches to ~1e-8 while the discarded antisymmetric part
+    # is O(1e-4) of the tangent norm.  Newton stays fast; asymptotic convergence
+    # is not fully quadratic on steps that yield.
     params = Norma.Parameters(
         "elastic modulus" => 200.0e9, "Poisson's ratio" => 0.3,
         "density" => 7800.0, "yield stress" => 250.0e6, "hardening modulus" => 20.0e9,
@@ -275,22 +286,57 @@ end
     mat = Norma.J2Plasticity(params)
     state0 = Norma.initial_state(mat)
 
-    # Elastic step
-    F_el = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.001]
-    W, P, state_new = Norma._j2_stress(mat, F_el, state0)
-    AA_fd = Norma._j2_tangent_fd(mat, F_el, state0, P)
-    AA_an = Norma._j2_tangent_analytical(mat, F_el, state0, P, state_new)
-    @test size(AA_fd) == (3, 3, 3, 3)
-    @test norm(AA_fd - AA_an) / max(norm(AA_fd), norm(AA_an), 1.0) < 1e-4
+    # Central-difference ∂P/∂F, holding the old state fixed, so this measures
+    # the algorithmic (consistent) tangent and not the continuum one.
+    function fd_tangent(mat, F, state_old; h=1.0e-7)
+        AA = zeros(3, 3, 3, 3)
+        for k in 1:3, l in 1:3
+            Fp = MMatrix{3,3,Float64,9}(F)
+            Fm = MMatrix{3,3,Float64,9}(F)
+            Fp[k, l] += h
+            Fm[k, l] -= h
+            _, Pp, _, _ = Norma.constitutive(mat, SMatrix{3,3,Float64,9}(Fp), state_old; need_tangent=false)
+            _, Pm, _, _ = Norma.constitutive(mat, SMatrix{3,3,Float64,9}(Fm), state_old; need_tangent=false)
+            for i in 1:3, j in 1:3
+                AA[i, j, k, l] = (Pp[i, j] - Pm[i, j]) / (2h)
+            end
+        end
+        return AA
+    end
+    major_sym(A) = [0.5 * (A[i, j, k, l] + A[k, l, i, j]) for i in 1:3, j in 1:3, k in 1:3, l in 1:3]
+    major_asym(A) = [0.5 * (A[i, j, k, l] - A[k, l, i, j]) for i in 1:3, j in 1:3, k in 1:3, l in 1:3]
 
-    # Plastic step
+    # Elastic step: exact Jacobian, and no antisymmetric part to discard.
+    F_el = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.001]
+    _, _, AA_el, state_el = Norma.constitutive(mat, F_el, state0)
+    @test state_el[10] == state0[10]          # did not yield
+    AA_el_fd = fd_tangent(mat, F_el, state0)
+    @test size(AA_el_fd) == (3, 3, 3, 3)
+    @test norm(AA_el_fd - Array(AA_el)) / norm(AA_el_fd) < 1.0e-7
+    @test norm(major_asym(AA_el_fd)) / norm(AA_el_fd) < 1.0e-7
+
+    # Plastic steps: symmetric part exact, antisymmetric part discarded.
     F_pre = @SMatrix [0.98 0.02 0.0; 0.0 0.97 0.01; 0.0 0.0 1.05]
-    _, _, s_pre = Norma._j2_stress(mat, F_pre, state0)
-    F_pl = @SMatrix [0.97 0.03 0.0; 0.0 0.96 0.02; 0.0 0.0 1.08]
-    W2, P2, state_new2 = Norma._j2_stress(mat, F_pl, s_pre)
-    AA_fd2 = Norma._j2_tangent_fd(mat, F_pl, s_pre, P2)
-    AA_an2 = Norma._j2_tangent_analytical(mat, F_pl, s_pre, P2, state_new2)
-    @test size(AA_fd2) == (3, 3, 3, 3)
-    # Frozen-Fᵖ approximation introduces O(Δεᵖ) error on plastic steps
-    @test norm(AA_fd2 - AA_an2) / max(norm(AA_fd2), norm(AA_an2), 1.0) < 1e-2
+    _, _, _, s_pre = Norma.constitutive(mat, F_pre, state0; need_tangent=false)
+    plastic_cases = (
+        ("isochoric shear", @SMatrix([1.0 0.032 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]), state0),
+        ("triaxial + shear", @SMatrix([1.10 0.05 0.0; 0.02 0.95 0.01; 0.0 0.01 0.97]), state0),
+        ("preloaded state", @SMatrix([0.97 0.03 0.0; 0.0 0.96 0.02; 0.0 0.0 1.08]), s_pre),
+    )
+    for (name, F, s_old) in plastic_cases
+        @testset "$name" begin
+            _, _, AA, s_new = Norma.constitutive(mat, F, s_old)
+            @test s_new[10] > s_old[10]           # this step yielded
+            AA_fd = fd_tangent(mat, F, s_old)
+            scale = norm(AA_fd)
+            # The coded tangent IS the symmetric part, to FD accuracy.
+            @test norm(major_sym(AA_fd) - Array(AA)) / scale < 1.0e-5
+            # ... and it is NOT the full Jacobian: the discarded antisymmetric
+            # part is real and measurable, which is why the bound above is on
+            # major_sym rather than on the difference itself.
+            asym = norm(major_asym(AA_fd)) / scale
+            @test 1.0e-6 < asym < 1.0e-2
+            @test isapprox(norm(AA_fd - Array(AA)) / scale, asym; rtol=0.05)
+        end
+    end
 end
