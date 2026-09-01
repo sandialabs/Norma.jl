@@ -904,14 +904,43 @@ function _sh_j2_tangent(
         CC_spatial[i,j,k,l] = c
     end
 
-    # Pull-back: spatial → material (CC_mat = F⁻¹ ⊗ F⁻¹ : CC_spatial : F⁻¹ ⊗ F⁻¹)
+    # Pull-back: spatial → material,
+    #   CC_mat[A,B,C,D] = F⁻¹[A,a] F⁻¹[B,b] c[a,b,c,d] F⁻¹[C,c] F⁻¹[D,d]
+    #
+    # Contracting one index at a time costs 4·3⁵ multiplies; contracting all
+    # four at once, as this did, costs 3⁸ -- about thirty times more for the
+    # same result.  The intermediates are stack-allocated MArrays.
+    T1 = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for A in 1:3, b in 1:3, c in 1:3, d in 1:3
+        v = 0.0
+        for a in 1:3
+            v += F_inv[A,a] * CC_spatial[a,b,c,d]
+        end
+        T1[A,b,c,d] = v
+    end
+    T2 = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for A in 1:3, B in 1:3, c in 1:3, d in 1:3
+        v = 0.0
+        for b in 1:3
+            v += F_inv[B,b] * T1[A,b,c,d]
+        end
+        T2[A,B,c,d] = v
+    end
+    T3 = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for A in 1:3, B in 1:3, C in 1:3, d in 1:3
+        v = 0.0
+        for c in 1:3
+            v += F_inv[C,c] * T2[A,B,c,d]
+        end
+        T3[A,B,C,d] = v
+    end
     CC_mat = MArray{Tuple{3,3,3,3},Float64}(undef)
     for A in 1:3, B in 1:3, C in 1:3, D in 1:3
-        val = 0.0
-        for a in 1:3, b in 1:3, c in 1:3, d in 1:3
-            val += F_inv[A,a] * F_inv[B,b] * CC_spatial[a,b,c,d] * F_inv[C,c] * F_inv[D,d]
+        v = 0.0
+        for d in 1:3
+            v += F_inv[D,d] * T3[A,B,C,d]
         end
-        CC_mat[A,B,C,D] = val
+        CC_mat[A,B,C,D] = v
     end
 
     # convect_tangent: CC_mat + S → AA (∂P/∂F)
