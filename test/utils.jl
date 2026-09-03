@@ -63,4 +63,37 @@ using Logging
         end
     end
 
+    @testset "Thread Configuration" begin
+        using LinearAlgebra: BLAS
+        saved_blas_threads = BLAS.get_num_threads()
+        saved_env = [(var, get(ENV, var, nothing)) for var in Norma.NORMA_BLAS_THREAD_VARS]
+        try
+            for (var, _) in saved_env
+                pop!(ENV, var, nothing)
+            end
+
+            # Julia's `-t` sets the task pool; BLAS must follow it, not the
+            # hardware thread count.
+            BLAS.set_num_threads(saved_blas_threads + 1)
+            Norma.configure_threads()
+            @test BLAS.get_num_threads() == Base.Threads.threadpoolsize(:default)
+
+            # An explicit request in the environment wins.
+            for (var, _) in saved_env
+                ENV[var] = "1"
+                BLAS.set_num_threads(2)
+                Norma.configure_threads()
+                @test BLAS.get_num_threads() == 2
+                pop!(ENV, var, nothing)
+            end
+
+            @test occursin("BLAS", Norma.thread_report())
+        finally
+            for (var, value) in saved_env
+                value === nothing ? pop!(ENV, var, nothing) : (ENV[var] = value)
+            end
+            BLAS.set_num_threads(saved_blas_threads)
+        end
+    end
+
 end

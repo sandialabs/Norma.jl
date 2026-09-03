@@ -3,6 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+using LinearAlgebra
 using Logging
 using Printf
 
@@ -227,6 +228,39 @@ function configure_logger()
         global_logger(ConsoleLogger(stderr, Logging.Info))
     end
     return nothing
+end
+
+# Julia's `-t` sizes only the Julia task thread pool. Every native library
+# underneath keeps a pool of its own: OpenBLAS defaults to half the hardware
+# threads no matter what `-t` says, so a run pinned with `-t 2` still spawns
+# twelve BLAS threads on a twenty four core machine and oversubscribes it. The
+# linear solver reaches that pool through the level 1 operations of the
+# conjugate gradient iteration, and the rest of the code reaches it through the
+# supernodal Cholesky factorization behind consistent stress recovery and the
+# singular value decomposition behind the Schwarz projectors. Bind it to the
+# Julia thread count so that `-t n` means n threads for the whole run.
+#
+# An explicit OPENBLAS_NUM_THREADS or OMP_NUM_THREADS in the environment is the
+# user addressing the library directly, and always wins.
+const NORMA_BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS")
+
+function configure_threads()
+    for var in NORMA_BLAS_THREAD_VARS
+        get(ENV, var, "") == "" || return nothing
+    end
+    BLAS.set_num_threads(Threads.threadpoolsize(:default))
+    return nothing
+end
+
+function thread_report()::String
+    julia_threads = Threads.threadpoolsize(:default)
+    interactive_threads = Threads.threadpoolsize(:interactive)
+    blas_threads = BLAS.get_num_threads()
+    report = @sprintf("Julia = %d, BLAS = %d", julia_threads, blas_threads)
+    if interactive_threads > 0
+        report *= @sprintf(", interactive = %d", interactive_threads)
+    end
+    return report
 end
 
 function format_time(seconds::Float64)::String

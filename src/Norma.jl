@@ -65,6 +65,7 @@ end
 
 function run(sim::Simulation)
     start_time = time()
+    norma_log(0, :info, "Threads: " * thread_report())
     try
         evolve(sim)
     finally
@@ -84,6 +85,14 @@ function run(sim::Simulation)
 end
 
 configure_logger()
+configure_threads()
+
+# The calls above run while the module body is evaluated, which covers the
+# script entry point below but is skipped when the module is loaded from a
+# precompiled cache.  Repeat the thread setup here, where it runs on every load.
+function __init__()
+    return configure_threads()
+end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     input_file = parse_args()
