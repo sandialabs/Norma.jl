@@ -88,6 +88,27 @@ using Logging
             end
 
             @test occursin("BLAS", Norma.thread_report())
+
+            # An automatic count is refused, whether given on the command
+            # line (Julia records it as -1) or in the environment.
+            @test Norma.thread_count_is_auto(-1, "") == true
+            @test Norma.thread_count_is_auto(0, "auto") == true
+            @test Norma.thread_count_is_auto(0, " AUTO ") == true
+            @test Norma.thread_count_is_auto(0, "") == false
+            @test Norma.thread_count_is_auto(5, "") == false
+            @test Norma.thread_count_is_auto(0, "8") == false
+            @test Norma.thread_count_is_auto(5, "auto") == false
+            @test Norma.thread_count_is_auto() == false
+            saved_julia_threads = get(ENV, "JULIA_NUM_THREADS", nothing)
+            try
+                ENV["JULIA_NUM_THREADS"] = "auto"
+                Norma.NORMA_TEST_MODE[] = true
+                @test_throws Norma.NormaAbortException Norma.configure_threads()
+            finally
+                Norma.NORMA_TEST_MODE[] = false
+                saved_julia_threads === nothing ? pop!(ENV, "JULIA_NUM_THREADS", nothing) :
+                (ENV["JULIA_NUM_THREADS"] = saved_julia_threads)
+            end
         finally
             for (var, value) in saved_env
                 value === nothing ? pop!(ENV, var, nothing) : (ENV[var] = value)

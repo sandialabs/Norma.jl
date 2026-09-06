@@ -2,7 +2,7 @@
 # CLI entry point for Norma.jl
 #
 # Usage:
-#   bin/norma input.yaml
+#   bin/norma input.yaml               (one thread)
 #   bin/norma input.yaml --threads 8
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -29,10 +29,17 @@ if [[ -z "${JULIA_ARGS[*]}" ]]; then
     exit 1
 fi
 
-THREAD_FLAG=""
-if [[ -n "$THREADS" ]]; then
-    THREAD_FLAG="-t $THREADS"
+# Norma never runs with an automatic thread count: on a large node it sizes
+# both thread pools to the hardware thread count and oversubscribes the linear
+# solver. Without a flag the run is serial, and the flag is always passed so
+# that a JULIA_NUM_THREADS setting in the environment cannot change that.
+if [[ -z "$THREADS" ]]; then
+    THREADS=1
+elif [[ "${THREADS,,}" == auto* ]]; then
+    echo "norma: --threads auto is not supported; pass an explicit count" >&2
+    exit 1
 fi
+THREAD_FLAG="-t $THREADS"
 
 # Size the OpenBLAS thread pool before Julia starts. Norma binds the BLAS
 # thread count to the Julia thread count at startup, but OpenBLAS has already
@@ -41,12 +48,7 @@ fi
 # requested size. A variable already in the environment is left alone, since
 # Norma treats it as the user addressing the library directly.
 if [[ -z "${OPENBLAS_NUM_THREADS:-}" && -z "${OMP_NUM_THREADS:-}" ]]; then
-    case "$THREADS" in
-        "")   BLAS_THREADS=1 ;;
-        auto) BLAS_THREADS="$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 1)" ;;
-        *)    BLAS_THREADS="${THREADS%%,*}" ;;
-    esac
-    export OPENBLAS_NUM_THREADS="$BLAS_THREADS"
+    export OPENBLAS_NUM_THREADS="${THREADS%%,*}"
 fi
 
 exec julia $THREAD_FLAG --project="$PROJECT_DIR" "$PROJECT_DIR/src/Norma.jl" "${JULIA_ARGS[@]}"

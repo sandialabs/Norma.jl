@@ -244,7 +244,28 @@ end
 # user addressing the library directly, and always wins.
 const NORMA_BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS")
 
+# Norma never runs with an automatic thread count. `-t auto` sizes both pools
+# to the hardware thread count, which on a large node oversubscribes the level
+# 1 BLAS calls of the linear solver and slows the run by orders of magnitude.
+# Julia records `-t auto` as a thread option of -1. The environment form leaves
+# the option at 0 with the request in JULIA_NUM_THREADS, and an explicit -t on
+# the command line overrides it.
+function thread_count_is_auto(nthreads_option::Integer, env_request::AbstractString)::Bool
+    nthreads_option == -1 && return true
+    return nthreads_option == 0 && lowercase(strip(env_request)) == "auto"
+end
+
+function thread_count_is_auto()::Bool
+    return thread_count_is_auto(Base.JLOptions().nthreads, get(ENV, "JULIA_NUM_THREADS", ""))
+end
+
 function configure_threads()
+    if thread_count_is_auto()
+        norma_abort(
+            "Norma does not run with an automatic thread count. " *
+            "Pass an explicit count with -t N or --threads N, or omit the flag to run with one thread.",
+        )
+    end
     for var in NORMA_BLAS_THREAD_VARS
         get(ENV, var, "") == "" || return nothing
     end

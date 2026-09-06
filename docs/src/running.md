@@ -37,6 +37,8 @@ to take effect.
 
 ## Multiple threads
 
+Norma runs with one thread unless a count is requested:
+
 ```bash
 bin/norma input.yaml --threads 8
 ```
@@ -53,11 +55,18 @@ through the linear solver, the consistent stress recovery and the Schwarz
 projectors stay within the requested budget instead of defaulting to half the
 hardware threads. Without a thread flag the run is serial in both pools.
 
+An automatic count is refused: `-t auto`, `--threads auto` and
+`JULIA_NUM_THREADS=auto` all abort the run at startup. On a large node the
+automatic count sizes both pools to the hardware thread count, and the level 1
+BLAS calls of the linear solver then spend their time synchronizing hundreds of
+threads instead of computing. Ask for the number of cores you intend to use.
+
 The binding resizes the pool after OpenBLAS has created it, so a run started
 with `julia` directly still owns the idle default threads, and a process
 monitor lists them. The `bin/norma` launcher avoids this by exporting
 `OPENBLAS_NUM_THREADS` to match the requested count before Julia starts, so
-the pool is created at the right size.
+the pool is created at the right size, and always passes `-t` so that a
+`JULIA_NUM_THREADS` setting in the environment cannot change the count.
 
 To size the two pools independently, set `OPENBLAS_NUM_THREADS` (or
 `OMP_NUM_THREADS`) in the environment. Either variable disables the binding and
