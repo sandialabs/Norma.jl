@@ -259,8 +259,8 @@ function thread_count_is_auto()::Bool
     return thread_count_is_auto(Base.JLOptions().nthreads, get(ENV, "JULIA_NUM_THREADS", ""))
 end
 
-function configure_threads()
-    if thread_count_is_auto()
+function configure_threads(auto_count::Bool=thread_count_is_auto())
+    if auto_count
         norma_abort(
             "Norma does not run with an automatic thread count. " *
             "Pass an explicit count with -t N or --threads N, or omit the flag to run with one thread.",

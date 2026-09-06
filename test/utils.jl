@@ -99,16 +99,15 @@ using Logging
             @test Norma.thread_count_is_auto(0, "8") == false
             @test Norma.thread_count_is_auto(5, "auto") == false
             @test Norma.thread_count_is_auto() == false
-            saved_julia_threads = get(ENV, "JULIA_NUM_THREADS", nothing)
+            # Pkg.test launches the test process with an explicit -t, so the
+            # environment form cannot be exercised here; pass the flag directly.
+            Norma.NORMA_TEST_MODE[] = true
             try
-                ENV["JULIA_NUM_THREADS"] = "auto"
-                Norma.NORMA_TEST_MODE[] = true
-                @test_throws Norma.NormaAbortException Norma.configure_threads()
+                @test_throws Norma.NormaAbortException Norma.configure_threads(true)
             finally
                 Norma.NORMA_TEST_MODE[] = false
-                saved_julia_threads === nothing ? pop!(ENV, "JULIA_NUM_THREADS", nothing) :
-                (ENV["JULIA_NUM_THREADS"] = saved_julia_threads)
             end
+            @test Norma.configure_threads(false) === nothing
         finally
             for (var, value) in saved_env
                 value === nothing ? pop!(ENV, var, nothing) : (ENV[var] = value)
