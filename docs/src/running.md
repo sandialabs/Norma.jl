@@ -53,6 +53,12 @@ through the linear solver, the consistent stress recovery and the Schwarz
 projectors stay within the requested budget instead of defaulting to half the
 hardware threads. Without a thread flag the run is serial in both pools.
 
+The binding resizes the pool after OpenBLAS has created it, so a run started
+with `julia` directly still owns the idle default threads, and a process
+monitor lists them. The `bin/norma` launcher avoids this by exporting
+`OPENBLAS_NUM_THREADS` to match the requested count before Julia starts, so
+the pool is created at the right size.
+
 To size the two pools independently, set `OPENBLAS_NUM_THREADS` (or
 `OMP_NUM_THREADS`) in the environment. Either variable disables the binding and
 Norma leaves the library at the requested value:

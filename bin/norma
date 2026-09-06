@@ -34,4 +34,19 @@ if [[ -n "$THREADS" ]]; then
     THREAD_FLAG="-t $THREADS"
 fi
 
+# Size the OpenBLAS thread pool before Julia starts. Norma binds the BLAS
+# thread count to the Julia thread count at startup, but OpenBLAS has already
+# created its pool by then, one thread per two cores, and those idle threads
+# stay visible in top. Setting the variable here keeps the pool itself at the
+# requested size. A variable already in the environment is left alone, since
+# Norma treats it as the user addressing the library directly.
+if [[ -z "${OPENBLAS_NUM_THREADS:-}" && -z "${OMP_NUM_THREADS:-}" ]]; then
+    case "$THREADS" in
+        "")   BLAS_THREADS=1 ;;
+        auto) BLAS_THREADS="$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 1)" ;;
+        *)    BLAS_THREADS="${THREADS%%,*}" ;;
+    esac
+    export OPENBLAS_NUM_THREADS="$BLAS_THREADS"
+fi
+
 exec julia $THREAD_FLAG --project="$PROJECT_DIR" "$PROJECT_DIR/src/Norma.jl" "${JULIA_ARGS[@]}"
