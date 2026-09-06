@@ -64,10 +64,15 @@ jobs:
       # explicitly here so its shared deps.jl is configured against `python`
       # rather than falling back to the Conda backend (which isn't provisioned).
       # This also overrides any Conda-configured deps.jl restored from cache.
+      # Automatic precompilation is disabled for the add: Conda's module body
+      # requires its root environment directory, which only its build script
+      # creates, so precompiling before the build fails with a spurious error.
+      # The test step precompiles everything afterwards.
       - name: Build PyCall against the system Python
         run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("PyCall"); Pkg.build("PyCall")'
         env:
           PYTHON: python
+          JULIA_PKG_PRECOMPILE_AUTO: 0
 
       - name: Run tests
         run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--with-nnopinf"])'
