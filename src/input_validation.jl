@@ -46,10 +46,13 @@ function levenshtein_distance(a::AbstractString, b::AbstractString)
     return prev[lb + 1]
 end
 
+# Candidates are scanned in sorted order so that a tie between equally close
+# keys is broken alphabetically. Scanning the set directly would make the
+# suggestion depend on hash order, which differs between Julia versions.
 function suggest_key(key::AbstractString, known::AbstractSet{String}; max_distance::Int=5)
     best_distance = max_distance + 1
     best_key = ""
-    for k in known
+    for k in sort!(collect(known))
         d = levenshtein_distance(lowercase(key), lowercase(k))
         if d < best_distance
             best_distance = d
