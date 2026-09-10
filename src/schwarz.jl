@@ -2167,6 +2167,16 @@ function component_offset_from_string(name::String)
     return offset
 end
 
+# Boundary conditions are applied in creation order, and a node can belong to
+# more than one of them: a Schwarz interface meets the clamped or symmetry
+# faces along its edges. The last condition applied to such a node wins. The
+# input dictionary iterates in hash order, which changed between Julia 1.12
+# and 1.13 and flipped which condition won on those nodes. The types are
+# therefore created in a fixed order: prescribed (Dirichlet) conditions last,
+# so that they hold exactly on shared nodes, with the others before them in
+# alphabetical order. Entries of one type keep their order in the input file.
+bc_type_rank(bc_type::AbstractString) = (endswith(bc_type, "Dirichlet"), bc_type)
+
 function _create_bcs(subsim::SingleDomainSimulation)
     boundary_conditions = Vector{BoundaryCondition}()
     params = subsim.params
@@ -2175,7 +2185,8 @@ function _create_bcs(subsim::SingleDomainSimulation)
     end
     input_mesh = params["input_mesh"]
     bc_params = params["boundary conditions"]
-    for (bc_type, bc_type_params) in bc_params
+    for bc_type in sort(collect(keys(bc_params)); by=bc_type_rank)
+        bc_type_params = bc_params[bc_type]
         for bc_setting_params in bc_type_params
             if bc_type == "Dirichlet"
                 # Same "Dirichlet" syntax for both: a "node set" entry applies on

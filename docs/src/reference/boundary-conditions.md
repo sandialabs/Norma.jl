@@ -24,6 +24,13 @@ covers the single-domain condition types. The Schwarz coupling condition types
 `Schwarz impedance overlap`, `Schwarz contact`) are documented under
 [Multidomain and Schwarz coupling](multidomain.md).
 
+Conditions are applied in a fixed order that does not depend on the order of
+the type keys in the file: all other types first, in alphabetical order of the
+type name, and the prescribed types (`Dirichlet`, `OpInf Dirichlet`) last.
+Entries of one type keep their order in the list. A node that belongs to more
+than one condition, such as an interface edge node that also lies on a
+symmetry or clamped face, therefore ends up with its prescribed value.
+
 The `component` value is always one of `x`, `y`, or `z`. The `function` value is
 a [function expression](functions.md) in `t, x, y, z`. Geometry is selected by a
 `node set` or `side set` name from the Exodus mesh, as noted per type.

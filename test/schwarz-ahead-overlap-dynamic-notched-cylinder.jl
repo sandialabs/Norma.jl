@@ -105,12 +105,12 @@ end
     avg_stress_1 = average_components(model_1.stress)
     avg_stress_2 = average_components(model_2.stress)
 
-    @test min_disp_x_1 ≈ -1.6651285885280198e-5 atol = 1e-12
-    @test min_disp_y_1 ≈ -1.662806113268689e-5 atol = 1e-12
-    @test max_disp_z_1 ≈ 0.00010485387156757009 atol = 1e-12
-    @test min_disp_x_2 ≈ -1.6461199941086857e-5 atol = 1e-12
-    @test min_disp_y_2 ≈ -1.643006006920439e-5 atol = 1e-12
-    @test min_disp_z_2 ≈ 4.895828234158239e-5 atol = 1e-12
+    @test min_disp_x_1 ≈ -1.6651281086910164e-5 atol = 1e-12
+    @test min_disp_y_1 ≈ -1.662807581651743e-5 atol = 1e-12
+    @test max_disp_z_1 ≈ 0.00010485389574467485 atol = 1e-12
+    @test min_disp_x_2 ≈ -1.6461195725702922e-5 atol = 1e-12
+    @test min_disp_y_2 ≈ -1.6430082772141334e-5 atol = 1e-12
+    @test min_disp_z_2 ≈ 4.8958285567751725e-5 atol = 1e-12
     @test avg_stress_1 ≈
         [74255.45497241359 71739.39938200016 1.680138271523533e6 258948.1851516863 270573.5517476705 75797.27494781958] atol =
         1.0e1

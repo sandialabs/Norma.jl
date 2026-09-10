@@ -520,7 +520,9 @@ function SMCouplingSchwarzBC(
         # Z_s = √(ρμ) = ρ c_s, computed from material properties.
         function _ps_impedances(sim)
             mat_params = sim.params["model"]["material"]
-            mat_props = mat_params[first(values(mat_params["blocks"]))]
+            # Deterministic choice among the blocks: the dictionary iterates in
+            # hash order, which is not stable across Julia versions.
+            mat_props = mat_params[mat_params["blocks"][minimum(keys(mat_params["blocks"]))]]
             E = Float64(mat_props["elastic modulus"])
             ν = Float64(mat_props["Poisson's ratio"])
             ρ = Float64(mat_props["density"])

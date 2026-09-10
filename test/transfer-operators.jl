@@ -20,8 +20,11 @@
     rm("transfer.yaml"; force=true)
     rm("src.yaml"; force=true)
     rm("dst.yaml"; force=true)
-    src_bc_index = 4
-    dst_bc_index = 4
+    # Locate the contact BCs by type: the creation order of the BC types is
+    # fixed by Norma, not by the position in this list.
+    is_contact(bc) = bc isa Norma.SolidMechanicsContactSchwarzBoundaryCondition
+    src_bc_index = findfirst(is_contact, src_model.boundary_conditions)
+    dst_bc_index = findfirst(is_contact, dst_model.boundary_conditions)
     src_bc = src_model.boundary_conditions[src_bc_index]
     dst_bc = dst_model.boundary_conditions[dst_bc_index]
     src_side_set_id = src_bc.side_set_id
