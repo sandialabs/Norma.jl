@@ -50,6 +50,7 @@
     rm("tension-specimen-j2-elastic-to-plastic-swap.yaml";        force=true)
     rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.yaml"; force=true)
     rm("../tension-specimen-coarse.g";                            force=true)
+    rm("../tension-specimen-coarse-2.g";                          force=true)
     rm("tension-specimen-j2-elastic-to-plastic-swap.e";           force=true)
     rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.e";    force=true)
 
