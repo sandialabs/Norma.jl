@@ -278,6 +278,8 @@ function SolidMechanics(params::Parameters)
         consistent_recovered_internal_variables,
         num_int_pts,
         block_data,
+        create_element_value_buffers(block_data),
+        nothing,
         restart_info !== nothing,
     )
 end
@@ -498,13 +500,6 @@ function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9},
 end
 
 
-function dense(indices::Vector{Int64}, values::Vector{Float64}, vector_size::Int64)
-    dense_vector = zeros(vector_size)
-    @inbounds for i in 1:length(indices)
-        dense_vector[indices[i]] += values[i]
-    end
-    return dense_vector
-end
 
 @generated function create_element_matrix(::Type{T}, ::Val{N}) where {T,N}
     dof_per_node = 3
@@ -522,107 +517,15 @@ end
     end
 end
 
-function create_gradient_operator(dNdX::SMatrix{3,N,T})::SMatrix{9,3N,T} where {N,T}
-    B = MMatrix{9,3N,T}(undef)
-    fill!(B, zero(T))
-    @inbounds for i in 1:3         # i = direction of derivative
-        for a in 1:N              # a = local node index
-            # Place dNdX[:, a] into the appropriate 3×1 column
-            B[(3 * (i - 1) + 1):(3 * i), (3 * (a - 1) + i)] = dNdX[:, a]
-        end
-    end
-    return SMatrix{9,3N,T}(B)
-end
 
-function create_coo_vector(capacity::Int64)
-    index = Vector{Int64}(undef, capacity)
-    vals = Vector{Float64}(undef, capacity)
-    return COOVector(index, vals, 0)
-end
 
-function create_coo_matrix(capacity::Int64)
-    rows = Vector{Int64}(undef, capacity)
-    cols = Vector{Int64}(undef, capacity)
-    vals = Vector{Float64}(undef, capacity)
-    return COOMatrix(rows, cols, vals, 0)
-end
 
-function ensure_capacity!(vector::COOVector, needed::Int64)
-    current = length(vector.index)
-    required = vector.len + needed
-    if required > current
-        newcap = max(required, ceil(Int64, 1.5 * current))
-        resize!(vector.index, newcap)
-        resize!(vector.vals, newcap)
-    end
-    return nothing
-end
 
-function ensure_capacity!(matrix::COOMatrix, needed::Int64)
-    current = length(matrix.rows)
-    required = matrix.len + needed
-    if required > current
-        newcap = max(required, ceil(Int64, 1.5 * current))
-        resize!(matrix.rows, newcap)
-        resize!(matrix.cols, newcap)
-        resize!(matrix.vals, newcap)
-    end
-    return nothing
-end
 
-function assemble!(global_vector::COOVector, element_vector::AbstractVector{Float64}, dofs::AbstractVector{Int64})
-    ndofs = length(dofs)
-    ensure_capacity!(global_vector, ndofs)
-    idx = global_vector.len + 1
-    @inbounds for i in 1:ndofs
-        global_vector.index[idx] = dofs[i]
-        global_vector.vals[idx] = element_vector[i]
-        idx += 1
-    end
-    global_vector.len += ndofs
-    return nothing
-end
 
-function assemble!(global_matrix::COOMatrix, element_matrix::AbstractMatrix{Float64}, dofs::AbstractVector{Int64})
-    ndofs = length(dofs)
-    n2 = ndofs * ndofs
-    ensure_capacity!(global_matrix, n2)
-    idx = global_matrix.len + 1
-    @inbounds for i in 1:ndofs
-        I = dofs[i]
-        @inbounds for j in 1:ndofs
-            global_matrix.rows[idx] = I
-            global_matrix.cols[idx] = dofs[j]
-            global_matrix.vals[idx] = element_matrix[i, j]
-            idx += 1
-        end
-    end
-    global_matrix.len += n2
-    return nothing
-end
 
-function count_coo_matrix_nnz(model::SolidMechanics)
-    total = 0
-    for block in model.blocks
-        total += block.num_elements * block.num_nodes_per_element * block.num_nodes_per_element * 9
-    end
-    return total
-end
 
-function merge_threadlocal_coo_vectors(coo_vectors::Vector{COOVector}, num_dof::Int64)
-    # Trimmed slices
-    index = vcat((v.index[1:(v.len)] for v in coo_vectors)...)
-    vals = vcat((v.vals[1:(v.len)] for v in coo_vectors)...)
-    return dense(index, vals, num_dof)
-end
 
-function merge_threadlocal_coo_matrices(coo_matrices::Vector{COOMatrix}, num_dof::Int64)
-    # Trimmed slices
-    rows = vcat((m.rows[1:(m.len)] for m in coo_matrices)...)
-    cols = vcat((m.cols[1:(m.len)] for m in coo_matrices)...)
-    vals = vcat((m.vals[1:(m.len)] for m in coo_matrices)...)
-    return sparse(rows, cols, vals, num_dof, num_dof)
-end
 
 using Base.Threads
 
@@ -634,18 +537,7 @@ function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
     return [create_element_vector(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
 
-# One buffer per thread id, all with the same capacity. Thread ids are not
-# grouped by pool (the interactive threads come first), so sizing by pool
-# handed the default thread doing the work an undersized buffer.
-function create_threadlocal_coo_vectors(num_dofs::Integer)
-    capacity = cld(num_dofs, Threads.threadpoolsize(:default))
-    return [create_coo_vector(capacity) for _ in 1:Threads.maxthreadid()]
-end
 
-function create_threadlocal_coo_matrices(coo_matrix_nnz::Integer)
-    capacity = cld(coo_matrix_nnz, Threads.threadpoolsize(:default))
-    return [create_coo_matrix(capacity) for _ in 1:Threads.maxthreadid()]
-end
 
 # Internal force from the first Piola-Kirchhoff stress: for node a and
 # direction i, f[(a,i)] += P[i,k] dN_a/dX_k dV, written as loops over the
@@ -721,6 +613,155 @@ function add_lumped_mass!(M::MVector{R,T}, Nξ::SVector{N,T}, density::T, dV::T)
     return nothing
 end
 
+# Degrees of freedom of an element, three per node in node order.
+@inline function fill_dofs!(dofs::AbstractVector{Int64}, connectivity::Matrix{Int64}, element::Integer)
+    @inbounds for (a, node) in enumerate(view(connectivity, :, element))
+        base = 3 * (a - 1)
+        dofs[base + 1] = 3 * node - 2
+        dofs[base + 2] = 3 * node - 1
+        dofs[base + 3] = 3 * node
+    end
+    return nothing
+end
+
+function create_element_value_buffers(blocks::Vector{ElementBlockData})
+    force = [zeros(3 * block.num_nodes_per_element * block.num_elements) for block in blocks]
+    lumped_mass = [zeros(3 * block.num_nodes_per_element * block.num_elements) for block in blocks]
+    return ElementValueBuffers(force, lumped_mass)
+end
+
+# The sparsity pattern is that of the sum over elements of the element
+# matrices; it is built once from the connectivity. For every element entry
+# the position in the value array is found by a search in its column.
+function build_matrix_pattern(model::SolidMechanics)
+    blocks = model.blocks
+    num_dofs = 3 * size(model.reference, 2)
+    total = sum(block.num_elements * (3 * block.num_nodes_per_element)^2 for block in blocks; init=0)
+    rows = Vector{Int64}(undef, total)
+    cols = Vector{Int64}(undef, total)
+    k = 0
+    for block in blocks
+        nd = 3 * block.num_nodes_per_element
+        dofs = Vector{Int64}(undef, nd)
+        for element in 1:block.num_elements
+            fill_dofs!(dofs, block.connectivity, element)
+            @inbounds for j in 1:nd, i in 1:nd
+                k += 1
+                rows[k] = dofs[i]
+                cols[k] = dofs[j]
+            end
+        end
+    end
+    structure = sparse(rows, cols, ones(total), num_dofs, num_dofs)
+    colptr = structure.colptr
+    rowval = structure.rowval
+    slots = Vector{Vector{Int64}}(undef, length(blocks))
+    for (block_index, block) in enumerate(blocks)
+        nd = 3 * block.num_nodes_per_element
+        dofs = Vector{Int64}(undef, nd)
+        block_slots = Vector{Int64}(undef, block.num_elements * nd * nd)
+        k = 0
+        for element in 1:block.num_elements
+            fill_dofs!(dofs, block.connectivity, element)
+            @inbounds for j in 1:nd
+                col = dofs[j]
+                lo = colptr[col]
+                hi = colptr[col + 1] - 1
+                column_rows = view(rowval, lo:hi)
+                for i in 1:nd
+                    k += 1
+                    block_slots[k] = lo - 1 + searchsortedfirst(column_rows, dofs[i])
+                end
+            end
+        end
+        slots[block_index] = block_slots
+    end
+    stiffness = [zeros(length(block_slots)) for block_slots in slots]
+    mass = [zeros(length(block_slots)) for block_slots in slots]
+    return MatrixPattern(colptr, rowval, slots, stiffness, mass)
+end
+
+# Copy the element arrays of one element into its value segments. Segments of
+# different elements are disjoint, so this is safe from any thread.
+function store_element_values!(
+    element_arrays_tl::SMElementThreadLocalArrays,
+    block_element_index::Int64,
+    force_values::Vector{Float64},
+    lumped_mass_values::Vector{Float64},
+    stiffness_values::Vector{Float64},
+    mass_values::Vector{Float64},
+    flags::EvaluationFlags,
+)
+    t = threadid()
+    nd = length(element_arrays_tl.dofs[t])
+    offset = (block_element_index - 1) * nd
+    fe = element_arrays_tl.internal_force[t]
+    @inbounds for i in 1:nd
+        force_values[offset + i] = fe[i]
+    end
+    if flags.compute_lumped_mass == true
+        me = element_arrays_tl.lumped_mass[t]
+        @inbounds for i in 1:nd
+            lumped_mass_values[offset + i] = me[i]
+        end
+    end
+    n2 = nd * nd
+    offset2 = (block_element_index - 1) * n2
+    if flags.compute_stiffness == true
+        Ke = element_arrays_tl.stiffness[t]
+        @inbounds for k in 1:n2
+            stiffness_values[offset2 + k] = Ke[k]
+        end
+    end
+    if flags.compute_mass == true
+        Me = element_arrays_tl.mass[t]
+        @inbounds for k in 1:n2
+            mass_values[offset2 + k] = Me[k]
+        end
+    end
+    return nothing
+end
+
+function reduce_element_vector(blocks::Vector{ElementBlockData}, values::Vector{Vector{Float64}}, num_dofs::Int64)
+    global_vector = zeros(num_dofs)
+    for (block_index, block) in enumerate(blocks)
+        block_values = values[block_index]
+        connectivity = block.connectivity
+        num_nodes_per_element = block.num_nodes_per_element
+        k = 0
+        @inbounds for element in 1:block.num_elements, a in 1:num_nodes_per_element
+            base = 3 * (connectivity[a, element] - 1)
+            global_vector[base + 1] += block_values[k + 1]
+            global_vector[base + 2] += block_values[k + 2]
+            global_vector[base + 3] += block_values[k + 3]
+            k += 3
+        end
+    end
+    return global_vector
+end
+
+function reduce_element_matrix(pattern::MatrixPattern, values::Vector{Vector{Float64}}, num_dofs::Int64)
+    nzval = zeros(length(pattern.rowval))
+    for block_index in eachindex(values)
+        block_values = values[block_index]
+        block_slots = pattern.slots[block_index]
+        @inbounds for k in eachindex(block_values)
+            nzval[block_slots[k]] += block_values[k]
+        end
+    end
+    return SparseMatrixCSC(num_dofs, num_dofs, pattern.colptr, pattern.rowval, nzval)
+end
+
+# K + M / β / Δt² for the Newmark Hessian. Matrices built from the same pattern
+# share their structure arrays, so the sum is a pass over the values with the
+# same elementwise arithmetic as the generic expression.
+function newmark_hessian(K::SparseMatrixCSC{Float64,Int64}, M::SparseMatrixCSC{Float64,Int64}, β::Float64, Δt::Float64)
+    if K.colptr === M.colptr && K.rowval === M.rowval
+        return SparseMatrixCSC(K.m, K.n, K.colptr, K.rowval, K.nzval .+ M.nzval ./ β ./ Δt ./ Δt)
+    end
+    return K + M / β / Δt / Δt
+end
+
 function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     is_implicit_dynamic = integrator isa Newmark
     is_explicit_dynamic = integrator isa CentralDifference
@@ -752,34 +793,6 @@ function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver
     )
 end
 
-function create_threadlocal_arrays(model::SolidMechanics, flags::EvaluationFlags)
-    num_nodes = size(model.reference, 2)
-    num_dofs = 3 * num_nodes
-    energy = zeros(maxthreadid())
-    internal_force = create_threadlocal_coo_vectors(num_dofs)
-
-    lumped_mass = create_threadlocal_coo_vectors(flags.compute_lumped_mass ? num_dofs : 0)
-    if flags.compute_lumped_mass == true
-        model.compute_lumped_mass = false
-    end
-
-    if flags.compute_stiffness == true || flags.compute_mass == true
-        coo_matrix_nnz = count_coo_matrix_nnz(model)
-    else
-        coo_matrix_nnz = 0
-    end
-
-    stiffness = create_threadlocal_coo_matrices(flags.compute_stiffness ? coo_matrix_nnz : 0)
-    if flags.compute_stiffness == true && model.kinematics == Infinitesimal
-        model.compute_stiffness = false
-    end
-
-    mass = create_threadlocal_coo_matrices(flags.compute_mass ? coo_matrix_nnz : 0)
-    if flags.compute_mass == true
-        model.compute_mass = false
-    end
-    return SMThreadLocalArrays(energy, internal_force, lumped_mass, stiffness, mass)
-end
 
 function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
     valN = Val(num_element_nodes)
@@ -800,13 +813,7 @@ function reset_element_threadlocal_arrays!(
 )
     t = threadid()
     node_indices = view(element_block_connectivity, :, block_element_index)
-    dofs = element_arrays_tl.dofs[t]
-    @inbounds for (a, node) in enumerate(node_indices)
-        base = 3 * (a - 1)
-        dofs[base + 1] = 3 * node - 2
-        dofs[base + 2] = 3 * node - 1
-        dofs[base + 3] = 3 * node
-    end
+    fill_dofs!(element_arrays_tl.dofs[t], element_block_connectivity, block_element_index)
     element_arrays_tl.energy[t] = 0.0
     fill!(element_arrays_tl.internal_force[t], 0.0)
     if flags.compute_lumped_mass == true
@@ -847,48 +854,31 @@ function compute_element_threadlocal_arrays!(
     return nothing
 end
 
-function assemble_element_threadlocal_arrays!(
-    arrays_tl::SMThreadLocalArrays, element_arrays_tl::SMElementThreadLocalArrays, flags::EvaluationFlags
-)
-    t = threadid()
-    arrays_tl.energy[t] += element_arrays_tl.energy[t]
-    assemble!(arrays_tl.internal_force[t], element_arrays_tl.internal_force[t], element_arrays_tl.dofs[t])
-    if flags.compute_lumped_mass == true
-        assemble!(arrays_tl.lumped_mass[t], element_arrays_tl.lumped_mass[t], element_arrays_tl.dofs[t])
-    end
-    if flags.compute_stiffness == true
-        assemble!(arrays_tl.stiffness[t], element_arrays_tl.stiffness[t], element_arrays_tl.dofs[t])
-    end
-    if flags.compute_mass == true
-        assemble!(arrays_tl.mass[t], element_arrays_tl.mass[t], element_arrays_tl.dofs[t])
-    end
-    return nothing
-end
 
-function merge_threadlocal_arrays(
-    model::SolidMechanics, arrays_tl::SMThreadLocalArrays, num_dofs::Int64, flags::EvaluationFlags
-)
-    model.strain_energy = sum(arrays_tl.energy)
-    model.internal_force = merge_threadlocal_coo_vectors(arrays_tl.internal_force, num_dofs)
-    if flags.compute_lumped_mass == true
-        model.lumped_mass = merge_threadlocal_coo_vectors(arrays_tl.lumped_mass, num_dofs)
-    end
-    if flags.compute_stiffness == true
-        model.stiffness = merge_threadlocal_coo_matrices(arrays_tl.stiffness, num_dofs)
-    end
-    if flags.compute_mass == true
-        model.mass = merge_threadlocal_coo_matrices(arrays_tl.mass, num_dofs)
-    end
-    return nothing
-end
 
 function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     flags = compute_flags(model, integrator, solver)
-    arrays_tl = create_threadlocal_arrays(model, flags)
+    if (flags.compute_stiffness == true || flags.compute_mass == true) && model.matrix_pattern === nothing
+        model.matrix_pattern = build_matrix_pattern(model)
+    end
+    # Quantities computed once are marked done here; a failed evaluation
+    # switches them back on.
+    if flags.compute_lumped_mass == true
+        model.compute_lumped_mass = false
+    end
+    if flags.compute_stiffness == true && model.kinematics == Infinitesimal
+        model.compute_stiffness = false
+    end
+    if flags.compute_mass == true
+        model.compute_mass = false
+    end
+    energy_tl = zeros(maxthreadid())
     materials = model.materials
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
     body_force_vector = zeros(num_dofs)
+    buffers = model.value_buffers
+    pattern = model.matrix_pattern
     for (block_index, block) in enumerate(model.blocks)
         material = materials[block_index]
         density = material.ρ
@@ -896,20 +886,33 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         N, dN, ip_weights = block.N, block.dN, block.weights
         element_block_connectivity = block.connectivity
         element_arrays_tl = create_element_threadlocal_arrays(block.num_nodes_per_element, flags)
+        force_values = buffers.force[block_index]
+        lumped_mass_values = flags.compute_lumped_mass ? buffers.lumped_mass[block_index] : Float64[]
+        stiffness_values = flags.compute_stiffness ? pattern.stiffness[block_index] : Float64[]
+        mass_values = flags.compute_mass ? pattern.mass[block_index] : Float64[]
         # Function barrier: the shape function tables are static arrays whose
         # type depends on the element type, so the loop must be compiled for
         # the concrete types to avoid dynamic dispatch on every operation.
         ok = evaluate_block!(
-            model, arrays_tl, element_arrays_tl, block_index, material, density, element_type,
-            N, dN, ip_weights, element_block_connectivity, flags,
+            model, energy_tl, element_arrays_tl, force_values, lumped_mass_values, stiffness_values, mass_values,
+            block_index, material, density, element_type, N, dN, ip_weights, element_block_connectivity, flags,
         )
         ok || return nothing
     end
-    merge_threadlocal_arrays(model, arrays_tl, num_dofs, flags)
+    model.strain_energy = sum(energy_tl)
+    model.internal_force = reduce_element_vector(model.blocks, buffers.force, num_dofs)
+    if flags.compute_lumped_mass == true
+        model.lumped_mass = reduce_element_vector(model.blocks, buffers.lumped_mass, num_dofs)
+    end
+    if flags.compute_stiffness == true
+        model.stiffness = reduce_element_matrix(pattern, pattern.stiffness, num_dofs)
+    end
+    if flags.compute_mass == true
+        model.mass = reduce_element_matrix(pattern, pattern.mass, num_dofs)
+    end
     model.body_force = body_force_vector
     return nothing
 end
-
 
 # Gather the nodal values of an element into a static 3 x NN matrix; the node
 # count comes from the type of the shape function table.
@@ -948,8 +951,12 @@ end
 
 function evaluate_element!(
     model::SolidMechanics,
-    arrays_tl::SMThreadLocalArrays,
+    energy_tl::Vector{Float64},
     element_arrays_tl::SMElementThreadLocalArrays,
+    force_values::Vector{Float64},
+    lumped_mass_values::Vector{Float64},
+    stiffness_values::Vector{Float64},
+    mass_values::Vector{Float64},
     block_index::Int64,
     block_element_index::Int64,
     material::Material,
@@ -1006,15 +1013,23 @@ function evaluate_element!(
         model.stress[block_index][block_element_index][point] = voigt_cauchy
     end
     t = threadid()
-    model.stored_energy[block_index][block_element_index] = element_arrays_tl.energy[t]
-    assemble_element_threadlocal_arrays!(arrays_tl, element_arrays_tl, flags)
+    element_energy = element_arrays_tl.energy[t]
+    model.stored_energy[block_index][block_element_index] = element_energy
+    energy_tl[t] += element_energy
+    store_element_values!(
+        element_arrays_tl, block_element_index, force_values, lumped_mass_values, stiffness_values, mass_values, flags
+    )
     return nothing
 end
 
 function evaluate_block!(
     model::SolidMechanics,
-    arrays_tl::SMThreadLocalArrays,
+    energy_tl::Vector{Float64},
     element_arrays_tl::SMElementThreadLocalArrays,
+    force_values::Vector{Float64},
+    lumped_mass_values::Vector{Float64},
+    stiffness_values::Vector{Float64},
+    mass_values::Vector{Float64},
     block_index::Int64,
     material::Material,
     density::Float64,
@@ -1033,8 +1048,9 @@ function evaluate_block!(
     @threads for block_element_index in 1:num_block_elements
         model.failed && continue
         evaluate_element!(
-            model, arrays_tl, element_arrays_tl, block_index, block_element_index, material, density, element_type,
-            N, dN, ip_weights, element_block_connectivity, flags, num_points,
+            model, energy_tl, element_arrays_tl, force_values, lumped_mass_values, stiffness_values, mass_values,
+            block_index, block_element_index, material, density, element_type, N, dN, ip_weights,
+            element_block_connectivity, flags, num_points,
         )
     end
     return !model.failed

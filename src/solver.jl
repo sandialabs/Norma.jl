@@ -306,7 +306,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     stiffness = nnz(K_io) > 0 ? stiffness + K_io : stiffness
     is_internal_force = build_impedance_schwarz_force(model)
     internal_force = internal_force + is_internal_force
-    solver.hessian = stiffness + model.mass / β / Δt / Δt
+    solver.hessian = newmark_hessian(stiffness, model.mass, β, Δt)
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     return nothing

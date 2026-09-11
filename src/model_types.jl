@@ -14,17 +14,26 @@ using SparseArrays
     Finite
 end
 
-mutable struct COOVector
-    index::Vector{Int64}
-    vals::Vector{Float64}
-    len::Int64  # logical length
+# One value segment per element for the assembled vectors, per block. The
+# threaded element loop writes disjoint segments, so no thread-local copies or
+# merges are needed; the reduction into the global vector is one pass in
+# element order, which also makes the result independent of the thread count.
+struct ElementValueBuffers
+    force::Vector{Vector{Float64}}        # per block, num_elements * dofs per element
+    lumped_mass::Vector{Vector{Float64}}
 end
 
-mutable struct COOMatrix
-    rows::Vector{Int64}
-    cols::Vector{Int64}
-    vals::Vector{Float64}
-    len::Int64 # logical length
+# Fixed sparsity pattern of the global matrices with, per block and element,
+# the position in the value array of every entry of the element matrix in the
+# column-major order of the element matrix, and the per-element value segments
+# of the stiffness and the mass. Built once on first use; the matrices are
+# rebuilt each evaluation from the pattern without sorting.
+struct MatrixPattern
+    colptr::Vector{Int64}
+    rowval::Vector{Int64}
+    slots::Vector{Vector{Int64}}
+    stiffness::Vector{Vector{Float64}}
+    mass::Vector{Vector{Float64}}
 end
 
 struct EvaluationFlags
@@ -39,14 +48,6 @@ struct EvaluationFlags
     compute_stiffness::Bool
     compute_mass::Bool
     mesh_smoothing::Bool
-end
-
-struct SMThreadLocalArrays{V,M}
-    energy::Vector{Float64}
-    internal_force::Vector{V}
-    lumped_mass::Vector{V}
-    stiffness::Vector{M}
-    mass::Vector{M}
 end
 
 struct SMElementThreadLocalArrays{T,DOFV,IFV,LMV,SM,MM}
@@ -125,6 +126,8 @@ mutable struct SolidMechanics <: Model
     consistent_recovered_internal_variables::Matrix{Float64}
     num_int_pts::Vector{Int}
     blocks::Vector{ElementBlockData}
+    value_buffers::ElementValueBuffers
+    matrix_pattern::Union{Nothing,MatrixPattern}
     # Tracks whether this model was constructed from restart
     # snapshot data 
     restarted::Bool
