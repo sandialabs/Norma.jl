@@ -30,6 +30,7 @@ solver:
 | `maximum iterations` | yes | — | maximum nonlinear iterations per step |
 | `absolute tolerance` | yes | — | absolute residual-norm convergence tolerance |
 | `relative tolerance` | yes | — | relative residual-norm convergence tolerance |
+| `linear solver` | no | `cg` | `cg` (conjugate gradient) or `direct` (sparse Cholesky with a reused symbolic factorization, LU fallback) |
 | `linear solver absolute tolerance` | no | `0.0` | absolute tolerance for the inner CG linear solve |
 | `linear solver relative tolerance` | no | `sqrt(eps)` | relative tolerance for the inner CG linear solve |
 | `use line search` | no | `false` | enable backtracking line search |

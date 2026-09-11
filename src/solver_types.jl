@@ -19,6 +19,16 @@ struct BackTrackLineSearch <: LineSearch
     max_iters::Int64
 end
 
+# Cached sparse factorization of the direct linear solver. The factor is
+# reused by numeric refactorization while the pattern of the reduced system
+# is unchanged, which is every Newton iteration once the free degrees of
+# freedom are fixed.
+mutable struct DirectSolverCache
+    factor::Any
+    colptr::Vector{Int64}
+    rowval::Vector{Int64}
+end
+
 mutable struct HessianMinimizer <: Minimizer
     minimum_iterations::Int64
     maximum_iterations::Int64
@@ -26,8 +36,10 @@ mutable struct HessianMinimizer <: Minimizer
     relative_tolerance::Float64
     absolute_error::Float64
     relative_error::Float64
+    linear_solver::String
     linear_solver_absolute_tolerance::Float64
     linear_solver_relative_tolerance::Float64
+    direct_cache::DirectSolverCache
     value::Float64
     gradient::Vector{Float64}
     hessian::SparseMatrixCSC{Float64,Int64}

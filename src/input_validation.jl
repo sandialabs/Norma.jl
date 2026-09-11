@@ -136,6 +136,7 @@ const SOLVER_KEYS = Set([
     "maximum iterations",
     "absolute tolerance",
     "relative tolerance",
+    "linear solver",
     "linear solver absolute tolerance",
     "linear solver relative tolerance",
     "use line search",

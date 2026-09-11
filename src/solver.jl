@@ -22,6 +22,11 @@ function HessianMinimizer(params::Parameters, model::Model)
     default_rel_tol = sqrt(eps(Float64))
     linear_solver_absolute_tolerance = get(solver_params, "linear solver absolute tolerance", default_abs_tol)
     linear_solver_relative_tolerance = get(solver_params, "linear solver relative tolerance", default_rel_tol)
+    linear_solver = String(get(solver_params, "linear solver", "cg"))
+    if linear_solver != "cg" && linear_solver != "direct"
+        norma_abortf("Unknown linear solver \"%s\": use \"cg\" or \"direct\".", linear_solver)
+    end
+    direct_cache = DirectSolverCache(nothing, Int64[], Int64[])
     absolute_error = 0.0
     relative_error = 0.0
     value = 0.0
@@ -44,8 +49,10 @@ function HessianMinimizer(params::Parameters, model::Model)
         relative_tolerance,
         absolute_error,
         relative_error,
+        linear_solver,
         linear_solver_absolute_tolerance,
         linear_solver_relative_tolerance,
+        direct_cache,
         value,
         gradient,
         hessian,
@@ -381,13 +388,41 @@ function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, atol::Flo
     return cg(A, b; abstol=atol, reltol=rtol)
 end
 
+# Sparse Cholesky of the symmetric part of the reduced system, with LU as the
+# fallback when the matrix is not positive definite. The symbolic analysis is
+# reused across Newton iterations while the pattern is unchanged.
+function solve_linear_direct(cache::DirectSolverCache, A::SparseMatrixCSC{Float64,Int64}, b::Vector{Float64})
+    As = Symmetric(A)
+    factor = cache.factor
+    same_pattern = factor !== nothing && cache.colptr == A.colptr && cache.rowval == A.rowval
+    if same_pattern
+        factor = cholesky!(factor, As; check=false)
+    else
+        factor = cholesky(As; check=false)
+    end
+    if issuccess(factor) == false
+        norma_log(4, :solve, "Direct linear solver: matrix not positive definite, using LU")
+        cache.factor = nothing
+        return lu(A) \ b
+    end
+    cache.factor = factor
+    cache.colptr = A.colptr
+    cache.rowval = A.rowval
+    return factor \ b
+end
+
+function solve_linear(solver::HessianMinimizer, A::SparseMatrixCSC{Float64,Int64}, b::Vector{Float64})
+    if solver.linear_solver == "direct"
+        return solve_linear_direct(solver.direct_cache, A, b)
+    end
+    return solve_linear(A, b, solver.linear_solver_absolute_tolerance, solver.linear_solver_relative_tolerance)
+end
+
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
     A = solver.hessian[free, free]
     b = solver.gradient[free]
-    atol = solver.linear_solver_absolute_tolerance
-    rtol = solver.linear_solver_relative_tolerance
-    step = -solve_linear(A, b, atol, rtol)
+    step = -solve_linear(solver, A, b)
     return solver.use_line_search ? backtrack_line_search(integrator, solver, model, step) : step
 end
 

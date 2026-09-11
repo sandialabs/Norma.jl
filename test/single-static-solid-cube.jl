@@ -3,6 +3,8 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+using YAML
+
 @testset "Single Static Solid Cube" begin
     cp("../examples/single/static-solid/cube/standard/cube.yaml", "cube.yaml"; force=true)
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
@@ -23,6 +25,26 @@
     @test avg_stress[4] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[5] ≈ 0.0 atol = 1.0e-06
     @test avg_stress[6] ≈ 0.0 atol = 1.0e-06
+end
+
+@testset "Single Static Solid Cube Direct Solver" begin
+    cp("../examples/single/static-solid/cube/standard/cube.yaml", "cube.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
+    params = YAML.load_file("cube.yaml"; dicttype=Norma.Parameters)
+    params["solver"]["linear solver"] = "direct"
+    params["name"] = "cube.yaml"
+    simulation = Norma.run(params)
+    integrator = simulation.integrator
+    model = simulation.model
+    rm("cube.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube.e"; force=true)
+    avg_disp = average_components(integrator.displacement)
+    avg_stress = average_components(model.stress)
+    @test avg_disp[1] ≈ -0.125 rtol = 1.0e-06
+    @test avg_disp[2] ≈ -0.125 rtol = 1.0e-06
+    @test avg_disp[3] ≈ 0.500 rtol = 1.0e-06
+    @test avg_stress[3] ≈ 1.0e+09 rtol = 1.0e-06
 end
 
 @testset "Single Static Solid Cube Line Search" begin
