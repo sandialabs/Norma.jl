@@ -108,10 +108,14 @@ function SolidMechanics(params::Parameters)
         num_points = haskey(num_int_pts_overrides, block_name) ?
             Int(num_int_pts_overrides[block_name]) : default_num_int_pts(element_type)
         num_int_pts[block_index] = num_points
-        connectivity = Int64.(get_block_connectivity(input_mesh, block_id))
+        # Stored as one column per element (the flat Exodus order is element by
+        # element), so an element's nodes are a contiguous column.
+        raw_connectivity = get_block_connectivity(input_mesh, block_id)
+        num_nodes_per_element = size(raw_connectivity, 2)
+        connectivity = reshape(Int64.(vec(raw_connectivity)), (num_nodes_per_element, num_block_elements))
         N, dN, weights = isoparametric(element_type, num_points)
         block_data[block_index] = ElementBlockData(
-            Int64(block_id), element_type, num_points, size(connectivity, 1), size(connectivity, 2), connectivity, N, dN, weights
+            Int64(block_id), element_type, num_points, num_block_elements, num_nodes_per_element, connectivity, N, dN, weights
         )
         material = materials[block_index]
         num_states = number_states(material)
@@ -419,6 +423,36 @@ function characteristic_element_length_centroid(nodal_coordinates::Matrix{Float6
     return 2 * total / size(nodal_coordinates, 2)  # Approximate diameter
 end
 
+# Same measure on a static nodal coordinate matrix, without allocation.
+function characteristic_element_length_centroid(X::SMatrix{3,N,T})::T where {N,T}
+    centroid = zero(SVector{3,T})
+    @inbounds for a in 1:N
+        centroid += X[:, a]
+    end
+    centroid = centroid / N
+    total = zero(T)
+    @inbounds for a in 1:N
+        total += norm(X[:, a] - centroid)
+    end
+    return 2 * total / N
+end
+
+# Minimum characteristic length over the elements of a block at the current
+# configuration. Threaded over elements with a per-thread minimum; the shape
+# function table only supplies the static node count through the barrier.
+function minimum_characteristic_length(model::SolidMechanics, block::ElementBlockData, ::SMatrix{NN,NP,T}) where {NN,NP,T}
+    connectivity = block.connectivity
+    minima = fill(T(Inf), maxthreadid())
+    @threads for element in 1:block.num_elements
+        node_indices = view(connectivity, :, element)
+        X = SMatrix{3,NN,T}(view(model.reference, :, node_indices)) + SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
+        h = characteristic_element_length_centroid(X)
+        t = threadid()
+        @inbounds minima[t] = min(minima[t], h)
+    end
+    return minimum(minima)
+end
+
 # The per-point material state is copied at several points of a step. For
 # materials without internal variables the nested vectors are all empty and
 # nothing ever writes into them, so the copy is skipped and the arrays are
@@ -437,19 +471,7 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         ρ = material.ρ
         M = get_p_wave_modulus(material)
         wave_speed = sqrt(M / ρ)
-        minimum_block_characteristic_length = Inf
-        element_block_connectivity = block.connectivity
-        num_block_elements, num_element_nodes = size(element_block_connectivity)
-        for block_element_index in 1:num_block_elements
-            connectivity_indices =
-                ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-            node_indices = element_block_connectivity[connectivity_indices]
-            element_curr_pos = model.reference[:, node_indices] + model.displacement[:, node_indices]
-            minimum_element_characteristic_length = characteristic_element_length_centroid(element_curr_pos)
-            minimum_block_characteristic_length = min(
-                minimum_block_characteristic_length, minimum_element_characteristic_length
-            )
-        end
+        minimum_block_characteristic_length = minimum_characteristic_length(model, block, block.N)
         block_stable_time_step = integrator.CFL * minimum_block_characteristic_length / wave_speed
         stable_time_step = min(stable_time_step, block_stable_time_step)
     end
@@ -777,10 +799,14 @@ function reset_element_threadlocal_arrays!(
     flags::EvaluationFlags,
 )
     t = threadid()
-    num_element_nodes = size(element_block_connectivity, 2)
-    connectivity_indices = ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-    node_indices = element_block_connectivity[connectivity_indices]
-    element_arrays_tl.dofs[t] = reshape(3 .* node_indices' .- [2, 1, 0], :)
+    node_indices = view(element_block_connectivity, :, block_element_index)
+    dofs = element_arrays_tl.dofs[t]
+    @inbounds for (a, node) in enumerate(node_indices)
+        base = 3 * (a - 1)
+        dofs[base + 1] = 3 * node - 2
+        dofs[base + 2] = 3 * node - 1
+        dofs[base + 3] = 3 * node
+    end
     element_arrays_tl.energy[t] = 0.0
     fill!(element_arrays_tl.internal_force[t], 0.0)
     if flags.compute_lumped_mass == true
@@ -999,7 +1025,7 @@ function evaluate_block!(
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
 )::Bool where {NN,NP,T}
-    num_block_elements = size(element_block_connectivity, 1)
+    num_block_elements = size(element_block_connectivity, 2)
     num_points = size(N, 2)
     # No static parameter (NN, NP, T) is used inside the threaded loop body: it
     # is a closure, and captured static parameters are runtime values there,
