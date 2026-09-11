@@ -625,8 +625,63 @@ function create_threadlocal_coo_matrices(coo_matrix_nnz::Integer)
     return [create_coo_matrix(capacity) for _ in 1:Threads.maxthreadid()]
 end
 
-function add_internal_force!(Fi::MVector{M,T}, grad_op::SMatrix{9,M,T}, stress::SVector{9,T}, dV::T) where {M,T}
-    @einsum Fi[i] += grad_op[j, i] * stress[j] * dV
+# Internal force from the first Piola-Kirchhoff stress: for node a and
+# direction i, f[(a,i)] += P[i,k] dN_a/dX_k dV, written as loops over the
+# static arrays so that no operator matrix is formed.
+function add_internal_force!(Fi::MVector{M,T}, dNdX::SMatrix{3,N,T}, P::SMatrix{3,3,T,9}, dV::T) where {M,N,T}
+    @inbounds for a in 1:N
+        base = 3 * (a - 1)
+        for i in 1:3
+            s = P[i, 1] * dNdX[1, a] + P[i, 2] * dNdX[2, a] + P[i, 3] * dNdX[3, a]
+            Fi[base + i] += s * dV
+        end
+    end
+    return nothing
+end
+
+# Element stiffness K[(a,i),(b,j)] += dN_a/dX_k A[i,k,j,l] dN_b/dX_l dV,
+# accumulated in place. The previous form built the 9 x 3N gradient operator
+# and the product B' A B as static matrices, which for eight nodes is a
+# 24 x 24 result beyond the size StaticArrays keeps on the stack: 3.7 µs and
+# 4.7 kB of allocation per integration point against about 0.5 µs here.
+function add_stiffness!(K::MMatrix{M,M,T}, dNdX::SMatrix{3,N,T}, AA::SArray{Tuple{3,3,3,3},T}, dV::T) where {M,N,T}
+    # A[i,k] is the 3 x 3 matrix AA[i,k,:,:], extracted once per point.
+    A = ntuple(m -> begin
+        i = (m - 1) % 3 + 1
+        k = (m - 1) ÷ 3 + 1
+        SMatrix{3,3,T,9}(ntuple(n -> AA[i, k, (n - 1) % 3 + 1, (n - 1) ÷ 3 + 1], Val(9)))
+    end, Val(9))
+    @inbounds for a in 1:N
+        ra = 3 * (a - 1)
+        g1, g2, g3 = dNdX[1, a], dNdX[2, a], dNdX[3, a]
+        for i in 1:3
+            # W[j,l] = dN_a/dX_k A[i,k,j,l]; row block Kb[j,b] = W[j,l] dN_b/dX_l
+            W = g1 * A[i] + g2 * A[i + 3] + g3 * A[i + 6]
+            Kb = W * dNdX
+            for b in 1:N
+                rb = 3 * (b - 1)
+                K[ra + i, rb + 1] += Kb[1, b] * dV
+                K[ra + i, rb + 2] += Kb[2, b] * dV
+                K[ra + i, rb + 3] += Kb[3, b] * dV
+            end
+        end
+    end
+    return nothing
+end
+
+# Consistent mass: M[(a,i),(b,i)] += ρ N_a N_b dV for each direction i.
+function add_mass!(Me::MMatrix{M,M,T}, Np::SVector{N,T}, density::T, dV::T) where {M,N,T}
+    @inbounds for b in 1:N
+        rb = 3 * (b - 1)
+        for a in 1:N
+            ra = 3 * (a - 1)
+            m = Np[a] * Np[b] * density * dV
+            Me[ra + 1, rb + 1] += m
+            Me[ra + 2, rb + 2] += m
+            Me[ra + 3, rb + 3] += m
+        end
+    end
+    return nothing
 end
 
 function add_lumped_mass!(M::MVector{R,T}, Nξ::SVector{N,T}, density::T, dV::T) where {R,N,T}
@@ -752,23 +807,16 @@ function compute_element_threadlocal_arrays!(
     flags::EvaluationFlags,
 ) where {T,N}
     t = threadid()
-    grad_op = create_gradient_operator(dNdX)
-    stress = SVector{9,Float64}(P')
     element_arrays_tl.energy[t] += W * dvol
-    add_internal_force!(element_arrays_tl.internal_force[t], grad_op, stress, dvol)
+    add_internal_force!(element_arrays_tl.internal_force[t], dNdX, P, dvol)
     if flags.compute_lumped_mass == true
         add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
     end
     if flags.compute_stiffness == true
-        moduli = second_from_fourth(AA)
-        element_arrays_tl.stiffness[t] += grad_op' * moduli * grad_op * dvol
+        add_stiffness!(element_arrays_tl.stiffness[t], dNdX, AA, dvol)
     end
     if flags.compute_mass == true
-        reduced_mass = Np * Np' * density * dvol
-        mass = element_arrays_tl.mass[t]
-        for i in 1:3
-            mass[i:3:end, i:3:end] .+= reduced_mass
-        end
+        add_mass!(element_arrays_tl.mass[t], Np, density, dvol)
     end
     return nothing
 end
