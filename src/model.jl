@@ -99,6 +99,7 @@ function SolidMechanics(params::Parameters)
     stored_energy = Vector{Vector{Float64}}()
     num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
     num_int_pts = Vector{Int}(undef, num_blocks)
+    block_data = Vector{ElementBlockData}(undef, num_blocks)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
@@ -107,6 +108,11 @@ function SolidMechanics(params::Parameters)
         num_points = haskey(num_int_pts_overrides, block_name) ?
             Int(num_int_pts_overrides[block_name]) : default_num_int_pts(element_type)
         num_int_pts[block_index] = num_points
+        connectivity = Int64.(get_block_connectivity(input_mesh, block_id))
+        N, dN, weights = isoparametric(element_type, num_points)
+        block_data[block_index] = ElementBlockData(
+            Int64(block_id), element_type, num_points, size(connectivity, 1), size(connectivity, 2), connectivity, N, dN, weights
+        )
         material = materials[block_index]
         num_states = number_states(material)
         if (num_states > 0)
@@ -267,6 +273,7 @@ function SolidMechanics(params::Parameters)
         lumped_recovered_internal_variables,
         consistent_recovered_internal_variables,
         num_int_pts,
+        block_data,
         restart_info !== nothing,
     )
 end
@@ -424,19 +431,14 @@ end
 
 function set_time_step(integrator::CentralDifference, model::SolidMechanics)
     materials = model.materials
-    input_mesh = model.mesh
-    blocks = Exodus.read_sets(input_mesh, Block)
-    num_blocks = length(blocks)
     stable_time_step = Inf
-    for block_index in 1:num_blocks
+    for (block_index, block) in enumerate(model.blocks)
         material = materials[block_index]
         ρ = material.ρ
         M = get_p_wave_modulus(material)
         wave_speed = sqrt(M / ρ)
         minimum_block_characteristic_length = Inf
-        block = blocks[block_index]
-        block_id = block.id
-        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
+        element_block_connectivity = block.connectivity
         num_block_elements, num_element_nodes = size(element_block_connectivity)
         for block_element_index in 1:num_block_elements
             connectivity_indices =
@@ -578,16 +580,9 @@ function assemble!(global_matrix::COOMatrix, element_matrix::AbstractMatrix{Floa
 end
 
 function count_coo_matrix_nnz(model::SolidMechanics)
-    mesh = model.mesh
-    blocks = Exodus.read_sets(mesh, Block)
-    num_blocks = length(blocks)
     total = 0
-    for block_index in 1:num_blocks
-        block = blocks[block_index]
-        block_id = block.id
-        element_block_connectivity = get_block_connectivity(mesh, block_id)
-        num_block_elements, num_element_nodes = size(element_block_connectivity)
-        total += num_block_elements * num_element_nodes * num_element_nodes * 9
+    for block in model.blocks
+        total += block.num_elements * block.num_nodes_per_element * block.num_nodes_per_element * 9
     end
     return total
 end
@@ -817,24 +812,16 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     flags = compute_flags(model, integrator, solver)
     arrays_tl = create_threadlocal_arrays(model, flags)
     materials = model.materials
-    input_mesh = model.mesh
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
     body_force_vector = zeros(num_dofs)
-    blocks = Exodus.read_sets(input_mesh, Block)
-    num_blocks = length(blocks)
-    for block_index in 1:num_blocks
+    for (block_index, block) in enumerate(model.blocks)
         material = materials[block_index]
         density = material.ρ
-        block = blocks[block_index]
-        block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
-        num_points = model.num_int_pts[block_index]
-        N, dN, ip_weights = isoparametric(element_type, num_points)
-        element_block_connectivity = get_block_connectivity(input_mesh, block_id)
-        num_element_nodes = size(element_block_connectivity, 2)
-        element_arrays_tl = create_element_threadlocal_arrays(num_element_nodes, flags)
+        element_type = block.element_type
+        N, dN, ip_weights = block.N, block.dN, block.weights
+        element_block_connectivity = block.connectivity
+        element_arrays_tl = create_element_threadlocal_arrays(block.num_nodes_per_element, flags)
         # Function barrier: the shape function tables are static arrays whose
         # type depends on the element type, so the loop must be compiled for
         # the concrete types to avoid dynamic dispatch on every operation.

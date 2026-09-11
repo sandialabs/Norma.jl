@@ -58,6 +58,23 @@ struct SMElementThreadLocalArrays{T,DOFV,IFV,LMV,SM,MM}
     mass::Vector{MM}
 end
 
+# Per-block mesh data read once at construction: the connectivity and the
+# shape function tables were read from the Exodus file and rebuilt on every
+# evaluation before. The tables are static arrays whose type depends on the
+# element type, so they are stored untyped and passed through a function
+# barrier once per block.
+struct ElementBlockData
+    id::Int64
+    element_type::ElementType
+    num_points::Int64
+    num_elements::Int64
+    num_nodes_per_element::Int64
+    connectivity::Matrix{Int64}
+    N::Any
+    dN::Any
+    weights::Any
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
@@ -107,6 +124,7 @@ mutable struct SolidMechanics <: Model
     lumped_recovered_internal_variables::Matrix{Float64}
     consistent_recovered_internal_variables::Matrix{Float64}
     num_int_pts::Vector{Int}
+    blocks::Vector{ElementBlockData}
     # Tracks whether this model was constructed from restart
     # snapshot data 
     restarted::Bool
