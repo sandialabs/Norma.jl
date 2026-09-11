@@ -32,6 +32,10 @@ mutable struct SolidMechanicsDirichletBoundaryCondition <: SolidMechanicsRegular
     disp_fun::Function
     velo_fun::Function
     acce_fun::Function
+    # An expression without t is evaluated once per node on first application;
+    # its velocity and acceleration are zero by construction.
+    time_dependent::Bool
+    cached_displacement::Vector{Float64}
 end
 
 # Dirichlet BC whose constrained nodes are the nodes of a side set rather than
@@ -46,6 +50,10 @@ mutable struct SolidMechanicsSideSetDirichletBoundaryCondition <: SolidMechanics
     disp_fun::Function
     velo_fun::Function
     acce_fun::Function
+    # An expression without t is evaluated once per node on first application;
+    # its velocity and acceleration are zero by construction.
+    time_dependent::Bool
+    cached_displacement::Vector{Float64}
 end
 
 mutable struct SolidMechanicsNeumannBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition

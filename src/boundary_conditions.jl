@@ -23,6 +23,12 @@ is_swappable_dn_schwarz(::SolidMechanicsBoundaryCondition) = false
 is_swappable_dn_schwarz(::SolidMechanicsContactSchwarzBoundaryCondition) = true
 is_swappable_dn_schwarz(::SolidMechanicsNonOverlapSchwarzBoundaryCondition) = true
 
+# A prescription is static when its time derivative is identically zero.
+function is_static_prescription(velocity_expression)
+    value = Symbolics.value(velocity_expression)
+    return value isa Number && iszero(value)
+end
+
 function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc_params::Parameters)
     node_set_name = bc_params["node set"]
     expression = bc_params["function"]
@@ -41,7 +47,8 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsDirichletBoundaryCondition(
-        node_set_name, offset, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun
+        node_set_name, offset, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun,
+        !is_static_prescription(velo_num), Float64[],
     )
 end
 
@@ -66,7 +73,7 @@ function SolidMechanicsSideSetDirichletBoundaryCondition(input_mesh::ExodusDatab
     acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsSideSetDirichletBoundaryCondition(
-        side_set_name, offset, side_set_id, node_indices, disp_fun, velo_fun, acce_fun
+        side_set_name, offset, side_set_id, node_indices, disp_fun, velo_fun, acce_fun, !is_static_prescription(velo_num), Float64[]
     )
 end
 
@@ -695,40 +702,49 @@ function SMCouplingSchwarzBC(
     end
 end
 
-function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
-    for node_index in bc.node_set_node_indices
-        txzy = (
-            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
-        )
-
+# Prescribe the constrained component at the given nodes. Expressions that do
+# not involve time are evaluated once and cached; the compiled symbolic
+# functions are not inferable and cost several allocations per call.
+function apply_dirichlet_values!(model::SolidMechanics, node_indices::Vector{Int64}, bc)
+    offset = bc.offset
+    if bc.time_dependent == false
+        cache = bc.cached_displacement
+        if length(cache) != length(node_indices)
+            resize!(cache, length(node_indices))
+            for (k, node_index) in enumerate(node_indices)
+                txzy = (
+                    model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
+                )
+                cache[k] = bc.disp_fun(txzy)
+            end
+        end
+        @inbounds for (k, node_index) in enumerate(node_indices)
+            model.displacement[offset, node_index] = cache[k]
+            model.velocity[offset, node_index] = 0.0
+            model.acceleration[offset, node_index] = 0.0
+            model.free_dofs[3 * (node_index - 1) + offset] = false
+        end
+        return nothing
+    end
+    for node_index in node_indices
+        txzy = (model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index])
         disp_val = bc.disp_fun(txzy)
         velo_val = bc.velo_fun(txzy)
         acce_val = bc.acce_fun(txzy)
-
-        dof_index = 3 * (node_index - 1) + bc.offset
-        model.displacement[bc.offset, node_index] = disp_val
-        model.velocity[bc.offset, node_index] = velo_val
-        model.acceleration[bc.offset, node_index] = acce_val
-        model.free_dofs[dof_index] = false
+        model.displacement[offset, node_index] = disp_val
+        model.velocity[offset, node_index] = velo_val
+        model.acceleration[offset, node_index] = acce_val
+        model.free_dofs[3 * (node_index - 1) + offset] = false
     end
+    return nothing
+end
+
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
+    apply_dirichlet_values!(model, bc.node_set_node_indices, bc)
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsSideSetDirichletBoundaryCondition)
-    for node_index in bc.node_indices
-        txzy = (
-            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
-        )
-
-        disp_val = bc.disp_fun(txzy)
-        velo_val = bc.velo_fun(txzy)
-        acce_val = bc.acce_fun(txzy)
-
-        dof_index = 3 * (node_index - 1) + bc.offset
-        model.displacement[bc.offset, node_index] = disp_val
-        model.velocity[bc.offset, node_index] = velo_val
-        model.acceleration[bc.offset, node_index] = acce_val
-        model.free_dofs[dof_index] = false
-    end
+    apply_dirichlet_values!(model, bc.node_indices, bc)
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannRobinBoundaryCondition)
