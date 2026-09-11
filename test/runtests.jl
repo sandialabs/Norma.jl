@@ -437,6 +437,7 @@ let io = Norma.NORMA_LOG_FILE[]
     end
 end
 
+Norma.norma_log(0, :time, "Tests Run Time = " * Norma.format_time(elapsed_time))
 Norma.norma_log(0, :norma, "END TESTS")
 
 # Finish writing the suite log and report where it was written.
