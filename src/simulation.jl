@@ -1477,7 +1477,7 @@ end
 # iterate's trial states are simply overwritten by the next assembly.
 function commit_state(sim::SingleDomainSimulation)
     if sim.model isa SolidMechanics
-        sim.model.state_old = deepcopy(sim.model.state)
+        sim.model.state_old = copy_state(sim.model, sim.model.state)
     end
     return nothing
 end
@@ -1495,7 +1495,7 @@ function save_curr_state(sim::SingleDomainSimulation)
     # physically inconsistent internal-variable state.
     # Guard: only SolidMechanics has state_old; ROM models do not.
     if sim.model isa SolidMechanics
-        sim.model.prev_state_old = deepcopy(sim.model.state_old)
+        sim.model.prev_state_old = copy_state(sim.model, sim.model.state_old)
     end
     return nothing
 end
@@ -1515,7 +1515,7 @@ function restore_prev_state(sim::SingleDomainSimulation)
     # a reconstruction target for output/BCs only, not part of the reduced
     # time integration), so there is nothing to restore for them here.
     if sim.model isa SolidMechanics && !isempty(sim.model.prev_state_old)
-        sim.model.state_old = deepcopy(sim.model.prev_state_old)
+        sim.model.state_old = copy_state(sim.model, sim.model.prev_state_old)
     end
     return nothing
 end
@@ -1547,7 +1547,7 @@ function save_stop_state(sim::MultiDomainSimulation)
         # would integrate its internal variables from the previous ITERATION's trial
         # history instead of the converged previous stop.
         if subsim.model isa SolidMechanics
-            subsim.model.stop_state_old = deepcopy(subsim.model.state_old)
+            subsim.model.stop_state_old = copy_state(subsim.model, subsim.model.state_old)
         end
     end
 end
@@ -1564,7 +1564,7 @@ function restore_stop_state(sim::MultiDomainSimulation)
         subsim.integrator.acceleration .= controller.stop_acce[i]
         set_internal_force!(subsim.model, copy(controller.stop_∂Ω_f[i]))
         if subsim.model isa SolidMechanics && !isempty(subsim.model.stop_state_old)
-            subsim.model.state_old = deepcopy(subsim.model.stop_state_old)
+            subsim.model.state_old = copy_state(subsim.model, subsim.model.stop_state_old)
         end
         if subsim.model isa RomModel
             reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)

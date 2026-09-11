@@ -655,7 +655,7 @@ end
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     is_rom_model = model isa RomModel
     if is_rom_model == false
-        model.state = deepcopy(model.state_old)
+        model.state = copy_state(model, model.state_old)
     end
     is_explicit_dynamic = integrator isa ExplicitDynamicTimeIntegrator
     predict(integrator, solver, model)
@@ -720,7 +720,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
             if is_rom_model == false
-                model.state_old = deepcopy(model.state)
+                model.state_old = copy_state(model, model.state)
             end
             break
         end

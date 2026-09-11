@@ -337,7 +337,7 @@ function create_smooth_reference(
     element_ref_pos::Matrix{Float64},
     size_field::Union{Function,Nothing}=nothing,
     time::Float64=0.0,
-)
+)::Matrix{Float64}
     if element_type == TETRA4
         u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
         v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
@@ -410,6 +410,16 @@ function characteristic_element_length_centroid(nodal_coordinates::Matrix{Float6
         total += norm(δ)
     end
     return 2 * total / size(nodal_coordinates, 2)  # Approximate diameter
+end
+
+# The per-point material state is copied at several points of a step. For
+# materials without internal variables the nested vectors are all empty and
+# nothing ever writes into them, so the copy is skipped and the arrays are
+# shared. The copies were a fifth of an explicit step for elastic materials.
+has_material_state(model::SolidMechanics) = any(m -> number_states(m) > 0, model.materials)
+
+function copy_state(model::SolidMechanics, state::Vector{Vector{Vector{Vector{Float64}}}})
+    return has_material_state(model) ? deepcopy(state) : state
 end
 
 function set_time_step(integrator::CentralDifference, model::SolidMechanics)
@@ -607,25 +617,17 @@ function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
     return [create_element_vector(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
 
+# One buffer per thread id, all with the same capacity. Thread ids are not
+# grouped by pool (the interactive threads come first), so sizing by pool
+# handed the default thread doing the work an undersized buffer.
 function create_threadlocal_coo_vectors(num_dofs::Integer)
-    nd = Threads.threadpoolsize(:default)
-    ni = Threads.threadpoolsize(:interactive)
-    n_total = nd + ni
-    cap_default = cld(num_dofs, nd)
-    cap_interactive = max(1, cap_default ÷ 8)  # or just use cap_default everywhere
-
-    return [i <= nd ? create_coo_vector(cap_default) :
-                     create_coo_vector(cap_interactive) for i in 1:n_total]
+    capacity = cld(num_dofs, Threads.threadpoolsize(:default))
+    return [create_coo_vector(capacity) for _ in 1:Threads.maxthreadid()]
 end
 
 function create_threadlocal_coo_matrices(coo_matrix_nnz::Integer)
-    nd = Threads.threadpoolsize(:default)
-    ni = Threads.threadpoolsize(:interactive)
-    cap_default     = cld(coo_matrix_nnz, nd)
-    cap_interactive = max(1, cap_default ÷ 8)   # or just use cap_default
-
-    return [i <= nd ? create_coo_matrix(cap_default) :
-                      create_coo_matrix(cap_interactive) for i in 1:(nd + ni)]
+    capacity = cld(coo_matrix_nnz, Threads.threadpoolsize(:default))
+    return [create_coo_matrix(capacity) for _ in 1:Threads.maxthreadid()]
 end
 
 function add_internal_force!(Fi::MVector{M,T}, grad_op::SMatrix{9,M,T}, stress::SVector{9,T}, dV::T) where {M,T}
@@ -831,67 +833,150 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
-        num_block_elements, num_element_nodes = size(element_block_connectivity)
+        num_element_nodes = size(element_block_connectivity, 2)
         element_arrays_tl = create_element_threadlocal_arrays(num_element_nodes, flags)
-        @threads for block_element_index in 1:num_block_elements
-            node_indices = reset_element_threadlocal_arrays!(
-                element_arrays_tl, element_block_connectivity, block_element_index, flags
-            )
-            if flags.mesh_smoothing == true
-                element_reference_position = create_smooth_reference(
-                    model.smooth_reference, element_type, model.reference[:, node_indices], model.size_field, model.time
-                )
-            else
-                element_reference_position = model.reference[:, node_indices]
-            end
-            element_current_position = model.reference[:, node_indices] + model.displacement[:, node_indices]
-            for point in 1:num_points
-                Np = N[:, point]
-                dNdξ = dN[:, :, point]
-                dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
-                dNdX = dXdξ \ dNdξ
-                F = SMatrix{3,3,Float64,9}(element_current_position * dNdX')
-                J = det(F)
-                if J ≤ 0.0 || isfinite(J) == false
-                    model.failed = true
-                    model.compute_mass = model.compute_lumped_mass = true
-                    model.compute_stiffness = true
-                    norma_log(0, :error, "Non-positive Jacobian detected! This may indicate element distortion.")
-                    norma_logf(4, :warning, "det(F) = %.3e", J)
-                    log_matrix(4, :info, "Reference Configuration", element_reference_position)
-                    log_matrix(4, :info, "Current Configuration", element_current_position)
-                    return nothing
-                end
-                state = model.state_old[block_index][block_element_index][point]
-                local W, P, AA
-                try
-                    if material isa (Elastic)
-                        W, P, AA = constitutive(material, F; need_tangent=flags.compute_stiffness)
-                    else
-                        W, P, AA, state_new = constitutive(material, F, state; need_tangent=flags.compute_stiffness)
-                        model.state[block_index][block_element_index][point] = state_new
-                    end
-                catch e
-                    e isa _MATH_ERRORS || rethrow()
-                    model.failed = true
-                    norma_logf(4, :solve, "evaluate: caught %s in constitutive model", typeof(e))
-                    break  # skip remaining integration points for this element
-                end
-                ip_weight = ip_weights[point]
-                det_dXdξ = det(dXdξ)
-                dvol = det_dXdξ * ip_weight
-                compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags)
-                voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
-                model.stress[block_index][block_element_index][point] = voigt_cauchy
-            end
-            t = threadid()
-            model.stored_energy[block_index][block_element_index] = element_arrays_tl.energy[t]
-            assemble_element_threadlocal_arrays!(arrays_tl, element_arrays_tl, flags)
-        end
+        # Function barrier: the shape function tables are static arrays whose
+        # type depends on the element type, so the loop must be compiled for
+        # the concrete types to avoid dynamic dispatch on every operation.
+        ok = evaluate_block!(
+            model, arrays_tl, element_arrays_tl, block_index, material, density, element_type,
+            N, dN, ip_weights, element_block_connectivity, flags,
+        )
+        ok || return nothing
     end
     merge_threadlocal_arrays(model, arrays_tl, num_dofs, flags)
     model.body_force = body_force_vector
     return nothing
+end
+
+
+# Gather the nodal values of an element into a static 3 x NN matrix; the node
+# count comes from the type of the shape function table.
+@inline function gather_nodal(A::Matrix{Float64}, node_indices::AbstractVector{<:Integer}, ::SMatrix{NN,NP,T}) where {NN,NP,T}
+    return SMatrix{3,NN,T}(view(A, :, node_indices))
+end
+@inline function gather_nodal(A::AbstractMatrix, ::SMatrix{NN,NP,T}) where {NN,NP,T}
+    return SMatrix{3,NN,T}(A)
+end
+
+# The constitutive call is guarded against domain errors from the material
+# models, but a try block inside the threaded loop body defeats type inference
+# for every variable live across it, so the guard lives in this small function
+# with a concrete return type. On failure the returned values are zeros and the
+# first entry is false.
+function guarded_constitutive!(
+    model::SolidMechanics, material::Material, F::SMatrix{3,3,Float64,9},
+    block_index::Int64, block_element_index::Int64, point::Int64, need_tangent::Bool,
+)
+    try
+        if material isa Elastic
+            W, P, AA = constitutive(material, F; need_tangent=need_tangent)
+            return true, W, P, AA
+        else
+            state = model.state_old[block_index][block_element_index][point]
+            W, P, AA, state_new = constitutive(material, F, state; need_tangent=need_tangent)
+            model.state[block_index][block_element_index][point] = state_new
+            return true, W, P, AA
+        end
+    catch e
+        e isa _MATH_ERRORS || rethrow()
+        norma_logf(4, :solve, "evaluate: caught %s in constitutive model", typeof(e))
+        return false, 0.0, zero(SMatrix{3,3,Float64,9}), zero(SArray{Tuple{3,3,3,3},Float64,4,81})
+    end
+end
+
+function evaluate_element!(
+    model::SolidMechanics,
+    arrays_tl::SMThreadLocalArrays,
+    element_arrays_tl::SMElementThreadLocalArrays,
+    block_index::Int64,
+    block_element_index::Int64,
+    material::Material,
+    density::Float64,
+    element_type::ElementType,
+    N::SMatrix,
+    dN::SArray,
+    ip_weights::AbstractVector,
+    element_block_connectivity::Matrix{<:Integer},
+    flags::EvaluationFlags,
+    num_points::Int64,
+)
+    node_indices = reset_element_threadlocal_arrays!(
+        element_arrays_tl, element_block_connectivity, block_element_index, flags
+    )
+    if flags.mesh_smoothing == true
+        smooth = create_smooth_reference(
+            model.smooth_reference, element_type, model.reference[:, node_indices], model.size_field, model.time
+        )
+        element_reference_position = gather_nodal(smooth, N)
+    else
+        element_reference_position = gather_nodal(model.reference, node_indices, N)
+    end
+    # The current position always uses the mesh reference, not the smoothed one.
+    element_current_position =
+        gather_nodal(model.reference, node_indices, N) + gather_nodal(model.displacement, node_indices, N)
+    for point in 1:num_points
+        Np = N[:, point]
+        dNdξ = dN[:, :, point]
+        dXdξ = dNdξ * element_reference_position'
+        dNdX = dXdξ \ dNdξ
+        F = element_current_position * dNdX'
+        J = det(F)
+        if J ≤ 0.0 || isfinite(J) == false
+            model.failed = true
+            model.compute_mass = model.compute_lumped_mass = true
+            model.compute_stiffness = true
+            norma_log(0, :error, "Non-positive Jacobian detected! This may indicate element distortion.")
+            norma_logf(4, :warning, "det(F) = %.3e", J)
+            log_matrix(4, :info, "Reference Configuration", Matrix(element_reference_position))
+            log_matrix(4, :info, "Current Configuration", Matrix(element_current_position))
+            return nothing
+        end
+        ok, W, P, AA = guarded_constitutive!(model, material, F, block_index, block_element_index, point, flags.compute_stiffness)
+        if ok == false
+            model.failed = true
+            return nothing  # skip remaining integration points for this element
+        end
+        ip_weight = ip_weights[point]
+        det_dXdξ = det(dXdξ)
+        dvol = det_dXdξ * ip_weight
+        compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags)
+        voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
+        model.stress[block_index][block_element_index][point] = voigt_cauchy
+    end
+    t = threadid()
+    model.stored_energy[block_index][block_element_index] = element_arrays_tl.energy[t]
+    assemble_element_threadlocal_arrays!(arrays_tl, element_arrays_tl, flags)
+    return nothing
+end
+
+function evaluate_block!(
+    model::SolidMechanics,
+    arrays_tl::SMThreadLocalArrays,
+    element_arrays_tl::SMElementThreadLocalArrays,
+    block_index::Int64,
+    material::Material,
+    density::Float64,
+    element_type::ElementType,
+    N::SMatrix{NN,NP,T},
+    dN::SArray{Tuple{3,NN,NP},T},
+    ip_weights::AbstractVector{T},
+    element_block_connectivity::Matrix{<:Integer},
+    flags::EvaluationFlags,
+)::Bool where {NN,NP,T}
+    num_block_elements = size(element_block_connectivity, 1)
+    num_points = size(N, 2)
+    # No static parameter (NN, NP, T) is used inside the threaded loop body: it
+    # is a closure, and captured static parameters are runtime values there,
+    # which would make every static array constructor a dynamic call.
+    @threads for block_element_index in 1:num_block_elements
+        model.failed && continue
+        evaluate_element!(
+            model, arrays_tl, element_arrays_tl, block_index, block_element_index, material, density, element_type,
+            N, dN, ip_weights, element_block_connectivity, flags, num_points,
+        )
+    end
+    return !model.failed
 end
 
 function get_block_connectivity(mesh::ExodusDatabase, block_id::Integer)
