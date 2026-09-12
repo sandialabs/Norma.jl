@@ -513,14 +513,40 @@ function constitutive(material::Neohookean, F::SMatrix{3,3,Float64,9}; need_tang
     S = Svol .+ Sdev
     P = F * S
     need_tangent || return W, P, ZERO_TANGENT
-    ICxIC = ox(IC, IC)
-    ICoIC = odot(IC, IC)
-    μJ2n = 2.0 * μ * Jm23 / 3.0
-    CCvol = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC)
-    CCdev = μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- oxI(IC) .- Iox(IC))
-    CC = CCvol .+ CCdev
-    AA = convect_tangent(CC, S, F)
+    AA = neohookean_tangent(κ, μ, F, J2, Jm23, trC)
     return W, P, AA
+end
+
+# Closed form of A = dP/dF for the neohookean energy above, with G = F⁻ᵀ,
+# c = κ (J² - 1) / 2 and a = J^(-2/3):
+#   A_iJkL = κ J² G_kL G_iJ - c G_iL G_kJ
+#          + μ a [ δ_ik δ_JL - (2/3) (G_kL F_iJ + F_kL G_iJ)
+#                  + (2 I₁/9) G_kL G_iJ + (I₁/3) G_iL G_kJ ]
+# using dJ/dF = J G, d(J^(-2/3))/dF = -(2/3) J^(-2/3) G and dG_iJ/dF_kL =
+# -G_iL G_kJ. It equals the push-forward of the Lagrangian moduli used before
+# (see convect_tangent) at a fraction of the cost and without allocation.
+function neohookean_tangent(κ::Float64, μ::Float64, F::SMatrix{3,3,Float64,9}, J2::Float64, Jm23::Float64, trC::Float64)
+    G = transpose(inv(F))
+    c = 0.5 * κ * (J2 - 1.0)
+    κJ2 = κ * J2
+    μa = μ * Jm23
+    two_thirds = 2.0 / 3.0
+    t1 = 2.0 * trC / 9.0
+    t2 = trC / 3.0
+    return SArray{Tuple{3,3,3,3},Float64,4,81}(
+        ntuple(m -> begin
+            n = m - 1
+            i = n % 3 + 1
+            j = (n ÷ 3) % 3 + 1
+            k = (n ÷ 9) % 3 + 1
+            l = n ÷ 27 + 1
+            GkLGiJ = G[k, l] * G[i, j]
+            GiLGkJ = G[i, l] * G[k, j]
+            δ = (i == k && j == l) ? 1.0 : 0.0
+            κJ2 * GkLGiJ - c * GiLGkJ +
+            μa * (δ - two_thirds * (G[k, l] * F[i, j] + F[k, l] * G[i, j]) + t1 * GkLGiJ + t2 * GiLGkJ)
+        end, Val(81)),
+    )
 end
 
 function constitutive(material::Reciprocal_Neohookean, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)

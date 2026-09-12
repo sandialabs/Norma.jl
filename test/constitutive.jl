@@ -3,7 +3,7 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
-using LinearAlgebra: norm
+using LinearAlgebra: norm, det, tr, I
 using StaticArrays
 
 @testset "Elastic Constants" begin
@@ -338,5 +338,31 @@ end
             @test 1.0e-6 < asym < 1.0e-2
             @test isapprox(norm(AA_fd - Array(AA)) / scale, asym; rtol=0.05)
         end
+    end
+end
+
+@testset "Neohookean Closed-Form Tangent" begin
+    # The closed form of dP/dF must agree with the push-forward of the
+    # Lagrangian moduli, which is how the tangent was computed before.
+    params = Dict{String,Any}("elastic modulus" => 1.0e9, "Poisson's ratio" => 0.3, "density" => 1000.0)
+    material = Norma.Neohookean(params)
+    κ, μ = material.κ, material.μ
+    for trial in 1:5
+        F = SMatrix{3,3,Float64,9}(I) + 0.2 * SMatrix{3,3,Float64,9}(2 .* rand(9) .- 1)
+        det(F) > 0.2 || continue
+        _, _, AA = Norma.constitutive(material, F; need_tangent=true)
+        C = F' * F
+        J2 = det(C)
+        Jm23 = inv(cbrt(J2))
+        trC = tr(C)
+        IC = inv(C)
+        S = 0.5 * κ * (J2 - 1.0) .* IC .+ μ .* Jm23 .* (Norma.I3 .- (IC .* (trC / 3.0)))
+        ICxIC = Norma.ox(IC, IC)
+        ICoIC = Norma.odot(IC, IC)
+        μJ2n = 2.0 * μ * Jm23 / 3.0
+        CC = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC) .+
+             μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- Norma.oxI(IC) .- Norma.Iox(IC))
+        AA_convected = Norma.convect_tangent(CC, S, F)
+        @test maximum(abs.(AA .- AA_convected)) ≤ 1.0e-10 * maximum(abs.(AA_convected))
     end
 end
