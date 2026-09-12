@@ -405,14 +405,38 @@ Base.size(A::SymmetricRowOperator) = (A.n, A.n)
 Base.size(A::SymmetricRowOperator, ::Integer) = A.n
 Base.eltype(::SymmetricRowOperator) = Float64
 
-function LinearAlgebra.mul!(y::AbstractVector{Float64}, A::SymmetricRowOperator, x::AbstractVector{Float64})
-    rowptr, colval, nzval = A.rowptr, A.colval, A.nzval
-    Threads.@threads :static for row in 1:A.n
+# Starting a threaded loop costs about 1 µs on Linux but over 20 µs on macOS,
+# and the small Schwarz cases make hundreds of thousands of products, so the
+# threaded loop is used only when there is more than one thread and enough
+# rows to amortize it.
+const ROW_PRODUCT_THREAD_THRESHOLD = 20_000
+
+@inline function row_product!(
+    y::AbstractVector{Float64},
+    rowptr::Vector{Int64},
+    colval::Vector{Int64},
+    nzval::Vector{Float64},
+    x::AbstractVector{Float64},
+    rows::UnitRange{Int64},
+)
+    @inbounds for row in rows
         acc = 0.0
-        @inbounds for k in rowptr[row]:(rowptr[row + 1] - 1)
+        for k in rowptr[row]:(rowptr[row + 1] - 1)
             acc += nzval[k] * x[colval[k]]
         end
-        @inbounds y[row] = acc
+        y[row] = acc
+    end
+    return nothing
+end
+
+function LinearAlgebra.mul!(y::AbstractVector{Float64}, A::SymmetricRowOperator, x::AbstractVector{Float64})
+    rowptr, colval, nzval = A.rowptr, A.colval, A.nzval
+    if Threads.nthreads() == 1 || A.n < ROW_PRODUCT_THREAD_THRESHOLD
+        row_product!(y, rowptr, colval, nzval, x, 1:A.n)
+        return y
+    end
+    Threads.@threads :static for row in 1:A.n
+        row_product!(y, rowptr, colval, nzval, x, row:row)
     end
     return y
 end

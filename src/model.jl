@@ -444,6 +444,16 @@ end
 # function table only supplies the static node count through the barrier.
 function minimum_characteristic_length(model::SolidMechanics, block::ElementBlockData, ::SMatrix{NN,NP,T}) where {NN,NP,T}
     connectivity = block.connectivity
+    if Threads.nthreads() == 1
+        # A threaded loop has a per-call cost of tens of microseconds on macOS.
+        h_min = T(Inf)
+        for element in 1:block.num_elements
+            node_indices = view(connectivity, :, element)
+            X = SMatrix{3,NN,T}(view(model.reference, :, node_indices)) + SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
+            h_min = min(h_min, characteristic_element_length_centroid(X))
+        end
+        return h_min
+    end
     minima = fill(T(Inf), maxthreadid())
     @threads for element in 1:block.num_elements
         node_indices = view(connectivity, :, element)
