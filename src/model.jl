@@ -677,7 +677,8 @@ function build_matrix_pattern(model::SolidMechanics)
         slots[block_index] = block_slots
     end
     stiffness = [zeros(length(block_slots)) for block_slots in slots]
-    mass = [zeros(length(block_slots)) for block_slots in slots]
+    # The mass values are sized on first use: quasi-static runs never need them.
+    mass = [Float64[] for _ in slots]
     return MatrixPattern(colptr, rowval, slots, stiffness, mass)
 end
 
@@ -890,6 +891,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         lumped_mass_values = flags.compute_lumped_mass ? buffers.lumped_mass[block_index] : Float64[]
         stiffness_values = flags.compute_stiffness ? pattern.stiffness[block_index] : Float64[]
         mass_values = flags.compute_mass ? pattern.mass[block_index] : Float64[]
+        if flags.compute_mass == true && length(mass_values) != length(pattern.slots[block_index])
+            resize!(mass_values, length(pattern.slots[block_index]))
+        end
         # Function barrier: the shape function tables are static arrays whose
         # type depends on the element type, so the loop must be compiled for
         # the concrete types to avoid dynamic dispatch on every operation.
