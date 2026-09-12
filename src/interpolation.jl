@@ -611,6 +611,175 @@ function parametric_overshoot(element_type::ElementType, ξ::AbstractVector{Floa
     end
 end
 
+# Static-array version of the closest point projection for a facet with N
+# nodes: the same Newton iteration as the array version below, without heap
+# allocation. Used by the containing-facet search, which calls it for every
+# candidate facet of every destination integration point.
+function closest_point_projection(nodes::SMatrix{3,N,Float64}, x::SVector{3,Float64}; strict::Bool=true) where {N}
+    element_type = get_element_type(2, N)
+    ξ = zero(SVector{2,Float64})
+    y = zero(SVector{3,Float64})
+    yx = zero(SVector{3,Float64})
+    tol = 1.0e-10
+    iteration = 1
+    max_iterations = 64
+    converged = false
+    while true
+        Nξ, dN, ddN = interpolate(element_type, ξ)
+        y = nodes * Nξ
+        dydξ = dN * nodes'
+        yx = y - x
+        residual = dydξ * yx
+        ddyddξyx = SMatrix{2,2,Float64,4}(
+            ntuple(m -> begin
+                i = (m - 1) % 2 + 1
+                j = (m - 1) ÷ 2 + 1
+                total = 0.0
+                @inbounds for k in 1:3
+                    row = 0.0
+                    for l in 1:N
+                        row += ddN[i, j, l] * nodes[k, l]
+                    end
+                    total += row * yx[k]
+                end
+                total
+            end, Val(4)),
+        )
+        hessian = ddyddξyx + dydξ * dydξ'
+        δ = -(hessian \ residual)
+        ξ = ξ + δ
+        if norm(δ) <= tol
+            converged = true
+            break
+        end
+        iteration += 1
+        if iteration > max_iterations
+            break
+        end
+    end
+    if converged == false
+        if strict == true
+            norma_abort("Closest point projection failed to converge")
+        end
+        return y, ξ, Inf, zero(SVector{3,Float64})
+    end
+    _, dN, _ = interpolate(element_type, ξ)
+    dxdξ = dN * nodes'
+    perp_vec = cross(dxdξ[1, :], dxdξ[2, :])
+    normal = perp_vec / norm(perp_vec)
+    distance = -copysign(norm(yx), dot(yx, normal))
+    return y, ξ, distance, normal
+end
+
+# Side set data gathered once for a containing-facet search over many points:
+# the side set node list and current coordinates were read from the Exodus
+# file and rebuilt for every point before, which made the interface projector
+# setup quadratic with a large constant.
+struct SideSetSearch
+    node_coords::Vector{SVector{3,Float64}}      # one entry per side set node list entry
+    facet_node_indices::Vector{Vector{Int64}}
+    facet_coords::Vector{Matrix{Float64}}
+    box_min::Vector{SVector{3,Float64}}
+    box_max::Vector{SVector{3,Float64}}
+    half_diagonal::Vector{Float64}
+end
+
+function build_side_set_search(model::SolidMechanics, side_set_id::Integer)
+    num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(model.mesh, side_set_id)
+    coords = model.reference + model.displacement
+    node_coords = [SVector{3,Float64}(view(coords, :, i)) for i in side_set_node_indices]
+    num_facets = length(num_nodes_sides)
+    facet_node_indices = Vector{Vector{Int64}}(undef, num_facets)
+    facet_coords = Vector{Matrix{Float64}}(undef, num_facets)
+    box_min = Vector{SVector{3,Float64}}(undef, num_facets)
+    box_max = Vector{SVector{3,Float64}}(undef, num_facets)
+    half_diagonal = Vector{Float64}(undef, num_facets)
+    ss_node_index = 1
+    for (facet, num_nodes_side) in enumerate(num_nodes_sides)
+        indices = Int64.(side_set_node_indices[ss_node_index:(ss_node_index + num_nodes_side - 1)])
+        ss_node_index += num_nodes_side
+        nodes = coords[:, indices]
+        lo = SVector{3,Float64}(minimum(nodes[i, :]) for i in 1:3)
+        hi = SVector{3,Float64}(maximum(nodes[i, :]) for i in 1:3)
+        facet_node_indices[facet] = indices
+        facet_coords[facet] = nodes
+        box_min[facet] = lo
+        box_max[facet] = hi
+        half_diagonal[facet] = 0.5 * norm(hi - lo)
+    end
+    return SideSetSearch(node_coords, facet_node_indices, facet_coords, box_min, box_max, half_diagonal)
+end
+
+# Function barrier on the facet node count for the static projection.
+function project_onto_facet(nodes::Matrix{Float64}, point::SVector{3,Float64})
+    n = size(nodes, 2)
+    if n == 4
+        return closest_point_projection(SMatrix{3,4,Float64,12}(nodes), point; strict=false)
+    elseif n == 3
+        return closest_point_projection(SMatrix{3,3,Float64,9}(nodes), point; strict=false)
+    else
+        y, ξ, distance, normal = closest_point_projection(nodes, Vector(point); strict=false)
+        return SVector{3,Float64}(y), SVector{2,Float64}(ξ), distance, SVector{3,Float64}(normal)
+    end
+end
+
+function project_point_to_containing_facet(point::SVector{3,Float64}, search::SideSetSearch)
+    inside_tol = 1.0e-06
+    best_key = (Inf, Inf)
+    best_facet = 0
+    best_point = zero(SVector{3,Float64})
+    best_ξ = zero(SVector{2,Float64})
+    best_normal = zero(SVector{3,Float64})
+    best_distance = Inf
+    # See the array version below for the rationale of the node gap margin.
+    node_gap = Inf
+    @inbounds for c in search.node_coords
+        node_gap = min(node_gap, norm(point - c))
+    end
+    @inbounds for facet in eachindex(search.facet_coords)
+        margin = node_gap + search.half_diagonal[facet]
+        lo = search.box_min[facet]
+        hi = search.box_max[facet]
+        outside = false
+        for i in 1:3
+            if point[i] < lo[i] - margin || point[i] > hi[i] + margin
+                outside = true
+                break
+            end
+        end
+        outside && continue
+        nodes = search.facet_coords[facet]
+        new_point, ξ, distance, normal = project_onto_facet(nodes, point)
+        isfinite(distance) || continue
+        element_type = get_element_type(2, size(nodes, 2))
+        overshoot = parametric_overshoot(element_type, ξ)
+        key = (overshoot ≤ inside_tol ? 0.0 : overshoot, abs(distance))
+        if key < best_key
+            best_key = key
+            best_facet = facet
+            best_point, best_ξ, best_normal, best_distance = new_point, ξ, normal, distance
+        end
+    end
+    if best_facet == 0
+        # Every facet's projection diverged (strongly deformed interface):
+        # fall back to the nearest-node facet.
+        nearest = 0
+        nearest_distance = Inf
+        for facet in eachindex(search.facet_coords)
+            d = get_minimum_distance_to_nodes(search.facet_coords[facet], Vector(point))
+            if d < nearest_distance
+                nearest_distance = d
+                nearest = facet
+            end
+        end
+        nodes = search.facet_coords[nearest]
+        y, ξ, distance, normal = closest_point_projection(nodes, Vector(point))
+        return y, ξ, nodes, search.facet_node_indices[nearest], normal, distance
+    end
+    return Vector(best_point), Vector(best_ξ), search.facet_coords[best_facet], search.facet_node_indices[best_facet],
+        Vector(best_normal), best_distance
+end
+
 # Containing-facet projection for interface transfer assembly. The
 # nearest-node heuristic of closest_face_to_point can select a facet that
 # does not contain the point whenever the two side sets are refined
@@ -776,6 +945,7 @@ function get_rectangular_projection_matrix(
     dst_coords = dst_model.reference
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
+    src_search = build_side_set_search(src_model, src_side_set_id)
     for dst_num_nodes_side in dst_num_nodes_sides
         dst_side_nodes = dst_side_set_node_indices[dst_side_set_node_index:(dst_side_set_node_index + dst_num_nodes_side - 1)]
         dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
@@ -791,7 +961,7 @@ function get_rectangular_projection_matrix(
             dst_wₚ = dst_w[dst_point]
             dst_int_point_coord = dst_side_coordinates * dst_Nₚ
             _, ξ, src_side_coordinates, src_side_nodes, _, _ = project_point_to_containing_facet(
-                dst_int_point_coord, src_model, src_side_set_id
+                SVector{3,Float64}(dst_int_point_coord), src_search
             )
             src_side_element_type = get_element_type(2, size(src_side_coordinates)[2])
             src_Nₚ, _, _ = interpolate(src_side_element_type, ξ)

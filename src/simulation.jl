@@ -1887,8 +1887,9 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 )
                 bc.dirichlet_projector = (W \ I) * L
             elseif is_swappable_dn_schwarz(bc)
-                compute_dirichlet_projector(subsim.model, bc)
-                compute_neumann_projector(subsim.model, bc)
+                cache = RectangularProjectionCache()
+                compute_dirichlet_projector(subsim.model, bc; cache=cache)
+                compute_neumann_projector(subsim.model, bc; cache=cache)
                 if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                     fom_model = get_fom_model(subsim)
                     bc.square_projector = get_square_projection_matrix(fom_model, bc)

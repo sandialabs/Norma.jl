@@ -466,8 +466,9 @@ function compute_impedance_schwarz_projectors!(
         compute_paired_impedance_schwarz_projectors!(dst_model, dst_bc)
         return nothing
     end
-    compute_dirichlet_projector(dst_model, dst_bc)
-    compute_neumann_projector(dst_model, dst_bc)
+    cache = RectangularProjectionCache()
+    compute_dirichlet_projector(dst_model, dst_bc; cache=cache)
+    compute_neumann_projector(dst_model, dst_bc; cache=cache)
     dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
     return nothing
 end
@@ -2011,7 +2012,31 @@ function extract_local_vector(bc::SolidMechanicsSchwarzBoundaryCondition, global
     return extract_local_vector(global_vector, global_from_local_map, dim)
 end
 
-function compute_neumann_projector(dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
+# The Dirichlet and Neumann projectors of one interface use the same two
+# rectangular projection matrices; a cache shared between the two calls keeps
+# each from being computed twice.
+const RectangularProjectionCache = Dict{Symbol,Matrix{Float64}}
+
+function cached_rectangular_projection(
+    cache::RectangularProjectionCache,
+    which::Symbol,
+    dst_fom::SolidMechanics,
+    dst_bc::SolidMechanicsSchwarzBoundaryCondition,
+    src_fom::SolidMechanics,
+    src_bc::SolidMechanicsSchwarzBoundaryCondition,
+)
+    return get!(cache, which) do
+        if which == :destination_integrated
+            get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+        else
+            get_src_integrated_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+        end
+    end
+end
+
+function compute_neumann_projector(
+    dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition; cache::RectangularProjectionCache=RectangularProjectionCache()
+)
     src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -2025,17 +2050,19 @@ function compute_neumann_projector(dst_model::Model, dst_bc::SolidMechanicsSchwa
     # must match the source mass row sums — and when it fails (coarser
     # destination facets, non-nested interfaces), fall back to the
     # source-integrated L, which is conservative by construction.
-    L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+    L = cached_rectangular_projection(cache, :destination_integrated, dst_fom, dst_bc, src_fom, src_bc)
     src_lumped = H * ones(size(H, 2))
     conservation_error = maximum(abs.(vec(sum(L; dims=1)) - src_lumped)) / maximum(abs.(src_lumped))
     if conservation_error > 1.0e-10
-        L = get_src_integrated_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+        L = cached_rectangular_projection(cache, :source_integrated, dst_fom, dst_bc, src_fom, src_bc)
     end
     dst_bc.neumann_projector = L * (H \ I)
     return nothing
 end
 
-function compute_dirichlet_projector(dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition)
+function compute_dirichlet_projector(
+    dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition; cache::RectangularProjectionCache=RectangularProjectionCache()
+)
     src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
@@ -2049,11 +2076,11 @@ function compute_dirichlet_projector(dst_model::Model, dst_bc::SolidMechanicsSch
     # when it fails (non-nested facets, partial coverage), fall back to the
     # destination-integrated L, whose Dirichlet projector reproduces constants
     # for any quadrature by construction.
-    L = get_src_integrated_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+    L = cached_rectangular_projection(cache, :source_integrated, dst_fom, dst_bc, src_fom, src_bc)
     P = (W \ I) * L
     pu_error = maximum(abs.(P * ones(size(P, 2)) .- 1.0))
     if pu_error > 1.0e-10
-        L = get_rectangular_projection_matrix(dst_fom, dst_bc, src_fom, src_bc)
+        L = cached_rectangular_projection(cache, :destination_integrated, dst_fom, dst_bc, src_fom, src_bc)
         P = (W \ I) * L
     end
     dst_bc.dirichlet_projector = P
