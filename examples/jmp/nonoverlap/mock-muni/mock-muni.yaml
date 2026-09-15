@@ -1,0 +1,10 @@
+type: multi
+domains: ["case.yaml", "egg.yaml"]
+initial time: 0.0
+final time: 0.0025
+time step: 1.0e-7
+minimum iterations: 1
+maximum iterations: 256
+relative tolerance: 1.0e-06
+absolute tolerance: 1.0e-04
+relaxation: aitken recursive
