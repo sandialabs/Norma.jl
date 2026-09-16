@@ -28,13 +28,16 @@ initial conditions:
       function: "-35.0"
 boundary conditions:
   Dirichlet:
-    - node set: ns_bottom
+    - node set: ns_bottom_kase
+      component: z
+      function: "0.0"
+    - node set: ns_bottom_exp_d1
       component: z
       function: "0.0"
   Schwarz DN nonoverlap:
-    - side set: ss_schwarz_case
+    - side set: ss_exp_d1_schwarz
       source: egg
-      source side set: ss_schwarz_egg
+      source side set: ss_egg_schwarz
       default BC type: Neumann
 solver:
     type: explicit solver

@@ -28,9 +28,9 @@ initial conditions:
       function: "-35.0"
 boundary conditions:
   Schwarz DN nonoverlap:
-    - side set: ss_schwarz_egg
+    - side set: ss_egg_schwarz
       source: case
-      source side set: ss_schwarz_case
+      source side set: ss_exp_d1_schwarz
       default BC type: Dirichlet
 solver:
     type: explicit solver
