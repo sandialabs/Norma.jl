@@ -5,6 +5,7 @@
 # top-level Norma.jl directory.
 
 using LinearAlgebra
+using YAML
 using StaticArrays
 
 @testset "Hencky Matrix Logarithm" begin
@@ -126,4 +127,33 @@ end
     @test abs(avg_stress[4]) < 1.0e-4 * σ_axial
     @test abs(avg_stress[5]) < 1.0e-4 * σ_axial
     @test abs(avg_stress[6]) < 1.0e-4 * σ_axial
+end
+
+# A Newton solve that exhausts `maximum iterations` without meeting either
+# tolerance used to be accepted silently. By default it now fails the step,
+# which on a fixed time step aborts the run; `unconverged solve action: warn`
+# restores the old behavior with a warning.
+@testset "Unconverged Solve Action" begin
+    cp("../examples/single/static-solid/cube/standard/cube-hencky.yaml", "cube-hencky.yaml"; force=true)
+    cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
+    params = YAML.load_file("cube-hencky.yaml"; dicttype=Norma.Parameters)
+    params["name"] = "cube-hencky.yaml"
+    params["solver"]["maximum iterations"] = 2  # too few for this nonlinear step
+    Norma.NORMA_TEST_MODE[] = true
+    try
+        @test_throws Norma.NormaAbortException Norma.run(deepcopy(params))
+        rejected = deepcopy(params)
+        rejected["solver"]["unconverged solve action"] = "shrug"
+        @test_throws Norma.NormaAbortException Norma.run(rejected)
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+    end
+    tolerated = deepcopy(params)
+    tolerated["solver"]["unconverged solve action"] = "warn"
+    simulation = Norma.run(tolerated)
+    @test simulation.solver.converged == false
+    @test simulation.solver.absolute_error > simulation.solver.absolute_tolerance
+    rm("cube-hencky.yaml"; force=true)
+    rm("cube.g"; force=true)
+    rm("cube-hencky.e"; force=true)
 end

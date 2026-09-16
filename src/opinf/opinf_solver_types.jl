@@ -25,6 +25,7 @@ mutable struct RomHessianMinimizer <: Minimizer
     use_line_search::Bool
     linear_solver::String
     fom_solver::HessianMinimizer
+    unconverged_action::String
 end
 
 mutable struct RomExplicitSolver <: Explicit

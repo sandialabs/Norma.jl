@@ -36,4 +36,4 @@ solver:
   minimum iterations: 1
   maximum iterations: 16
   relative tolerance: 1.0e-10
-  absolute tolerance: 1.0e-06
+  absolute tolerance: 1.0e-05
