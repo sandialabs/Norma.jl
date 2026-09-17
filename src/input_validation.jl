@@ -137,6 +137,7 @@ const SOLVER_KEYS = Set([
     "absolute tolerance",
     "relative tolerance",
     "linear solver",
+    "unconverged solve action",
     "linear solver absolute tolerance",
     "linear solver relative tolerance",
     "use line search",

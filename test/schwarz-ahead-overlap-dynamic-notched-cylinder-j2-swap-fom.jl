@@ -104,7 +104,14 @@ using YAML
     # so plastic state was committed on every residual assembly (every Newton
     # iteration and every Schwarz iteration) instead of on step acceptance;
     # this Schwarz-coupled plastic problem integrated its internal variables
-    # from each iteration's trial history and the old values reflect that.  This stiff J2 + Schwarz problem
+    # from each iteration's trial history and the old values reflect that.
+    # Regenerated again 2026-09-16 after raising the subdomain Newton cap from
+    # 16 to 64 iterations: one solve in the step after the swap needs 21
+    # iterations, and with the cap at 16 it was accepted unconverged (before
+    # unconverged solves failed the step) or, after that change, failed and was
+    # retried at smaller time steps along a rounding-dependent path that made
+    # the results differ by up to 1.4 % between x86 and Apple silicon.  With
+    # the cap at 64 every solve converges and no step is retried.  This stiff J2 + Schwarz problem
     # is highly sensitive to floating-point rounding: the converged stresses
     # vary by up to ~3 % across platforms (BLAS/CPU differences amplified
     # through the nonlinear and Schwarz iterations), with the Schwarz-coupled
@@ -115,20 +122,20 @@ using YAML
     avg_stress_2 = average_components(model_2.stress)
 
     # Domain 1 (notched region)
-    @test avg_stress_1[1] ≈ 3.551515280362134e7 rtol = 5.0e-2   # σ_xx
-    @test avg_stress_1[2] ≈ 3.577406231880717e7 rtol = 5.0e-2   # σ_yy
-    @test avg_stress_1[3] ≈ 2.3412178041665545e8 rtol = 5.0e-2   # σ_zz (axial, dominant)
-    @test avg_stress_1[4] ≈ 4.49667130971914e7 rtol = 5.0e-2   # σ_yz
-    @test avg_stress_1[5] ≈ 4.4320888713590436e7 rtol = 5.0e-2   # σ_xz
-    @test avg_stress_1[6] ≈ 2.2459202815243542e7 rtol = 5.0e-2   # σ_xy
+    @test avg_stress_1[1] ≈ 3.551245900370641e7 rtol = 5.0e-2   # σ_xx
+    @test avg_stress_1[2] ≈ 3.577135824045664e7 rtol = 5.0e-2   # σ_yy
+    @test avg_stress_1[3] ≈ 2.3412111604897696e8 rtol = 5.0e-2   # σ_zz (axial, dominant)
+    @test avg_stress_1[4] ≈ 4.49658929140163e7 rtol = 5.0e-2   # σ_yz
+    @test avg_stress_1[5] ≈ 4.432007816970613e7 rtol = 5.0e-2   # σ_xz
+    @test avg_stress_1[6] ≈ 2.245946007781051e7 rtol = 5.0e-2   # σ_xy
 
     # Domain 2 (away from notch)
-    @test avg_stress_2[1] ≈ -2.069915563053306e7 rtol = 5.0e-2   # σ_xx
-    @test avg_stress_2[2] ≈ -2.050951210213198e7 rtol = 5.0e-2   # σ_yy
-    @test avg_stress_2[3] ≈ 1.4799049836122042e8 rtol = 5.0e-2   # σ_zz (axial)
-    @test avg_stress_2[4] ≈ 1.3364302745664774e7 rtol = 5.0e-2   # σ_yz
-    @test avg_stress_2[5] ≈ 1.3137457764035271e7 rtol = 5.0e-2   # σ_xz
-    @test avg_stress_2[6] ≈ 8.245908260137818e6 rtol = 5.0e-2   # σ_xy
+    @test avg_stress_2[1] ≈ -2.022444545816137e7 rtol = 5.0e-2   # σ_xx
+    @test avg_stress_2[2] ≈ -2.0070172651241567e7 rtol = 5.0e-2   # σ_yy
+    @test avg_stress_2[3] ≈ 1.4800376455841684e8 rtol = 5.0e-2   # σ_zz (axial)
+    @test avg_stress_2[4] ≈ 1.3364469359633846e7 rtol = 5.0e-2   # σ_yz
+    @test avg_stress_2[5] ≈ 1.3137628450043354e7 rtol = 5.0e-2   # σ_xz
+    @test avg_stress_2[6] ≈ 8.245941754623506e6 rtol = 5.0e-2   # σ_xy
 
     # Displacements
     min_disp_x_1 = minimum(model_1.displacement[1, :])
@@ -138,12 +145,12 @@ using YAML
     min_disp_y_2 = minimum(model_2.displacement[2, :])
     min_disp_z_2 = minimum(model_2.displacement[3, :])
 
-    @test min_disp_x_1 ≈ -0.0008581867167312236 rtol = 5.0e-3
-    @test min_disp_y_1 ≈ -0.0008545716050116027 rtol = 5.0e-3
-    @test max_disp_z_1 ≈ 0.0012634193505906832 rtol = 5.0e-3
-    @test min_disp_x_2 ≈ -0.00016698327118298134 rtol = 5.0e-3
-    @test min_disp_y_2 ≈ -0.00016694097282405826 rtol = 5.0e-3
-    @test min_disp_z_2 ≈ 0.0009764701314749769 rtol = 5.0e-3
+    @test min_disp_x_1 ≈ -0.0008581730029192907 rtol = 5.0e-3
+    @test min_disp_y_1 ≈ -0.0008545579530739183 rtol = 5.0e-3
+    @test max_disp_z_1 ≈ 0.0012634071311735662 rtol = 5.0e-3
+    @test min_disp_x_2 ≈ -0.0001669836467500449 rtol = 5.0e-3
+    @test min_disp_y_2 ≈ -0.00016694136489424707 rtol = 5.0e-3
+    @test min_disp_z_2 ≈ 0.0009764500887112157 rtol = 5.0e-3
 
     # Schwarz iteration counts should be non-trivial (coupling active)
     @test all(sim.controller.schwarz_iters .>= 0)

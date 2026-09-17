@@ -63,6 +63,7 @@ function RomHessianMinimizer(params::Parameters, model::RomModel)
         use_line_search,
         linear_solver,
         fom_solver,
+        unconverged_solve_action(solver_params, "fail"),
     )
 end
 

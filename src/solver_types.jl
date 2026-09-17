@@ -40,6 +40,7 @@ mutable struct HessianMinimizer <: Minimizer
     linear_solver_absolute_tolerance::Float64
     linear_solver_relative_tolerance::Float64
     direct_cache::DirectSolverCache
+    unconverged_action::String
     value::Float64
     gradient::Vector{Float64}
     hessian::SparseMatrixCSC{Float64,Int64}
@@ -87,6 +88,7 @@ mutable struct SteepestDescent <: MatrixFree
     energy_history::Vector{Float64}
     energy_stagnation_streak::Int64
     stagnated::Bool
+    unconverged_action::String
 end
 
 struct NewtonStep <: Step

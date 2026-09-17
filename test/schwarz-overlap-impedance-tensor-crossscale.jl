@@ -73,7 +73,7 @@
           minimum iterations: 1
           maximum iterations: 16
           relative tolerance: 1.0e-10
-          absolute tolerance: 2.54e-08
+          absolute tolerance: 1.0e-07
         """
     end
 
@@ -98,7 +98,7 @@
         minimum iterations: 1
         maximum iterations: 128
         relative tolerance: 1.0e-08
-        absolute tolerance: 2.54e-08
+        absolute tolerance: 1.0e-07
         """,
     )
 

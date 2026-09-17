@@ -10,6 +10,20 @@ using IterativeSolvers
 using LinearAlgebra
 using Printf
 
+# What a solve that exhausts `maximum iterations` without meeting either
+# tolerance does: `fail` marks the step failed, so that adaptive time stepping
+# retries it with a smaller step or the run aborts, and `warn` reports it and
+# carries the unconverged solution forward. Newton defaults to `fail`; the
+# matrix-free minimizers default to `warn`, since their iteration count is a
+# budget rather than a convergence expectation.
+function unconverged_solve_action(solver_params::Parameters, default::String)
+    action = String(get(solver_params, "unconverged solve action", default))
+    if action != "fail" && action != "warn"
+        norma_abortf("Unknown `unconverged solve action: %s`. Valid values are `fail` and `warn`.", action)
+    end
+    return action
+end
+
 function HessianMinimizer(params::Parameters, model::Model)
     solver_params = params["solver"]
     num_dof = length(model.free_dofs)
@@ -27,6 +41,7 @@ function HessianMinimizer(params::Parameters, model::Model)
         norma_abortf("Unknown linear solver \"%s\": use \"cg\" or \"direct\".", linear_solver)
     end
     direct_cache = DirectSolverCache(nothing, Int64[], Int64[])
+    unconverged_action = unconverged_solve_action(solver_params, "fail")
     absolute_error = 0.0
     relative_error = 0.0
     value = 0.0
@@ -53,6 +68,7 @@ function HessianMinimizer(params::Parameters, model::Model)
         linear_solver_absolute_tolerance,
         linear_solver_relative_tolerance,
         direct_cache,
+        unconverged_action,
         value,
         gradient,
         hessian,
@@ -109,6 +125,7 @@ function SteepestDescent(params::Parameters, model::Model)
     # default when the key is absent) disables it.
     energy_stagnation_window = get(solver_params, "energy stagnation window", 0)
     energy_stagnation_tolerance = get(solver_params, "energy stagnation tolerance", 1.0e-06)
+    unconverged_action = unconverged_solve_action(solver_params, "warn")
     if haskey(solver_params, "energy stagnation tolerance") == true &&
         haskey(solver_params, "energy stagnation window") == false
         norma_abort("energy stagnation tolerance is set but has no effect without energy stagnation window.")
@@ -146,6 +163,7 @@ function SteepestDescent(params::Parameters, model::Model)
         Float64[],
         0,
         false,
+        unconverged_action,
     )
 end
 
@@ -761,6 +779,39 @@ function stop_solve(_::ExplicitSolver, _::Int64)
     return true
 end
 
+# A Newton or minimizer solve that left the loop by exhausting its iterations
+# used to be carried forward silently: the step was accepted with whatever
+# residual remained, and only the iteration log showed it. See
+# `unconverged_solve_action` for the two actions.
+function report_unconverged_solve(
+    solver::Union{HessianMinimizer,SteepestDescent,RomHessianMinimizer}, model::Model, iterations::Int64
+)
+    if solver.converged == true || solver.failed == true || model.failed == true || solver.absolute_error == 0.0
+        return nothing
+    end
+    if solver.unconverged_action == "fail"
+        norma_logf(
+            0,
+            :warning,
+            "Solver did not converge in %d iterations: |R| = %.2e > %.2e and |R|/|R0| = %.2e > %.2e; " *
+            "treating the step as failed.",
+            iterations, solver.absolute_error, solver.absolute_tolerance, solver.relative_error, solver.relative_tolerance,
+        )
+        solver.failed = true
+        model.failed = true
+    else
+        norma_logf(
+            0,
+            :warning,
+            "Solver did not converge in %d iterations: |R| = %.2e > %.2e and |R|/|R0| = %.2e > %.2e; continuing.",
+            iterations, solver.absolute_error, solver.absolute_tolerance, solver.relative_error, solver.relative_tolerance,
+        )
+    end
+    return nothing
+end
+
+report_unconverged_solve(::Explicit, ::Model, ::Int64) = nothing
+
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     is_rom_model = model isa RomModel
     if is_rom_model == false
@@ -834,6 +885,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             break
         end
     end
+    report_unconverged_solve(solver, model, iteration_number - 1)
     # Recompute FOM internal force after ROM converges so it is current for
     # any subsequent BC or history queries (e.g. Schwarz Neumann transfer).
     # Only needed when this subdomain sends Neumann data (i.e., applies Dirichlet).
