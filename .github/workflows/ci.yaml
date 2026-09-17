@@ -20,6 +20,11 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 jobs:
+  # The full suite on every platform and Julia version, without coverage
+  # instrumentation. Coverage makes Julia about eleven times slower (one
+  # mid-size test takes 24 s without it and 4.5 min with it), which put the
+  # instrumented full suite at 2.75 to 5 h per job and over the 6 h job limit
+  # on a slow Ubuntu runner. Coverage is collected by the separate job below.
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -75,9 +80,35 @@ jobs:
           JULIA_PKG_PRECOMPILE_AUTO: 0
 
       - name: Run tests
-        run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--with-nnopinf"])'
+        run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; test_args=["--with-nnopinf"])'
         env:
           PYTHON: python
+
+  # Coverage from the quick test set on one platform. The quick set leaves out
+  # the long AHeaD, swap, and restart cases and the neural-network OpInf test,
+  # so it needs no Python and stays well inside the job limit even when
+  # instrumented.
+  coverage:
+    name: Coverage - Julia 1.13 - ubuntu-latest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.13'
+
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v2
+
+      - name: Build project
+        uses: julia-actions/julia-buildpkg@v1
+
+      - name: Run quick tests with coverage
+        run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--quick"])'
 
       - name: Process coverage
         uses: julia-actions/julia-processcoverage@v1
