@@ -1,0 +1,218 @@
+# Cubit 17.06 + Cubit 17.08 + 17.10.1
+
+reset
+undo off
+journal IDless on
+
+# Inputs #
+
+${imono = 1} # =1 Generate monolithic mesh
+             # =0 Generate overlapping or nonoverlapping SAM mesh
+${iunmerge = 1} # =1 Unmerge case from fill
+                # =0 Merge fill and case
+
+# Note: To generate nonoverlapping mesh, first generate the monolithic mesh for unmerged fill
+# and run gen_non_overlap_mesh_unmerged_fill.jou for unmerged fill
+ 
+
+${case_th = 0.5}
+
+${sam_overlap = 0.6}
+${d1_mesh_size = 0.25}
+${d2_mesh_size = 0.15}
+
+#if(imono == 1)}
+#  $d1_mesh_size = d2_mesh_size}
+#endif}
+
+${od_exp = 6.0}
+${od_exp_sam = od_exp - 1.5}
+${od_fuze = 3.0}
+${len_exp = 12.0}
+${len_fuze = 4.0}
+${fuze_pos = 0.75}
+
+${len_exp_sam = len_exp - 3.0}
+
+# Generate geometry #
+
+# Case
+create cylinder height {len_exp + 2*case_th} radius {od_exp/2.0 + case_th}
+
+# Explosive
+create cylinder height {len_exp} radius {od_exp/2.0}
+
+subtract volume 2 from volume 1 keep
+
+delete volume 1
+
+compress ids
+
+# SAM explosive
+
+create cylinder height {len_exp_sam} radius {od_exp_sam/2}
+
+subtract volume 3 from volume 1 keep
+
+delete volume 1
+
+compress ids
+
+# Fuze
+create cylinder height {len_fuze} radius {od_fuze/2.0}
+
+move volume 4 z {fuze_pos}
+
+subtract volume 4 from volume 2 keep
+
+delete volume 2
+
+compress ids
+
+create sphere radius {od_fuze/2}
+
+move volume 5 z {-len_fuze/2 + fuze_pos}
+
+webcut volume 5 with plane zplane offset {-len_fuze/2 + fuze_pos}
+
+delete volume 5
+
+compress ids
+
+subtract volume 5 from volume 4 keep
+
+delete volume 4
+
+compress ids
+
+## Check volumes ##
+
+#webcut volume all with plane xplane offset 0
+#delete volume with x_coord < 0
+
+## Generate SAM overlap between D1 and D2 ##
+
+# ----------------------------------------------------------
+# Next tweak generates SAM overlapping mesh
+# ----------------------------------------------------------
+{if(imono == 0)}
+   tweak surface 18 19 20 offset {sam_overlap}
+{endif}
+
+compress ids
+
+# Rename volumes
+
+volume 1 name "kase_d1"
+volume 2 name "exp_d1"
+volume 3 4 name "fuze_d2"
+volume 5 name "exp_d2"
+
+# Imprint/merge
+
+webcut volume all with plane xplane offset 0
+webcut volume all with plane yplane offset 0
+
+webcut volume with name "exp_d2*" with plane zplane offset {-len_fuze/2 + fuze_pos}
+webcut volume with name "exp_d2*" with plane zplane offset {len_fuze/2 + fuze_pos}
+
+webcut volume with name "*d2*"  with cylinder radius {0.25*od_fuze} axis z
+webcut volume with name "*d1*" with cylinder radius {od_exp/2} axis z
+webcut volume with name "*d1*" with cylinder radius {od_exp_sam/2} axis z
+
+imprint volume with name "fuze*" volume with name "exp_d2*"
+merge volume with name "fuze*" volume with name "exp_d2*"
+
+imprint volume with name "kase*" volume with name "exp_d1*"
+merge volume with name "kase*" volume with name "exp_d1*"
+
+{if(imono == 1)}
+
+ imprint volume with name "exp_d1*" volume with name "exp_d2*"
+ merge volume with name "exp_d1*" volume with name "exp_d2*"
+
+{endif}
+
+# Mesh
+
+volume with name "*d1*" size {d1_mesh_size}
+volume with name "*d2*" size {d2_mesh_size}
+
+mesh volume with name "*d2*"
+
+mesh volume with name "*d1*"
+
+## Add impact plate ##
+
+create cylinder height 3 radius {1.5*od_exp/2}
+volume {Id("Volume")} name "impact_plate"
+move volume impact_plate z {-8-0.005}
+
+volume impact_plate size {d1_mesh_size*2.5}
+mesh volume impact_plate
+
+# Blocks #
+
+block 1 add volume with name "kase_d1*"
+block 2 add volume with name "exp_d1*"
+block 3 add volume with name "fuze_d2*"
+block 4 add volume with name "exp_d2*"
+block 5 add volume impact_plate
+
+block 1 name "kase_d1"
+block 2 name "exp_d1"
+block 3 name "fuze_d2"
+block 4 name "exp_d2"
+block 5 name "impact_plate"
+
+# Nodesets
+
+{if(imono == 0)}
+
+   nodeset 10 add surface 97 99 109 111 628 635
+   nodeset 10 add surface 163 165 175 177 631 638
+   nodeset 20 add surface 219 225 233 241 246 248 252 257 259 264 266 271 294 301 326 328 356 358 386 388 394 401 406 408 416 418 424 431
+  
+   nodeset 10 name "ns_exp_d1"
+   nodeset 20 name "ns_exp_d2"
+   
+{endif}
+
+nodeset 30 add surface in volume in block 1 with z_coord < {-0.9999*(len_exp/2 + case_th)}
+nodeset 40 add surface 284 291 316 318 346 348 374 381
+nodeset 50 add surface in volume in block 5 with z_coord < {0.9999*-9.505000}
+
+nodeset 30 name "ns_impact_z"
+nodeset 40 name "ns_fuze_nose"
+nodeset 50 name "ns_fixed_xyz"
+
+## Scale to meters ##
+
+volume all scale 0.0254
+
+{if(iunmerge == 1)}
+  unmerge volume with name "kase_d1*"
+  merge volume with name "kase_d1*"
+{endif}
+
+{if(iunmerge == 0)}
+  {if(imono == 0)}
+    export mesh "embedded_fuze_d1.g" block 1 2 5 overwrite
+    export mesh "embedded_fuze_d2.g" block 3 4 overwrite
+  {else}
+    export mesh "embedded_fuze.g" overwrite
+    save as "embedded_fuze.cub" overwrite
+  {endif}
+{else}
+  {if(imono == 0)}
+    export mesh "embedded_fuze_d1_fill_unmerged.g" block 1 2 5 overwrite
+    export mesh "embedded_fuze_d2_fill_unmerged.g" block 3 4 overwrite
+  {else}
+    export mesh "embedded_fuze_fill_unmerged.g" overwrite
+    save as "embedded_fuze_fill_unmerged.cub" overwrite
+  {endif}
+{endif}
+
+
+
+
