@@ -102,6 +102,11 @@ repeatedly means the coupling is not advancing; check `relaxation parameter`.
 | `CSV output interval` | no | `0.0` (disabled) | applied uniformly to all subdomains |
 | `blended energy output` | no | `false` | write an Arlequin-blended kinetic/stored/total-energy CSV each stop, removing the double count in overlapping regions |
 
+The blending weights depend only on the reference configuration and are
+computed once, with grid searches over the partner elements and the Schwarz
+side sets, so enabling the energy output costs a few seconds of setup and a
+small fraction of a step per stop.
+
 ## Schwarz coupling boundary conditions (subdomain files)
 
 Inside each subdomain's `boundary conditions` block, coupling to a partner
