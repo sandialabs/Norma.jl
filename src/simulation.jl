@@ -1264,6 +1264,24 @@ function advance_time(sim::SingleDomainSimulation)
     time = integrator.time
     time_stop = controller.time
     time_step = get_adjusted_timestep(time, integrator.time_step, time_stop)
+    # An explicit integrator cannot take a step longer than the stable step
+    # of the current configuration. The cap belongs here, before the time is
+    # advanced: capping later, in the predictor, updated the kinematics with
+    # the stable step while the time had already moved by the nominal one,
+    # which compressed the whole response in time. The clipped last substep
+    # is capped too, since the clipping may stretch it up to 1.5 times the
+    # nominal step; the remainder is then taken by the next substep.
+    stable = stable_time_step(integrator, sim.model)
+    if time_step > stable
+        norma_logf(
+            0,
+            :warning,
+            "Δt = %.3e exceeds stable Δt = %.3e; using stable step.",
+            time_step,
+            stable,
+        )
+        time_step = stable
+    end
     next_time = time + time_step
     integrator.prev_time = time
     integrator.time = sim.model.time = next_time
@@ -1657,6 +1675,15 @@ end
 
 function subcycle(sim::SingleDomainSimulation)
     is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
+    # Restore the nominal step before each stop, as the multi-domain subcycle
+    # does: when the stable-step cap forces substeps, advance_time clips the
+    # last one to land on the stop and stores the remainder in
+    # integrator.time_step, which would otherwise become the nominal step of
+    # every later stop. Adaptive stepping keeps its adapted value.
+    integrator = sim.integrator
+    if integrator.minimum_time_step == integrator.maximum_time_step
+        integrator.time_step = integrator.maximum_time_step
+    end
     t_last_log = time()
     while true
         advance_time(sim)

@@ -81,7 +81,10 @@ non-dissipative average-acceleration (trapezoidal) rule.
 
 Explicit dynamics. Pair with the [`explicit solver`](solvers.md). The stable
 time step is estimated from the mesh and wave speed scaled by the Courant
-number `CFL`.
+number `CFL`. When the requested `time step` (or, in a multi-domain run, the
+controller `time step`) exceeds the stable step, each stop is reached by
+substeps no longer than the stable step, and a warning is printed at every
+substep.
 
 ```yaml
 time integrator:

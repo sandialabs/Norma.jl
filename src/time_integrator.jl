@@ -374,7 +374,8 @@ end
 
 function predict(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
     free = model.free_dofs
-    set_time_step(integrator, model)
+    # advance_time already capped the step at the stable step and advanced
+    # the time by that same step.
     Δt = integrator.time_step
     γ = integrator.γ
     u = integrator.displacement

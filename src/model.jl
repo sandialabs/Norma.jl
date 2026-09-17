@@ -475,7 +475,13 @@ function copy_state(model::SolidMechanics, state::Vector{Vector{Vector{Vector{Fl
     return has_material_state(model) ? deepcopy(state) : state
 end
 
-function set_time_step(integrator::CentralDifference, model::SolidMechanics)
+# The largest step the central difference scheme can take on the current
+# configuration: the CFL number times the smallest element characteristic
+# length over the dilatational wave speed, minimized over the blocks. Implicit
+# and reduced integrators have no such limit.
+stable_time_step(::TimeIntegrator, ::Model) = Inf
+
+function stable_time_step(integrator::CentralDifference, model::SolidMechanics)
     materials = model.materials
     stable_time_step = Inf
     for (block_index, block) in enumerate(model.blocks)
@@ -487,16 +493,25 @@ function set_time_step(integrator::CentralDifference, model::SolidMechanics)
         block_stable_time_step = integrator.CFL * minimum_block_characteristic_length / wave_speed
         stable_time_step = min(stable_time_step, block_stable_time_step)
     end
-    if stable_time_step < integrator.time_step
+    return stable_time_step
+end
+
+# Cap the integrator's nominal step at the stable step. advance_time applies
+# the same cap to every substep it takes, so the kinematic update and the
+# time stamp always use the same step and a stop longer than the stable step
+# is reached by subcycling.
+function set_time_step(integrator::CentralDifference, model::SolidMechanics)
+    stable = stable_time_step(integrator, model)
+    if stable < integrator.time_step
         norma_logf(
             0,
             :warning,
-            "Δt = %.3e exceeds stable Δt = %.3e — using stable step.",
+            "Δt = %.3e exceeds stable Δt = %.3e; using stable step.",
             integrator.time_step,
-            stable_time_step,
+            stable,
         )
     end
-    integrator.time_step = min(stable_time_step, integrator.time_step)
+    integrator.time_step = min(stable, integrator.time_step)
     return nothing
 end
 
