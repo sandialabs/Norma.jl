@@ -1,0 +1,15 @@
+type: multi
+domains: ["inner.yaml", "outer.yaml"]
+# Set `blended energy output: true` to write the kinetic, stored, and total
+# energy history to cylinders-energy.csv. On these meshes it is expensive:
+# the overlap weights are set up by a linear search of the partner mesh, and
+# the energies are re-integrated at every stop.
+Exodus output interval: 2.0e-05
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0e-03
+time step: 5.0e-07
+minimum iterations: 1
+maximum iterations: 256
+relative tolerance: 1.0e-06
+absolute tolerance: 1.0e-04

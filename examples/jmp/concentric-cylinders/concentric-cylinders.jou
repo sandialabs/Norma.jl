@@ -1,0 +1,292 @@
+# Three nested cylinders of different materials: a closed cylindrical
+# shell, a cylindrical filler inside it, and a shorter solid core inside
+# the filler, offset upward from the filler center. The assembly is fixed
+# in z at the bottom face of the shell and launched at -35 m/s in z to
+# simulate impact against a rigid surface.
+#
+# Generates five meshes, run from this directory:
+#   monolithic/cylinders.g        one mesh, three blocks, conforming
+#   nonoverlap/inner.g, outer.g   split at the boundary of a cylindrical
+#                                 region of radius R_int and height H_int
+#                                 inside the filler, around the core
+#   overlap/inner.g, outer.g      inner region enlarged by W/2 in radius
+#                                 and at both ends, outer cavity reduced
+#                                 by the same amounts
+# The inner domain holds the core and the part of the filler inside the
+# region; the outer domain holds the rest of the filler and the shell.
+# Both Schwarz interfaces lie inside the filler, so no interface
+# coincides with a material boundary. The inner and outer meshes are
+# nonconforming. Only the outer domain touches the fixed bottom face.
+#
+# Mesh refinement: every element size is a base size divided by
+# `refinement`, so refinement 1 gives the committed meshes, 2 halves the
+# element size (about 8 times the elements), and 0.5 doubles it. The
+# default below applies unless the variable is already defined, so the
+# level can be chosen without editing this file:
+#
+#   ./generate-meshes.sh 2            (batch, from this directory)
+#
+# or, in Cubit, define the APREPRO variable refinement (for example
+# to 2) and then play back this journal. Do not write the definition
+# inside a comment: APREPRO evaluates braces in comments too. The base
+# sizes give a 1:1.25 ratio between the inner and outer Schwarz meshes;
+# change h_inner_base and h_outer_base to change that ratio. The
+# monolithic mesh uses the inner size throughout.
+#
+# Every body is cut by the planes through the ends of the nested
+# cylinders and by the coaxial cylinders through their lateral surfaces,
+# so that each piece is a cylinder or annulus segment swept along z.
+# Bodies are named before the cuts; Cubit propagates the names to the
+# pieces with @ suffixes, and blocks and side sets are built from the
+# names. Meters; the dimensions follow the original assembly in inches.
+
+#{ifndef(refinement)}
+${refinement = 1.0}
+#{endif}
+${inch = 0.0254}
+${h_inner_base = 0.2 * inch}
+${h_outer_base = 0.25 * inch}
+${h_inner = h_inner_base / refinement}
+${h_outer = h_outer_base / refinement}
+
+${R_shell = 3.5 * inch}
+${H_shell = 13.0 * inch}
+${R_filler = 3.0 * inch}
+${H_filler = 12.0 * inch}
+${R_core = 1.5 * inch}
+${H_core = 4.0 * inch}
+${R_int = 2.25 * inch}
+${H_int = 9.0 * inch}
+${W = 0.6 * inch}
+${z_center = 0.5 * H_shell}
+${z_core = z_center + 0.75 * inch}
+${eps = 1.0e-06}
+
+# ---------------------------------------------------------------- monolithic
+reset
+undo off
+create cylinder height {H_shell} radius {R_shell}
+create cylinder height {H_filler} radius {R_filler}
+create cylinder height {H_core} radius {R_core}
+create cylinder height {H_int} radius {R_int}
+move volume 1 2 4 z {z_center}
+move volume 3 z {z_core}
+subtract volume 2 from volume 1 keep
+volume {Id("volume")} name "shell"
+subtract volume 4 from volume 2 keep
+volume {Id("volume")} name "filler_out"
+subtract volume 3 from volume 4 keep
+volume {Id("volume")} name "filler_in"
+volume 3 name "core"
+delete volume 1 2 4
+webcut volume all with plane zplane offset {z_center - 0.5 * H_filler}
+webcut volume all with plane zplane offset {z_center + 0.5 * H_filler}
+webcut volume all with plane zplane offset {z_center - 0.5 * H_int}
+webcut volume all with plane zplane offset {z_center + 0.5 * H_int}
+webcut volume all with plane zplane offset {z_core - 0.5 * H_core}
+webcut volume all with plane zplane offset {z_core + 0.5 * H_core}
+webcut volume all with cylinder radius {R_core} axis z
+webcut volume all with cylinder radius {R_int} axis z
+webcut volume all with cylinder radius {R_filler} axis z
+imprint all
+merge all
+volume all scheme sweep vector 0 0 1
+# The sweeps give every radial column one in-plane mesh over the whole
+# height, so a size that differs between bodies in the same column is not
+# honored; the reference mesh uses the finer size throughout.
+volume all size {h_inner}
+mesh volume all
+block 1 volume with name "core*"
+block 1 name "core"
+block 2 volume with name "filler_in*"
+block 2 volume with name "filler_out*"
+block 2 name "filler"
+block 3 volume with name "shell*"
+block 3 name "shell"
+nodeset 1 add volume all
+nodeset 1 name "nsall"
+nodeset 2 add surface with z_coord < {eps}
+nodeset 2 name "nsz-"
+nodeset 3 add surface with z_coord > {H_shell - eps}
+nodeset 3 name "nsz+"
+sideset 1 add surface with z_coord < {eps}
+sideset 1 name "ssz-"
+sideset 2 add surface with z_coord > {H_shell - eps}
+sideset 2 name "ssz+"
+set large exodus file off
+export mesh "monolithic/cylinders.g" overwrite
+
+# ------------------------------------------------------- nonoverlap, inner
+${R_region = R_int}
+${H_region = H_int}
+reset
+undo off
+create cylinder height {H_region} radius {R_region}
+create cylinder height {H_core} radius {R_core}
+move volume 1 z {z_center}
+move volume 2 z {z_core}
+subtract volume 2 from volume 1 keep
+volume {Id("volume")} name "filler"
+volume 2 name "core"
+delete volume 1
+# The interface is the outer boundary of the region: the surfaces of the
+# filler whose centroids lie at the region ends and at its mid-height
+# (the core cavity surfaces have their centroids at the core's height).
+surface in volume with name "filler" with z_coord < {z_center - 0.5 * H_region + eps} name "int_bot"
+surface in volume with name "filler" with z_coord > {z_center + 0.5 * H_region - eps} name "int_top"
+surface in volume with name "filler" with z_coord > {z_center - eps} and z_coord < {z_center + eps} name "int_lat"
+webcut volume all with plane zplane offset {z_core - 0.5 * H_core}
+webcut volume all with plane zplane offset {z_core + 0.5 * H_core}
+webcut volume all with cylinder radius {R_core} axis z
+imprint all
+merge all
+volume all scheme sweep vector 0 0 1
+volume all size {h_inner}
+mesh volume all
+block 1 volume with name "core*"
+block 1 name "core"
+block 2 volume with name "filler*"
+block 2 name "filler"
+nodeset 1 add volume all
+nodeset 1 name "nsall"
+sideset 3 add surface with name "int_*"
+sideset 3 name "ssint"
+set large exodus file off
+export mesh "nonoverlap/inner.g" overwrite
+
+# ------------------------------------------------------- nonoverlap, outer
+reset
+undo off
+create cylinder height {H_shell} radius {R_shell}
+create cylinder height {H_filler} radius {R_filler}
+create cylinder height {H_region} radius {R_region}
+move volume 1 2 3 z {z_center}
+subtract volume 2 from volume 1 keep
+volume {Id("volume")} name "shell"
+subtract volume 3 from volume 2 keep
+volume {Id("volume")} name "filler"
+delete volume 1 2 3
+webcut volume all with plane zplane offset {z_center - 0.5 * H_filler}
+webcut volume all with plane zplane offset {z_center + 0.5 * H_filler}
+webcut volume all with plane zplane offset {z_center - 0.5 * H_region}
+webcut volume all with plane zplane offset {z_center + 0.5 * H_region}
+webcut volume all with cylinder radius {R_region} axis z
+webcut volume all with cylinder radius {R_filler} axis z
+imprint all
+merge all
+volume all scheme sweep vector 0 0 1
+volume all size {h_outer}
+mesh volume all
+block 1 volume with name "filler*"
+block 1 name "filler"
+block 2 volume with name "shell*"
+block 2 name "shell"
+nodeset 1 add volume all
+nodeset 1 name "nsall"
+nodeset 2 add surface with z_coord < {eps}
+nodeset 2 name "nsz-"
+nodeset 3 add surface with z_coord > {H_shell - eps}
+nodeset 3 name "nsz+"
+sideset 1 add surface with z_coord < {eps}
+sideset 1 name "ssz-"
+sideset 2 add surface with z_coord > {H_shell - eps}
+sideset 2 name "ssz+"
+# The interface is the cavity boundary: the two cap disks, which are the
+# surfaces centered on the cavity end planes with exactly the disk area
+# (the plane cuts leave annular surfaces of the filler and the shell on
+# those planes too, and they inherit the names of the caps, so neither
+# names nor a single area bound would do), and the lateral surface, which
+# is the surface centered at mid-height with the cavity's lateral area.
+sideset 3 add surface with z_coord > {z_center - 0.5 * H_region - eps} and z_coord < {z_center - 0.5 * H_region + eps} and area > {0.999 * PI * R_region * R_region} and area < {1.001 * PI * R_region * R_region}
+sideset 3 add surface with z_coord > {z_center + 0.5 * H_region - eps} and z_coord < {z_center + 0.5 * H_region + eps} and area > {0.999 * PI * R_region * R_region} and area < {1.001 * PI * R_region * R_region}
+sideset 3 add surface with z_coord > {z_center - eps} and z_coord < {z_center + eps} and area > {0.999 * 2 * PI * R_region * H_region} and area < {1.001 * 2 * PI * R_region * H_region}
+sideset 3 name "ssint"
+set large exodus file off
+export mesh "nonoverlap/outer.g" overwrite
+
+# ---------------------------------------------------------- overlap, inner
+${R_region = R_int + 0.5 * W}
+${H_region = H_int + W}
+reset
+undo off
+create cylinder height {H_region} radius {R_region}
+create cylinder height {H_core} radius {R_core}
+move volume 1 z {z_center}
+move volume 2 z {z_core}
+subtract volume 2 from volume 1 keep
+volume {Id("volume")} name "filler"
+volume 2 name "core"
+delete volume 1
+surface in volume with name "filler" with z_coord < {z_center - 0.5 * H_region + eps} name "int_bot"
+surface in volume with name "filler" with z_coord > {z_center + 0.5 * H_region - eps} name "int_top"
+surface in volume with name "filler" with z_coord > {z_center - eps} and z_coord < {z_center + eps} name "int_lat"
+webcut volume all with plane zplane offset {z_core - 0.5 * H_core}
+webcut volume all with plane zplane offset {z_core + 0.5 * H_core}
+webcut volume all with cylinder radius {R_core} axis z
+imprint all
+merge all
+volume all scheme sweep vector 0 0 1
+volume all size {h_inner}
+mesh volume all
+block 1 volume with name "core*"
+block 1 name "core"
+block 2 volume with name "filler*"
+block 2 name "filler"
+nodeset 1 add volume all
+nodeset 1 name "nsall"
+sideset 3 add surface with name "int_*"
+sideset 3 name "ssint"
+set large exodus file off
+export mesh "overlap/inner.g" overwrite
+
+# ---------------------------------------------------------- overlap, outer
+${R_region = R_int - 0.5 * W}
+${H_region = H_int - W}
+reset
+undo off
+create cylinder height {H_shell} radius {R_shell}
+create cylinder height {H_filler} radius {R_filler}
+create cylinder height {H_region} radius {R_region}
+move volume 1 2 3 z {z_center}
+subtract volume 2 from volume 1 keep
+volume {Id("volume")} name "shell"
+subtract volume 3 from volume 2 keep
+volume {Id("volume")} name "filler"
+delete volume 1 2 3
+webcut volume all with plane zplane offset {z_center - 0.5 * H_filler}
+webcut volume all with plane zplane offset {z_center + 0.5 * H_filler}
+webcut volume all with plane zplane offset {z_center - 0.5 * H_region}
+webcut volume all with plane zplane offset {z_center + 0.5 * H_region}
+webcut volume all with cylinder radius {R_region} axis z
+webcut volume all with cylinder radius {R_filler} axis z
+imprint all
+merge all
+volume all scheme sweep vector 0 0 1
+volume all size {h_outer}
+mesh volume all
+block 1 volume with name "filler*"
+block 1 name "filler"
+block 2 volume with name "shell*"
+block 2 name "shell"
+nodeset 1 add volume all
+nodeset 1 name "nsall"
+nodeset 2 add surface with z_coord < {eps}
+nodeset 2 name "nsz-"
+nodeset 3 add surface with z_coord > {H_shell - eps}
+nodeset 3 name "nsz+"
+sideset 1 add surface with z_coord < {eps}
+sideset 1 name "ssz-"
+sideset 2 add surface with z_coord > {H_shell - eps}
+sideset 2 name "ssz+"
+# The interface is the cavity boundary: the two cap disks, which are the
+# surfaces centered on the cavity end planes with exactly the disk area
+# (the plane cuts leave annular surfaces of the filler and the shell on
+# those planes too, and they inherit the names of the caps, so neither
+# names nor a single area bound would do), and the lateral surface, which
+# is the surface centered at mid-height with the cavity's lateral area.
+sideset 3 add surface with z_coord > {z_center - 0.5 * H_region - eps} and z_coord < {z_center - 0.5 * H_region + eps} and area > {0.999 * PI * R_region * R_region} and area < {1.001 * PI * R_region * R_region}
+sideset 3 add surface with z_coord > {z_center + 0.5 * H_region - eps} and z_coord < {z_center + 0.5 * H_region + eps} and area > {0.999 * PI * R_region * R_region} and area < {1.001 * PI * R_region * R_region}
+sideset 3 add surface with z_coord > {z_center - eps} and z_coord < {z_center + eps} and area > {0.999 * 2 * PI * R_region * H_region} and area < {1.001 * 2 * PI * R_region * H_region}
+sideset 3 name "ssint"
+set large exodus file off
+export mesh "overlap/outer.g" overwrite
