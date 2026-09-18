@@ -168,7 +168,7 @@ dashpot term, making the interface energy exchange dissipative. See
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `source side set` | yes | — | partner interface surface |
-| `robin parameter` | no | `0.0` | Robin coefficient α; must be identical on both sides under `adjoint pairing` (the default), where it affects the convergence rate only, not the converged solution; per-side values are allowed with `adjoint pairing: false` |
+| `robin parameter` | no | `0.0` | Robin coefficient α; must be identical on both sides under `adjoint pairing` (the default), where it affects the convergence rate and not the converged solution when the interface jump closes (conforming or nested meshes); on nonconforming meshes the accepted iterate carries a residual jump and the effect of α on the converged solution has not been measured; per-side values are allowed with `adjoint pairing: false` |
 | `impedance scale` | no | `1.0` | scalar scaling of the dashpot impedance; must be > 0 |
 | `adjoint pairing` | no | `true` | use the adjoint-paired shared cross-mass transfer (recommended); `false` restores the legacy per-side transfer |
 
@@ -177,7 +177,10 @@ dashpot term, making the interface energy exchange dissipative. See
 The classical Robin-Robin coupling `traction + α·displacement = data`: the
 Robin spring is the only coupling term and there is no dashpot (`impedance
 scale` is rejected under this keyword). The condition is not absorbing, so in
-elastodynamics it can pump energy at the interface (issue #176); it is intended
+elastodynamics it can pump energy at the interface (issue #176; on the
+cantilever and nested-cylinders benchmarks of `docs/notes/schwarz-coupling`
+nearly every dynamic Robin-Robin run ends by element inversion after
+exponential energy growth, on overlap and nonoverlap decompositions alike); it is intended
 for quasi-statics and for comparison against the classical Robin-Robin
 literature, and the run warns when it is used with a dynamic time integrator.
 For dynamics prefer `Schwarz impedance nonoverlap`.
