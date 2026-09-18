@@ -1103,7 +1103,10 @@ function build_offset_traction_patch!(
     own_points = model.reference[:, unique_node_indices]
 
     # Classify every partner element by the side of Γ_k its centroid lies on,
-    # using the outward normal at the nearest boundary node of this side.
+    # using the outward normal at the nearest boundary node of this side. The
+    # nearest node comes from a grid over this side's nodes: a scan of every
+    # node for every partner element was quadratic.
+    own_point_grid = PointGrid([SVector{3,Float64}(view(own_points, :, i)) for i in 1:num_dst_nodes])
     struct_record = Vector{Tuple{Int64,Int64,Vector{Int64},Bool}}()  # (block, elem, nodes, exterior)
     blocks = Exodus.read_sets(coupled_solid.mesh, Block)
     block_element_type = Vector{ElementType}(undef, length(blocks))
@@ -1124,15 +1127,7 @@ function build_offset_traction_patch!(
         for e in 1:num_block_elements
             nodes = [connectivity[(e - 1) * num_element_nodes + n] for n in 1:num_element_nodes]
             centroid = vec(sum(coupled_solid.reference[:, nodes]; dims=2)) ./ num_element_nodes
-            best_i = 1
-            best_d2 = Inf
-            for i in 1:num_dst_nodes
-                d2 = sum((centroid .- own_points[:, i]) .^ 2)
-                if d2 < best_d2
-                    best_d2 = d2
-                    best_i = i
-                end
-            end
+            best_i = nearest_point_index(own_point_grid, SVector{3,Float64}(centroid))
             exterior = dot(centroid - own_points[:, best_i], normals[:, best_i]) > 0.0
             push!(struct_record, (block_index, e, nodes, exterior))
         end
@@ -1187,7 +1182,13 @@ function build_offset_traction_patch!(
 
     # Surface-to-surface variational operator R = ∫_Γ N_k Ñᵀ dΓ, assembled
     # with this BC's (optionally subdivided) facet quadrature; at each
-    # quadrature point the closest Γ̃ face provides the source values.
+    # quadrature point the closest Γ̃ face provides the source values. The
+    # Γ̃ faces are binned by bounding box so that each query projects onto
+    # the few faces that can be nearest, not onto every face.
+    tilde_coords = [coupled_solid.reference[:, collect(fn)] for fn in tilde_faces]
+    tilde_box_min = [SVector{3,Float64}(minimum(X[i, :]) for i in 1:3) for X in tilde_coords]
+    tilde_box_max = [SVector{3,Float64}(maximum(X[i, :]) for i in 1:3) for X in tilde_coords]
+    tilde_grid = BoxGrid(tilde_box_min, tilde_box_max)
     local_from_global_map = bc.local_from_global_map
     R = zeros(num_dst_nodes, num_tilde)
     coords = model.reference
@@ -1211,14 +1212,13 @@ function build_offset_traction_patch!(
             dXdξ = dNp * Xs'
             jac = norm(cross(dXdξ[1, :], dXdξ[2, :]))
             x_qp = Xs * Np
-            best = (Inf, zeros(2), tilde_faces[1])
-            for fn in tilde_faces
-                Xf = coupled_solid.reference[:, collect(fn)]
-                ξ_f, dist = _closest_point_quad4(Xf, x_qp)
-                dist < best[1] && (best = (dist, ξ_f, fn))
-            end
-            Ñ, _, _ = interpolate(QUAD4, best[2])
-            src_rows = [tilde_index[g_] for g_ in best[3]]
+            _, best_face = box_grid_nearest_item(
+                tilde_grid, SVector{3,Float64}(x_qp), tilde_box_min, tilde_box_max,
+                face -> _closest_point_quad4(tilde_coords[face], x_qp)[2],
+            )
+            ξ_f, _ = _closest_point_quad4(tilde_coords[best_face], x_qp)
+            Ñ, _, _ = interpolate(QUAD4, ξ_f)
+            src_rows = [tilde_index[g_] for g_ in tilde_faces[best_face]]
             R[dst_rows, src_rows] += Np * Vector(Ñ)' * jac / m^2
         end
     end
@@ -1657,26 +1657,23 @@ end
 
 # ---------------------------------------------------------------------------
 
+# Locate `point` in block `block_id` of `model` on the reference configuration,
+# returning the element's node indices and the parametric coordinates. Only
+# the elements binned in the point's grid cell are tested (see
+# spatial_search.jl); the bins are padded by the same margin as is_inside's
+# bounding-box prefilter, so the result matches a scan of every element.
 function find_point_in_mesh(point::Vector{Float64}, model::SolidMechanics, block_id::Int, tol::Float64)
-    mesh = model.mesh
-    element_type_string = Exodus.read_block_parameters(mesh, Int32(block_id))[1]
-    element_type = element_type_from_string(element_type_string)
-    element_block_connectivity = get_block_connectivity(mesh, block_id)
-    num_block_elements, num_element_nodes = size(element_block_connectivity)
-    node_indices = Vector{Int64}()
-    found = false
-    ξ = zeros(length(point))
-    for block_element_index in 1:num_block_elements
-        connectivity_indices =
-            ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
-        node_indices = element_block_connectivity[connectivity_indices]
-        element_ref_pos = model.reference[:, node_indices]
-        ξ, found = is_inside(element_type, element_ref_pos, point, tol)
-        if found == true
-            break
-        end
+    block_index = findfirst(block -> block.id == block_id, model.blocks)
+    block_index === nothing && return Int64[], zeros(length(point)), false
+    block = model.blocks[block_index]
+    elements = get_element_grid(model)
+    for item in box_grid_items(elements.grid, SVector{3,Float64}(point))
+        elements.block_index[item] == block_index || continue
+        node_indices = block.connectivity[:, elements.element_index[item]]
+        ξ, found = is_inside(block.element_type, model.reference[:, node_indices], point, tol)
+        found && return node_indices, ξ, true
     end
-    return node_indices, ξ, found
+    return Int64[], zeros(length(point)), false
 end
 
 function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
