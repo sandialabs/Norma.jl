@@ -471,6 +471,42 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     )
 end
 
+# Characteristic impedances Z_p = √(ρ(λ + 2μ)) = ρ c_p and Z_s = √(ρμ) = ρ c_s
+# of a material.
+function wave_impedances(material::Solid)
+    return sqrt(material.ρ * (material.λ + 2.0 * material.μ)), sqrt(material.ρ * material.μ)
+end
+
+# Index of the element block that owns the faces of a side set: the block of
+# its first face's element. Side set element ids are global and the blocks
+# are stored in file order, so the block is found from the cumulative element
+# counts. A side set spanning several blocks (an interface through a material
+# boundary) takes the first block, with a warning, since the impedance is one
+# value per side set.
+function side_set_block_index(model::SolidMechanics, side_set_id::Integer, side_set_name::String)
+    elements, _ = Exodus.read_side_set_elements_and_sides(model.mesh, Int32(side_set_id))
+    offsets = cumsum([block.num_elements for block in model.blocks])
+    block_of(element) = searchsortedfirst(offsets, Int64(element))
+    first_block = block_of(elements[1])
+    if any(block_of(element) != first_block for element in elements)
+        norma_logf(
+            0,
+            :warning,
+            "Side set \"%s\" spans several element blocks; its impedance uses the material of block %d.",
+            side_set_name,
+            first_block,
+        )
+    end
+    return first_block
+end
+
+function block_index_from_name(model::SolidMechanics, block_name::String)
+    names = Exodus.read_names(model.mesh, Block)
+    index = findfirst(==(block_name), names)
+    index === nothing && norma_abort("Element block \"$block_name\" not found in the mesh.")
+    return index
+end
+
 function SMCouplingSchwarzBC(
     subsim::SingleDomainSimulation,
     coupled_subsim::SingleDomainSimulation,
@@ -523,25 +559,15 @@ function SMCouplingSchwarzBC(
     elseif bc_type == "Schwarz RR nonoverlap" ||
            bc_type == "Schwarz impedance nonoverlap" ||
            bc_type == "Schwarz impedance overlap"
-        # Characteristic impedances Z_p = √(ρ(λ + 2μ)) = ρ c_p and
-        # Z_s = √(ρμ) = ρ c_s, computed from material properties.
-        function _ps_impedances(sim)
-            mat_params = sim.params["model"]["material"]
-            # Deterministic choice among the blocks: the dictionary iterates in
-            # hash order, which is not stable across Julia versions.
-            mat_props = mat_params[mat_params["blocks"][minimum(keys(mat_params["blocks"]))]]
-            E = Float64(mat_props["elastic modulus"])
-            ν = Float64(mat_props["Poisson's ratio"])
-            ρ = Float64(mat_props["density"])
-            λ_lame = E * ν / ((1 + ν) * (1 - 2ν))
-            μ = E / (2 * (1 + ν))
-            return sqrt(ρ * (λ_lame + 2μ)), sqrt(ρ * μ)
-        end
-        # Nonoverlap variant: scalar P-impedance from this subdomain's own
-        # material (unchanged legacy behavior). Overlap variant: P/S-split
-        # tensor impedance from the NEIGHBOR's material, per the
-        # optimized-Schwarz cross-scaling principle (each side's optimal
-        # transmission operator approximates the neighbor's DtN map).
+        # Nonoverlap variant: scalar P-impedance of this subdomain's own
+        # material at the interface, the material of the block that owns the
+        # side set. Overlap variant: P/S-split tensor impedance from the
+        # NEIGHBOR's material in the source block, per the optimized-Schwarz
+        # cross-scaling principle (each side's optimal transmission operator
+        # approximates the neighbor's DtN map). Both come from the constructed
+        # materials, so every way of specifying the elastic constants works
+        # and a multi-material subdomain gets the impedance of the block at
+        # the interface.
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
         raw_scale = get(bc_params, "impedance scale", 1.0)
         if raw_scale isa AbstractVector
@@ -617,7 +643,8 @@ function SMCouplingSchwarzBC(
                     "condition t + α W u = g (no dashpot) use `Schwarz RR nonoverlap`.",
                 )
             end
-            impedance, _ = _ps_impedances(subsim)
+            interface_block = side_set_block_index(subsim.model, side_set_id, side_set_name)
+            impedance, _ = wave_impedances(subsim.model.materials[interface_block])
             impedance *= impedance_scale[1]
             # Adjoint pairing is the default: both sides derive their transfer
             # operators from one shared cross-mass matrix, share one impedance
@@ -644,8 +671,9 @@ function SMCouplingSchwarzBC(
                 adjoint_pairing,
             )
         else
-            impedance_p_coupled, impedance_s_coupled = _ps_impedances(coupled_subsim)
             coupled_block_name = bc_params["source block"]
+            coupled_block = block_index_from_name(coupled_subsim.model, coupled_block_name)
+            impedance_p_coupled, impedance_s_coupled = wave_impedances(coupled_subsim.model.materials[coupled_block])
             tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
             partner_traction_mode = get(bc_params, "partner traction", "auto")
             if partner_traction_mode ∉ ("auto", "consistent traction", "recovered stress")
