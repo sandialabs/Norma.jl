@@ -414,6 +414,43 @@ has_paired_impedance_bcs(model::SolidMechanics) = any(
 # t_{n+1} velocities, exactly as in the implicit-implicit case.
 # Interface DOFs held by Dirichlet BCs keep their prescribed acceleration
 # and enter the free rows' right-hand side as data.
+# The interface matrix (M + γΔt·Z·W)|_Γ of the IMEX solve depends only on the
+# lumped masses, the step, the impedance, and the projector, none of which
+# change within a run unless the subdomain is swapped or the step adapts. The
+# dense projector is a few thousand rows on a real interface, so refactoring
+# it for every component at every evaluation dominated the run; the Cholesky
+# factor is cached per boundary condition and component and rebuilt only when
+# one of its inputs changes.
+mutable struct ImexInterfaceFactor
+    projector::Matrix{Float64}   # identity of the projector the factor was built from
+    scale::Float64               # γΔt·Z
+    free_mask::Vector{Bool}
+    masses::Vector{Float64}
+    factor::Cholesky{Float64,Matrix{Float64}}
+end
+
+const IMEX_FACTOR_CACHE = IdDict{Any,Vector{Union{Nothing,ImexInterfaceFactor}}}()
+
+function imex_interface_factor(
+    bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition,
+    comp::Int64,
+    scale::Float64,
+    masses::Vector{Float64},
+    free_mask::Vector{Bool},
+)
+    entries = get!(() -> Vector{Union{Nothing,ImexInterfaceFactor}}(nothing, 3), IMEX_FACTOR_CACHE, bc)
+    entry = entries[comp]
+    W = bc.square_projector
+    if entry === nothing || entry.projector !== W || entry.scale != scale || entry.free_mask != free_mask ||
+        entry.masses != masses
+        ff = findall(free_mask)
+        A = Matrix(Diagonal(masses[ff])) + scale .* W[ff, ff]
+        entry = ImexInterfaceFactor(W, scale, copy(free_mask), copy(masses), cholesky(Symmetric(A)))
+        entries[comp] = entry
+    end
+    return entry.factor
+end
+
 function imex_interface_acceleration!(
     a_new::Vector{Float64},
     integrator::CentralDifference,
@@ -428,18 +465,20 @@ function imex_interface_acceleration!(
         Z = bc.impedance
         W = bc.square_projector
         gmap = bc.global_from_local_map
+        scale = γΔt * Z
         for comp in 1:3
             dofs = [3 * (g - 1) + comp for g in gmap]
             m = model.lumped_mass[dofs]
             r = m .* a_new[dofs]
-            f_mask = free[dofs]
+            f_mask = Vector{Bool}(free[dofs])
+            factor = imex_interface_factor(bc, comp, scale, m, f_mask)
             if all(f_mask)
-                a_new[dofs] = (Diagonal(m) + (γΔt * Z) .* W) \ r
+                a_new[dofs] = factor \ r
             else
                 ff = findall(f_mask)
                 fx = findall(!, f_mask)
-                rf = r[ff] .- (γΔt * Z) .* (W[ff, fx] * a_new[dofs[fx]])
-                a_new[dofs[ff]] = (Diagonal(m[ff]) + (γΔt * Z) .* W[ff, ff]) \ rf
+                rf = r[ff] .- scale .* (W[ff, fx] * a_new[dofs[fx]])
+                a_new[dofs[ff]] = factor \ rf
             end
         end
     end
