@@ -118,25 +118,30 @@ loop of `docs/notes/ems-adaptivity`: the mesh is smoothed, the interior edges
 of the elements of highest energy density are swapped where a swap lowers the
 energy of the elements around the edge, edges are collapsed where a collapse
 does (a node is removed only onto a node that carries its node sets and lies
-on its surfaces, along a boundary edge if it is on the boundary), the new
-mesh is written as
+on its surfaces, along a boundary edge if it is on the boundary), edges are
+split where a split does, the new mesh is written as
 `<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
 phase accepts no operation or the outer iterations are exhausted. Every
 operation is accepted by one test: the energy of the new elements must be
-below that of the old ones by the relative margin, and no new element may
-exceed the allowed density. The mesh must consist of four-node tetrahedra.
+below that of the old ones by the relative margin, no new element may exceed
+the allowed density, and the worst new element must respect the geometric
+floor. The energy sums the elements of the cavity, so without the floor an
+operation can improve the sum while creating one flat element; the floor
+is stated in the scaled Jacobian that the analysis codes require. The mesh must consist of four-node tetrahedra.
 Node sets and side sets are carried over to the written meshes.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |
 | `allowed energy density` | no | `Inf` | no accepted operation may create an element above this |
+| `minimum scaled Jacobian` | no | `0` | geometric floor: no accepted operation may create an element with a scaled Jacobian below this, unless the worst element of the cavity was already below it and the new worst is no worse |
 | `minimum decrease` | no | `1.0e-8` | relative decrease of the cavity energy an operation must achieve |
 | `adjacency layers` | no | `4` | rings of adjacent elements added to the candidate set |
 | `maximum passes` | no | `20` | passes of operations per topology phase |
 | `outer iterations` | no | `5` | alternations of smoothing and topology |
 | `swaps` | no | `true` | try edge swaps |
-| `collapses` | no | `true` | try edge collapses, in a pass where no swap was accepted; with a prescribed target, edges shorter than 1/√2 of it are candidates too |
+| `collapses` | no | `true` | try edge collapses: with a prescribed target, the edges shorter than 1/√2 of it in every pass, and the edges of the elements above the desired density in a pass where no swap was accepted |
+| `splits` | no | `true` | try edge splits: with a prescribed target, the edges longer than √2 of it in every pass, and the edges of the elements above the desired density in a pass where no swap was accepted; the new node starts at the midpoint, is returned to the surfaces of the boundary faces of the edge, inherits their side sets and the node sets common to the ends of a boundary edge, and is relaxed locally before the test |
 
 ```yaml
 adaptivity:

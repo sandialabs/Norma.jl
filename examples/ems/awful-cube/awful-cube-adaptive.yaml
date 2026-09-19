@@ -7,6 +7,7 @@ output mesh file: awful-cube-adaptive.e
 # new mesh as awful-cube-adaptive-adapted-<k>.g, and smooths it again.
 adaptivity:
   desired energy density: 0.05
+  minimum scaled Jacobian: 0.35
   adjacency layers: 2
   maximum passes: 10
   outer iterations: 3

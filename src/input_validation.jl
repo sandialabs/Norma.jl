@@ -179,12 +179,14 @@ const METRIC_FIELD_KEYS = Set(["sizes", "rotation vector"])
 const ADAPTIVITY_KEYS = Set([
     "desired energy density",
     "allowed energy density",
+    "minimum scaled Jacobian",
     "minimum decrease",
     "adjacency layers",
     "maximum passes",
     "outer iterations",
     "swaps",
     "collapses",
+    "splits",
 ])
 
 const MATERIAL_PROPS_COMMON_KEYS = Set([

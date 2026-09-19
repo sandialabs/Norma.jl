@@ -9,17 +9,29 @@
 struct AdaptivityOptions
     desired_density::Float64     # elements above this energy density are candidates
     allowed_density::Float64     # no accepted operation may create an element above this
+    minimum_scaled_jacobian::Float64  # geometric floor for the worst element an operation creates
     minimum_decrease::Float64    # relative decrease of the cavity energy an operation must achieve
     adjacency_layers::Int        # rings of adjacent elements added to the candidate set
     maximum_passes::Int          # passes of a topology phase
     outer_iterations::Int        # alternations of smoothing and topology
     swaps::Bool
     collapses::Bool
+    splits::Bool
+end
+
+# The node an edge split adds: its position after placement and local
+# relaxation, the sets it inherits, and the edge it splits.
+struct SplitNode
+    position::SVector{3,Float64}
+    node_sets::Vector{Int}
+    side_sets::Vector{Int}
+    edge::Tuple{Int,Int}
 end
 
 # Result of one topological operation: the cavity replaced, the energies
-# before and after, and for a collapse the node removed and the node it was
-# moved onto (zero otherwise).
+# before and after, for a collapse the node removed and the node it was moved
+# onto (zero otherwise), and for a split the node added (nothing otherwise),
+# which the new connectivity refers to by the index it will receive.
 struct CavityProposal
     old_elements::Vector{Int}
     new_connectivity::Matrix{Int}
@@ -28,4 +40,5 @@ struct CavityProposal
     energy_after::Float64
     removed_node::Int
     surviving_node::Int
+    split::Union{Nothing,SplitNode}
 end

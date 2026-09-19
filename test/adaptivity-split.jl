@@ -1,11 +1,11 @@
-# Edge collapses of the adaptivity loop (docs/notes/ems-adaptivity): the
-# constraints on the removed node, the operation on a hand-built cavity, and
-# a topology phase with swaps and collapses on a mesh, with and without a
-# prescribed target.
+# Edge splits of the adaptivity loop (docs/notes/ems-adaptivity): the
+# operation on a hand-built cavity, and topology phases with a target finer
+# than the mesh on the tube (analytic surfaces) and on the cube (node sets).
 using LinearAlgebra
 using Random
 using Test
 using Exodus
+using StaticArrays
 
 if !isdefined(Main, :Norma)
     include("../src/Norma.jl")
@@ -48,7 +48,7 @@ function smoothing_model(mesh_file, block_name, output; size_field="0.214", surf
     end
     params = Dict{String,Any}(
         "type" => "single",
-        "name" => "collapse",
+        "name" => "split",
         "input mesh file" => mesh_file,
         "output mesh file" => output,
         "Exodus output interval" => 0,
@@ -77,10 +77,8 @@ function smoothing_model(mesh_file, block_name, output; size_field="0.214", surf
     return Norma.create_simulation(params)
 end
 
-options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, true, false)
+options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, true, true)
 
-# A closed boundary surface: every boundary edge lies in exactly two
-# boundary faces.
 function closed_boundary(topology)
     counts = Dict{Tuple{Int,Int},Int}()
     for face in Norma.boundary_faces(topology)
@@ -92,75 +90,78 @@ function closed_boundary(topology)
     return all(v == 2 for v in values(counts))
 end
 
-@testset "collapse_cavity" begin
-    sim = smoothing_model("../examples/ems/cube/cube.g", "cube", "collapse-cavity.e"; size_field="0.1")
+@testset "split_cavity" begin
+    # Four elements around an edge twice as long as the target: the split
+    # bisects every element, the new node is relaxed near the midpoint, and
+    # the energy decreases.
+    sim = smoothing_model("../examples/ems/cube/cube.g", "cube", "split-cavity.e"; size_field="0.1")
     model = sim.model
-    # An interior node inside a tetrahedron, joined to its four vertices; the
-    # star has four elements.  Collapsing the interior node onto a vertex
-    # removes the three elements that contain both and maps the fourth onto
-    # the outer tetrahedron, whose size is the target.
     h = 0.1
-    c = 0.5 / sqrt(2.0)
-    outer = h * c * [1 -1 -1 1; 1 -1 1 -1; 1 1 -1 -1]
-    inner = 0.15 * outer[:, 1] + [0.01h, -0.005h, 0.0]
-    positions = hcat(outer, inner)
-    conn = hcat([[5, 2, 3, 4], [5, 1, 4, 3], [5, 1, 2, 4], [5, 1, 3, 2]]...)
-    for e in 1:4
+    a, b = 1, 2
+    n = 4
+    angles = range(0, 2π; length=n + 1)[1:n]
+    ring_points = [[0.6h * cos(t), 0.6h * sin(t), 0.02h * sin(2t)] for t in angles]
+    positions = hcat([0.0, 0.0, -h], [0.0, 0.0, h], ring_points...)
+    ring = collect(3:(n + 2))
+    conn = hcat([[a, b, ring[i], ring[mod1(i + 1, n)]] for i in 1:n]...)
+    for e in 1:n
         if Norma.tetrahedron_volume(positions[:, conn[:, e]]) < 0.0
             conn[3, e], conn[4, e] = conn[4, e], conn[3, e]
         end
     end
     topology = Norma.build_topology(positions, conn)
-    @test Norma.num_alive_elements(topology) == 4
+    @test Norma.metric_edge_length(model, topology, a, b) ≈ 2.0
+    @test (a, b) in Norma.long_edges(model, topology)
     before = sum(Norma.element_energies(model, 1, conn, positions))
-    proposal = Norma.try_edge_collapse(model, topology, 5, 1, options)
+    proposal = Norma.try_edge_split(model, topology, a, b, options)
     @test proposal !== nothing
-    @test proposal.removed_node == 5
-    @test proposal.surviving_node == 1
-    @test length(proposal.old_elements) == 4
-    @test size(proposal.new_connectivity) == (4, 1)
-    @test sort(proposal.new_connectivity[:, 1]) == [1, 2, 3, 4]
+    @test proposal.split !== nothing
+    @test proposal.split.edge == (a, b)
+    @test isempty(proposal.split.node_sets) && isempty(proposal.split.side_sets)
+    @test norm(proposal.split.position - SVector(0.0, 0.0, 0.0)) < 0.2h
+    @test size(proposal.new_connectivity) == (4, 2n)
+    @test maximum(proposal.new_connectivity) == n + 3
+    @test count(==(n + 3), proposal.new_connectivity) == 2n
     @test proposal.energy_before ≈ before
     @test proposal.energy_after < before
-    @test proposal.energy_after ≈ 0.0 atol = 1.0e-20
     Norma.apply!(topology, proposal)
-    @test topology.node_alive[5] == false
     Norma.compact!(topology)
-    @test Norma.num_alive_nodes(topology) == 4
-    @test Norma.num_alive_elements(topology) == 1
-    # Collapsing a vertex onto the interior node is refused when it does not
-    # lower the energy enough; collapsing onto a node that is not a neighbor
-    # is not proposed.
-    topology = Norma.build_topology(positions, conn)
-    strict = Norma.AdaptivityOptions(0.05, Inf, 0.0, 10.0, 2, 10, 2, true, true, false)
-    @test Norma.try_edge_collapse(model, topology, 5, 1, strict) === nothing
-    # Constraints: a node in a node set may only collapse onto a node of the
-    # same set, and a boundary node only along a boundary edge onto a node of
-    # the same surfaces.
-    topology.node_sets[1] = falses(5)
-    topology.node_sets[1][5] = true
-    @test Norma.may_collapse(topology, 5, 1) == false
-    topology.node_sets[1][1] = true
-    @test Norma.may_collapse(topology, 5, 1) == true
-    delete!(topology.node_sets, 1)
-    topology.side_sets[7] = Set([Norma.sorted_face(1, 2, 3)])
-    Norma.build_adjacency!(topology)
-    @test Norma.may_collapse(topology, 1, 5) == false   # boundary node onto an interior node
-    @test Norma.may_collapse(topology, 1, 2) == true    # along the boundary edge (1, 2)
-    @test Norma.may_collapse(topology, 1, 4) == false   # onto a node off the surface
+    @test Norma.num_alive_nodes(topology) == n + 3
+    @test Norma.num_alive_elements(topology) == 2n
+    @test all(Norma.element_volume(topology, e) > 0.0 for e in 1:2n)
+    @test all(1 <= length(v) <= 2 for v in values(topology.faces))
+    @test isempty(Norma.edge_elements(topology, a, b))
+    @test length(Norma.edge_elements(topology, a, n + 3)) == n
+    energies = Norma.element_energies(model, 1, topology.connectivity, topology.positions)
+    @test sum(energies) ≈ proposal.energy_after rtol = 1.0e-12
+    # An edge whose split does not lower the energy enough is refused, and so
+    # is one whose new elements fall below the geometric floor when the old
+    # ones were above it.
+    strict = Norma.AdaptivityOptions(0.05, Inf, 0.0, 10.0, 2, 10, 2, true, true, true)
+    topology2 = Norma.build_topology(positions, conn)
+    @test Norma.try_edge_split(model, topology2, a, b, strict) === nothing
+    @test Norma.passes_scaled_jacobian_floor(0.5, 0.4, 0.3)
+    @test Norma.passes_scaled_jacobian_floor(0.2, 0.25, 0.3)
+    @test !Norma.passes_scaled_jacobian_floor(0.5, 0.25, 0.3)
+    @test !Norma.passes_scaled_jacobian_floor(0.2, 0.15, 0.3)
+    old_minimum = minimum(Norma.scaled_jacobians(positions, conn))
+    split_positions = hcat(positions, Vector(proposal.split.position))
+    new_minimum = minimum(Norma.scaled_jacobians(split_positions, proposal.new_connectivity))
+    floored = Norma.AdaptivityOptions(0.05, Inf, 0.999, 1.0e-8, 2, 10, 2, true, true, true)
+    @test (Norma.try_edge_split(model, topology2, a, b, floored) !== nothing) == (new_minimum >= old_minimum)
     Norma.finalize_writing(sim)
-    rm("collapse-cavity.e"; force=true)
+    rm("split-cavity.e"; force=true)
 end
 
-@testset "collapse_phase_on_meshes" begin
-    # The distorted cube with the size of its own mesh: collapses act as the
-    # fallback after the swaps; and the tube with a target twice its mesh
-    # size: the short edges make collapses the main operation and the element
-    # count falls.  In both the boundary stays a closed surface, the sets are
-    # carried, and the energy decreases by the accounted amount.
+@testset "split_phase_on_meshes" begin
+    # The tube with a target half its mesh size: the long edges are split,
+    # the new boundary nodes lie on the analytic surfaces, the boundary stays
+    # closed and covered by the side sets.  The cube with a target finer than
+    # its mesh: every node on a face of the cube belongs to the node set of
+    # that face, so the Dirichlet conditions hold on the adapted mesh.
     for (mesh, block, size, surfaces, output) in (
-        ("../examples/ems/awful-cube/awful-cube.g", "awful", "0.214", false, "collapse-cube.e"),
-        ("../examples/ems/tube/tube.g", "tube", "0.24", true, "collapse-tube.e"),
+        ("../examples/ems/tube/tube.g", "tube", "0.06", true, "split-tube.e"),
+        ("../examples/ems/awful-cube/awful-cube.g", "awful", "0.14", false, "split-cube.e"),
     )
         sim = smoothing_model(mesh, block, output; size_field=size, surfaces=surfaces)
         Norma.run(sim)
@@ -169,12 +170,16 @@ end
         ne0 = Norma.num_alive_elements(topology)
         nn0 = Norma.num_alive_nodes(topology)
         chi0 = Norma.euler_characteristic(topology)
-        node_set_counts = Dict(id => count(flags) for (id, flags) in topology.node_sets)
         densities0 = Norma.energy_densities(model, topology)
         energy0 = sum(densities0 .* Norma.ideal_element_volumes(model, 1, topology.connectivity, topology.positions))
-        accepted, decrease = Norma.topology_phase!(model, topology, options)
+        # Four passes are enough to exercise every operator here and keep the
+        # test short.
+        phase_options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 4, 2, true, true, true)
+        accepted, decrease = Norma.topology_phase!(model, topology, phase_options)
         @test accepted > 0
         @test decrease > 0.0
+        @test Norma.num_alive_nodes(topology) > nn0
+        @test Norma.num_alive_elements(topology) > ne0
         @test Norma.euler_characteristic(topology) == chi0
         @test closed_boundary(topology)
         @test all(Norma.element_volume(topology, e) > 0.0 for e in 1:Norma.num_alive_elements(topology))
@@ -182,17 +187,31 @@ end
         densities1 = Norma.energy_densities(model, topology)
         energy1 = sum(densities1 .* Norma.ideal_element_volumes(model, 1, topology.connectivity, topology.positions))
         @test energy1 ≈ energy0 - decrease rtol = 1.0e-8
+        X = topology.positions
         if surfaces
-            # Short edges of the coarse target were collapsed: fewer nodes and
-            # elements, and the side sets still cover the whole boundary.
-            @test Norma.num_alive_nodes(topology) < nn0
-            @test Norma.num_alive_elements(topology) < ne0
             @test Set(Norma.boundary_faces(topology)) == union(values(topology.side_sets)...)
+            for (id, flags) in topology.node_side_sets
+                name = topology.side_set_names[id]
+                nodes = findall(flags)
+                r = sqrt.(X[1, nodes] .^ 2 + X[2, nodes] .^ 2)
+                if name == "outer"
+                    @test maximum(abs.(r .- 1.0)) < 1.0e-8
+                elseif name == "inner"
+                    @test maximum(abs.(r .- 0.9)) < 1.0e-8
+                elseif name == "bottom"
+                    @test maximum(abs.(X[3, nodes] .+ 1.0)) < 1.0e-8
+                elseif name == "top"
+                    @test maximum(abs.(X[3, nodes] .- 1.0)) < 1.0e-8
+                end
+            end
         else
-            # Node sets keep their nodes unless a member was collapsed onto
-            # another member; corner nodes are never removed.
             for (id, flags) in topology.node_sets
-                @test count(flags) <= node_set_counts[id]
+                name = topology.node_set_names[id]
+                axis = Dict('x' => 1, 'y' => 2, 'z' => 3)[name[3]]
+                value = name[4] == '-' ? -1.0 : 1.0
+                on_face = findall(abs.(X[axis, :] .- value) .< 1.0e-9)
+                @test all(flags[on_face])
+                @test all(abs.(X[axis, findall(flags)] .- value) .< 1.0e-9)
             end
         end
         file = replace(output, ".e" => "-adapted.g")

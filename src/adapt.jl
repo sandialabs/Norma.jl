@@ -11,12 +11,14 @@ function AdaptivityOptions(params::Parameters)
     return AdaptivityOptions(
         Float64(get(params, "desired energy density", 0.1)),
         Float64(get(params, "allowed energy density", Inf)),
+        Float64(get(params, "minimum scaled Jacobian", 0.0)),
         Float64(get(params, "minimum decrease", 1.0e-08)),
         Int(get(params, "adjacency layers", 4)),
         Int(get(params, "maximum passes", 20)),
         Int(get(params, "outer iterations", 5)),
         Bool(get(params, "swaps", true)),
         Bool(get(params, "collapses", true)),
+        Bool(get(params, "splits", true)),
     )
 end
 
@@ -53,9 +55,32 @@ function energy_densities(model::SolidMechanics, topology::MeshTopology)
     return densities
 end
 
+# The geometric floor: an operation may not create an element whose scaled
+# Jacobian is below the floor, unless the worst element of the old cavity was
+# already below it and the new worst is no worse.  The energy sums the cavity,
+# so this is what keeps a single element from being sacrificed for the sum.
+function passes_scaled_jacobian_floor(old_minimum::Float64, new_minimum::Float64, floor::Float64)
+    new_minimum ≥ floor && return true
+    return new_minimum ≥ old_minimum
+end
+
+function passes_scaled_jacobian_floor(
+    topology::MeshTopology,
+    old_elements::Vector{Int},
+    new_connectivity::AbstractMatrix{<:Integer},
+    positions::AbstractMatrix{Float64},
+    floor::Float64,
+)
+    floor ≤ 0.0 && return true
+    old_minimum = minimum(scaled_jacobians(topology.positions, topology.connectivity[:, old_elements]))
+    new_minimum = minimum(scaled_jacobians(positions, new_connectivity))
+    return passes_scaled_jacobian_floor(old_minimum, new_minimum, floor)
+end
+
 # The acceptance test: a proposal is accepted when the energy of the new
-# elements is below that of the old ones by the relative margin and no new
-# element exceeds the allowed density.  Returns the proposal or nothing.
+# elements is below that of the old ones by the relative margin, no new
+# element exceeds the allowed density, and the geometric floor holds.
+# Returns the proposal or nothing.
 function accept_proposal(
     model::SolidMechanics,
     topology::MeshTopology,
@@ -74,10 +99,18 @@ function accept_proposal(
         volumes = ideal_element_volumes(model, block, new_connectivity, positions)
         maximum(new_energies ./ volumes) ≤ options.allowed_density || return nothing
     end
-    return CavityProposal(old_elements, new_connectivity, block, old_energy, new_energy, 0, 0)
+    floor = options.minimum_scaled_jacobian
+    passes_scaled_jacobian_floor(topology, old_elements, new_connectivity, positions, floor) || return nothing
+    return CavityProposal(old_elements, new_connectivity, block, old_energy, new_energy, 0, 0, nothing)
 end
 
 function apply!(topology::MeshTopology, proposal::CavityProposal)
+    if proposal.split !== nothing
+        split = proposal.split
+        m = add_node!(topology, split.position; node_sets=split.node_sets, side_sets=split.side_sets)
+        m == size(topology.positions, 2) || norma_abort("The split node did not receive the expected index")
+        split_sets!(topology, split.edge[1], split.edge[2], m)
+    end
     remove_elements!(topology, proposal.old_elements)
     add_elements!(topology, proposal.new_connectivity, proposal.block)
     if proposal.removed_node > 0
@@ -285,7 +318,190 @@ function accept_proposal(
         proposal.energy_after,
         removed_node,
         surviving_node,
+        nothing,
     )
+end
+
+# The level-set closures of the Surface boundary conditions on the given side
+# sets, for placing a new boundary node on its surfaces.
+function surface_constraints(model::SolidMechanics, side_set_ids::Vector{Int})
+    constraints = Tuple{Function,Function}[]
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsSurfaceBoundaryCondition || continue
+        Int(bc.side_set_id) in side_set_ids || continue
+        push!(constraints, (bc.level_set_fun, bc.level_set_grad))
+    end
+    return constraints
+end
+
+# Closest-point projection of a point onto its surfaces, as return_to_surface!.
+function project_to_surfaces(x::SVector{3,Float64}, constraints::Vector{Tuple{Function,Function}}, time::Float64)
+    isempty(constraints) && return x
+    y = Vector{Float64}(x)
+    for _ in 1:SURFACE_RETURN_MAX_ITERS
+        _, g, A = surface_normal_frame(constraints, y, time)
+        maximum(abs, g) ≤ SURFACE_RETURN_TOL && break
+        y .-= permutedims(A) * ((A * permutedims(A)) \ g)
+    end
+    return SVector{3,Float64}(y)
+end
+
+# Energy of the elements around a new node as a function of its position.
+function split_cavity_energy(
+    model::SolidMechanics, topology::MeshTopology, block::Int, connectivity::Matrix{Int}, position::SVector{3,Float64}
+)
+    positions = PositionsWithNode(topology.positions, position)
+    return sum(element_energies(model, block, connectivity, positions))
+end
+
+# Local relaxation of a new node with the rest of the cavity fixed: a few
+# steps of descent on the energy of the new elements, the gradient by central
+# differences of the position (three degrees of freedom), each step returned
+# to the node's surfaces.  The operation is then judged at its locally
+# relaxed position rather than at the midpoint.
+const SPLIT_RELAXATION_STEPS = 5
+
+function relax_split_node(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    block::Int,
+    connectivity::Matrix{Int},
+    position::SVector{3,Float64},
+    constraints::Vector{Tuple{Function,Function}},
+    scale::Float64,
+)
+    energy(x) = split_cavity_energy(model, topology, block, connectivity, x)
+    x = position
+    value = energy(x)
+    isfinite(value) || return x, value
+    δ = 1.0e-6 * scale
+    for _ in 1:SPLIT_RELAXATION_STEPS
+        gradient = SVector{3,Float64}(
+            (energy(x + SVector(δ, 0.0, 0.0)) - energy(x - SVector(δ, 0.0, 0.0))) / (2δ),
+            (energy(x + SVector(0.0, δ, 0.0)) - energy(x - SVector(0.0, δ, 0.0))) / (2δ),
+            (energy(x + SVector(0.0, 0.0, δ)) - energy(x - SVector(0.0, 0.0, δ))) / (2δ),
+        )
+        all(isfinite, gradient) || break
+        step_length = 0.1 * scale / max(norm(gradient), floatmin(Float64))
+        improved = false
+        for _ in 1:8
+            trial = project_to_surfaces(x - step_length * gradient, constraints, model.time)
+            trial_value = energy(trial)
+            if isfinite(trial_value) && trial_value < value
+                x, value = trial, trial_value
+                improved = true
+                break
+            end
+            step_length *= 0.5
+        end
+        improved || break
+    end
+    return x, value
+end
+
+# Try to split the edge (a, b) at a new node: every element around the edge
+# is bisected.  The node starts at the midpoint, is returned to the surfaces
+# of the boundary faces that contain the edge, inherits the side sets of
+# those faces and the node sets common to both ends of a boundary edge, is
+# relaxed locally, and the result is submitted to the acceptance test.
+function try_edge_split(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int, options::AdaptivityOptions)
+    (topology.node_alive[a] && topology.node_alive[b]) || return nothing
+    ring = edge_elements(topology, a, b)
+    isempty(ring) && return nothing
+    all(topology.element_alive[e] for e in ring) || return nothing
+    block = topology.block[ring[1]]
+    all(topology.block[e] == block for e in ring) || return nothing
+    side_sets = Int[]
+    on_boundary = false
+    for e in ring, face in element_faces(topology, e)
+        (a in face && b in face) || continue
+        length(get(topology.faces, face, Int[])) == 1 || continue
+        on_boundary = true
+        for (id, faces) in topology.side_sets
+            face in faces && !(id in side_sets) && push!(side_sets, id)
+        end
+    end
+    node_sets = Int[]
+    if on_boundary
+        for (id, flags) in topology.node_sets
+            flags[a] && flags[b] && push!(node_sets, id)
+        end
+    end
+    m = size(topology.positions, 2) + 1
+    connectivity = zeros(Int, 4, 2 * length(ring))
+    for (k, e) in enumerate(ring)
+        c = topology.connectivity[:, e]
+        connectivity[:, 2k - 1] = replace(c, b => m)
+        connectivity[:, 2k] = replace(c, a => m)
+    end
+    xa = SVector{3,Float64}(view(topology.positions, :, a))
+    xb = SVector{3,Float64}(view(topology.positions, :, b))
+    constraints = surface_constraints(model, side_sets)
+    position = project_to_surfaces(0.5 * (xa + xb), constraints, model.time)
+    if on_boundary && isempty(constraints)
+        # A boundary edge whose surfaces have no analytic description: the
+        # node stays at the midpoint, which lies on the boundary facets,
+        # since a relaxation could move it off the boundary.
+        energy_after = split_cavity_energy(model, topology, block, connectivity, position)
+    else
+        position, energy_after =
+            relax_split_node(model, topology, block, connectivity, position, constraints, norm(xb - xa))
+    end
+    isfinite(energy_after) || return nothing
+    energy_before = sum(element_energies(model, block, topology.connectivity[:, ring], topology.positions))
+    energy_after ≤ energy_before - options.minimum_decrease * energy_before || return nothing
+    positions = PositionsWithNode(topology.positions, position)
+    if isfinite(options.allowed_density)
+        energies = element_energies(model, block, connectivity, positions)
+        volumes = ideal_element_volumes(model, block, connectivity, positions)
+        maximum(energies ./ volumes) ≤ options.allowed_density || return nothing
+    end
+    floor = options.minimum_scaled_jacobian
+    passes_scaled_jacobian_floor(topology, collect(ring), connectivity, positions, floor) || return nothing
+    split = SplitNode(position, node_sets, side_sets, (a, b))
+    return CavityProposal(collect(ring), connectivity, block, energy_before, energy_after, 0, 0, split)
+end
+
+# Edges longer than sqrt(2) in the prescribed target, the split candidates of
+# the size phase; empty without a target.
+function long_edges(model::SolidMechanics, topology::MeshTopology)
+    edges = Tuple{Int,Int}[]
+    (model.metric_field === nothing && model.size_field === nothing) && return edges
+    for edge in keys(topology.edges)
+        metric_edge_length(model, topology, edge[1], edge[2]) > sqrt(2.0) && push!(edges, edge)
+    end
+    return edges
+end
+
+# One pass of edge splits over the candidate edges, in decreasing order of
+# the energy around them: the long edges of the target always, and the edges
+# of the elements above the desired density when the shape-driven operations
+# are on.
+function split_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions, shape::Bool)
+    densities = energy_densities(model, topology)
+    edges = Set{Tuple{Int,Int}}()
+    if shape
+        for e in candidate_elements(topology, densities, options)
+            c = view(topology.connectivity, :, e)
+            for i in 1:4, j in (i + 1):4
+                push!(edges, sorted_edge(c[i], c[j]))
+            end
+        end
+    end
+    union!(edges, long_edges(model, topology))
+    ranked = collect(edges)
+    edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
+    sort!(ranked; by=edge_energy, rev=true)
+    accepted = 0
+    decrease = 0.0
+    for (a, b) in ranked
+        proposal = try_edge_split(model, topology, a, b, options)
+        proposal === nothing && continue
+        apply!(topology, proposal)
+        accepted += 1
+        decrease += proposal.energy_before - proposal.energy_after
+    end
+    return accepted, decrease
 end
 
 # Metric factor of the prescribed target at a point: the scalar 1/h for a
@@ -328,18 +544,20 @@ function short_edges(model::SolidMechanics, topology::MeshTopology)
     return edges
 end
 
-# One pass of edge collapses over the candidate edges (edges of the elements
-# above the desired density, plus the short edges of the target), in
-# decreasing order of the energy around them.  Both directions of each edge
-# are tried.  Returns the number of accepted collapses and the decrease.
-function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions)
+# One pass of edge collapses over the candidate edges, in decreasing order
+# of the energy around them: the short edges of the target always, and the
+# edges of the elements above the desired density when the shape-driven
+# operations are on.  Both directions of each edge are tried.  Returns the
+# number of accepted collapses and the decrease.
+function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions, shape::Bool)
     densities = energy_densities(model, topology)
-    candidates = candidate_elements(topology, densities, options)
     edges = Set{Tuple{Int,Int}}()
-    for e in candidates
-        c = view(topology.connectivity, :, e)
-        for i in 1:4, j in (i + 1):4
-            push!(edges, sorted_edge(c[i], c[j]))
+    if shape
+        for e in candidate_elements(topology, densities, options)
+            c = view(topology.connectivity, :, e)
+            for i in 1:4, j in (i + 1):4
+                push!(edges, sorted_edge(c[i], c[j]))
+            end
         end
     end
     union!(edges, short_edges(model, topology))
@@ -425,12 +643,20 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
             accepted += accepted_swaps
             decrease += decrease_swaps
         end
-        # Collapses remove resolution, so they are the fallback: tried only in
+        # The edges outside the length band of a prescribed target are
+        # collapsed or split in every pass.  Collapses and splits driven by
+        # the shape alone remove or add resolution, so they are tried only in
         # a pass where no swap was accepted.
-        if options.collapses && accepted == 0
-            accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options)
+        shape = accepted == 0
+        if options.collapses
+            accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape)
             accepted += accepted_collapses
             decrease += decrease_collapses
+        end
+        if options.splits
+            accepted_splits, decrease_splits = split_pass!(model, topology, options, shape)
+            accepted += accepted_splits
+            decrease += decrease_splits
         end
         compact!(topology)
         norma_logf(0, :info, "Topology pass %d: %d operations accepted, energy decrease %.6e", pass, accepted, decrease)

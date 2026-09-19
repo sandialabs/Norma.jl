@@ -62,7 +62,7 @@ function smoothing_model(mesh_file, block_name, output; extra=Dict{String,Any}()
     return Norma.create_simulation(params)
 end
 
-options = Norma.AdaptivityOptions(0.05, Inf, 1.0e-8, 2, 10, 2, true, false)
+options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, false, false)
 
 @testset "edge_swap_cavity" begin
     # The cavities are judged on shape alone, with the equal-volume rule.
@@ -139,7 +139,7 @@ options = Norma.AdaptivityOptions(0.05, Inf, 1.0e-8, 2, 10, 2, true, false)
     @test all(1 <= length(v) <= 2 for v in values(topology3.faces))
     @test length(Norma.boundary_faces(topology3)) == 6
     # The same swap is refused when the required decrease is large.
-    strict = Norma.AdaptivityOptions(0.05, Inf, 10.0, 2, 10, 2, true, false)
+    strict = Norma.AdaptivityOptions(0.05, Inf, 0.0, 10.0, 2, 10, 2, true, false, false)
     @test Norma.try_edge_swap(model, Norma.build_topology(tri, tri_conn), a, b, strict) === nothing
     Norma.finalize_writing(sim)
     rm("swap-cavity.e"; force=true)

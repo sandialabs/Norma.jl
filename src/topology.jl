@@ -317,6 +317,38 @@ function remove_node!(topology::MeshTopology, n::Int)
     return topology
 end
 
+# The positions of a topology extended by one node that is not yet added, so
+# that a split can be evaluated without copying the positions.
+struct PositionsWithNode <: AbstractMatrix{Float64}
+    base::Matrix{Float64}
+    extra::SVector{3,Float64}
+end
+Base.size(p::PositionsWithNode) = (3, size(p.base, 2) + 1)
+function Base.getindex(p::PositionsWithNode, i::Int, j::Int)
+    return j ≤ size(p.base, 2) ? p.base[i, j] : p.extra[i]
+end
+
+# Update the side sets for the split of edge (a, b) by node m: every face
+# that contains the edge is replaced by its two halves.
+function split_sets!(topology::MeshTopology, a::Int, b::Int, m::Int)
+    for (id, faces) in topology.side_sets
+        halves = NTuple{3,Int}[]
+        for face in faces
+            (a in face && b in face) || continue
+            p = face[1] == a || face[1] == b ? (face[2] == a || face[2] == b ? face[3] : face[2]) : face[1]
+            push!(halves, face)
+            push!(halves, sorted_face(a, m, p))
+            push!(halves, sorted_face(m, b, p))
+        end
+        for k in 1:3:length(halves)
+            delete!(faces, halves[k])
+            push!(faces, halves[k + 1])
+            push!(faces, halves[k + 2])
+        end
+    end
+    return topology
+end
+
 # Update the sets for the collapse of node b onto node a: the faces of every
 # side set that contain b are removed, and those that do not also contain a
 # reappear with a in place of b.  The node-set flags of b vanish with the
