@@ -16,6 +16,8 @@ docs/build/
 .vscode
 *.e
 *.exo
+# Meshes written by the adaptivity loop
+*-adapted-*.g
 .JuliaFormatter.toml
 CLAUDE.md
 

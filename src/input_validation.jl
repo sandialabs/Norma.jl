@@ -78,6 +78,7 @@ const TOP_LEVEL_SINGLE_KEYS = Set([
     "initial conditions",
     "restart",
     "swaps",
+    "adaptivity",
     "Exodus output interval",
     "CSV output interval",
     "CSV write sidesets",
@@ -174,6 +175,16 @@ const MODEL_KEYS = Set([
 const NODAL_RECOVERY_KEYS = Set(["method", "stress", "von mises stress", "internal variables", "deformation gradient"])
 
 const METRIC_FIELD_KEYS = Set(["sizes", "rotation vector"])
+
+const ADAPTIVITY_KEYS = Set([
+    "desired energy density",
+    "allowed energy density",
+    "minimum decrease",
+    "adjacency layers",
+    "maximum passes",
+    "outer iterations",
+    "swaps",
+])
 
 const MATERIAL_PROPS_COMMON_KEYS = Set([
     "model", "elastic modulus", "Poisson's ratio", "bulk modulus", "Lamé's first constant", "shear modulus", "density"
@@ -393,6 +404,13 @@ function validate_restart!(messages::Vector{String}, params::Parameters, file::S
     return warn_unknown_keys!(messages, restart_params, RESTART_KEYS, "restart", file)
 end
 
+function validate_adaptivity!(messages::Vector{String}, params::Parameters, file::String)
+    adaptivity = get(params, "adaptivity", nothing)
+    adaptivity isa AbstractDict || return messages
+    warn_unknown_keys!(messages, adaptivity, ADAPTIVITY_KEYS, "adaptivity", file)
+    return messages
+end
+
 function validate_swaps!(messages::Vector{String}, params::Parameters, file::String)
     swap_plans = get(params, "swaps", nothing)
     swap_plans isa AbstractVector || return messages
@@ -433,6 +451,7 @@ function validate_input_parameters(params::Parameters, file::AbstractString)
         validate_initial_conditions!(messages, params, file_name)
         validate_restart!(messages, params, file_name)
         validate_swaps!(messages, params, file_name)
+        validate_adaptivity!(messages, params, file_name)
     end
     return messages
 end

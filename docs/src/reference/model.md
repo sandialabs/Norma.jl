@@ -111,6 +111,39 @@ model:
     rotation vector: ["0.0", "0.0", "atan(y, x)"]   # first principal direction radial
 ```
 
+### Adaptivity: smoothing alternated with topological operations
+
+A top-level `adaptivity` block turns a mesh smoothing run into the coupled
+loop of `docs/notes/ems-adaptivity`: the mesh is smoothed, the interior edges
+of the elements of highest energy density are swapped where a swap lowers the
+energy of the elements around the edge, the new mesh is written as
+`<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
+phase accepts no operation or the outer iterations are exhausted. Every
+operation passes through one gate: the energy of the new elements must be
+below that of the old ones by the relative margin, and no new element may
+exceed the allowed density. The mesh must consist of four-node tetrahedra.
+Node sets and side sets are carried over to the written meshes.
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |
+| `allowed energy density` | no | `Inf` | no accepted operation may create an element above this |
+| `minimum decrease` | no | `1.0e-8` | relative decrease of the cavity energy an operation must achieve |
+| `adjacency layers` | no | `4` | rings of adjacent elements added to the candidate set |
+| `maximum passes` | no | `20` | passes of operations per topology phase |
+| `outer iterations` | no | `5` | alternations of smoothing and topology |
+| `swaps` | no | `true` | try edge swaps |
+
+```yaml
+adaptivity:
+  desired energy density: 0.05
+  adjacency layers: 2
+  maximum passes: 10
+  outer iterations: 3
+```
+
+Example: `examples/ems/awful-cube/awful-cube-adaptive.yaml`.
+
 Mesh smoothing is a specialized capability; most simulations omit these keys.
 See `examples/ems/` for smoothing cases.
 

@@ -18,6 +18,7 @@ include("boundary_conditions_types.jl") # needs Simulation
 include("recovery_types.jl")           # needs to precede model_types.jl
 include("model_types.jl")              # needs BoundaryCondition, AbstractRecoveryData
 include("topology_types.jl")           # in-memory tetrahedral topology for adaptivity
+include("adapt_types.jl")              # adaptivity options and cavity proposals
 include("time_integrator_types.jl")
 include("solver_types.jl")
 include("swap_types.jl")                # SwapCriterion, SwapPlan
@@ -44,13 +45,18 @@ include("solver.jl")
 include("io.jl")
 include("simulation.jl")
 include("swap.jl")
+include("adapt.jl")                    # needs topology.jl, simulation.jl
 include("restart.jl")
 
 function run(input_file::String)
     open_log_file(input_file)
     try
         norma_log(0, :norma, "BEGIN SIMULATION")
-        return run(create_simulation(input_file))
+        params = load_input(input_file)
+        if haskey(params, "adaptivity")
+            return run_adaptive(params)
+        end
+        return run(create_simulation(params))
     catch e
         # Catch here, while the log file is still open, so the error lands in
         # {example_name}.log.  The finally block closes the file afterward.
@@ -63,6 +69,9 @@ end
 
 function run(params::Parameters)
     norma_log(0, :norma, "BEGIN SIMULATION")
+    if haskey(params, "adaptivity")
+        return run_adaptive(params)
+    end
     return run(create_simulation(params))
 end
 

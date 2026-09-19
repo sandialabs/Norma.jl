@@ -1,0 +1,63 @@
+type: single
+input mesh file: awful-cube.g
+output mesh file: awful-cube-adaptive.e
+# Smoothing alternated with edge swaps (docs/notes/ems-adaptivity): each
+# outer iteration smooths, swaps the interior edges of the elements of
+# highest energy density where a swap lowers the cavity energy, writes the
+# new mesh as awful-cube-adaptive-adapted-<k>.g, and smooths it again.
+adaptivity:
+  desired energy density: 0.05
+  adjacency layers: 2
+  maximum passes: 10
+  outer iterations: 3
+model:
+  type: mesh smoothing
+  smooth reference: equal volume
+  material:
+    blocks:
+      awful: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0
+      shear modulus: 1.0
+      density: 1.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 64
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16

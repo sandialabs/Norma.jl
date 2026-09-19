@@ -52,7 +52,10 @@ end
 # Build the topology of a smoothing model from its mesh at the current
 # positions.  Every block must be TETRA4.
 function build_topology(model::SolidMechanics)
-    mesh = model.mesh
+    # The model's handle may already be closed when the topology is built
+    # after a smoothing run, so the sets are read from a fresh read-only
+    # handle on the same file.
+    mesh = Exodus.ExodusDatabase(model.mesh.file_name, "r")
     positions = model.reference + model.displacement
     num_nodes = size(positions, 2)
     connectivity = zeros(Int, 4, 0)
@@ -89,6 +92,7 @@ function build_topology(model::SolidMechanics)
         side_sets[Int(id)] = faces
         side_set_names[Int(id)] = Exodus.read_name(mesh, SideSet, id)
     end
+    Exodus.close(mesh)
     topology = MeshTopology(
         positions,
         connectivity,
@@ -110,6 +114,38 @@ function build_topology(model::SolidMechanics)
     )
     for e in 1:num_elements
         element_volume(topology, e) > 0.0 || norma_abort("Element $e of the input mesh is inverted or degenerate")
+    end
+    build_adjacency!(topology)
+    return topology
+end
+
+# Topology from arrays, without sets: one block, for tests and prototypes.
+function build_topology(
+    positions::Matrix{Float64}, connectivity::Matrix{Int}; block_id::Int=1, block_name::String="block"
+)
+    num_nodes = size(positions, 2)
+    num_elements = size(connectivity, 2)
+    topology = MeshTopology(
+        copy(positions),
+        copy(connectivity),
+        fill(1, num_elements),
+        [block_id],
+        [block_name],
+        trues(num_nodes),
+        trues(num_elements),
+        Int[],
+        Int[],
+        Dict{Tuple{Int,Int},Vector{Int}}(),
+        Dict{NTuple{3,Int},Vector{Int}}(),
+        Set{Tuple{Int,Int}}(),
+        Dict{Int,BitVector}(),
+        Dict{Int,String}(),
+        Dict{Int,Set{NTuple{3,Int}}}(),
+        Dict{Int,String}(),
+        Dict{Int,BitVector}(),
+    )
+    for e in 1:num_elements
+        element_volume(topology, e) > 0.0 || norma_abort("Element $e is inverted or degenerate")
     end
     build_adjacency!(topology)
     return topology

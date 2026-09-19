@@ -8,13 +8,16 @@ using Printf
 using YAML
 
 
-function create_simulation(input_file::String)
+function load_input(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
     validate_input_parameters(params, input_file)
-    basename = stripped_name(input_file)
-    params["name"] = basename
-    return create_simulation(params)
+    params["name"] = stripped_name(input_file)
+    return params
+end
+
+function create_simulation(input_file::String)
+    return create_simulation(load_input(input_file))
 end
 
 # Whether a `model: type:` string supports restart is now resolved via
