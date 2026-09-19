@@ -433,6 +433,82 @@ function create_metric_reference(metric_field::MetricField, element_ref_pos::Mat
     return F_M_inv * Y, F_M, F_M_inv
 end
 
+# Ideal reference element and metric factor of one element of a smoothing
+# model, from the element's coordinates in the mesh that samples the target:
+# the original mesh during a smoothing phase, the current mesh at a topology
+# phase (docs/notes/ems-adaptivity).  Without a metric field the factor is the
+# identity and the ideal element follows the scalar rule.
+function smoothing_reference(model::SolidMechanics, element_type::ElementType, sample_pos::Matrix{Float64})
+    if model.metric_field !== nothing
+        return create_metric_reference(model.metric_field, sample_pos, model.time)
+    end
+    X = create_smooth_reference(model.smooth_reference, element_type, sample_pos, model.size_field, model.time)
+    I3 = SMatrix{3,3,Float64,9}(I)
+    return X, I3, I3
+end
+
+# Volume of the ideal reference element of every element of a block, for the
+# energy density written with the smoothing output.
+function ideal_volumes(model::SolidMechanics, block_index::Int)
+    block = model.blocks[block_index]
+    volumes = Vector{Float64}(undef, block.num_elements)
+    for element in 1:block.num_elements
+        node_indices = view(block.connectivity, :, element)
+        X, _, _ = smoothing_reference(model, block.element_type, model.reference[:, node_indices])
+        volumes[element] = abs(dot(X[:, 2] - X[:, 1], cross(X[:, 3] - X[:, 1], X[:, 4] - X[:, 1]))) / 6.0
+    end
+    return volumes
+end
+
+# Energies of a set of elements given by their connectivity into `positions`,
+# evaluated exactly as the assembly evaluates them (same shape functions,
+# quadrature, ideal element, and metric-space deformation gradient), for the
+# acceptance gate of the adaptivity loop: the elements need not exist in the
+# mesh.  `sample_positions` holds the coordinates at which the target is
+# sampled; at a topology phase it is the same array as `positions`, during a
+# smoothing phase it is the original mesh.  An inverted or degenerate element
+# gets an infinite energy.
+function element_energies(
+    model::SolidMechanics,
+    block_index::Int,
+    connectivity::AbstractMatrix{<:Integer},
+    positions::AbstractMatrix{Float64};
+    sample_positions::AbstractMatrix{Float64}=positions,
+)
+    block = model.blocks[block_index]
+    material = model.materials[block_index]
+    N, dN, ip_weights = block.N, block.dN, block.weights
+    num_points = size(N, 2)
+    num_elements = size(connectivity, 2)
+    energies = zeros(num_elements)
+    for element in 1:num_elements
+        node_indices = view(connectivity, :, element)
+        X, F_M, F_M_inv = smoothing_reference(model, block.element_type, Matrix(sample_positions[:, node_indices]))
+        element_reference_position = gather_nodal(X, N)
+        element_current_position = gather_nodal(Matrix(positions[:, node_indices]), N)
+        energy = 0.0
+        for point in 1:num_points
+            dNdξ = dN[:, :, point]
+            # The orientation is checked on the element itself: the
+            # equal-volume rule would build a reflected ideal element for an
+            # inverted element and hide the inversion in a positive Jacobian.
+            dxdξ = dNdξ * element_current_position'
+            dXdξ = dNdξ * element_reference_position'
+            J = det(dxdξ) / det(dXdξ)
+            if det(dxdξ) ≤ 0.0 || J ≤ 0.0 || isfinite(J) == false
+                energy = Inf
+                break
+            end
+            dNdX = dXdξ \ dNdξ
+            F = element_current_position * dNdX'
+            F_U = F_M * F * F_M_inv
+            energy += strain_energy(material, F_U) * det(dXdξ) * ip_weights[point]
+        end
+        energies[element] = energy
+    end
+    return energies
+end
+
 # Pull the tangent of the energy in the metric space back to the reference
 # configuration: with F_U = F_M F F_M⁻¹ and P = F_M' P_U F_M⁻ᵀ,
 # A_iJkL = (F_M)_pi (F_M⁻¹)_Jq A^U_pqrs (F_M)_rk (F_M⁻¹)_Ls.
@@ -1114,13 +1190,8 @@ function evaluate_element!(
     anisotropic = flags.mesh_smoothing == true && model.metric_field !== nothing
     F_M = SMatrix{3,3,Float64,9}(I)
     F_M_inv = F_M
-    if anisotropic
-        smooth, F_M, F_M_inv = create_metric_reference(model.metric_field, model.reference[:, node_indices], model.time)
-        element_reference_position = gather_nodal(smooth, N)
-    elseif flags.mesh_smoothing == true
-        smooth = create_smooth_reference(
-            model.smooth_reference, element_type, model.reference[:, node_indices], model.size_field, model.time
-        )
+    if flags.mesh_smoothing == true
+        smooth, F_M, F_M_inv = smoothing_reference(model, element_type, model.reference[:, node_indices])
         element_reference_position = gather_nodal(smooth, N)
     else
         element_reference_position = gather_nodal(model.reference, node_indices, N)

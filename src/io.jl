@@ -128,6 +128,12 @@ function initialize_writing(sim::SingleDomainSimulation)
 
     all_iv_names = sim.model isa RomModel ? String[] : collect_internal_variable_names(sim.model.materials)
     num_element_vars = (7 + length(all_iv_names)) * max_num_int_points + 1
+    # Energetic mesh smoothing: the energy per unit ideal volume, the quantity
+    # the adaptivity thresholds are stated on (docs/notes/ems-adaptivity).
+    smoothing_density = sim.model isa SolidMechanics && sim.model.mesh_smoothing == true
+    if smoothing_density
+        num_element_vars += 1
+    end
     Exodus.write_number_of_variables(output_mesh, ElementVariable, num_element_vars)
 
     el_var_names = String[]
@@ -145,6 +151,9 @@ function initialize_writing(sim::SingleDomainSimulation)
         end
     end
     push!(el_var_names, "stored_energy")
+    if smoothing_density
+        push!(el_var_names, "energy_density")
+    end
     Exodus.write_names(output_mesh, ElementVariable, el_var_names)
     return nothing
 end
@@ -543,6 +552,12 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         Exodus.write_values(
             output_mesh, ElementVariable, time_index, Int64(block_id), "stored_energy", block_stored_energy
         )
+        if model isa SolidMechanics && model.mesh_smoothing == true
+            Exodus.write_values(
+                output_mesh, ElementVariable, time_index, Int64(block_id), "energy_density",
+                block_stored_energy ./ ideal_volumes(model, block_index),
+            )
+        end
     end
     return nothing
 end
