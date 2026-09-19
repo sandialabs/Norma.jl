@@ -12,7 +12,11 @@ adaptivity:
   outer iterations: 3
 model:
   type: mesh smoothing
-  smooth reference: equal volume
+  # Prescribed target: the edge length of the regular tetrahedron with the
+  # mean volume of the elements of the input mesh, so the ideal element is
+  # the same for every element and every phase of the loop.
+  smooth reference: size field unrestricted
+  size field: "0.214"
   material:
     blocks:
       awful: elastic
@@ -53,7 +57,7 @@ solver:
   step: lbfgs
   memory: 10
   minimum iterations: 1
-  maximum iterations: 64
+  maximum iterations: 200
   relative tolerance: 1.0e-12
   absolute tolerance: 1.0e-08
   step length: 1.0e-3

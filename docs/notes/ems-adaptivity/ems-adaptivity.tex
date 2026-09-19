@@ -436,10 +436,15 @@ operation receives the metric at its centroid when it is created. For
 thresholds the natural density is $\hat w_e = \psi(\bs F_{U,e})$, the
 energy per unit ideal volume, which is dimensionless with unit moduli.
 
-\subsection{Without a prescribed target: the equal-volume functional}
+\subsection{Without a prescribed target: the equal-volume functional (legacy)}
 
-Without a target, the mesh should keep its local size and only improve
-its shape. Let $\mathcal{T}$ denote the mesh topology and $\bs{x}$ the
+The rules that take the target from the original element (\code{equal
+volume}, \code{average edge length}, \code{max}) are legacy rules since
+September 2026: new inputs prescribe a size or metric field, and the
+functional of Section~\ref{sec:prescribed} is the one the loop uses. The
+equal-volume functional is kept here for meshes smoothed with the legacy
+rules. Without a target, the mesh should keep its local size and only
+improve its shape. Let $\mathcal{T}$ denote the mesh topology and $\bs{x}$ the
 nodal positions. Define
 \begin{equation}
 D(\mathcal{T}, \bs{x}) \;=\; \sum_{e \in \mathcal{T}} W_e(\bs{x}),

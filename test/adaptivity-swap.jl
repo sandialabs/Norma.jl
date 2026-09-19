@@ -10,7 +10,7 @@ if !isdefined(Main, :Norma)
 end
 Random.seed!(0)
 
-function smoothing_model(mesh_file, block_name, output; extra=Dict{String,Any}())
+function smoothing_model(mesh_file, block_name, output; extra=Dict{String,Any}(), size_field=nothing)
     params = Dict{String,Any}(
         "type" => "single",
         "name" => "swap",
@@ -20,7 +20,8 @@ function smoothing_model(mesh_file, block_name, output; extra=Dict{String,Any}()
         "CSV output interval" => 0,
         "model" => Dict{String,Any}(
             "type" => "mesh smoothing",
-            "smooth reference" => "equal volume",
+            "smooth reference" => size_field === nothing ? "equal volume" : "size field unrestricted",
+            "size field" => size_field === nothing ? "1.0" : size_field,
             "material" => Dict{String,Any}(
                 "elastic" => Dict{String,Any}(
                     "model" => "seth-hill",
@@ -56,6 +57,7 @@ function smoothing_model(mesh_file, block_name, output; extra=Dict{String,Any}()
             "line search maximum iterations" => 16,
         ),
     )
+    size_field === nothing && delete!(params["model"], "size field")
     merge!(params, extra)
     return Norma.create_simulation(params)
 end
@@ -63,6 +65,7 @@ end
 options = Norma.AdaptivityOptions(0.05, Inf, 1.0e-8, 2, 10, 2, true)
 
 @testset "edge_swap_cavity" begin
+    # The cavities are judged on shape alone, with the equal-volume rule.
     sim = smoothing_model("../examples/ems/cube/cube.g", "cube", "swap-cavity.e")
     model = sim.model
     h = 0.1
@@ -143,7 +146,7 @@ options = Norma.AdaptivityOptions(0.05, Inf, 1.0e-8, 2, 10, 2, true)
 end
 
 @testset "topology_phase_on_mesh" begin
-    sim = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "swap-mesh.e")
+    sim = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "swap-mesh.e"; size_field="0.214")
     Norma.run(sim)
     model = sim.model
     topology = Norma.build_topology(model)
@@ -189,7 +192,8 @@ end
         ),
         "model" => Dict{String,Any}(
             "type" => "mesh smoothing",
-            "smooth reference" => "equal volume",
+            "smooth reference" => "size field unrestricted",
+            "size field" => "0.214",
             "material" => Dict{String,Any}(
                 "elastic" => Dict{String,Any}(
                     "model" => "seth-hill",
@@ -233,7 +237,7 @@ end
     @test isfile("adaptive-adapted-1.e")
     # The final mesh is the last adapted one and its smoothing energy is
     # below that of the smoothed original mesh.
-    first = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "adaptive-first.e")
+    first = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "adaptive-first.e"; size_field="0.214")
     Norma.run(first)
     @test sim.model.strain_energy < first.model.strain_energy
     for f in ("adaptive.e", "adaptive-first.e"), k in 1:2

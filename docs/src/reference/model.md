@@ -78,7 +78,7 @@ accepted and cause an error; use the `nodal recovery` block above.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `mesh smoothing` | no | `false` | enable mesh smoothing (set automatically when `type: mesh smoothing`); a top-level key |
-| `smooth reference` | no | `""` | reference-metric rule for TETRA4 smoothing: `equal volume`, `average edge length`, `max`, `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted` |
+| `smooth reference` | no | `""` | rule for the ideal element of TETRA4 smoothing: `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted`, which prescribe the target; `equal volume`, `average edge length`, and `max`, which take the target from the original element, are legacy rules kept for older inputs |
 | `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size |
 | `metric field` | required if `smooth reference: metric field`/`metric field unrestricted` | `nothing` | block with `sizes` (three expressions in `t, x, y, z`: the principal sizes h₁, h₂, h₃) and optional `rotation vector` (three expressions: the rotation vector whose exponential carries the global axes onto the principal directions); see below |
 
