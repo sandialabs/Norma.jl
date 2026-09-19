@@ -1,0 +1,58 @@
+type: single
+input mesh file: tube.g
+output mesh file: tube-adaptive.e
+# Refinement of the tube toward a target of 0.08, two thirds of its mesh
+# size, by smoothing alternated with edge swaps, collapses, and splits
+# (docs/notes/ems-adaptivity).  The nodes slide on the four analytic
+# surfaces, and the nodes that the splits add on the boundary are placed on
+# them.  Each adapted mesh is written as tube-adaptive-adapted-<k>.g.
+adaptivity:
+  desired energy density: 0.05
+  minimum scaled Jacobian: 0.3
+  adjacency layers: 2
+  maximum passes: 10
+  outer iterations: 3
+model:
+  type: mesh smoothing
+  smooth reference: size field unrestricted
+  size field: "0.08"
+  material:
+    blocks:
+      tube: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0
+      shear modulus: 1.0
+      density: 1.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0
+boundary conditions:
+  Surface:
+    - side set: outer
+      function: "x^2 + y^2 - 1.0"
+    - side set: inner
+      function: "x^2 + y^2 - 0.81"
+    - side set: bottom
+      function: "z + 1.0"
+    - side set: top
+      function: "z - 1.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 200
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
+  energy stagnation window: 5
+  energy stagnation tolerance: 1.0e-03

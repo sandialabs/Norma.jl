@@ -151,7 +151,10 @@ adaptivity:
   outer iterations: 3
 ```
 
-Example: `examples/ems/awful-cube/awful-cube-adaptive.yaml`.
+Examples: `examples/ems/awful-cube/awful-cube-adaptive.yaml` (a distorted
+cube improved at its own mesh size) and `examples/ems/tube/tube-adaptive.yaml`
+(a tube refined toward a finer target with its nodes on analytic surfaces).
+Formulation, design, and measurements: `docs/notes/ems-adaptivity`.
 
 Mesh smoothing is a specialized capability; most simulations omit these keys.
 See `examples/ems/` for smoothing cases.
@@ -160,3 +163,5 @@ See `examples/ems/` for smoothing cases.
 
 - Basic model/material block: `examples/single/static-solid`
 - Mesh smoothing: `examples/ems/cube/cube.yaml`
+- Anisotropic smoothing: `examples/ems/tube/tube-metric.yaml`
+- Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`

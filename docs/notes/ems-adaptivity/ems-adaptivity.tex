@@ -19,7 +19,7 @@
 and Topological Mesh Adaptation:\\
 Design of an Adaptivity Loop for Norma}
 \author{Alejandro Mota}
-\date{August 2026, revised September 2026}
+\date{August 2026, revised September 19, 2026}
 
 \begin{document}
 \maketitle
@@ -51,7 +51,11 @@ with no transfer of solution state), records the alternatives of wrapping
 and states why the topological operations should be accepted on the
 energy with geometric quality as a floor. The note closes with a
 step-by-step implementation plan, recommendations for topology and
-adjacency data structures, and a ranked list of risks.
+adjacency data structures, and a ranked list of risks. The loop was
+implemented in September 2026 (Section~\ref{sec:implementation}); on a
+distorted cube it raises the minimum scaled Jacobian from $0.004$ to
+$0.35$ and the median from $0.56$ to $0.69$, where smoothing alone stalls
+at $0.15$ and $0.47$.
 \end{abstract}
 
 \tableofcontents
@@ -766,10 +770,12 @@ unreachable.
 \label{sec:architecture}
 
 The implementation follows the repository convention of paired files:
-\code{src/adapt\_types.jl} for the option and cache types,
-\code{src/adapt.jl} for the methods. The steps are ordered so that each
-is independently testable, with the first coupled loop appearing at
-Step 4.
+\code{src/topology\_types.jl} and \code{src/topology.jl} for the mesh
+and its adjacencies, \code{src/adapt\_types.jl} and \code{src/adapt.jl}
+for the operators and the loop. The steps are ordered so that each is
+independently testable, with the first coupled loop appearing at Step 4.
+Steps 1 to 7 were carried out between September 18 and 19, 2026
+(Section~\ref{sec:implementation}).
 
 \begin{enumerate}[itemsep=3pt]
 \item \emph{Energy kernel on subsets.} Factor the per-element energy
@@ -877,12 +883,12 @@ Step 4.
   phase is ever threaded, adopt the independent set with the same
   comparator: the better cavity wins, with a deterministic identifier
   tiebreak.
-\item \emph{Exodus out of the hot path.} Connectivity is at present
-  re-read from the database handle inside the assembly loop. The
-  topology cache of Step 3 should become the in-memory source of truth
-  during adaptation, with Exodus demoted to input and output at phase
-  boundaries. This change benefits plain EMS performance even before
-  any topological operation exists.
+\item \emph{Exodus out of the hot path.} When this note was first
+  written the connectivity was re-read from the database handle inside
+  the assembly loop; the per-block element data of the model now hold it
+  in memory, and the topology cache of Step 3 is the source of truth
+  during adaptation, with Exodus used for input and output at phase
+  boundaries only.
 \item \emph{Outcome types over Booleans.} The solver reports converged,
   stagnated, or locked; each operator pass reports its number of
   accepted operations; the driver's control flow is written entirely
@@ -891,6 +897,136 @@ Step 4.
   that each \omegah{} operator returns false exactly when its filter
   chain leaves no candidate.
 \end{enumerate}
+
+\section{Implementation and measurements}
+\label{sec:implementation}
+
+\subsection{What was built}
+
+\begin{itemize}[itemsep=2pt]
+\item \emph{Energy kernel on subsets} (\code{element\_energies}): the
+  energy of any set of elements given by connectivity and nodal
+  positions, evaluated as the assembly evaluates it, with the target
+  sampled at the positions the caller supplies and an infinite energy for
+  an inverted or degenerate element; the inversion is judged on the
+  determinant of the deformation gradient itself, since for a nearly flat
+  element it can differ in sign by roundoff from the determinant of the
+  current-configuration Jacobian. The smoothing output carries the
+  density $\hat w_e$ as the element variable \code{energy\_density}.
+\item \emph{Topology} (\code{MeshTopology}): coordinates, connectivity,
+  node-to-element, edge and face tables, boundary edges, node sets and
+  side sets as flags and faces; tombstones within a pass, compaction with
+  renumbering maps, and Exodus output with the sets and their names.
+\item \emph{Edge swap}: every triangulation of the ring polygon (three to
+  seven elements), the one of least energy submitted to the acceptance
+  test. Positive orientation of the new tetrahedra is not a sufficient
+  validity test: an ear at a reflex vertex of the ring polygon gives
+  positively oriented tetrahedra that coincide with an element outside
+  the cavity (found as a face shared by four elements). A triangulation
+  is valid when every triangle has the orientation of the ring polygon
+  in the projection along the edge and the edge nodes lie on opposite
+  sides of it.
+\item \emph{Edge collapse}: one node of an edge removed onto the other,
+  which keeps its position; the removed node must carry no node set the
+  survivor lacks, and a boundary node may move only along a boundary
+  edge onto a node of the same surfaces, so surfaces and feature lines
+  are preserved and corners never removed; the side sets are updated.
+\item \emph{Edge split}: a node at the midpoint, returned to the
+  analytic surfaces of the boundary faces containing the edge, inheriting
+  their side sets and the node sets common to the ends of a boundary
+  edge, relaxed locally with the cavity fixed before the test; on a
+  boundary without an analytic surface it stays at the midpoint.
+\item \emph{Acceptance test} (\code{accept\_proposal}): the energy of
+  the new elements below that of the old ones by a relative margin
+  (default $10^{-8}$), no new element above the allowed density, and the
+  geometric floor: no new element with a scaled Jacobian below
+  \code{minimum scaled Jacobian} unless the worst element of the cavity
+  was already below it and the new worst is no worse.
+\item \emph{Driver}: candidates above the desired density dilated by
+  adjacency layers; swaps in decreasing order of ring energy with
+  deferral of cavities changed earlier in the pass; with a prescribed
+  target the edges outside the band $[1/\sqrt2, \sqrt2]$ collapsed or
+  split in every pass, and shape-driven collapses and splits only in a
+  pass without accepted swaps; compaction after every pass; passes until
+  none accepts or a cap; the adapted mesh written and smoothed again
+  until a topology phase accepts nothing or the outer iterations are
+  exhausted. The smoothing phases end on the energy stagnation exit of
+  the solver (\code{energy stagnation window} and \code{tolerance}).
+  Input: the top-level \code{adaptivity} block
+  (\code{docs/src/reference/model.md}).
+\item \emph{Tests} 127 to 131: the kernel on hand-built cavities against
+  an independent evaluation and against the assembled energy; the
+  topology (Euler characteristic, boundary faces against side sets,
+  Exodus round trip with the side numbering); each operator on a
+  hand-built cavity and in topology phases on the distorted cube and on
+  the tube, with the invariants checked (Euler characteristic, closed
+  boundary, side sets covering it, new boundary nodes on the analytic
+  surfaces to $10^{-8}$, every node on a face of the cube in the node set
+  of that face, energy decrease accounted for).
+\end{itemize}
+
+\subsection{The distorted cube}
+
+Figure~\ref{fig:quality-evolution} records the scaled Jacobian of every
+element, in the definition of Verdict (the vertex Jacobian times
+$\sqrt2$ over the largest product of the three edge lengths at a vertex),
+and the energy after every L-BFGS step of the adaptive cube example
+(\code{examples/ems/awful-cube}): the distorted cube, 6955 elements,
+prescribed size $0.214$ (the edge of the regular tetrahedron with the mean
+volume of the input mesh), desired density $0.05$, floor $0.35$, two
+adjacency layers.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/quality-evolution.pdf}
+\caption{Distorted cube: minimum, median, mean, and maximum scaled
+Jacobian of the elements (top) and total smoothing energy (bottom) after
+every solver step; the dashed lines are the topology phases, with the
+operations accepted and the element count after them.}
+\label{fig:quality-evolution}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/quality-histograms.pdf}
+\caption{Distorted cube: distribution of the scaled Jacobian in the
+initial mesh, after smoothing alone, after the first topology phase, and
+at the end.}
+\label{fig:quality-histograms}
+\end{figure}
+
+Smoothing alone raises the minimum scaled Jacobian from $0.004$ to
+$0.15$ and reduces the energy from $3.5\times10^{9}$ to $3.1\times10^{2}$,
+then stalls at step 92; it lowers the median from $0.56$ to $0.47$ while
+it repairs the worst elements, since with a fixed connectivity repairing
+a sliver deforms its neighbors (Figure~\ref{fig:quality-histograms}).
+The first topology phase accepts 1476 operations at fixed nodes: the
+minimum rises to $0.19$ and the energy falls to $49$. The smoothing that
+follows reaches a minimum of $0.35$, a median of $0.69$, and an energy of
+$8.9$ within about twenty steps. Two more alternations accept 119 and 23
+operations and change little; the process has converged after 169 solver
+steps, with 5214 elements. Three earlier variants measured on the way:
+swaps alone reach an energy of $13.2$ and a minimum of $0.36$; swaps and
+collapses $8.6$ and $0.39$; all three operators without the floor $8.5$
+and $0.29$, the splits having created a few flat elements whose smaller
+size penalty outweighed their shape. The floor is what keeps a single
+element from being sacrificed to the cavity sum.
+
+\subsection{The tube}
+
+On the tube (\code{examples/ems/tube/tube-adaptive.yaml}, target $0.08$
+against a mesh size of $0.12$, nodes sliding on the four analytic
+surfaces, floor $0.3$), the size operations dominate: the first topology
+phase accepts 906 operations, mostly splits of the edges longer than
+$\sqrt2 \times 0.08$, and takes the mesh from 5657 to 8896 elements, with
+the new boundary nodes placed on the cylinders and the caps; the next
+two phases accept 76 and 18 operations and end at 9012 elements. The
+energy goes from $3.01$ after the first smoothing to $2.24$ at the end;
+the remaining value is the size mismatch of the edges that the band
+$[0.08/\sqrt2, 0.08\sqrt2]$ accepts, since an edge of $0.12$ is split
+once into halves of $0.06$ that are inside the band. The test with a
+target of $0.24$ shows the opposite: the short edges are collapsed, the
+count falls, and the boundary stays closed and covered by the side sets.
 
 \section{Risks and open questions}
 \label{sec:risks}
@@ -951,11 +1087,14 @@ the cavity sum and thereby makes local acceptance imply global descent
 (Proposition~\ref{prop:descent}); and the windowed stagnation test
 \eqref{eq:stagnation} with explicit detection of the topological lock,
 which supplies both the trigger for the topology phase and the
-terminator of the outer loop. Norma already provides the per-element
+terminator of the outer loop. Norma already provided the per-element
 energy field, the metric-space ideal element, the analytic surface
-constraints, and the mesh-replacement orchestration; the genuinely new
-construction is the in-memory topology cache with adjacency, the three
-cavity operators, and the single acceptance test that all of them pass.
+constraints, and the mesh-replacement orchestration; the new construction
+is the in-memory topology cache with adjacency, the three cavity
+operators, and the single acceptance test that all of them pass. All of
+it is in place as of September 19, 2026; the measurements of
+Section~\ref{sec:implementation} confirm the premise of the note, that
+the alternation improves the mesh far beyond either mechanism alone.
 
 \begin{thebibliography}{9}
 
