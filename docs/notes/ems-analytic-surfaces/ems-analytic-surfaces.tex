@@ -54,8 +54,10 @@ smooth as the input mesh).
 
 EMS treats the mesh as a hyperelastic body. For each element a target
 (``ideal'') reference configuration is constructed from a size criterion
-(equal-volume, average-edge-length, \code{max}, or a user size field; see
-\code{create\_smooth\_reference} in \code{model.jl}), and a quasi-static solve
+(equal-volume, average-edge-length, \code{max}, a user size field, or, since
+September 2026, a metric tensor field that also sets the shape and
+orientation of the target; see \code{create\_smooth\_reference} and
+\code{create\_metric\_reference} in \code{model.jl}), and a quasi-static solve
 lets the nodal positions $~x$ relax so that elements adopt shapes as close as
 possible to their targets, minimizing a stored-energy functional $W(~x)$.
 

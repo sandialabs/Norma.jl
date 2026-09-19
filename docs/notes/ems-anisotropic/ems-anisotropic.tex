@@ -1,0 +1,286 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\newcommand{\bs}[1]{\boldsymbol{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\dd}{\mathrm{d}}
+\emergencystretch=3em
+
+\title{Anisotropic Energetic Mesh Smoothing with a Metric Tensor Field in Norma}
+\author{Alejandro Mota}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Energetic mesh smoothing (EMS) in Norma minimizes a hyperelastic energy of the
+mesh, with an ideal reference element per tetrahedron set by a scalar size.
+This note records the extension of that ideal element to a metric tensor,
+which prescribes three principal sizes and their directions, and the change
+in the energy that makes the orientation of the elements part of the
+objective: the energy is evaluated on the deformation gradient measured in
+the metric, and the stress and tangent are pulled back to the reference
+configuration. The formulation, its properties, the treatment of a metric
+that varies in space, the implementation, the regression tests, and two
+examples are described.
+\end{abstract}
+
+\section{Formulation}
+\label{sec:formulation}
+
+\paragraph{The isotropic smoothing energy.} For each tetrahedron the ideal
+reference element $\Omega_{\bs X}$ is a regular tetrahedron of edge length
+$h$, the current element $\Omega_{\bs x}$ is the element of the mesh, and
+$\bs F = \partial \bs x / \partial \bs X$ is the deformation gradient of the
+map between them. The smoothing energy of the mesh is
+$\Phi = \sum_e V_{\bs X}^e\, W(\bs F_e)$, with $W$ an isotropic
+hyperelastic energy density (the Seth--Hill family in Norma) and
+$V^e_{\bs X}$ the volume of the ideal element. The nodal positions are the
+unknowns and the ideal elements are fixed during a solve. Because $W$ is
+isotropic, it depends on $\bs F$ only through the invariants of
+$\bs C = \bs F^T \bs F$, and $W(\bs Q \bs C \bs Q^T) = W(\bs C)$ for every
+rotation $\bs Q$: rotating the ideal element changes nothing. This is
+harmless for a regular ideal element, which has no orientation, and fatal
+for an anisotropic one: an elongated element has zero energy in every
+orientation, so the energy cannot ask the elongation to point in a
+prescribed direction.
+
+\paragraph{The metric tensor.} An anisotropic target is a symmetric
+positive definite metric tensor
+\begin{equation}
+  \bs M \;=\; \bs R\,\operatorname{diag}\!\left(\frac{1}{h_1^2},
+  \frac{1}{h_2^2}, \frac{1}{h_3^2}\right) \bs R^T,
+  \label{eq:metric}
+\end{equation}
+with principal sizes $h_i$ and a rotation $\bs R = \exp(\widehat{\bs v})$,
+given by a rotation vector $\bs v$, whose columns are the principal
+directions. The length of a vector $\bs e$ measured in the metric is
+$\sqrt{\bs e \cdot \bs M \bs e}$, so an edge of length $h_i$ along the
+$i$-th principal direction has unit length in the metric. Any factor
+$\bs F_M$ with $\bs F_M^T \bs F_M = \bs M$ maps physical vectors to
+metric-space vectors; Norma uses
+\begin{equation}
+  \bs F_M \;=\; \operatorname{diag}(1/h_1, 1/h_2, 1/h_3)\, \bs R^T,
+  \qquad
+  \bs F_M^{-1} \;=\; \bs R\, \operatorname{diag}(h_1, h_2, h_3).
+  \label{eq:factor}
+\end{equation}
+The ideal element is the unit regular tetrahedron $\Omega_{\bs Y}$ mapped by
+$\bs F_M^{-1}$, that is, scaled by $h_i$ along the global axes and then
+rotated by $\bs R$: $\bs X = \bs F_M^{-1} \bs Y$. Its volume is
+$h_1 h_2 h_3\, V_{\mathrm{unit}}$ with $V_{\mathrm{unit}} = 1/(6\sqrt 2)$.
+
+\paragraph{The energy in the metric space.} The current element is also
+mapped into the metric space, $\bs y = \bs F_M \bs x$, and the energy is
+evaluated on the deformation gradient between the unit ideal element and
+the metric image of the current element,
+\begin{equation}
+  \bs F_U \;=\; \frac{\partial \bs y}{\partial \bs Y}
+  \;=\; \bs F_M\, \bs F\, \bs F_M^{-1},
+  \qquad
+  \Phi \;=\; \sum_e V^e_{\bs X}\, W(\bs F_{U,e}).
+  \label{eq:FU}
+\end{equation}
+An element has zero energy if and only if its metric image is a unit
+regular tetrahedron, that is, if it is a unit element for $\bs M$ in the
+sense of metric-based meshing. If the current element is the ideal element
+rotated by $\bs Q$, then $\bs F = \bs Q$ and
+$\bs C_U = \bs F_M^{-T} \bs Q^T \bs M \bs Q \bs F_M^{-1}$, which equals the
+identity only when $\bs Q^T \bs M \bs Q = \bs M$: the orientation is
+penalized, except for rotations that leave the metric unchanged, as it
+should be. With equal sizes $\bs F_M = \bs I / h$, $\bs F_U = \bs F$, and
+the isotropic energy is recovered exactly.
+
+\paragraph{Stress and tangent.} With the ideal volume as the weight,
+$\Phi_e = V^e_{\bs X} W(\bs F_M \bs F \bs F_M^{-1})$, and the chain rule
+gives the first Piola--Kirchhoff stress and the tangent in the reference
+configuration from those of the isotropic model evaluated at $\bs F_U$,
+\begin{equation}
+  \bs P \;=\; \bs F_M^T\, \bs P_U\, \bs F_M^{-T},
+  \qquad
+  A_{iJkL} \;=\; (F_M)_{pi}\,(F_M^{-1})_{Jq}\, A^U_{pqrs}\,
+  (F_M)_{rk}\,(F_M^{-1})_{Ls},
+  \label{eq:pullback}
+\end{equation}
+where $\bs P_U = \partial W/\partial \bs F_U$ and
+$\bs A^U = \partial \bs P_U / \partial \bs F_U$. Nothing else in the
+assembly changes. The same result follows from the nodal chain rule: with
+$\bs y_a = \bs F_M \bs x_a$, the nodal forces are
+$\bs f_{\bs x} = \bs F_M^T \bs f_{\bs y}$ and the nodal stiffness blocks
+$\bs K_{\bs x} = \bs F_M^T \bs K_{\bs y} \bs F_M$.
+
+\paragraph{Properties.}
+\begin{enumerate}[itemsep=2pt]
+\item The energy does not depend on the factor chosen for $\bs M$: any
+  other factor is $\bs Q \bs F_M$ with $\bs Q$ a rotation, which enters
+  $\bs F_U$ as a superimposed rigid rotation and leaves the isotropic
+  $W$ unchanged. The eigenvector signs and the in-plane phase of $\bs R$
+  for repeated sizes are therefore irrelevant to the energy.
+\item The orientation of the unit tetrahedron $\Omega_{\bs Y}$ is
+  irrelevant for the same reason: every rotation of the unit tetrahedron
+  mapped by $\bs F_M^{-1}$ is a zero-energy element. The smoother does not
+  prefer one packing of anisotropic elements over another; the mesh
+  topology decides.
+\item $\det \bs F_U = \det \bs F$, so the volumetric part of the energy
+  is unchanged by the metric transformation: it compares the element
+  volume with $h_1 h_2 h_3 V_{\mathrm{unit}}$.
+\end{enumerate}
+
+\section{A metric that varies in space}
+\label{sec:spatial}
+
+The metric is evaluated once per element at the centroid of the element in
+the original mesh, as the isotropic size field is, and held fixed during a
+solve. The energy is then an exact function of the nodal positions and the
+assembled force is its exact gradient, which the line search and the
+convergence tests of the solver require. If the metric followed the
+current centroid, $\bs F_M$ would depend on the unknowns and the exact
+gradient would contain the derivative of $\bs F_M$, which involves the
+derivative of the exponential map of the rotation vector; omitting it
+would make the force inconsistent with the energy. The metric is therefore
+Lagrangian: an element keeps the target it was assigned where it started.
+For smoothing, where nodes move a fraction of an element, this is a
+second-order effect. For large motions, or when smoothing alternates with
+topological operations, the targets are refreshed at phase boundaries
+from the field at the current positions, which is the re-baselining of
+the adaptivity note (\code{docs/notes/ems-adaptivity}); each phase then
+minimizes a fixed functional.
+
+The metric takes the pseudo-time $t$ as an argument, so a target can be
+continued from the sizes of the original mesh to the desired ones over the
+pseudo-time steps of the quasi-static solve. Because the sizes and the
+rotation vector are given separately, a linear path in $\log h_i$ and in
+$\bs v$ interpolates the sizes geometrically and stays a rotation, which is
+the interpolation the metric literature recommends.
+
+\paragraph{The volume floor.} Smoothing cannot create elements. The
+isotropic \code{size field} rule therefore takes the larger of the size
+field and the edge length of the regular tetrahedron with the volume of
+the original element, so that no element is asked to shrink below what
+the mesh topology can accommodate; without it the size field produced
+slivers. The rule \code{metric field} applies the same floor to the
+metric: when $h_1 h_2 h_3 V_{\mathrm{unit}}$ is smaller than the volume of
+the original element, the three sizes are scaled by the same factor until
+the volumes match, so the shape and the orientation of the target are
+preserved. The rule \code{metric field unrestricted} omits the floor.
+
+\section{Implementation}
+\label{sec:implementation}
+
+\begin{itemize}[itemsep=2pt]
+\item \code{MetricField} (\code{src/model\_types.jl}): the compiled
+  size and rotation-vector expressions in $t, x, y, z$ and the
+  \code{restricted} flag; stored on the model as \code{metric\_field}.
+\item \code{create\_metric\_field} (\code{src/model.jl}): reads the
+  \code{metric field} block under \code{model} (\code{sizes}, three
+  expressions; \code{rotation vector}, three expressions, optional) with
+  the same Symbolics pipeline as the size field.
+\item \code{create\_metric\_reference}: evaluates the field at the
+  reference centroid, checks that the sizes are finite and positive,
+  applies the floor, builds $\bs R$ with \code{rt\_of\_rv}
+  (\code{src/minitensor.jl}) and returns the ideal element
+  $\bs F_M^{-1} \bs Y$ together with $\bs F_M$ and $\bs F_M^{-1}$.
+\item \code{evaluate\_element!}: with a metric field, the ideal element
+  is built by the function above, the constitutive model is evaluated at
+  $\bs F_U$, and the stress and the tangent are pulled back with
+  \eqref{eq:pullback} by \code{pull\_back\_tangent}. Without a metric
+  field the code path is unchanged.
+\item Input validation knows the new keys (\code{metric field},
+  \code{sizes}, \code{rotation vector}); the reference documentation is in
+  \code{docs/src/reference/model.md}. The sampled sizes and rotation
+  vector are written as the nodal variables \code{size\_1..3} and
+  \code{rotation\_1..3}.
+\end{itemize}
+
+\section{Tests}
+\label{sec:tests}
+
+\code{test/smoothing-metric.jl} (test 126) checks:
+\begin{enumerate}[itemsep=2pt]
+\item the ideal element and the factor: $\bs F_M \bs F_M^{-1} = \bs I$,
+  $\bs F_M^T \bs F_M = \bs M$ with and without rotation, unit edges of
+  $\bs F_M \bs X$, the ideal volume, agreement with the isotropic size
+  field for equal sizes, the floor (volume of the original element
+  recovered, size ratios preserved), evaluation at the reference centroid
+  and at the supplied time, and the input errors;
+\item the orientation sensitivity on one element with sizes
+  $(0.25, 1, 1)$ rotated by $0.4$ rad about $z$: the ideal element has
+  zero energy, the same shape rotated by a quarter turn about $z$ has
+  energy above one while the isotropic energy on $\bs F$ is zero for
+  both, a rotation about the axis of transverse isotropy of the metric
+  keeps the energy at zero, and $\bs Q \bs F_M$ gives the same energy as
+  $\bs F_M$;
+\item the assembled force and stiffness on the cube mesh
+  (\code{examples/ems/cube}, 7677 elements) under a metric with all six
+  expressions varying in space: central finite differences of the energy
+  match the force to $10^{-5}$ relative and a finite-difference
+  directional derivative of the force matches the stiffness to
+  $10^{-5}$ relative;
+\item a smoothing run on the cube with a constant metric at
+  $45^\circ$ in the $x$-$y$ plane (sizes $0.5H$, $1.5H$, $1.5H$ with $H$
+  the mean edge length): the energy decreases, the mean deviation of the
+  edge lengths measured in the metric from unity decreases, and no
+  element inverts.
+\end{enumerate}
+The existing smoothing tests (51, 119) and the input-validation sweep of
+the examples (122) pass unchanged.
+
+\section{Examples}
+\label{sec:examples}
+
+\paragraph{Cube, constant metric at $45^\circ$}
+(\code{examples/ems/cube/cube-metric.yaml}). Sizes $0.05$, $0.1414$,
+$0.1414$ (the volume of the mesh size $0.1$), first principal direction
+at $45^\circ$ in the $x$-$y$ plane, unrestricted rule, nodes fixed in the
+normal direction on the faces, L-BFGS. Over the edges of the mesh the mean
+of $\lvert\, \lVert \bs F_M \bs e \rVert - 1 \rvert$ goes from $0.44$ to
+$0.31$, the mean edge component along the small direction from $0.055$ to
+$0.042$ (target $0.05$), and the mean component across it from $0.085$ to
+$0.098$. The number of elements is fixed, so the metric cannot be met
+everywhere; the elements rotate and stretch toward it.
+
+\paragraph{Tube, graded axial size}
+(\code{examples/ems/tube/tube-metric.yaml}). The rotation vector
+$(0, -\pi/2, 0)$ carries the first principal direction onto the axis of
+the tube; the axial size grows linearly from $0.06$ at the bottom to
+$0.18$ at the top while the radial and circumferential sizes stay at the
+mesh size $0.12$, restricted rule, nodes sliding on the four analytic
+surfaces. The mean axial size equals the mesh size, so the grading can be
+realized by sliding without a change of topology. The mean of
+$\lvert\, \lVert \bs F_M \bs e \rVert - 1 \rvert$ over the edges goes
+from $0.18$ to $0.12$, and the mean length of the axial edges (edges with
+more than $70\%$ of their length along $z$) in the four quarters of the
+height, from bottom to top, goes from $0.105$, $0.109$, $0.109$, $0.105$
+to $0.075$, $0.110$, $0.127$, $0.144$, against targets of $0.075$,
+$0.105$, $0.135$, $0.165$ at the quarter centers. The largest nodal motion
+is $0.28$, about two element sizes, with no element inversion.
+
+\paragraph{What smoothing cannot do.} A target that changes the number
+of elements across the wall or around the circumference, such as a
+radial size of a quarter of the wall thickness on a mesh with one element
+through the wall, is not reachable by smoothing: the mesh barely moves and
+the misfit does not decrease. Such targets require the topological
+operations of the adaptivity note.
+
+\section{Next steps}
+\label{sec:next}
+
+\begin{enumerate}[itemsep=2pt]
+\item Nodal metrics carried by the mesh (six nodal variables: the
+  logarithms of the sizes and the rotation vector), interpolated to the
+  centroid with constant weights, and re-sampled from the field at phase
+  boundaries.
+\item Metrics given as full tensors: recovery of sizes and rotation vector
+  by eigendecomposition with a consistent frame (eigenvector signs by
+  continuity, a fixed in-plane phase for repeated sizes), with the
+  log-Euclidean interpolation of the tensor as the fallback.
+\item Coupling with the topological operations of the adaptivity note, so
+  that targets the smoother cannot reach are met by refinement and
+  coarsening in the metric.
+\end{enumerate}
+
+\end{document}

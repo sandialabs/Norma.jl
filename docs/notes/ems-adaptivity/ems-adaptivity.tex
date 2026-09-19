@@ -114,8 +114,13 @@ The ideal reference element is built by \code{create\_smooth\_reference}
 (restricted at present to four-node tetrahedra) as a regular tetrahedron
 of edge length $h$, where $h$ follows one of four rules: equal volume to
 the original element, average edge length of the original element, the
-maximum of these two, or a user-supplied size field $s(t,x,y,z)$. In all
-four rules the input geometry is the \emph{original} mesh as read from
+maximum of these two, or a user-supplied size field $s(t,x,y,z)$. A fifth
+rule, \code{metric field} (September 2026), replaces the scalar size by a
+metric tensor with three principal sizes and a rotation; the ideal
+element is then anisotropic and the energy is evaluated on the
+deformation gradient measured in the metric, so that the orientation of
+the elements enters the objective (\code{docs/notes/ems-anisotropic}).
+In all rules the input geometry is the \emph{original} mesh as read from
 disk; the consequences of this choice for adaptivity are the subject of
 Section~\ref{sec:intrinsic}.
 
@@ -691,6 +696,12 @@ Ranked by importance.
   \code{create\_smooth\_reference} and acceptable for the first
   version, but it should be stated explicitly in the input
   documentation.
+\item \emph{Anisotropic targets.} The metric-field rule holds the metric
+  fixed during a solve, evaluated at the centroid of the original
+  element, exactly as the size field does; the re-baselining of
+  Section~\ref{sec:intrinsic} applies to it unchanged, with the volume
+  floor applied to the three principal sizes uniformly so that the shape
+  and orientation of the target are preserved.
 \item \emph{Explicit dynamics.} If the loop is later used within
   explicit transient simulations, edge collapses shrink the stable time
   step; the lower band of the size phase then ceases to be optional and

@@ -161,6 +161,7 @@ const MODEL_KEYS = Set([
     "num integration points",
     "smooth reference",
     "size field",
+    "metric field",
     "nodal recovery",
     "stress recovery",
     "recover internal variables",
@@ -171,6 +172,8 @@ const MODEL_KEYS = Set([
 ])
 
 const NODAL_RECOVERY_KEYS = Set(["method", "stress", "von mises stress", "internal variables", "deformation gradient"])
+
+const METRIC_FIELD_KEYS = Set(["sizes", "rotation vector"])
 
 const MATERIAL_PROPS_COMMON_KEYS = Set([
     "model", "elastic modulus", "Poisson's ratio", "bulk modulus", "Lamé's first constant", "shear modulus", "density"
@@ -346,6 +349,10 @@ function validate_model!(messages::Vector{String}, params::Parameters, file::Str
     recovery_params = get(model_params, "nodal recovery", nothing)
     if recovery_params isa AbstractDict
         warn_unknown_keys!(messages, recovery_params, NODAL_RECOVERY_KEYS, "nodal recovery", file)
+    end
+    metric_params = get(model_params, "metric field", nothing)
+    if metric_params isa AbstractDict
+        warn_unknown_keys!(messages, metric_params, METRIC_FIELD_KEYS, "metric field", file)
     end
     return messages
 end

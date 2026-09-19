@@ -166,6 +166,7 @@ function SolidMechanics(params::Parameters)
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
     size_field = create_size_field(smooth_reference, get(model_params, "size field", nothing))
+    metric_field = create_metric_field(smooth_reference, get(model_params, "metric field", nothing))
     for legacy in ("stress recovery", "recover internal variables")
         if haskey(model_params, legacy)
             norma_abort(
@@ -262,6 +263,7 @@ function SolidMechanics(params::Parameters)
         mesh_smoothing,
         smooth_reference,
         size_field,
+        metric_field,
         kinematics,
         recovery_data,
         recovered_stress,
@@ -344,6 +346,109 @@ function create_size_field(smooth_reference::String, expression)
     return eval(build_function(size_num, [t, x, y, z]; expression=Val(false)))
 end
 
+# Compile the anisotropic target of `smooth reference: metric field` (or
+# `metric field unrestricted`): three principal sizes and an optional rotation
+# vector, each an expression in t, x, y, z.  Returns `nothing` for the other
+# smoothing modes.
+function create_metric_field(smooth_reference::String, params)
+    restricted = smooth_reference == "metric field"
+    if !restricted && smooth_reference != "metric field unrestricted"
+        return nothing
+    end
+    if !(params isa AbstractDict)
+        norma_abort(
+            "smooth reference = \"$smooth_reference\" requires a \"metric field\" block with \"sizes\" " *
+            "under the model parameters",
+        )
+    end
+    function compile(expression)
+        return eval(build_function(eval(Meta.parse(string(expression))), [t, x, y, z]; expression=Val(false)))
+    end
+    sizes = get(params, "sizes", nothing)
+    if !(sizes isa AbstractVector) || length(sizes) != 3
+        norma_abort("\"metric field\" requires \"sizes\": three expressions in t, x, y, z (the principal sizes)")
+    end
+    size_funs = (compile(sizes[1]), compile(sizes[2]), compile(sizes[3]))
+    rotation = get(params, "rotation vector", nothing)
+    if rotation === nothing
+        rotation_funs = nothing
+    elseif rotation isa AbstractVector && length(rotation) == 3
+        rotation_funs = (compile(rotation[1]), compile(rotation[2]), compile(rotation[3]))
+    else
+        norma_abort("\"rotation vector\" in \"metric field\" must have three expressions in t, x, y, z")
+    end
+    return MetricField(size_funs, rotation_funs, restricted)
+end
+
+# Ideal reference element and metric factor for a TETRA4 element under a metric
+# field.  The metric is evaluated once at the centroid of the element in the
+# original mesh, so the target is fixed during a solve and the assembled force
+# is the exact gradient of the energy.  With principal sizes h_i and rotation
+# R, the metric factor is F_M = diag(1/h_i) R' (so F_M' F_M = M) and the ideal
+# element is the unit regular tetrahedron Y mapped by F_M⁻¹ = R diag(h_i):
+# scaled by h_i along the global axes, then rotated onto the principal
+# directions.  Returns (X, F_M, F_M⁻¹).  The restricted rule scales the three
+# sizes uniformly so that the ideal volume is never smaller than the volume of
+# the original element, the anisotropic form of the `size field` floor: the
+# smoother cannot create elements and should not ask one to shrink below what
+# the mesh topology can accommodate.
+function create_metric_reference(metric_field::MetricField, element_ref_pos::Matrix{Float64}, time::Float64)
+    centroid = vec(sum(element_ref_pos; dims=2) / size(element_ref_pos, 2))
+    args = (time, centroid[1], centroid[2], centroid[3])
+    h = MVector{3,Float64}(metric_field.sizes[1](args), metric_field.sizes[2](args), metric_field.sizes[3](args))
+    for i in 1:3
+        if !isfinite(h[i]) || h[i] ≤ 0.0
+            norma_abort(
+                "Metric field sizes must be strictly positive and finite; got $(h[i]) for size $i at centroid " *
+                "($(centroid[1]), $(centroid[2]), $(centroid[3])) and time $time",
+            )
+        end
+    end
+    if metric_field.restricted
+        u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
+        v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
+        w = element_ref_pos[:, 4] - element_ref_pos[:, 1]
+        element_volume = dot(u, cross(v, w)) / 6.0
+        ideal_volume = h[1] * h[2] * h[3] / (6.0 * sqrt(2.0))
+        if ideal_volume < element_volume
+            h .*= cbrt(element_volume / ideal_volume)
+        end
+    end
+    if metric_field.rotation === nothing
+        R = SMatrix{3,3,Float64,9}(I)
+    else
+        rotation_vector = SVector{3,Float64}(
+            metric_field.rotation[1](args), metric_field.rotation[2](args), metric_field.rotation[3](args)
+        )
+        R = rt_of_rv(rotation_vector)
+    end
+    F_M = SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
+    F_M_inv = R * SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(h)))
+    c = 0.5 / sqrt(2.0)
+    Y = c * [
+        1 -1 -1 1
+        1 -1 1 -1
+        1 1 -1 -1
+    ]
+    return F_M_inv * Y, F_M, F_M_inv
+end
+
+# Pull the tangent of the energy in the metric space back to the reference
+# configuration: with F_U = F_M F F_M⁻¹ and P = F_M' P_U F_M⁻ᵀ,
+# A_iJkL = (F_M)_pi (F_M⁻¹)_Jq A^U_pqrs (F_M)_rk (F_M⁻¹)_Ls.
+function pull_back_tangent(
+    AA::SArray{Tuple{3,3,3,3},Float64,4,81}, F_M::SMatrix{3,3,Float64,9}, F_M_inv::SMatrix{3,3,Float64,9}
+)
+    B = SArray{Tuple{3,3,3,3},Float64,4,81}(
+        sum(AA[p, q, r, s] * F_M[r, k] * F_M_inv[L, s] for r in 1:3, s in 1:3) for
+        p in 1:3, q in 1:3, k in 1:3, L in 1:3
+    )
+    return SArray{Tuple{3,3,3,3},Float64,4,81}(
+        sum(F_M[p, i] * F_M_inv[J, q] * B[p, q, k, L] for p in 1:3, q in 1:3) for
+        i in 1:3, J in 1:3, k in 1:3, L in 1:3
+    )
+end
+
 function create_smooth_reference(
     smooth_reference::String,
     element_type::ElementType,
@@ -371,6 +476,8 @@ function create_smooth_reference(
             # Target edge length from the user-defined size field at the element
             # reference centroid
             h = size_field_tet_h(size_field, element_ref_pos, time)
+        elseif smooth_reference == "metric field" || smooth_reference == "metric field unrestricted"
+            norma_abort("A metric field reference is built by create_metric_reference, not create_smooth_reference")
         else
             norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
         end
@@ -1001,7 +1108,16 @@ function evaluate_element!(
     node_indices = reset_element_threadlocal_arrays!(
         element_arrays_tl, element_block_connectivity, block_element_index, flags
     )
-    if flags.mesh_smoothing == true
+    # Anisotropic smoothing: the ideal element comes from the metric field and
+    # the energy is evaluated on the deformation gradient in the metric space,
+    # F_U = F_M F F_M⁻¹, with stress and tangent pulled back to the reference.
+    anisotropic = flags.mesh_smoothing == true && model.metric_field !== nothing
+    F_M = SMatrix{3,3,Float64,9}(I)
+    F_M_inv = F_M
+    if anisotropic
+        smooth, F_M, F_M_inv = create_metric_reference(model.metric_field, model.reference[:, node_indices], model.time)
+        element_reference_position = gather_nodal(smooth, N)
+    elseif flags.mesh_smoothing == true
         smooth = create_smooth_reference(
             model.smooth_reference, element_type, model.reference[:, node_indices], model.size_field, model.time
         )
@@ -1029,7 +1145,18 @@ function evaluate_element!(
             log_matrix(4, :info, "Current Configuration", Matrix(element_current_position))
             return nothing
         end
-        ok, W, P, AA = guarded_constitutive!(model, material, F, block_index, block_element_index, point, flags.compute_stiffness)
+        if anisotropic
+            F_U = F_M * F * F_M_inv
+            ok, W, P_U, AA_U = guarded_constitutive!(
+                model, material, F_U, block_index, block_element_index, point, flags.compute_stiffness
+            )
+            P = F_M' * P_U * F_M_inv'
+            AA = flags.compute_stiffness ? pull_back_tangent(AA_U, F_M, F_M_inv) : AA_U
+        else
+            ok, W, P, AA = guarded_constitutive!(
+                model, material, F, block_index, block_element_index, point, flags.compute_stiffness
+            )
+        end
         if ok == false
             model.failed = true
             return nothing  # skip remaining integration points for this element

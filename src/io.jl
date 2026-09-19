@@ -98,6 +98,16 @@ function initialize_writing(sim::SingleDomainSimulation)
         num_node_vars += 1
         push!(node_var_names, "size")
     end
+    # Anisotropic smoothing: the principal sizes and the rotation vector of the
+    # metric field, sampled at each node.
+    if solid_model isa SolidMechanics && solid_model.mesh_smoothing == true && solid_model.metric_field !== nothing
+        num_node_vars += 3
+        append!(node_var_names, ["size_1", "size_2", "size_3"])
+        if solid_model.metric_field.rotation !== nothing
+            num_node_vars += 3
+            append!(node_var_names, ["rotation_1", "rotation_2", "rotation_3"])
+        end
+    end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
 
@@ -356,6 +366,19 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             model.size_field((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)
         ]
         Exodus.write_values(output_mesh, NodalVariable, time_index, "size", size_vals)
+    end
+    if model isa SolidMechanics && model.mesh_smoothing == true && model.metric_field !== nothing
+        metric_field = model.metric_field
+        for i in 1:3
+            vals = [metric_field.sizes[i]((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)]
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "size_$i", vals)
+        end
+        if metric_field.rotation !== nothing
+            for i in 1:3
+                vals = [metric_field.rotation[i]((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)]
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "rotation_$i", vals)
+            end
+        end
     end
     if is_dynamic(integrator) == true
         velocity = model.velocity

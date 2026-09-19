@@ -78,8 +78,38 @@ accepted and cause an error; use the `nodal recovery` block above.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `mesh smoothing` | no | `false` | enable mesh smoothing (set automatically when `type: mesh smoothing`); a top-level key |
-| `smooth reference` | no | `""` | reference-metric rule for TETRA4 smoothing: `equal volume`, `average edge length`, `max`, `size field`, or `size field unrestricted` |
+| `smooth reference` | no | `""` | reference-metric rule for TETRA4 smoothing: `equal volume`, `average edge length`, `max`, `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted` |
 | `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size |
+| `metric field` | required if `smooth reference: metric field`/`metric field unrestricted` | `nothing` | block with `sizes` (three expressions in `t, x, y, z`: the principal sizes h₁, h₂, h₃) and optional `rotation vector` (three expressions: the rotation vector whose exponential carries the global axes onto the principal directions); see below |
+
+### Anisotropic smoothing with a metric field
+
+`smooth reference: metric field` replaces the scalar target size by a metric
+tensor `M = R diag(1/h₁², 1/h₂², 1/h₃²) Rᵀ`, where the principal sizes
+`h_i` and the rotation `R = exp(hat(v))` come from the `sizes` and
+`rotation vector` expressions (radians; identity when omitted). The ideal
+element of each tetrahedron is the unit regular tetrahedron scaled by `h_i`
+along the global axes and rotated by `R`, and the smoothing energy is evaluated
+on the deformation gradient measured in the metric, `F_U = F_M F F_M⁻¹` with
+`F_M = diag(1/h_i) Rᵀ`, so the orientation of an elongated element is part of
+the objective, which an isotropic energy on `F` alone cannot see. With equal
+sizes the rule reduces exactly to `size field`. The field is evaluated at the
+centroid of each element in the original mesh and held fixed during a solve,
+as for `size field`. `metric field` scales the three sizes uniformly so the
+ideal volume is never below the volume of the original element (the
+anisotropic form of the `size field` floor); `metric field unrestricted` does
+not. The sampled sizes and rotation vector are written as the nodal variables
+`size_1..3` and `rotation_1..3`. Formulation and tests:
+`docs/notes/ems-anisotropic`.
+
+```yaml
+model:
+  type: mesh smoothing
+  smooth reference: metric field
+  metric field:
+    sizes: ["0.025", "0.1", "0.1"]
+    rotation vector: ["0.0", "0.0", "atan(y, x)"]   # first principal direction radial
+```
 
 Mesh smoothing is a specialized capability; most simulations omit these keys.
 See `examples/ems/` for smoothing cases.

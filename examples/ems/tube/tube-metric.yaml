@@ -1,0 +1,55 @@
+type: single
+input mesh file: tube.g
+output mesh file: tube-metric.e
+model:
+  type: mesh smoothing
+  # Spatially varying anisotropic target: the rotation of the global axes by
+  # -90 degrees about y carries the first principal direction onto the axis
+  # of the tube, and the axial size grows from 0.06 at the bottom to 0.18 at
+  # the top while the radial and circumferential sizes stay at the mesh size
+  # 0.12.  The mean axial size equals the mesh size, so the grading can be
+  # realized by nodes sliding along the surfaces without a change of
+  # topology; a target that changes the number of elements across the wall or
+  # around the circumference cannot be met by smoothing alone.
+  smooth reference: metric field
+  metric field:
+    sizes: ["0.06 + 0.06 * (z + 1.0)", "0.12", "0.12"]
+    rotation vector: ["0.0", "-1.5707963267948966", "0.0"]
+  material:
+    blocks:
+      tube: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 10.0
+  time step: 1.0
+boundary conditions:
+  Surface:
+    - side set: outer
+      function: "x^2 + y^2 - 1.0"
+    - side set: inner
+      function: "x^2 + y^2 - 0.81"
+    - side set: bottom
+      function: "z + 1.0"
+    - side set: top
+      function: "z - 1.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 64
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16

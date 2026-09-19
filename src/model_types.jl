@@ -76,6 +76,17 @@ struct ElementBlockData
     weights::Any
 end
 
+# Anisotropic target for energetic mesh smoothing: a metric tensor field given
+# by three principal sizes h_i(t, x, y, z) and an optional rotation vector
+# v(t, x, y, z) whose exponential R = exp(hat(v)) carries the global axes onto
+# the principal directions, so M = R diag(1/h_i^2) R'.  `restricted` applies the
+# volume floor of the isotropic `size field` rule (see create_metric_reference).
+struct MetricField
+    sizes::NTuple{3,Function}
+    rotation::Union{NTuple{3,Function},Nothing}
+    restricted::Bool
+end
+
 mutable struct SolidMechanics <: Model
     mesh::ExodusDatabase
     materials::Vector{Solid}
@@ -106,6 +117,7 @@ mutable struct SolidMechanics <: Model
     mesh_smoothing::Bool
     smooth_reference::String
     size_field::Union{Function,Nothing}  # compiled s(t,x,y,z) target edge length, or nothing
+    metric_field::Union{MetricField,Nothing}  # compiled anisotropic target, or nothing
     kinematics::Kinematics
     recovery_data::AbstractRecoveryData
     # Single-mode recovery (recovery_data isa LumpedRecovery or ConsistentRecovery).

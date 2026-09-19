@@ -171,6 +171,7 @@ const indexed_test_files = [
     (123, "schwarz-nonoverlap-static-inclusion-curved-interface.jl"),
     (124, "three-field-element.jl"),
     (125, "explicit-stable-step-subcycling.jl"),
+    (126, "smoothing-metric.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach
