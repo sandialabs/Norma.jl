@@ -168,32 +168,122 @@ the original element, the three sizes are scaled by the same factor until
 the volumes match, so the shape and the orientation of the target are
 preserved. The rule \code{metric field unrestricted} omits the floor.
 
+\section{Metrics given as tensors and carried by the nodes}
+\label{sec:sources}
+
+The sizes and the rotation vector are the natural input when the target
+is designed by hand. A metric that comes from an error estimator, from a
+previous run, or from another code comes as a tensor field, usually at
+the nodes of the mesh. Norma accepts the metric in four forms: the sizes
+with an optional rotation vector, the six components of the tensor, as
+expressions in $t, x, y, z$; and the same two forms as nodal variables of
+the input mesh, read at a chosen time step.
+
+\paragraph{Factoring a tensor.} The energy needs $\bs F_M$ with
+$\bs F_M^T \bs F_M = \bs M$; by property 1 of Section~\ref{sec:formulation}
+any factor gives the same energy, so a tensor given by its components is
+factored by the eigendecomposition $\bs M = \bs V \bs \Lambda \bs V^T$,
+$h_i = \lambda_i^{-1/2}$, $\bs R = \bs V$ with the sign of one column
+fixed by $\det \bs R = 1$, and no convention on the frame enters the
+input. A tensor that is not positive definite is rejected.
+
+\paragraph{Interpolation between nodes.} A metric carried by the nodes
+must be interpolated to the element. The element value is the mean over
+the four nodes: of the logarithms of the sizes, which interpolates the
+sizes geometrically, and of the rotation vectors, which stays a rotation.
+This form keeps the sizes exact where the frame turns: two nodes with the
+same sizes and different directions give an element with the same sizes
+and the mean direction. The alternative, the mean of the logarithms of
+the tensors (log-Euclidean interpolation), preserves the determinant but
+not the sizes: two tensors with the same sizes and frames turned by
+$90^\circ$ average to a rounder tensor. It needs no frame, however, which
+is why it remains as the fallback below.
+
+\paragraph{Following the frame.} The rotation vectors can be averaged
+only when the frames of adjacent nodes are the same up to a small
+rotation. A tensor determines its frame only up to the 24 proper signed
+permutations of its eigenvectors (fewer when sizes are repeated), and an
+eigensolver picks one of them arbitrarily at every node. The sizes and
+the rotation vector are therefore recovered from nodal tensors with a
+frame that follows the mesh: the nodes are visited breadth first through
+the element adjacency, and at each node the frame closest to the frame of
+the node it was reached from is chosen (the largest trace of
+$\bs R_{\mathrm{parent}}^T \bs R$ over the equivalents; the first node of
+a component takes the frame closest to the global axes). Repeated sizes
+leave the eigenvectors of the repeated pair free in their plane; the
+in-plane phase is taken from the projection of the parent frame onto that
+plane, and an isotropic tensor takes the parent frame. The rotation vector
+is then continued past a half turn from the parent's, so a frame that
+turns by more than $\pi$ along a path keeps a continuous vector. Where the
+frame turns by more than $45^\circ$ between adjacent nodes after this
+choice, the turn cannot be absorbed by a change of representation: the
+field has a genuine discontinuity or a singular point of its frame. The
+turns are counted and reported, and the input
+\code{interpolation: log-Euclidean} switches to the interpolation of the
+tensor logarithms, which is insensitive to the frame.
+
+\paragraph{Through the adaptivity loop.} A metric carried by the nodes
+is Lagrangian by construction: the node keeps its target when it moves.
+Under the topological operations of the adaptivity note, a node added by
+an edge split takes the mean of the two ends, in the space the source
+interpolates in (logarithms of sizes and rotation vectors, or logarithms
+of tensors), a collapse drops the removed node, and the compaction of the
+mesh compacts the nodal data with it. The adapted mesh is written with the
+nodal variables under the names the input gave them, so the input file
+applies unchanged to the adapted mesh. The function sources are simply
+re-evaluated where the new elements lie. The size operations of the loop
+(collapse below $1/\sqrt2$, split above $\sqrt2$ in the metric) measure an
+edge with the metric of its midpoint for the function sources and with
+the mean of its two ends for the nodal sources.
+
 \section{Implementation}
 \label{sec:implementation}
 
 \begin{itemize}[itemsep=2pt]
-\item \code{MetricField} (\code{src/model\_types.jl}): the compiled
-  size and rotation-vector expressions in $t, x, y, z$ and the
+\item \code{MetricField} (\code{src/model\_types.jl}): a source and the
   \code{restricted} flag; stored on the model as \code{metric\_field}.
-\item \code{create\_metric\_field} (\code{src/model.jl}): reads the
-  \code{metric field} block under \code{model} (\code{sizes}, three
-  expressions; \code{rotation vector}, three expressions, optional) with
-  the same Symbolics pipeline as the size field.
-\item \code{create\_metric\_reference}: evaluates the field at the
-  reference centroid, checks that the sizes are finite and positive,
-  applies the floor, builds $\bs R$ with \code{rt\_of\_rv}
-  (\code{src/minitensor.jl}) and returns the ideal element
-  $\bs F_M^{-1} \bs Y$ together with $\bs F_M$ and $\bs F_M^{-1}$.
-\item \code{evaluate\_element!}: with a metric field, the ideal element
-  is built by the function above, the constitutive model is evaluated at
-  $\bs F_U$, and the stress and the tangent are pulled back with
-  \eqref{eq:pullback} by \code{pull\_back\_tangent}. Without a metric
-  field the code path is unchanged.
-\item Input validation knows the new keys (\code{metric field},
-  \code{sizes}, \code{rotation vector}); the reference documentation is in
-  \code{docs/src/reference/model.md}. The sampled sizes and rotation
-  vector are written as the nodal variables \code{size\_1..3} and
-  \code{rotation\_1..3}.
+  The sources are \code{PrincipalMetricFunctions} (compiled size and
+  rotation-vector expressions in $t, x, y, z$),
+  \code{TensorMetricFunctions} (six compiled components),
+  \code{NodalPrincipalMetric} (logarithms of the sizes and rotation
+  vectors at the nodes, with the names of the variables they came from),
+  and \code{NodalTensorMetric} (logarithms of the tensors at the nodes).
+\item \code{create\_metric\_field} (\code{src/metric.jl}): reads the
+  \code{metric field} block under \code{model}: exactly one of
+  \code{sizes} (with optional \code{rotation vector}), \code{tensor},
+  \code{nodal sizes} (with optional \code{nodal rotation vector}), or
+  \code{nodal tensor}, the last two from the input mesh at
+  \code{time index} (default: the last step) with
+  \code{interpolation: principal} (default, frames followed by
+  \code{principal\_of\_nodal\_tensors}) or \code{log-Euclidean}.
+\item \code{principal\_of\_tensor}: the factorization with the frame
+  closest to a reference (24 signed permutations for distinct sizes, the
+  in-plane phase from the reference for a repeated pair, the reference
+  itself for an isotropic tensor).
+\item \code{principal\_metric}: the sizes and rotation of a source on an
+  element, at the sampling point for the function sources and as the mean
+  over the element's nodes for the nodal sources;
+  \code{create\_metric\_reference} calls it, checks the sizes, applies the
+  floor, and returns the ideal element $\bs F_M^{-1} \bs Y$ together with
+  $\bs F_M$ and $\bs F_M^{-1}$.
+\item \code{evaluate\_element!} (\code{src/model.jl}): with a metric
+  field, the ideal element is built by the function above, the
+  constitutive model is evaluated at $\bs F_U$, and the stress and the
+  tangent are pulled back with \eqref{eq:pullback} by
+  \code{pull\_back\_tangent}. Without a metric field the code path is
+  unchanged.
+\item Adaptivity (\code{src/adapt.jl}): \code{metric\_node\_data} gives
+  a split node the mean of the ends, \code{metric\_with\_node} appends it
+  to the source without a copy for the evaluation of the proposal,
+  \code{add\_metric\_node!} and \code{compact\_metric!} keep the nodal
+  data aligned with the topology, and \code{metric\_nodal\_variables}
+  writes it to the adapted mesh.
+\item Input validation knows the keys of the block; the reference
+  documentation is in \code{docs/src/reference/model.md}. The sizes and
+  rotation vectors at the nodes are written by every source as the nodal
+  variables \code{size\_1..3} and \code{rotation\_1..3}
+  (\code{nodal\_metric\_output}, with frames followed for the tensor
+  sources), so the output of a run can be the input mesh of a nodal run.
 \end{itemize}
 
 \section{Tests}
@@ -226,8 +316,38 @@ preserved. The rule \code{metric field unrestricted} omits the floor.
   edge lengths measured in the metric from unity decreases, and no
   element inverts.
 \end{enumerate}
-The existing smoothing tests (51, 119) and the input-validation sweep of
-the examples (122) pass unchanged.
+\code{test/smoothing-metric-nodal.jl} (test 132) checks:
+\begin{enumerate}[itemsep=2pt]
+\item the factorization: sizes and rotation recovered from
+  $\bs R\,\mathrm{diag}(h_i^{-2})\,\bs R^T$ for distinct sizes, a large
+  rotation followed when the reference is near it and replaced by a
+  closer equivalent when the reference is the identity, the repeated pair
+  with its in-plane phase from the reference, the isotropic case, twenty
+  random tensors and references reproduced by proper rotations, and the
+  rejection of an indefinite tensor;
+\item the frames followed along a chain of twelve nodes whose frame turns
+  by $0.3$ rad per node, past a half turn in total, with continuous
+  rotation vectors and no reported turn; a generic turn beyond
+  $45^\circ$ from every equivalent, found by search, reported for the two
+  adjacent pairs it creates, with every tensor still reproduced;
+\item the equivalence of the sources on the cube: the tensor given by its
+  components, constant nodal sizes and rotation vectors, constant nodal
+  tensors under both interpolations, all give the energy and force of the
+  sizes and rotation vector to $10^{-10}$ and $10^{-8}$ relative; nodal
+  sizes without a rotation give the sizes along the axes; the variables
+  written for an adapted mesh reproduce the input; a graded field
+  sampled at the nodes agrees with the analytic field to $2\%$ and not to
+  $10^{-8}$; a missing variable, a bad time index, and a nonpositive size
+  are rejected;
+\item one adaptivity loop of two iterations on the cube with graded nodal
+  sizes finer than the mesh, splits only: the adapted meshes carry the
+  variables under the input names, the carried data matches the final
+  mesh node for node, and every carried size lies within the range of the
+  input.
+\end{enumerate}
+The existing smoothing tests (51, 119), the adaptivity tests (127 to
+131), and the input-validation sweep of the examples (122) pass
+unchanged.
 
 \section{Examples}
 \label{sec:examples}
@@ -259,6 +379,20 @@ to $0.075$, $0.110$, $0.127$, $0.144$, against targets of $0.075$,
 $0.105$, $0.135$, $0.165$ at the quarter centers. The largest nodal motion
 is $0.28$, about two element sizes, with no element inversion.
 
+\paragraph{The same metric as a tensor and from the nodes}
+(\code{examples/ems/cube/cube-tensor.yaml},
+\code{examples/ems/cube/cube-metric-nodal.yaml}). The cube metric above
+as the tensor $M_{xx} = M_{yy} = 225$, $M_{xy} = 175$, $M_{zz} = 50$, and
+as the nodal variables \code{size\_1..3}, \code{rotation\_1..3} of the
+output of \code{cube-metric.yaml} read at its first step. A constant
+field has the same mean at the nodes as its value at the centroid, so the
+nodal run starts from the energy and residual of the analytic run
+($4.32 \times 10^4$ and $8.54 \times 10^4$) and ends at the same energy
+($9.36 \times 10^3$). The tensor run ends at $9.37 \times 10^3$: its
+component $M_{zz} = 50$ corresponds to the size $0.14142$ rather than
+$0.1414$, a difference of $0.015\%$ in the target that the energy
+resolves.
+
 \paragraph{What smoothing cannot do.} A target that changes the number
 of elements across the wall or around the circumference, such as a
 radial size of a quarter of the wall thickness on a mesh with one element
@@ -269,18 +403,18 @@ operations of the adaptivity note.
 \section{Next steps}
 \label{sec:next}
 
+The nodal metrics, the tensor input with the frame followed through the
+mesh and the log-Euclidean fallback, and the coupling with the
+topological operations of the adaptivity note are done
+(Section~\ref{sec:sources}). What remains:
 \begin{enumerate}[itemsep=2pt]
-\item Nodal metrics carried by the mesh (six nodal variables: the
-  logarithms of the sizes and the rotation vector), interpolated to the
-  centroid with constant weights, and re-sampled from the field at phase
-  boundaries.
-\item Metrics given as full tensors: recovery of sizes and rotation vector
-  by eigendecomposition with a consistent frame (eigenvector signs by
-  continuity, a fixed in-plane phase for repeated sizes), with the
-  log-Euclidean interpolation of the tensor as the fallback.
-\item Coupling with the topological operations of the adaptivity note, so
-  that targets the smoother cannot reach are met by refinement and
-  coarsening in the metric.
+\item Construction of the metric from a solution: the recovered Hessian
+  of a field of interest, scaled to a prescribed error or element count,
+  written as nodal tensors that the nodal source reads.
+\item A frame that follows the mesh cannot be continuous around a
+  singular point of the field (a swirl); there the log-Euclidean fallback
+  applies to the whole mesh. A local switch, or a frame taken from a
+  smoothed rotation field, would keep the exact sizes elsewhere.
 \end{enumerate}
 
 \end{document}

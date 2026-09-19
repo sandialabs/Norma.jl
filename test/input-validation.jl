@@ -133,6 +133,14 @@ using YAML
                 params = try
                     YAML.load_file(input_file; dicttype=Norma.Parameters)
                 catch
+                    # A file that does not parse is skipped unless it
+                    # declares itself a Norma input, in which case it is
+                    # broken and must not pass silently.
+                    text = read(input_file, String)
+                    if occursin(r"^type:\s*(single|multi)\s*$"m, text)
+                        @error "Shipped example does not parse" input_file
+                        @test false
+                    end
                     continue
                 end
                 params isa Norma.Parameters || continue

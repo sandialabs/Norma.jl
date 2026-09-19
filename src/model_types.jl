@@ -76,14 +76,58 @@ struct ElementBlockData
     weights::Any
 end
 
-# Anisotropic target for energetic mesh smoothing: a metric tensor field given
-# by three principal sizes h_i(t, x, y, z) and an optional rotation vector
-# v(t, x, y, z) whose exponential R = exp(hat(v)) carries the global axes onto
-# the principal directions, so M = R diag(1/h_i^2) R'.  `restricted` applies the
-# volume floor of the isotropic `size field` rule (see create_metric_reference).
-struct MetricField
+# Anisotropic target for energetic mesh smoothing: a metric tensor field
+# M = R diag(1/h_i^2) R' with principal sizes h_i and a rotation R whose
+# columns are the principal directions (docs/notes/ems-anisotropic).  The
+# field comes from one of four sources.
+abstract type MetricSource end
+
+# Principal sizes h_i(t, x, y, z) and an optional rotation vector v(t, x, y, z)
+# with R = exp(hat(v)), evaluated at the centroid of the element.
+struct PrincipalMetricFunctions <: MetricSource
     sizes::NTuple{3,Function}
     rotation::Union{NTuple{3,Function},Nothing}
+end
+
+# The six components M_xx, M_yy, M_zz, M_xy, M_yz, M_zx of the tensor as
+# functions of t, x, y, z, evaluated at the centroid and factored by
+# eigendecomposition.
+struct TensorMetricFunctions <: MetricSource
+    components::NTuple{6,Function}
+end
+
+# Principal sizes and rotation vectors carried by the nodes of the mesh
+# (logarithms of the sizes and rotation vectors, 3 × n each), interpolated
+# to an element as the mean over its nodes: the sizes geometrically, the
+# rotation through its vector, which keeps the sizes exact where the frame
+# turns.  The names record the nodal variables the values came from, so an
+# adapted mesh can carry them under the same names: either `size_names` and
+# `rotation_names` (empty when the rotation was not given and is zero), or
+# `tensor_names` when the sizes and rotations were recovered from tensors.
+# The matrix type is a parameter so a trial node can be appended without a
+# copy (MatrixWithColumn).
+mutable struct NodalPrincipalMetric{T<:AbstractMatrix{Float64}} <: MetricSource
+    log_sizes::T
+    rotation::T
+    size_names::Vector{String}
+    rotation_names::Vector{String}
+    tensor_names::Vector{String}
+end
+
+# Logarithms of the tensors carried by the nodes (six components each,
+# 6 × n), interpolated to an element as the mean of the logarithms
+# (log-Euclidean interpolation) and factored by eigendecomposition; the
+# fallback for tensor fields whose principal frame cannot be followed from
+# node to node.  `names` are the nodal variables of the six components.
+mutable struct NodalTensorMetric{T<:AbstractMatrix{Float64}} <: MetricSource
+    log_tensor::T
+    names::Vector{String}
+end
+
+# `restricted` applies the volume floor of the isotropic `size field` rule
+# (see create_metric_reference).
+struct MetricField
+    source::MetricSource
     restricted::Bool
 end
 

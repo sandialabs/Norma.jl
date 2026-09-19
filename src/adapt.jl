@@ -28,13 +28,16 @@ function ideal_element_volumes(
     model::SolidMechanics,
     block_index::Int,
     connectivity::AbstractMatrix{<:Integer},
-    sample_positions::AbstractMatrix{Float64},
+    sample_positions::AbstractMatrix{Float64};
+    metric::Union{MetricField,Nothing}=model.metric_field,
 )
     block = model.blocks[block_index]
     volumes = Vector{Float64}(undef, size(connectivity, 2))
     for e in 1:size(connectivity, 2)
         node_indices = view(connectivity, :, e)
-        X, _, _ = smoothing_reference(model, block.element_type, Matrix(sample_positions[:, node_indices]))
+        X, _, _ = smoothing_reference(
+            model, block.element_type, Matrix(sample_positions[:, node_indices]); node_indices, metric
+        )
         volumes[e] = abs(tetrahedron_volume(X))
     end
     return volumes
@@ -104,12 +107,13 @@ function accept_proposal(
     return CavityProposal(old_elements, new_connectivity, block, old_energy, new_energy, 0, 0, nothing)
 end
 
-function apply!(topology::MeshTopology, proposal::CavityProposal)
+function apply!(topology::MeshTopology, proposal::CavityProposal; metric::Union{MetricField,Nothing}=nothing)
     if proposal.split !== nothing
         split = proposal.split
         m = add_node!(topology, split.position; node_sets=split.node_sets, side_sets=split.side_sets)
         m == size(topology.positions, 2) || norma_abort("The split node did not receive the expected index")
         split_sets!(topology, split.edge[1], split.edge[2], m)
+        add_metric_node!(metric, split.metric)
     end
     remove_elements!(topology, proposal.old_elements)
     add_elements!(topology, proposal.new_connectivity, proposal.block)
@@ -348,10 +352,15 @@ end
 
 # Energy of the elements around a new node as a function of its position.
 function split_cavity_energy(
-    model::SolidMechanics, topology::MeshTopology, block::Int, connectivity::Matrix{Int}, position::SVector{3,Float64}
+    model::SolidMechanics,
+    topology::MeshTopology,
+    block::Int,
+    connectivity::Matrix{Int},
+    position::SVector{3,Float64},
+    metric::Union{MetricField,Nothing},
 )
     positions = PositionsWithNode(topology.positions, position)
-    return sum(element_energies(model, block, connectivity, positions))
+    return sum(element_energies(model, block, connectivity, positions; metric))
 end
 
 # Local relaxation of a new node with the rest of the cavity fixed: a few
@@ -369,8 +378,9 @@ function relax_split_node(
     position::SVector{3,Float64},
     constraints::Vector{Tuple{Function,Function}},
     scale::Float64,
+    metric::Union{MetricField,Nothing},
 )
-    energy(x) = split_cavity_energy(model, topology, block, connectivity, x)
+    energy(x) = split_cavity_energy(model, topology, block, connectivity, x, metric)
     x = position
     value = energy(x)
     isfinite(value) || return x, value
@@ -436,29 +446,32 @@ function try_edge_split(model::SolidMechanics, topology::MeshTopology, a::Int, b
     end
     xa = SVector{3,Float64}(view(topology.positions, :, a))
     xb = SVector{3,Float64}(view(topology.positions, :, b))
+    # A metric carried by the nodes gives the new node the mean of the ends.
+    node_metric = metric_node_data(model.metric_field, a, b)
+    metric = metric_with_node(model.metric_field, node_metric)
     constraints = surface_constraints(model, side_sets)
     position = project_to_surfaces(0.5 * (xa + xb), constraints, model.time)
     if on_boundary && isempty(constraints)
         # A boundary edge whose surfaces have no analytic description: the
         # node stays at the midpoint, which lies on the boundary facets,
         # since a relaxation could move it off the boundary.
-        energy_after = split_cavity_energy(model, topology, block, connectivity, position)
+        energy_after = split_cavity_energy(model, topology, block, connectivity, position, metric)
     else
         position, energy_after =
-            relax_split_node(model, topology, block, connectivity, position, constraints, norm(xb - xa))
+            relax_split_node(model, topology, block, connectivity, position, constraints, norm(xb - xa), metric)
     end
     isfinite(energy_after) || return nothing
     energy_before = sum(element_energies(model, block, topology.connectivity[:, ring], topology.positions))
     energy_after ≤ energy_before - options.minimum_decrease * energy_before || return nothing
     positions = PositionsWithNode(topology.positions, position)
     if isfinite(options.allowed_density)
-        energies = element_energies(model, block, connectivity, positions)
-        volumes = ideal_element_volumes(model, block, connectivity, positions)
+        energies = element_energies(model, block, connectivity, positions; metric)
+        volumes = ideal_element_volumes(model, block, connectivity, positions; metric)
         maximum(energies ./ volumes) ≤ options.allowed_density || return nothing
     end
     floor = options.minimum_scaled_jacobian
     passes_scaled_jacobian_floor(topology, collect(ring), connectivity, positions, floor) || return nothing
-    split = SplitNode(position, node_sets, side_sets, (a, b))
+    split = SplitNode(position, node_sets, side_sets, (a, b), node_metric)
     return CavityProposal(collect(ring), connectivity, block, energy_before, energy_after, 0, 0, split)
 end
 
@@ -497,39 +510,36 @@ function split_pass!(model::SolidMechanics, topology::MeshTopology, options::Ada
     for (a, b) in ranked
         proposal = try_edge_split(model, topology, a, b, options)
         proposal === nothing && continue
-        apply!(topology, proposal)
+        apply!(topology, proposal; metric=model.metric_field)
         accepted += 1
         decrease += proposal.energy_before - proposal.energy_after
     end
     return accepted, decrease
 end
 
-# Metric factor of the prescribed target at a point: the scalar 1/h for a
-# size field, F_M for a metric field, nothing for the legacy rules, which
-# prescribe no length.
-function metric_factor_at(model::SolidMechanics, point::AbstractVector{Float64})
-    args = (model.time, point[1], point[2], point[3])
+# Metric factor of the prescribed target on an edge: the scalar 1/h at the
+# midpoint for a size field, F_M for a metric field (sampled at the midpoint
+# by the function sources, averaged over the two nodes by the nodal sources),
+# nothing for the legacy rules, which prescribe no length.
+function metric_factor_on_edge(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int)
+    xa = SVector{3,Float64}(view(topology.positions, :, a))
+    xb = SVector{3,Float64}(view(topology.positions, :, b))
+    midpoint = 0.5 * (xa + xb)
     if model.metric_field !== nothing
-        h = (model.metric_field.sizes[1](args), model.metric_field.sizes[2](args), model.metric_field.sizes[3](args))
-        R = SMatrix{3,3,Float64,9}(I)
-        if model.metric_field.rotation !== nothing
-            rotation = model.metric_field.rotation
-            v = SVector{3,Float64}(rotation[1](args), rotation[2](args), rotation[3](args))
-            R = rt_of_rv(v)
-        end
+        h, R = principal_metric(model.metric_field.source, (a, b), midpoint, model.time)
         return SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
     elseif model.size_field !== nothing
-        return SMatrix{3,3,Float64,9}(I) / model.size_field(args)
+        return SMatrix{3,3,Float64,9}(I) / model.size_field((model.time, midpoint[1], midpoint[2], midpoint[3]))
     end
     return nothing
 end
 
 # Length of an edge measured in the prescribed target, or NaN without one.
 function metric_edge_length(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int)
+    F_M = metric_factor_on_edge(model, topology, a, b)
+    F_M === nothing && return NaN
     xa = SVector{3,Float64}(view(topology.positions, :, a))
     xb = SVector{3,Float64}(view(topology.positions, :, b))
-    F_M = metric_factor_at(model, 0.5 * (xa + xb))
-    F_M === nothing && return NaN
     return norm(F_M * (xb - xa))
 end
 
@@ -571,7 +581,7 @@ function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::
         proposal = try_edge_collapse(model, topology, b, a, options)
         proposal === nothing && (proposal = try_edge_collapse(model, topology, a, b, options))
         proposal === nothing && continue
-        apply!(topology, proposal)
+        apply!(topology, proposal; metric=model.metric_field)
         accepted += 1
         decrease += proposal.energy_before - proposal.energy_after
     end
@@ -621,7 +631,7 @@ function swap_pass!(model::SolidMechanics, topology::MeshTopology, options::Adap
     for (a, b) in ranked
         proposal = try_edge_swap(model, topology, a, b, options)
         proposal === nothing && continue
-        apply!(topology, proposal)
+        apply!(topology, proposal; metric=model.metric_field)
         accepted += 1
         decrease += proposal.energy_before - proposal.energy_after
     end
@@ -658,7 +668,8 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
             accepted += accepted_splits
             decrease += decrease_splits
         end
-        compact!(topology)
+        node_map, _ = compact!(topology)
+        compact_metric!(model.metric_field, findall(>(0), node_map))
         norma_logf(0, :info, "Topology pass %d: %d operations accepted, energy decrease %.6e", pass, accepted, decrease)
         total_accepted += accepted
         total_decrease += decrease
@@ -697,7 +708,7 @@ function run_adaptive(params::Parameters)
         )
         accepted == 0 && break
         mesh_file = "$name-adapted-$iteration.g"
-        write_topology(topology, mesh_file)
+        write_topology(topology, mesh_file; nodal_variables=metric_nodal_variables(model.metric_field))
         next_params = deepcopy(params)
         next_params["input mesh file"] = mesh_file
         next_params["output mesh file"] = "$name-adapted-$iteration.e"

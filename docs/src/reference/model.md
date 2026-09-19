@@ -80,7 +80,7 @@ accepted and cause an error; use the `nodal recovery` block above.
 | `mesh smoothing` | no | `false` | enable mesh smoothing (set automatically when `type: mesh smoothing`); a top-level key |
 | `smooth reference` | no | `""` | rule for the ideal element of TETRA4 smoothing: `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted`, which prescribe the target; `equal volume`, `average edge length`, and `max`, which take the target from the original element, are legacy rules kept for older inputs |
 | `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size |
-| `metric field` | required if `smooth reference: metric field`/`metric field unrestricted` | `nothing` | block with `sizes` (three expressions in `t, x, y, z`: the principal sizes h₁, h₂, h₃) and optional `rotation vector` (three expressions: the rotation vector whose exponential carries the global axes onto the principal directions); see below |
+| `metric field` | required if `smooth reference: metric field`/`metric field unrestricted` | `nothing` | block giving the metric in one of four forms: `sizes` (three expressions in `t, x, y, z`: the principal sizes h₁, h₂, h₃) with optional `rotation vector` (three expressions: the rotation vector whose exponential carries the global axes onto the principal directions); `tensor` (six expressions: M_xx, M_yy, M_zz, M_xy, M_yz, M_zx); `nodal sizes` (three nodal variables of the input mesh) with optional `nodal rotation vector` (three nodal variables); or `nodal tensor` (six nodal variables), read at `time index` (default: the last step) and interpolated by `interpolation: principal` (default) or `log-Euclidean`; see below |
 
 ### Anisotropic smoothing with a metric field
 
@@ -98,8 +98,8 @@ centroid of each element in the original mesh and held fixed during a solve,
 as for `size field`. `metric field` scales the three sizes uniformly so the
 ideal volume is never below the volume of the original element (the
 anisotropic form of the `size field` floor); `metric field unrestricted` does
-not. The sampled sizes and rotation vector are written as the nodal variables
-`size_1..3` and `rotation_1..3`. Formulation and tests:
+not. The sizes and rotation vector at the nodes are written as the nodal
+variables `size_1..3` and `rotation_1..3`. Formulation and tests:
 `docs/notes/ems-anisotropic`.
 
 ```yaml
@@ -109,6 +109,44 @@ model:
   metric field:
     sizes: ["0.025", "0.1", "0.1"]
     rotation vector: ["0.0", "0.0", "atan(y, x)"]   # first principal direction radial
+```
+
+The metric can also be given as a tensor, by its six components
+`M_xx, M_yy, M_zz, M_xy, M_yz, M_zx` as expressions in `t, x, y, z`. The
+tensor is factored into sizes and a rotation by eigendecomposition; the energy
+does not depend on the frame chosen, so no convention is needed in the input.
+
+```yaml
+  metric field:
+    tensor: ["225.0", "225.0", "50.0", "175.0", "0.0", "0.0"]   # sizes 0.05, 0.1414, 0.1414 at 45 degrees
+```
+
+A metric computed elsewhere, by an error estimator or a previous run, is
+carried by the nodes of the input mesh as nodal variables, either as sizes and
+an optional rotation vector or as the six tensor components, read at
+`time index` (default: the last step). The value on an element is the mean of
+its nodes: the sizes geometrically and the rotation through its vector, which
+keeps the sizes exact where the frame turns. For nodal tensors the sizes and
+rotation vectors are recovered at the nodes with a frame that follows from
+node to node through the mesh (`interpolation: principal`, the default); where
+the frame turns by more than 45 degrees between adjacent nodes a warning
+counts the turns, and `interpolation: log-Euclidean` interpolates the
+logarithm of the tensor instead, which needs no frame. Under `adaptivity`
+the nodal metric follows the operations (a split node takes the mean of the
+ends of its edge) and the adapted meshes carry it under the same variable
+names, so the input applies to them unchanged. The output of a metric run
+carries `size_1..3` and `rotation_1..3`, so it can serve as the input mesh
+of a nodal run.
+
+```yaml
+input mesh file: cube-metric.e
+model:
+  type: mesh smoothing
+  smooth reference: metric field unrestricted
+  metric field:
+    nodal sizes: [size_1, size_2, size_3]
+    nodal rotation vector: [rotation_1, rotation_2, rotation_3]
+    time index: 1
 ```
 
 ### Adaptivity: smoothing alternated with topological operations
@@ -164,4 +202,6 @@ See `examples/ems/` for smoothing cases.
 - Basic model/material block: `examples/single/static-solid`
 - Mesh smoothing: `examples/ems/cube/cube.yaml`
 - Anisotropic smoothing: `examples/ems/tube/tube-metric.yaml`
+- Metric given as a tensor: `examples/ems/cube/cube-tensor.yaml`
+- Metric carried by the nodes of the input mesh: `examples/ems/cube/cube-metric-nodal.yaml`
 - Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`

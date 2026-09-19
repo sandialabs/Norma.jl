@@ -1,0 +1,64 @@
+type: single
+# The metric carried by the nodes of the input mesh: run cube-metric.yaml
+# first; its output holds the sizes and the rotation vector of the metric at
+# the nodes as size_1..3 and rotation_1..3, which are read here at the first
+# step (the original positions).  The value on an element is the mean of its
+# nodes.  A metric from an error estimator is given the same way (see
+# docs/notes/ems-anisotropic).
+input mesh file: cube-metric.e
+output mesh file: cube-metric-nodal.e
+model:
+  type: mesh smoothing
+  smooth reference: metric field unrestricted
+  metric field:
+    nodal sizes: [size_1, size_2, size_3]
+    nodal rotation vector: [rotation_1, rotation_2, rotation_3]
+    time index: 1
+  material:
+    blocks:
+      cube: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0e-01
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 64
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16

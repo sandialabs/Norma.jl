@@ -36,3 +36,16 @@ mutable struct MeshTopology
     side_set_names::Dict{Int,String}
     node_side_sets::Dict{Int,BitVector}
 end
+
+# A matrix of nodal columns extended by one column for a node that is not
+# yet added, so that a split can be evaluated without copying the data: the
+# positions of a topology, or the nodal values of a metric.
+struct MatrixWithColumn{N} <: AbstractMatrix{Float64}
+    base::Matrix{Float64}
+    extra::SVector{N,Float64}
+end
+Base.size(m::MatrixWithColumn{N}) where {N} = (N, size(m.base, 2) + 1)
+function Base.getindex(m::MatrixWithColumn, i::Int, j::Int)
+    return j ≤ size(m.base, 2) ? m.base[i, j] : m.extra[i]
+end
+const PositionsWithNode = MatrixWithColumn{3}

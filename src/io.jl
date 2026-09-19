@@ -99,11 +99,11 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(node_var_names, "size")
     end
     # Anisotropic smoothing: the principal sizes and the rotation vector of the
-    # metric field, sampled at each node.
+    # metric field at each node (see nodal_metric_output).
     if solid_model isa SolidMechanics && solid_model.mesh_smoothing == true && solid_model.metric_field !== nothing
         num_node_vars += 3
         append!(node_var_names, ["size_1", "size_2", "size_3"])
-        if solid_model.metric_field.rotation !== nothing
+        if metric_output_has_rotation(solid_model.metric_field.source)
             num_node_vars += 3
             append!(node_var_names, ["rotation_1", "rotation_2", "rotation_3"])
         end
@@ -377,15 +377,14 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         Exodus.write_values(output_mesh, NodalVariable, time_index, "size", size_vals)
     end
     if model isa SolidMechanics && model.mesh_smoothing == true && model.metric_field !== nothing
-        metric_field = model.metric_field
+        positions = Matrix{Float64}(vcat(refe_x', refe_y', refe_z'))
+        sizes, rotation = nodal_metric_output(model, positions, time)
         for i in 1:3
-            vals = [metric_field.sizes[i]((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)]
-            Exodus.write_values(output_mesh, NodalVariable, time_index, "size_$i", vals)
+            Exodus.write_values(output_mesh, NodalVariable, time_index, "size_$i", sizes[i, :])
         end
-        if metric_field.rotation !== nothing
+        if rotation !== nothing
             for i in 1:3
-                vals = [metric_field.rotation[i]((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)]
-                Exodus.write_values(output_mesh, NodalVariable, time_index, "rotation_$i", vals)
+                Exodus.write_values(output_mesh, NodalVariable, time_index, "rotation_$i", rotation[i, :])
             end
         end
     end

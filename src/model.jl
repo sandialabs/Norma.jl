@@ -166,7 +166,7 @@ function SolidMechanics(params::Parameters)
     mesh_smoothing = get(params, "mesh smoothing", false)
     smooth_reference = get(model_params, "smooth reference", "")
     size_field = create_size_field(smooth_reference, get(model_params, "size field", nothing))
-    metric_field = create_metric_field(smooth_reference, get(model_params, "metric field", nothing))
+    metric_field = create_metric_field(smooth_reference, get(model_params, "metric field", nothing), input_mesh)
     for legacy in ("stress recovery", "recover internal variables")
         if haskey(model_params, legacy)
             norma_abort(
@@ -346,102 +346,24 @@ function create_size_field(smooth_reference::String, expression)
     return eval(build_function(size_num, [t, x, y, z]; expression=Val(false)))
 end
 
-# Compile the anisotropic target of `smooth reference: metric field` (or
-# `metric field unrestricted`): three principal sizes and an optional rotation
-# vector, each an expression in t, x, y, z.  Returns `nothing` for the other
-# smoothing modes.
-function create_metric_field(smooth_reference::String, params)
-    restricted = smooth_reference == "metric field"
-    if !restricted && smooth_reference != "metric field unrestricted"
-        return nothing
-    end
-    if !(params isa AbstractDict)
-        norma_abort(
-            "smooth reference = \"$smooth_reference\" requires a \"metric field\" block with \"sizes\" " *
-            "under the model parameters",
-        )
-    end
-    function compile(expression)
-        return eval(build_function(eval(Meta.parse(string(expression))), [t, x, y, z]; expression=Val(false)))
-    end
-    sizes = get(params, "sizes", nothing)
-    if !(sizes isa AbstractVector) || length(sizes) != 3
-        norma_abort("\"metric field\" requires \"sizes\": three expressions in t, x, y, z (the principal sizes)")
-    end
-    size_funs = (compile(sizes[1]), compile(sizes[2]), compile(sizes[3]))
-    rotation = get(params, "rotation vector", nothing)
-    if rotation === nothing
-        rotation_funs = nothing
-    elseif rotation isa AbstractVector && length(rotation) == 3
-        rotation_funs = (compile(rotation[1]), compile(rotation[2]), compile(rotation[3]))
-    else
-        norma_abort("\"rotation vector\" in \"metric field\" must have three expressions in t, x, y, z")
-    end
-    return MetricField(size_funs, rotation_funs, restricted)
-end
-
-# Ideal reference element and metric factor for a TETRA4 element under a metric
-# field.  The metric is evaluated once at the centroid of the element in the
-# original mesh, so the target is fixed during a solve and the assembled force
-# is the exact gradient of the energy.  With principal sizes h_i and rotation
-# R, the metric factor is F_M = diag(1/h_i) R' (so F_M' F_M = M) and the ideal
-# element is the unit regular tetrahedron Y mapped by F_M⁻¹ = R diag(h_i):
-# scaled by h_i along the global axes, then rotated onto the principal
-# directions.  Returns (X, F_M, F_M⁻¹).  The restricted rule scales the three
-# sizes uniformly so that the ideal volume is never smaller than the volume of
-# the original element, the anisotropic form of the `size field` floor: the
-# smoother cannot create elements and should not ask one to shrink below what
-# the mesh topology can accommodate.
-function create_metric_reference(metric_field::MetricField, element_ref_pos::Matrix{Float64}, time::Float64)
-    centroid = vec(sum(element_ref_pos; dims=2) / size(element_ref_pos, 2))
-    args = (time, centroid[1], centroid[2], centroid[3])
-    h = MVector{3,Float64}(metric_field.sizes[1](args), metric_field.sizes[2](args), metric_field.sizes[3](args))
-    for i in 1:3
-        if !isfinite(h[i]) || h[i] ≤ 0.0
-            norma_abort(
-                "Metric field sizes must be strictly positive and finite; got $(h[i]) for size $i at centroid " *
-                "($(centroid[1]), $(centroid[2]), $(centroid[3])) and time $time",
-            )
-        end
-    end
-    if metric_field.restricted
-        u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
-        v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
-        w = element_ref_pos[:, 4] - element_ref_pos[:, 1]
-        element_volume = dot(u, cross(v, w)) / 6.0
-        ideal_volume = h[1] * h[2] * h[3] / (6.0 * sqrt(2.0))
-        if ideal_volume < element_volume
-            h .*= cbrt(element_volume / ideal_volume)
-        end
-    end
-    if metric_field.rotation === nothing
-        R = SMatrix{3,3,Float64,9}(I)
-    else
-        rotation_vector = SVector{3,Float64}(
-            metric_field.rotation[1](args), metric_field.rotation[2](args), metric_field.rotation[3](args)
-        )
-        R = rt_of_rv(rotation_vector)
-    end
-    F_M = SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
-    F_M_inv = R * SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(h)))
-    c = 0.5 / sqrt(2.0)
-    Y = c * [
-        1 -1 -1 1
-        1 -1 1 -1
-        1 1 -1 -1
-    ]
-    return F_M_inv * Y, F_M, F_M_inv
-end
-
 # Ideal reference element and metric factor of one element of a smoothing
-# model, from the element's coordinates in the mesh that samples the target:
-# the original mesh during a smoothing phase, the current mesh at a topology
-# phase (docs/notes/ems-adaptivity).  Without a metric field the factor is the
-# identity and the ideal element follows the scalar rule.
-function smoothing_reference(model::SolidMechanics, element_type::ElementType, sample_pos::Matrix{Float64})
-    if model.metric_field !== nothing
-        return create_metric_reference(model.metric_field, sample_pos, model.time)
+# model, from the element's coordinates in the mesh that samples the target
+# (the original mesh during a smoothing phase, the current mesh at a topology
+# phase, docs/notes/ems-adaptivity) and its node indices, which a nodal
+# metric needs; `metric` overrides the model's field, for a proposal with a
+# trial node.  Without a metric field the factor is the identity and the
+# ideal element follows the scalar rule.
+function smoothing_reference(
+    model::SolidMechanics,
+    element_type::ElementType,
+    sample_pos::AbstractMatrix{Float64};
+    node_indices=nothing,
+    metric::Union{MetricField,Nothing}=model.metric_field,
+)
+    if metric !== nothing
+        return create_metric_reference(metric, sample_pos, model.time; node_indices=node_indices)
     end
+    sample_pos isa Matrix{Float64} || (sample_pos = Matrix{Float64}(sample_pos))
     X = create_smooth_reference(model.smooth_reference, element_type, sample_pos, model.size_field, model.time)
     I3 = SMatrix{3,3,Float64,9}(I)
     return X, I3, I3
@@ -454,7 +376,7 @@ function ideal_volumes(model::SolidMechanics, block_index::Int)
     volumes = Vector{Float64}(undef, block.num_elements)
     for element in 1:block.num_elements
         node_indices = view(block.connectivity, :, element)
-        X, _, _ = smoothing_reference(model, block.element_type, model.reference[:, node_indices])
+        X, _, _ = smoothing_reference(model, block.element_type, model.reference[:, node_indices]; node_indices)
         volumes[element] = abs(dot(X[:, 2] - X[:, 1], cross(X[:, 3] - X[:, 1], X[:, 4] - X[:, 1]))) / 6.0
     end
     return volumes
@@ -474,6 +396,7 @@ function element_energies(
     connectivity::AbstractMatrix{<:Integer},
     positions::AbstractMatrix{Float64};
     sample_positions::AbstractMatrix{Float64}=positions,
+    metric::Union{MetricField,Nothing}=model.metric_field,
 )
     block = model.blocks[block_index]
     material = model.materials[block_index]
@@ -483,7 +406,9 @@ function element_energies(
     energies = zeros(num_elements)
     for element in 1:num_elements
         node_indices = view(connectivity, :, element)
-        X, F_M, F_M_inv = smoothing_reference(model, block.element_type, Matrix(sample_positions[:, node_indices]))
+        X, F_M, F_M_inv = smoothing_reference(
+            model, block.element_type, Matrix(sample_positions[:, node_indices]); node_indices, metric
+        )
         element_reference_position = gather_nodal(X, N)
         element_current_position = gather_nodal(Matrix(positions[:, node_indices]), N)
         energy = 0.0
@@ -1194,7 +1119,7 @@ function evaluate_element!(
     F_M = SMatrix{3,3,Float64,9}(I)
     F_M_inv = F_M
     if flags.mesh_smoothing == true
-        smooth, F_M, F_M_inv = smoothing_reference(model, element_type, model.reference[:, node_indices])
+        smooth, F_M, F_M_inv = smoothing_reference(model, element_type, model.reference[:, node_indices]; node_indices)
         element_reference_position = gather_nodal(smooth, N)
     else
         element_reference_position = gather_nodal(model.reference, node_indices, N)

@@ -1,0 +1,61 @@
+type: single
+input mesh file: cube.g
+output mesh file: cube-tensor.e
+model:
+  type: mesh smoothing
+  # The metric of cube-metric.yaml given as a tensor: M = R diag(1/h^2) R'
+  # with sizes (0.05, 0.1414, 0.1414) and the first principal direction at 45
+  # degrees in the x-y plane, so M_xx = M_yy = 225, M_xy = 175, M_zz = 50.
+  # The tensor is factored by eigendecomposition; the energy does not depend
+  # on the frame chosen (see docs/notes/ems-anisotropic).
+  smooth reference: metric field unrestricted
+  metric field:
+    tensor: ["225.0", "225.0", "50.0", "175.0", "0.0", "0.0"]
+  material:
+    blocks:
+      cube: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0e-01
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 64
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16

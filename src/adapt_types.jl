@@ -20,12 +20,14 @@ struct AdaptivityOptions
 end
 
 # The node an edge split adds: its position after placement and local
-# relaxation, the sets it inherits, and the edge it splits.
+# relaxation, the sets it inherits, the edge it splits, and the nodal metric
+# data it carries (nothing unless the metric is carried by the nodes).
 struct SplitNode
     position::SVector{3,Float64}
     node_sets::Vector{Int}
     side_sets::Vector{Int}
     edge::Tuple{Int,Int}
+    metric::Union{Nothing,Vector{Float64}}
 end
 
 # Result of one topological operation: the cavity replaced, the energies

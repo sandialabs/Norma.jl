@@ -317,16 +317,6 @@ function remove_node!(topology::MeshTopology, n::Int)
     return topology
 end
 
-# The positions of a topology extended by one node that is not yet added, so
-# that a split can be evaluated without copying the positions.
-struct PositionsWithNode <: AbstractMatrix{Float64}
-    base::Matrix{Float64}
-    extra::SVector{3,Float64}
-end
-Base.size(p::PositionsWithNode) = (3, size(p.base, 2) + 1)
-function Base.getindex(p::PositionsWithNode, i::Int, j::Int)
-    return j ≤ size(p.base, 2) ? p.base[i, j] : p.extra[i]
-end
 
 # Update the side sets for the split of edge (a, b) by node m: every face
 # that contains the edge is replaced by its two halves.
@@ -427,9 +417,13 @@ function compact!(topology::MeshTopology)
 end
 
 # Write the compacted topology as a new Exodus mesh: blocks, node sets, and
-# side sets, with their names.  Boundary faces of a side set that no longer
+# side sets, with their names, and any nodal variables given.  Boundary faces of a side set that no longer
 # exist are dropped.
-function write_topology(topology::MeshTopology, file_name::String)
+function write_topology(
+    topology::MeshTopology,
+    file_name::String;
+    nodal_variables::Dict{String,Vector{Float64}}=Dict{String,Vector{Float64}}(),
+)
     all(topology.node_alive) && all(topology.element_alive) || norma_abort("Compact the topology before writing it")
     num_nodes = size(topology.positions, 2)
     num_elements = size(topology.connectivity, 2)
@@ -476,6 +470,18 @@ function write_topology(topology::MeshTopology, file_name::String)
         side_set = Exodus.SideSet{Int32,Vector{Int32}}(Int32(id), elements, sides, Int32[], Int32[])
         Exodus.write_set(exo, side_set)
         Exodus.write_name(exo, side_set, topology.side_set_names[id])
+    end
+    # Nodal data carried by the mesh (a nodal metric), at one time step.
+    if !isempty(nodal_variables)
+        names = sort(collect(keys(nodal_variables)))
+        Exodus.write_number_of_variables(exo, NodalVariable, length(names))
+        Exodus.write_names(exo, NodalVariable, names)
+        Exodus.write_time(exo, 1, 0.0)
+        for name in names
+            values = nodal_variables[name]
+            length(values) == num_nodes || norma_abort("Nodal variable \"$name\" does not match the node count")
+            Exodus.write_values(exo, NodalVariable, 1, name, values)
+        end
     end
     Exodus.close(exo)
     return file_name

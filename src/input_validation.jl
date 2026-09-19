@@ -174,7 +174,16 @@ const MODEL_KEYS = Set([
 
 const NODAL_RECOVERY_KEYS = Set(["method", "stress", "von mises stress", "internal variables", "deformation gradient"])
 
-const METRIC_FIELD_KEYS = Set(["sizes", "rotation vector"])
+const METRIC_FIELD_KEYS = Set([
+    "sizes",
+    "rotation vector",
+    "tensor",
+    "nodal sizes",
+    "nodal rotation vector",
+    "nodal tensor",
+    "time index",
+    "interpolation",
+])
 
 const ADAPTIVITY_KEYS = Set([
     "desired energy density",

@@ -32,6 +32,7 @@ include("spatial_search.jl")          # needs interpolation.jl, model_types.jl
 include("three_field.jl")          # needs constitutive.jl, interpolation.jl
 include("opinf/opinf_model.jl")
 include("kroms/krom_model.jl")
+include("metric.jl")                   # metric targets of mesh smoothing; needs model_types.jl
 include("model.jl")
 include("topology.jl")                 # needs model.jl
 include("recovery.jl")
