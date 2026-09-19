@@ -16,6 +16,7 @@ function AdaptivityOptions(params::Parameters)
         Int(get(params, "maximum passes", 20)),
         Int(get(params, "outer iterations", 5)),
         Bool(get(params, "swaps", true)),
+        Bool(get(params, "collapses", true)),
     )
 end
 
@@ -73,12 +74,16 @@ function accept_proposal(
         volumes = ideal_element_volumes(model, block, new_connectivity, positions)
         maximum(new_energies ./ volumes) ≤ options.allowed_density || return nothing
     end
-    return CavityProposal(old_elements, new_connectivity, block, old_energy, new_energy)
+    return CavityProposal(old_elements, new_connectivity, block, old_energy, new_energy, 0, 0)
 end
 
 function apply!(topology::MeshTopology, proposal::CavityProposal)
     remove_elements!(topology, proposal.old_elements)
     add_elements!(topology, proposal.new_connectivity, proposal.block)
+    if proposal.removed_node > 0
+        collapse_sets!(topology, proposal.removed_node, proposal.surviving_node)
+        remove_node!(topology, proposal.removed_node)
+    end
     return topology
 end
 
@@ -215,6 +220,146 @@ function try_edge_swap(model::SolidMechanics, topology::MeshTopology, a::Int, b:
     return accept_proposal(model, topology, elements, best, block, options)
 end
 
+# Whether node b may be removed by collapsing it onto node a.  The survivor
+# keeps its position, so every set membership of b must be one of a: a node
+# of a node set cannot vanish unless a carries the same node sets, and a node
+# on the boundary can only slide along the boundary onto a node of the same
+# surfaces, along a boundary edge, so that the surface and its feature lines
+# are preserved.  Nodes on three surfaces (corners) are never removed.
+function may_collapse(topology::MeshTopology, b::Int, a::Int)
+    for (id, flags) in topology.node_sets
+        flags[b] && !flags[a] && return false
+    end
+    on_boundary = false
+    for (id, flags) in topology.node_side_sets
+        flags[b] || continue
+        on_boundary = true
+        flags[a] || return false
+    end
+    if on_boundary
+        is_boundary_edge(topology, a, b) || return false
+    end
+    return true
+end
+
+# Try to remove node b by collapsing the edge (a, b) onto a: the elements
+# that contain both nodes are removed and the others around b receive a in
+# its place.  Returns the accepted proposal or nothing.
+function try_edge_collapse(model::SolidMechanics, topology::MeshTopology, b::Int, a::Int, options::AdaptivityOptions)
+    (topology.node_alive[a] && topology.node_alive[b]) || return nothing
+    may_collapse(topology, b, a) || return nothing
+    star = collect(node_elements(topology, b))
+    isempty(star) && return nothing
+    all(topology.element_alive[e] for e in star) || return nothing
+    block = topology.block[star[1]]
+    all(topology.block[e] == block for e in star) || return nothing
+    kept = Int[]
+    for e in star
+        a in view(topology.connectivity, :, e) || push!(kept, e)
+    end
+    isempty(kept) && return nothing
+    new_connectivity = topology.connectivity[:, kept]
+    for i in eachindex(new_connectivity)
+        new_connectivity[i] == b && (new_connectivity[i] = a)
+    end
+    return accept_proposal(model, topology, star, new_connectivity, block, options, b, a)
+end
+
+function accept_proposal(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    old_elements::Vector{Int},
+    new_connectivity::Matrix{Int},
+    block::Int,
+    options::AdaptivityOptions,
+    removed_node::Int,
+    surviving_node::Int,
+)
+    proposal = accept_proposal(model, topology, old_elements, new_connectivity, block, options)
+    proposal === nothing && return nothing
+    return CavityProposal(
+        proposal.old_elements,
+        proposal.new_connectivity,
+        proposal.block,
+        proposal.energy_before,
+        proposal.energy_after,
+        removed_node,
+        surviving_node,
+    )
+end
+
+# Metric factor of the prescribed target at a point: the scalar 1/h for a
+# size field, F_M for a metric field, nothing for the legacy rules, which
+# prescribe no length.
+function metric_factor_at(model::SolidMechanics, point::AbstractVector{Float64})
+    args = (model.time, point[1], point[2], point[3])
+    if model.metric_field !== nothing
+        h = (model.metric_field.sizes[1](args), model.metric_field.sizes[2](args), model.metric_field.sizes[3](args))
+        R = SMatrix{3,3,Float64,9}(I)
+        if model.metric_field.rotation !== nothing
+            rotation = model.metric_field.rotation
+            v = SVector{3,Float64}(rotation[1](args), rotation[2](args), rotation[3](args))
+            R = rt_of_rv(v)
+        end
+        return SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
+    elseif model.size_field !== nothing
+        return SMatrix{3,3,Float64,9}(I) / model.size_field(args)
+    end
+    return nothing
+end
+
+# Length of an edge measured in the prescribed target, or NaN without one.
+function metric_edge_length(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int)
+    xa = SVector{3,Float64}(view(topology.positions, :, a))
+    xb = SVector{3,Float64}(view(topology.positions, :, b))
+    F_M = metric_factor_at(model, 0.5 * (xa + xb))
+    F_M === nothing && return NaN
+    return norm(F_M * (xb - xa))
+end
+
+# Edges shorter than 1/sqrt(2) in the prescribed target, the collapse
+# candidates of the size phase; empty without a target.
+function short_edges(model::SolidMechanics, topology::MeshTopology)
+    edges = Tuple{Int,Int}[]
+    (model.metric_field === nothing && model.size_field === nothing) && return edges
+    for edge in keys(topology.edges)
+        metric_edge_length(model, topology, edge[1], edge[2]) < 1.0 / sqrt(2.0) && push!(edges, edge)
+    end
+    return edges
+end
+
+# One pass of edge collapses over the candidate edges (edges of the elements
+# above the desired density, plus the short edges of the target), in
+# decreasing order of the energy around them.  Both directions of each edge
+# are tried.  Returns the number of accepted collapses and the decrease.
+function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions)
+    densities = energy_densities(model, topology)
+    candidates = candidate_elements(topology, densities, options)
+    edges = Set{Tuple{Int,Int}}()
+    for e in candidates
+        c = view(topology.connectivity, :, e)
+        for i in 1:4, j in (i + 1):4
+            push!(edges, sorted_edge(c[i], c[j]))
+        end
+    end
+    union!(edges, short_edges(model, topology))
+    ranked = collect(edges)
+    edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
+    sort!(ranked; by=edge_energy, rev=true)
+    accepted = 0
+    decrease = 0.0
+    for (a, b) in ranked
+        (topology.node_alive[a] && topology.node_alive[b]) || continue
+        proposal = try_edge_collapse(model, topology, b, a, options)
+        proposal === nothing && (proposal = try_edge_collapse(model, topology, a, b, options))
+        proposal === nothing && continue
+        apply!(topology, proposal)
+        accepted += 1
+        decrease += proposal.energy_before - proposal.energy_after
+    end
+    return accepted, decrease
+end
+
 # Candidate elements: those above the desired density, dilated by the given
 # number of layers of node adjacency.
 function candidate_elements(topology::MeshTopology, densities::Vector{Float64}, options::AdaptivityOptions)
@@ -279,6 +424,13 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
             accepted_swaps, decrease_swaps = swap_pass!(model, topology, options)
             accepted += accepted_swaps
             decrease += decrease_swaps
+        end
+        # Collapses remove resolution, so they are the fallback: tried only in
+        # a pass where no swap was accepted.
+        if options.collapses && accepted == 0
+            accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options)
+            accepted += accepted_collapses
+            decrease += decrease_collapses
         end
         compact!(topology)
         norma_logf(0, :info, "Topology pass %d: %d operations accepted, energy decrease %.6e", pass, accepted, decrease)

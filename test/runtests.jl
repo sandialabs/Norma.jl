@@ -175,6 +175,7 @@ const indexed_test_files = [
     (127, "adaptivity-cavity.jl"),
     (128, "adaptivity-topology.jl"),
     (129, "adaptivity-swap.jl"),
+    (130, "adaptivity-collapse.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

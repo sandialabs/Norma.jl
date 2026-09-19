@@ -184,6 +184,7 @@ const ADAPTIVITY_KEYS = Set([
     "maximum passes",
     "outer iterations",
     "swaps",
+    "collapses",
 ])
 
 const MATERIAL_PROPS_COMMON_KEYS = Set([

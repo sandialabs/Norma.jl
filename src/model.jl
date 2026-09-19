@@ -494,13 +494,16 @@ function element_energies(
             # inverted element and hide the inversion in a positive Jacobian.
             dxdξ = dNdξ * element_current_position'
             dXdξ = dNdξ * element_reference_position'
-            J = det(dxdξ) / det(dXdξ)
+            dNdX = dXdξ \ dNdξ
+            F = element_current_position * dNdX'
+            # Both determinants are checked: for a nearly flat element they
+            # can differ in sign by roundoff, and the energy takes fractional
+            # powers of det(F).
+            J = det(F)
             if det(dxdξ) ≤ 0.0 || J ≤ 0.0 || isfinite(J) == false
                 energy = Inf
                 break
             end
-            dNdX = dXdξ \ dNdξ
-            F = element_current_position * dNdX'
             F_U = F_M * F * F_M_inv
             energy += strain_energy(material, F_U) * det(dXdξ) * ip_weights[point]
         end

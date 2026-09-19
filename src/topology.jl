@@ -317,6 +317,26 @@ function remove_node!(topology::MeshTopology, n::Int)
     return topology
 end
 
+# Update the sets for the collapse of node b onto node a: the faces of every
+# side set that contain b are removed, and those that do not also contain a
+# reappear with a in place of b.  The node-set flags of b vanish with the
+# node; a already carries them (see may_collapse in adapt.jl).
+function collapse_sets!(topology::MeshTopology, b::Int, a::Int)
+    for (id, faces) in topology.side_sets
+        renamed = Set{NTuple{3,Int}}()
+        for face in faces
+            b in face || continue
+            push!(renamed, face)
+        end
+        for face in renamed
+            delete!(faces, face)
+            a in face && continue
+            push!(faces, sorted_face(map(n -> n == b ? a : n, face)...))
+        end
+    end
+    return topology
+end
+
 function add_side_set_face!(topology::MeshTopology, id::Int, face::NTuple{3,Int})
     push!(topology.side_sets[id], face)
     return topology

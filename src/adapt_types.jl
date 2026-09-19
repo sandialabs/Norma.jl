@@ -14,13 +14,18 @@ struct AdaptivityOptions
     maximum_passes::Int          # passes of a topology phase
     outer_iterations::Int        # alternations of smoothing and topology
     swaps::Bool
+    collapses::Bool
 end
 
-# Result of one topological operation: the cavity replaced, or nothing.
+# Result of one topological operation: the cavity replaced, the energies
+# before and after, and for a collapse the node removed and the node it was
+# moved onto (zero otherwise).
 struct CavityProposal
     old_elements::Vector{Int}
     new_connectivity::Matrix{Int}
     block::Int
     energy_before::Float64
     energy_after::Float64
+    removed_node::Int
+    surviving_node::Int
 end

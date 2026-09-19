@@ -116,7 +116,10 @@ model:
 A top-level `adaptivity` block turns a mesh smoothing run into the coupled
 loop of `docs/notes/ems-adaptivity`: the mesh is smoothed, the interior edges
 of the elements of highest energy density are swapped where a swap lowers the
-energy of the elements around the edge, the new mesh is written as
+energy of the elements around the edge, edges are collapsed where a collapse
+does (a node is removed only onto a node that carries its node sets and lies
+on its surfaces, along a boundary edge if it is on the boundary), the new
+mesh is written as
 `<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
 phase accepts no operation or the outer iterations are exhausted. Every
 operation is accepted by one test: the energy of the new elements must be
@@ -133,6 +136,7 @@ Node sets and side sets are carried over to the written meshes.
 | `maximum passes` | no | `20` | passes of operations per topology phase |
 | `outer iterations` | no | `5` | alternations of smoothing and topology |
 | `swaps` | no | `true` | try edge swaps |
+| `collapses` | no | `true` | try edge collapses, in a pass where no swap was accepted; with a prescribed target, edges shorter than 1/√2 of it are candidates too |
 
 ```yaml
 adaptivity:
