@@ -289,6 +289,11 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
     return total_accepted, total_decrease
 end
 
+# Optional observer of the topology phases, called as
+# observer(model, topology, accepted, decrease) after each phase, before the
+# adapted mesh is written; nothing by default.
+const TOPOLOGY_PHASE_OBSERVER = Ref{Any}(nothing)
+
 # The coupled loop: smoothing on the current mesh, a topology phase, a new
 # mesh written to disk, and smoothing again on it, until a topology phase
 # accepts nothing or the outer iterations are exhausted.  Each smoothed and
@@ -306,6 +311,8 @@ function run_adaptive(params::Parameters)
             model, 1, topology.connectivity, topology.positions
         ))
         accepted, decrease = topology_phase!(model, topology, options)
+        observer = TOPOLOGY_PHASE_OBSERVER[]
+        observer === nothing || observer(model, topology, accepted, decrease)
         norma_logf(
             0, :info, "Adaptivity iteration %d: %d operations accepted, energy %.6e -> %.6e",
             iteration, accepted, energy_before, energy_before - decrease,

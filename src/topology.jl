@@ -45,6 +45,35 @@ function tetrahedron_volume(x::AbstractMatrix{Float64})
     return dot(u, cross(v, w)) / 6.0
 end
 
+# Scaled Jacobian of a tetrahedron as defined by Verdict: the Jacobian at a
+# vertex (six times the signed volume) times the square root of two, divided
+# by the largest product of the lengths of the three edges at a vertex over
+# the four vertices; one for a regular tetrahedron, zero when flat, negative
+# when inverted.
+function tetrahedron_scaled_jacobian(x::AbstractMatrix{Float64})
+    p = ntuple(i -> SVector{3,Float64}(x[1, i], x[2, i], x[3, i]), 4)
+    jacobian = dot(p[2] - p[1], cross(p[3] - p[1], p[4] - p[1]))
+    lengths = Dict{Tuple{Int,Int},Float64}()
+    for i in 1:4, j in (i + 1):4
+        lengths[(i, j)] = norm(p[i] - p[j])
+    end
+    edge_length(i, j) = lengths[i < j ? (i, j) : (j, i)]
+    largest = 0.0
+    for v in 1:4
+        product = 1.0
+        for w in 1:4
+            w == v || (product *= edge_length(v, w))
+        end
+        largest = max(largest, product)
+    end
+    largest > 0.0 || return -1.0
+    return sqrt(2.0) * jacobian / largest
+end
+
+function scaled_jacobians(positions::AbstractMatrix{Float64}, connectivity::AbstractMatrix{<:Integer})
+    return [tetrahedron_scaled_jacobian(positions[:, view(connectivity, :, e)]) for e in 1:size(connectivity, 2)]
+end
+
 function element_volume(topology::MeshTopology, e::Int)
     return tetrahedron_volume(view(topology.positions, :, view(topology.connectivity, :, e)))
 end

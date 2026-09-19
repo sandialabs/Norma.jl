@@ -108,6 +108,23 @@ end
     end
 end
 
+@testset "scaled_jacobian" begin
+    c = 0.5 / sqrt(2.0)
+    regular = c * [1 -1 -1 1; 1 -1 1 -1; 1 1 -1 -1]
+    @test Norma.tetrahedron_scaled_jacobian(regular) ≈ 1.0 atol = 1.0e-12
+    @test Norma.tetrahedron_scaled_jacobian(3.7 * regular) ≈ 1.0 atol = 1.0e-12
+    flat = copy(regular)
+    flat[:, 4] = (regular[:, 1] + regular[:, 2] + regular[:, 3]) / 3
+    @test Norma.tetrahedron_scaled_jacobian(flat) ≈ 0.0 atol = 1.0e-12
+    inverted = regular[:, [1, 2, 4, 3]]
+    @test Norma.tetrahedron_scaled_jacobian(inverted) ≈ -1.0 atol = 1.0e-12
+    # Right-angled corner tetrahedron: Jacobian one, largest edge product two.
+    right = [0.0 1.0 0.0 0.0; 0.0 0.0 1.0 0.0; 0.0 0.0 0.0 1.0]
+    @test Norma.tetrahedron_scaled_jacobian(right) ≈ sqrt(2.0) / 2.0 atol = 1.0e-12
+    sj = Norma.scaled_jacobians(hcat(regular, right), [1 5; 2 6; 3 7; 4 8])
+    @test sj[1] ≈ 1.0 && sj[2] < 1.0
+end
+
 @testset "topology_edit_compact_write" begin
     sim = smoothing_model("../examples/ems/tube/tube.g", "tube", "topology-edit.e")
     model = sim.model

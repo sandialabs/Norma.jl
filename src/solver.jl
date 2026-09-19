@@ -812,6 +812,18 @@ end
 
 report_unconverged_solve(::Explicit, ::Model, ::Int64) = nothing
 
+# Optional observer of the solver iterations, for studies that record the
+# state of the model after every accepted step (for example the mesh quality
+# during smoothing).  Called as observer(model, iteration_number) after the
+# initial evaluation (iteration 0) and after every step; nothing by default.
+const SOLVE_ITERATION_OBSERVER = Ref{Any}(nothing)
+
+function notify_solve_observer(model::Model, iteration_number::Int64)
+    observer = SOLVE_ITERATION_OBSERVER[]
+    observer === nothing || observer(model, iteration_number)
+    return nothing
+end
+
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     is_rom_model = model isa RomModel
     if is_rom_model == false
@@ -843,6 +855,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         )
     end
     solver.initial_norm = norm_residual
+    notify_solve_observer(model, 0)
     iteration_number = 1
     solver.failed = solver.failed || model.failed
     step_type = solver.step
@@ -877,6 +890,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
                 status,
             )
         end
+        notify_solve_observer(model, iteration_number)
         iteration_number += 1
         if stop_solve(solver, iteration_number) == true
             if is_rom_model == false
