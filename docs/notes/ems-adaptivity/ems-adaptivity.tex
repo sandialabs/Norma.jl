@@ -19,7 +19,7 @@
 and Topological Mesh Adaptation:\\
 Design of an Adaptivity Loop for Norma}
 \author{Alejandro Mota}
-\date{August 2026}
+\date{August 2026, revised September 2026}
 
 \begin{document}
 \maketitle
@@ -40,12 +40,18 @@ addressed with concrete algorithms: when to trigger topological
 operations, how to guarantee a monotonic decrease of the total distortion
 energy across both smoothing and topological phases, and how to detect
 stagnation of the smoothing phase with a scale-invariant criterion. The
-central design decision is to replace the current history-dependent
-smoothing objective by an intrinsic distortion functional, well defined
-for any mesh topology, which then serves as a common Lyapunov function for
-the entire loop. The note closes with a step-by-step implementation plan,
-recommendations for topology and adjacency data structures, and a ranked
-list of risks.
+central design decision is to use a single distortion functional, well
+defined for any mesh topology, as the objective of both phases: with a
+prescribed size or metric field, the metric-conditioned smoothing energy
+now in Norma is such a functional; without one, an intrinsic
+equal-volume functional takes its place. The revision of September 2026
+fixes the scope (a preprocessing step on four-node tetrahedral meshes,
+with no transfer of solution state), records the alternatives of wrapping
+\omegah{} or keeping the hand-off to the Sierra tool \code{improve\_mesh},
+and states why the topological operations should be accepted on the
+energy with geometric quality as a floor. The note closes with a
+step-by-step implementation plan, recommendations for topology and
+adjacency data structures, and a ranked list of risks.
 \end{abstract}
 
 \tableofcontents
@@ -84,14 +90,28 @@ The workflow this note develops is therefore iterative:
   further;
 \item repeat until neither mechanism makes progress.
 \end{enumerate}
+\paragraph{Scope.} The loop is a preprocessing step: it produces a mesh
+before any analysis is run on it, so no solution state exists on the
+mesh and no state transfer is involved. It targets four-node tetrahedra
+only, which is the element type the smoothing supports and the type the
+topological operations are written for; a mesh of quadratic tetrahedra
+is obtained afterwards by conversion, placing the midside nodes at the
+edge midpoints and projecting those on the boundary to the surface with
+the level-set machinery already in place. The workflow it replaces is
+staggered: Norma smooths, the smoothed mesh is passed to the Sierra tool
+\code{improve\_mesh}, which changes the topology against a geometric
+quality measure, and the result may be smoothed again
+(Section~\ref{sec:alternatives}).
+
 The design questions are precisely where the coupling is delicate: the
 trigger for step 3, the acceptance criterion that keeps the total energy
 monotone across steps 1--4, and the stagnation test in step 1. Sections
-\ref{sec:triggers}--\ref{sec:stagnation} address them in turn, after two
+\ref{sec:triggers}--\ref{sec:stagnation} address them in turn, after three
 preparatory sections: an inventory of the machinery Norma already
-possesses (Section~\ref{sec:norma}) and a summary of the decision logic
+possesses (Section~\ref{sec:norma}), a summary of the decision logic
 of \omegah{} as implemented in its source code
-(Section~\ref{sec:omegah}).
+(Section~\ref{sec:omegah}), and an assessment of the alternatives to a
+native implementation (Section~\ref{sec:alternatives}).
 
 \section{Existing infrastructure in Norma}
 \label{sec:norma}
@@ -147,8 +167,9 @@ Three existing components carry much of the weight of the proposed loop.
   \code{src/field\_transfer.jl} performs a consistent $L^2$ transfer of
   nodal fields between meshes of the same geometry, and composes it
   with the variational recovery of \cite{mota2013} to remap
-  integration-point internal variables. This is the machinery a future in-simulation
-  adaptivity capability requires, and it connects to the constrained
+  integration-point internal variables. The preprocessing loop of this
+  note does not need it; it is what a future in-simulation adaptivity
+  capability would require, and it connects to the constrained
   projection of the companion note on internal-variable recovery in
   admissible spaces (\code{docs/notes/internal-variable-projection}).
 \item \emph{Mid-run mesh replacement.} The module \code{src/swap.jl}
@@ -171,9 +192,10 @@ and no function writes coordinates or connectivity back. There are no
 adjacency structures of any kind---no node-to-element, element-to-element,
 or edge data---so there is at present no way to enumerate the cavity
 around an edge. There is no element quality module; the de facto quality
-measure of the code base is the smoothing energy itself. Finally, point
-location for state transfer is a linear scan over the elements of a
-block. These gaps define Steps 3 and 8 of the implementation plan in
+measure of the code base is the smoothing energy itself. (Point
+location, a linear scan when this note was first written, is now a
+uniform-grid search in \code{src/spatial\_search.jl}.) These gaps
+define Step 3 of the implementation plan in
 Section~\ref{sec:architecture}.
 
 \section{The adaptation logic of \omegah{}}
@@ -243,13 +265,125 @@ operation can be accepted. When the quality goal is unreachable, the
 library says so and returns the mesh in its best achieved state rather
 than looping.
 
-\section{An intrinsic distortion functional}
+\section{The Sierra hand-off and the alternatives to a native loop}
+\label{sec:alternatives}
+
+Three routes exist: keep the hand-off to \code{improve\_mesh}, wrap
+\omegah{} into Norma, or implement the operators natively. The facts
+about the two external tools, read from their sources in September 2026,
+are these.
+
+\paragraph{\code{improve\_mesh} and \code{emend}.} \code{improve\_mesh}
+is a thin driver (about $2{,}500$ lines: an input parser, STK mesh
+creation, and optional CAD geometry through \code{m2g}) over the Sierra
+library \code{emend} (93 files, about $10{,}000$ lines). \code{emend}
+implements edge swaps, face swaps, edge collapses (with a variant for
+mandatory node removal), edge refinement, independent-set selection of
+non-conflicting cavities, control of the deviation from the geometry
+(\code{edgeGeomDeviationTol}, \code{sharpFeatureAngleTolInDegrees}), and
+midnode straightening for quadratic elements. Its parameters follow the
+\omegah{} logic: desired and allowed relative edge lengths at $1/\sqrt2$
+and $\sqrt2$, a quality below which improvement is attempted,
+iteration caps per operator, and termination when the quality stops
+improving. It accepts nodal isotropic and anisotropic size fields,
+Cartesian-aligned and cylindrical size fields, and a displacement field.
+Its quality is an abstract \code{QualityMetric} compared through
+\code{is\_first\_quality\_metric\_better\_than\_second}, so the measure
+is pluggable, but acceptance is always the comparison of the worst
+element of a cavity before and after the operation. It contains no field
+transfer and no code from \omegah{}: it is an independent implementation
+of the same decision logic on STK, and it is not open source.
+
+\paragraph{\omegah{}.} C++14 with CMake; optional MPI, OpenMP, or CUDA;
+tetrahedra and triangles; anisotropic metric fields with gradation
+control; refinement, coarsening, swapping, and sliver coarsening under
+\code{AdaptOpts}; Exodus input and output through SEACAS; boundary
+geometry through EGADS or through entity classification alone. The
+quality is the metric-conditioned mean ratio, fixed in the library; the
+one extension hook, \code{UserTransfer}, concerns fields, not the
+acceptance criterion. There is no C interface.
+
+\paragraph{Comparison.} Table~\ref{tab:alternatives} sets the two
+routes that would bring the operations into Norma against each other.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{p{2.7cm}p{5.4cm}p{5.4cm}}
+\toprule
+& Wrap \omegah{} & Native operators in Julia \\
+\midrule
+Work to first result &
+  A C shim (mesh arrays in and out, metric per vertex, options, the
+  \code{adapt} call) of a few hundred lines plus a \code{ccall} layer,
+  packaged as an optional extension; about two weeks &
+  Steps 3 to 7 of Section~\ref{sec:architecture}; three to four
+  thousand lines of Julia with tests; two to three months to a validated
+  loop \\
+Build and distribution &
+  A C++ dependency with CMake in a code that runs wherever Julia runs;
+  CI on Ubuntu and macOS must build it; a binary recipe for users &
+  None \\
+Acceptance criterion &
+  Fixed: metric-conditioned mean ratio and the length band; an energy
+  criterion requires patching the library &
+  Any: the energy gate of Section~\ref{sec:monotonicity}, a geometric
+  floor, or both \\
+Coupling with smoothing &
+  Loose: the two tools optimize different objectives &
+  Tight: one objective, alternating phases, monotone descent \\
+Boundary geometry &
+  Classification only, or EGADS; the analytic \code{Surface} level sets
+  would have to be re-expressed &
+  \code{Surface} level sets and node and side sets reused directly \\
+Parallelism &
+  MPI and threads &
+  Serial at first; threads later through independent sets \\
+Maturity &
+  High, deterministic, with stated quality guarantees &
+  To be earned: cavity validity, orientation, and boundary preservation
+  need careful tests \\
+Public repository &
+  Yes (BSD license) &
+  Yes \\
+\bottomrule
+\end{tabular}
+\caption{Bringing topological operations into Norma: wrapping \omegah{}
+against a native implementation.}
+\label{tab:alternatives}
+\end{table}
+
+\paragraph{Assessment.} Keeping the hand-off is mature and in use, but
+it cannot be part of a public Norma workflow, and the two tools will
+always optimize different quantities (the energy in Norma, a geometric
+quality in \code{emend}), which is the source of the inefficiency of
+the staggered loop. Wrapping \omegah{} buys a mature adapter quickly but
+reproduces that staggered loop with a different external tool and adds
+a build dependency. The value of doing this inside Norma is one
+objective for both phases, and that requires the native route. The
+native route is a bounded piece of work because its hard parts exist or
+are specified: the energy kernel and the metric-space ideal element are
+in the code, the geometry constraints exist, the orchestration pattern
+exists, and the operators for four-node tetrahedra are well documented
+(an edge loop of at most seven elements admits a small table of
+triangulations; collapses and splits are local). \code{emend} is ten
+thousand lines because it also handles quadratic elements, CAD
+geometry, STK, and parallel independent sets, none of which are in the
+first version here. The recommendation is the native route, with
+\omegah{} in one narrow role: its command-line tools read and write
+Exodus, so a mesh and a metric can be run through it and its length and
+quality histograms compared with ours at no integration cost, and with
+\code{improve\_mesh} as the reference for the validation cases of
+Section~\ref{sec:architecture}.
+
+\section{A single distortion functional}
 \label{sec:intrinsic}
 
 \subsection{The obstruction}
 
-The design problem that governs the entire coupling is that Norma's
-current smoothing objective is tied to the original mesh: the ideal
+The design problem that governs the entire coupling is that the
+smoothing objective under the \code{equal volume}, \code{average edge
+length}, and \code{max} rules is tied to the original mesh: the ideal
 reference of each element is built from the geometry of that element in
 the mesh as read from disk. After a topological operation, a new element
 has no original counterpart, so the objective is undefined on it; and
@@ -258,11 +392,55 @@ cannot be compared across a topology change, because the comparison would
 be between different functionals. A monotonicity guarantee requires a
 single functional, defined for every admissible pair of topology and
 nodal positions, that both phases of the loop demonstrably decrease.
+There are two such functionals, depending on whether a target is
+prescribed.
 
-\subsection{The functional}
+\subsection{With a prescribed size or metric field}
+\label{sec:prescribed}
 
-Let $\mathcal{T}$ denote the mesh topology and $\bs{x}$ the nodal
-positions. Define
+When the target is a size field $h(\bs X)$ or a metric field
+$\bs M(\bs X)$ (\code{docs/notes/ems-anisotropic}), the ideal element
+of any tetrahedron is the metric sampled at its centroid, for a new
+element exactly as for an old one. The smoothing energy
+\begin{equation}
+D(\mathcal{T}, \bs{x}) \;=\; \sum_{e \in \mathcal{T}}
+V^e_{\bs X}\, \psi\!\left(\bs F_{U,e}\right),
+\qquad
+\bs F_{U,e} = \bs F_M \bs F_e \bs F_M^{-1},
+\label{eq:metric-functional}
+\end{equation}
+with $V^e_{\bs X} = h_1 h_2 h_3 V_{\mathrm{unit}}$ the volume of the
+ideal element and $\bs F_{U,e}$ the deformation gradient measured in
+the metric, is therefore defined for every admissible pair
+$(\mathcal{T}, \bs x)$ without reference to the history of the mesh.
+It measures size, shape, and orientation against the target in one
+number: it vanishes only for a unit element of the metric, it diverges at
+inversion, and it reduces to the isotropic energy for equal sizes. This
+is the functional the loop should use whenever a target is prescribed,
+and it changes two things in what follows. First, an operation that
+moves the mesh toward the target size is a decrease of the same
+functional the smoother minimizes: a too-large element has a large
+volumetric energy and its children, each nearer the target volume, have
+less; so size-driven splits and collapses need no separate phase and no
+exemption from the acceptance gate, and the length band of \omegah{}
+survives only as the inexpensive way to select which edges to try.
+Second, the volume floor of the rules \code{size field} and
+\code{metric field}, which scales the target up to the volume of the
+original element, exists only because smoothing cannot change the number
+of elements; in the coupled loop it is unnecessary and the
+\code{unrestricted} variants are the right ones. The target is held
+fixed during a smoothing phase, sampled at the centroids of the elements
+at the start of the phase, and re-sampled at every phase boundary, as
+the anisotropic note describes; a new element created by a topological
+operation receives the metric at its centroid when it is created. For
+thresholds the natural density is $\hat w_e = \psi(\bs F_{U,e})$, the
+energy per unit ideal volume, which is dimensionless with unit moduli.
+
+\subsection{Without a prescribed target: the equal-volume functional}
+
+Without a target, the mesh should keep its local size and only improve
+its shape. Let $\mathcal{T}$ denote the mesh topology and $\bs{x}$ the
+nodal positions. Define
 \begin{equation}
 D(\mathcal{T}, \bs{x}) \;=\; \sum_{e \in \mathcal{T}} W_e(\bs{x}),
 \qquad
@@ -300,22 +478,19 @@ orientation: minimum quality in \omegah{} corresponds to
 \emph{maximum} energy density here.
 
 \begin{remark}
-Size-targeting is deliberately excluded from \eqref{eq:intrinsic}. A
-target size field changes what the mesh \emph{should} be, and operations
-that pursue it---refinement toward a smaller $h$, coarsening toward a
-larger one---intentionally change the objective and cannot be monotone
-in any fixed functional. This mirrors the phase separation of
-\omegah{}: its length phase enforces only hard floors, and its strict
-improvement filter lives exclusively in the quality phase. The proposed
-loop keeps the same separation: an optional size phase driven by the
-existing size-field machinery, gated only by the hard energy ceiling,
-followed by the quality phase to which the monotonicity guarantee of
-Section~\ref{sec:monotonicity} applies.
+Size-targeting is excluded from \eqref{eq:intrinsic} by construction:
+this functional keeps whatever size the mesh has. Operations toward a
+target size belong to the functional \eqref{eq:metric-functional} of
+Section~\ref{sec:prescribed}, where they are decreases of the objective
+and need no separate phase. The two functionals are not mixed within
+one loop: a run either has a prescribed target or it does not.
 \end{remark}
 
 \subsection{Re-baselining}
 
-The smoothing solver requires a \emph{fixed} objective during a solve:
+Re-baselining concerns the equal-volume functional; with a prescribed
+target the ideal element is already fixed by the field. The smoothing
+solver requires a \emph{fixed} objective during a solve:
 if the ideal reference tracked the current volume continuously, the
 target would move with the unknowns. The resolution is re-baselining at
 phase boundaries: at the start of each smoothing phase, set the
@@ -347,7 +522,7 @@ mean-ratio quality (max.\ $1$, degenerate $\leq 0$) &
 \code{min\_quality\_allowed} (hard floor) &
   $\hat{w}_{\text{all}} > \hat{w}_{\text{des}}$: hard ceiling \\
 metric length band $[1/\sqrt{2}, \sqrt{2}]$ &
-  optional size phase against size field $h(\bs{X})$ \\
+  same band selects split and collapse candidates \\
 \code{nsliver\_layers} $= 4$ adjacency layers &
   same: dilate candidate set by $n_{\text{layers}}$ rings \\
 swap first, sliver-collapse as fallback & same order \\
@@ -367,8 +542,10 @@ quality corresponds to maximum energy density.}
   when the smoothing phase has stagnated in the sense of
   Section~\ref{sec:stagnation} \emph{and} $\max_e \hat{w}_e >
   \hat{w}_{\text{des}}$. This is the ``already satisfactory'' predicate
-  of \omegah{} with the length clause removed (no size targeting) and
-  quality replaced by energy density.
+  of \omegah{} with quality replaced by energy density; with a
+  prescribed target the energy density already contains the length
+  clause, since an element of the wrong size has a large volumetric
+  energy.
 \item \emph{Candidate set.} All elements with $\hat{w}_e >
   \hat{w}_{\text{des}}$, dilated by $n_{\text{layers}}$ rings of element
   adjacency (default four, following \omegah{}); the operation
@@ -379,7 +556,10 @@ quality corresponds to maximum energy density.}
   full swap pass accepts nothing. Swaps move no nodes and therefore
   compose trivially with smoothing; collapses remove resolution and are
   the fallback. Splits participate where a bisection lowers the cavity
-  energy (Remark~\ref{rem:splits}).
+  energy (Remark~\ref{rem:splits}); with a prescribed target, edges
+  longer than $\sqrt2$ in the metric are the split candidates and edges
+  shorter than $1/\sqrt2$ the collapse candidates, in addition to the
+  edges of the high-energy cavities.
 \item \emph{Outer termination.} The coupled loop ends when the smoothing
   phase reports stagnation or convergence and the subsequent topology
   phase accepts zero operations, or when smoothing converges with
@@ -425,6 +605,33 @@ which is the property the loop needs. The ceiling
 $\hat{w}_{\text{all}}$ plays the role of the allowed-quality floor;
 element inversion is excluded automatically because the Seth--Hill
 barrier sends $\hat{w}_e$ to infinity there.
+
+\paragraph{Energy and geometric quality.} The energy is the right
+quantity to accept an operation on, for three reasons. It is one
+functional for both phases, so the alternation cannot cycle and
+terminates (Proposition~\ref{prop:descent}); a geometric criterion for
+the topology and an energy for the smoothing are two objectives, each
+phase can undo the other's progress, and termination then rests on
+iteration caps, which is what \code{emend} does with its
+\code{maxOuterIterations}. It measures size, shape, and orientation at
+once: the scaled Jacobian and the mean ratio measure shape only, need a
+separate length band for size, and are blind to the orientation of an
+element relative to an anisotropic target unless the element is first
+mapped into the metric space. And it carries the inversion barrier. The
+geometric measures keep two roles. The first is the hard floor: the
+gate compares cavity sums, and a proposal could lower the sum while
+creating one element worse than the analysis code tolerates, so the
+second condition of \eqref{eq:gate} may be stated, in place of or in
+addition to $\hat w_{\text{all}}$, as the minimum scaled Jacobian or
+mean ratio the solver requires; both are cheap, and the geometric one
+is what the analysts already ask for, so reporting it keeps the results
+comparable with those of \code{improve\_mesh}. The second is candidate
+selection through the length band, as stated above. One property of the
+energy to keep in view: it is not scale-free across elements of
+different target sizes, because the element energy is the density times
+the ideal volume. Thresholds and the floor are therefore on the density
+$\hat w_e$, while the cavity comparison is on the sums, which weight
+elements by their target volume as a global objective should.
 
 \subsection{The smoothing phase}
 
@@ -472,9 +679,9 @@ carries its own criterion.
 Because the equal-volume energy is scale-invariant, bisecting a badly
 stretched element into two better-shaped children genuinely lowers the
 cavity energy, and refinement needs no exemption from the gate
-\eqref{eq:gate}. Only \emph{size-driven} refinement toward a target
-$h(\bs{X})$ is exempt, in the separate size phase, where it is gated by
-the ceiling alone.
+\eqref{eq:gate}. With a prescribed target the same holds for
+size-driven refinement and coarsening, since the metric-conditioned
+energy \eqref{eq:metric-functional} penalizes the wrong size directly.
 \end{remark}
 
 \begin{remark}[Local relaxation before the test]
@@ -560,11 +767,12 @@ is independently testable, with the first coupled loop appearing at
 Step 4.
 
 \begin{enumerate}[itemsep=3pt]
-\item \emph{Intrinsic energy kernel.} Factor the per-element energy
+\item \emph{Energy kernel on subsets.} Factor the per-element energy
   evaluation out of the assembly loop into a kernel callable on an
-  arbitrary subset of elements, add the equal-volume re-baselined
-  variant of Section~\ref{sec:intrinsic}, and register the density
-  $\hat{w}_e$ as an Exodus element variable. Testable immediately
+  arbitrary subset of elements at given nodal positions, with the
+  metric-sampled ideal element of Section~\ref{sec:prescribed} for any
+  element and the equal-volume re-baselined variant as the fallback,
+  and register the density $\hat{w}_e$ as an Exodus element variable. Testable immediately
   against \code{model.stored\_energy} on the existing \code{examples/ems}
   cases.
 \item \emph{Stagnation criterion.} Add the windowed test
@@ -600,16 +808,15 @@ Step 4.
   are never removed; an orientation guard rejects collapses that would
   invert any element (already implied by the ceiling, but checked
   cheaply before the energy evaluation).
-\item \emph{Edge split and the optional size phase.} Midpoint
-  placement with surface projection for boundary edges, cavity-local
-  relaxation per Remark~\ref{rem:relax}, then the gate. Optionally, the
-  size phase: refine edges longer than $\sqrt{2}\,h(\bs{X})$ and
-  collapse edges shorter than $h(\bs{X})/\sqrt{2}$ against the
-  existing size-field pipeline, with $h$ carried as a nodal field whose
-  value at a new node is the mean of its parents' values; this phase is
-  gated by the ceiling only and sits outside
-  Proposition~\ref{prop:descent}, by the phase separation of
-  Section~\ref{sec:intrinsic}.
+\item \emph{Edge split and the size target.} Midpoint placement with
+  surface projection for boundary edges, cavity-local relaxation per
+  Remark~\ref{rem:relax}, then the gate. With a prescribed target,
+  edges longer than $\sqrt2$ or shorter than $1/\sqrt2$ in the metric
+  join the candidate set, the target is used \code{unrestricted}, and a
+  new element takes the metric at its centroid; these operations pass
+  through the same gate as the others. The acceptance case is the tube
+  of the anisotropic note with a radial size of a quarter of the wall,
+  which smoothing alone cannot reach.
 \item \emph{Orchestration and output.} After each topology phase,
   rebuild the model, integrator, and solver through the existing
   mesh-replacement pattern of \code{src/swap.jl}, which avoids the
@@ -621,16 +828,21 @@ Step 4.
   $\hat{w}_{\text{des}}$, $\hat{w}_{\text{all}}$, the stagnation window
   and tolerance, the number of adjacency layers, and per-operator
   switches, mirroring \code{AdaptOpts}.
-\item \emph{In-simulation adaptivity (later).} Invoke the driver from
-  the evolution loop behind a criterion in the style of the existing
-  mesh-swap criteria, and transfer the state through
-  \code{field\_transfer.jl}. Two prerequisites are known in advance:
-  point location must be accelerated from the linear scan to a spatial
-  hash or bounding-volume hierarchy before per-adaptation transfer is
-  affordable, and the transfer of internal variables is exactly where
-  the constrained projection of the companion note enters, so that
-  norm-like variables such as the equivalent plastic strain remain
-  admissible under the $L^2$ transfer.
+\item \emph{Validation against the hand-off.} For the cube, the
+  tube, and the strongly distorted examples, run the same input mesh
+  and target through \code{improve\_mesh} and through the native loop
+  and compare the energy and scaled-Jacobian histograms of the two
+  outputs; run \omegah{} on the same Exodus files where a metric is
+  prescribed and compare its length and quality histograms. The first
+  milestone at which this comparison is meaningful is Step 4, since
+  swaps alone, alternated with the existing smoother, are expected to
+  show most of the benefit.
+\item \emph{Out of scope.} In-simulation adaptivity, which would invoke
+  the driver from the evolution loop and transfer the solution state
+  through \code{field\_transfer.jl}, and quadratic elements, which are
+  obtained by conversion after the loop. Both are noted here so that the
+  data structures of Section~\ref{sec:datastructures} do not preclude
+  them.
 \end{enumerate}
 
 \section{Data structures and design patterns}
@@ -681,42 +893,51 @@ Step 4.
 Ranked by importance.
 
 \begin{enumerate}[itemsep=2pt]
-\item \emph{The re-baselining subtlety.} The intrinsic equal-volume
-  functional of Section~\ref{sec:intrinsic} is the load-bearing design
-  decision. It should be validated by a small standalone prototype---a
-  single cavity with hand-verified energies before and after a swap,
-  a collapse, and a split---before Step 4 is undertaken.
+\item \emph{The gate and the kernel.} The single functional of
+  Section~\ref{sec:intrinsic} is the load-bearing design decision. It
+  should be validated by a small standalone prototype---a single cavity
+  with hand-verified energies before and after a swap, a collapse, and a
+  split, with the metric-sampled ideal and with the equal-volume
+  fallback---before Step 4 is undertaken.
 \item \emph{Boundary collapses on curved surfaces.} The level-set
   projection and the energy test can conflict: a collapse that lowers
   the cavity energy may move the surviving node to a surface position
   that raises it again after projection. The gate must therefore be
   evaluated \emph{after} projection, and boundary collapses should be
   expected to have a lower acceptance rate.
-\item \emph{Scope restriction to four-node tetrahedra.} Inherited from
-  \code{create\_smooth\_reference} and acceptable for the first
-  version, but it should be stated explicitly in the input
-  documentation.
-\item \emph{Anisotropic targets.} The metric-field rule holds the metric
-  fixed during a solve, evaluated at the centroid of the original
-  element, exactly as the size field does; the re-baselining of
-  Section~\ref{sec:intrinsic} applies to it unchanged, with the volume
-  floor applied to the three principal sizes uniformly so that the shape
-  and orientation of the target are preserved.
-\item \emph{Explicit dynamics.} If the loop is later used within
-  explicit transient simulations, edge collapses shrink the stable time
-  step; the lower band of the size phase then ceases to be optional and
-  must be enforced as a floor on element size.
+\item \emph{Four-node tetrahedra only.} This is a decision, not a
+  restriction to be lifted: the smoothing and the operators are written
+  for four-node tetrahedra, and higher-order meshes are produced by
+  conversion after the loop. The input documentation should say so.
+\item \emph{Energy thresholds across target sizes.} The element energy
+  is the density times the ideal volume, so thresholds and the floor
+  must be on the density and the cavity comparison on the sums
+  (Section~\ref{sec:monotonicity}); a threshold on the element energy
+  would favor large elements.
+\item \emph{Geometric floor versus energy gate.} An operation may lower
+  the cavity energy while creating an element below the geometric floor
+  the analysis requires; the floor is part of the gate for that reason,
+  and its value should be taken from the analysis code, not from the
+  smoother.
 \end{enumerate}
 
 \section{Summary}
 \label{sec:summary}
 
 The coupled loop rests on one design decision and three algorithms. The
-decision is to replace the history-tied smoothing objective by the
-intrinsic distortion functional \eqref{eq:intrinsic}, defined through
-equal-volume ideal elements on the current geometry, so that a single
-quantity is meaningful across every smoothing step and every topological
-operation. The algorithms are: the transplanted \omegah{} trigger
+decision is to use a single distortion functional for both phases: the
+metric-conditioned smoothing energy \eqref{eq:metric-functional} when a
+size or metric field is prescribed, which is the common case for a
+preprocessing step and makes size-driven operations decreases of the
+same objective, and the intrinsic equal-volume functional
+\eqref{eq:intrinsic} otherwise, so that in either case one quantity is
+meaningful across every smoothing step and every topological operation.
+The loop is a preprocessing step on four-node tetrahedra; it transfers
+no solution state, and higher-order meshes are obtained by conversion
+afterwards. Of the alternatives, wrapping \omegah{} would reproduce the
+present staggered workflow with a new dependency, and the Sierra
+hand-off cannot be part of a public workflow; both remain useful as
+references for validation. The algorithms are: the transplanted \omegah{} trigger
 logic---two-tier thresholds on the energy density, candidate dilation by
 adjacency layers, swaps before collapses, progress-based
 termination---; the acceptance gate \eqref{eq:gate}, which strengthens
@@ -726,10 +947,10 @@ the cavity sum and thereby makes local acceptance imply global descent
 \eqref{eq:stagnation} with explicit detection of the topological lock,
 which supplies both the trigger for the topology phase and the
 terminator of the outer loop. Norma already provides the per-element
-energy field, the cross-mesh state transfer, and the mesh-replacement
-orchestration; the genuinely new construction is the in-memory topology
-cache with adjacency, the three cavity operators, and the single gate
-through which all of them pass.
+energy field, the metric-space ideal element, the analytic surface
+constraints, and the mesh-replacement orchestration; the genuinely new
+construction is the in-memory topology cache with adjacency, the three
+cavity operators, and the single gate through which all of them pass.
 
 \begin{thebibliography}{9}
 
