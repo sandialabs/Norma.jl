@@ -17,6 +17,7 @@ include("constitutive_types.jl")
 include("boundary_conditions_types.jl") # needs Simulation
 include("recovery_types.jl")           # needs to precede model_types.jl
 include("model_types.jl")              # needs BoundaryCondition, AbstractRecoveryData
+include("topology_types.jl")           # in-memory tetrahedral topology for adaptivity
 include("time_integrator_types.jl")
 include("solver_types.jl")
 include("swap_types.jl")                # SwapCriterion, SwapPlan
@@ -31,6 +32,7 @@ include("three_field.jl")          # needs constitutive.jl, interpolation.jl
 include("opinf/opinf_model.jl")
 include("kroms/krom_model.jl")
 include("model.jl")
+include("topology.jl")                 # needs model.jl
 include("recovery.jl")
 include("boundary_conditions.jl")
 include("schwarz.jl")
