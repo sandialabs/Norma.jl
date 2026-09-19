@@ -134,7 +134,7 @@ metric_params = Dict{String,Any}(
         "type" => "mesh smoothing",
         "smooth reference" => "metric field unrestricted",
         "metric field" => Dict{String,Any}(
-            "sizes" => ["0.15 + 0.05 * x", "0.4", "0.3 + 0.1 * z"],
+            "sizes" => ["0.09 + 0.02 * x", "0.11", "0.1 + 0.02 * z"],
             "rotation vector" => ["0.3 * y", "0.1", "0.4 + 0.2 * x"],
         ),
         "material" => Dict{String,Any}(
@@ -181,14 +181,20 @@ metric_params = Dict{String,Any}(
     end
     E0, f0, K0 = energy_force(u0)
     @test E0 > 0.0
-    ε = 1.0e-6 * mean_edge
+    # The step balances the truncation error of the central difference against
+    # the cancellation in E(u + ε) - E(u - ε), which is of the order of the
+    # roundoff of the total energy; the tolerance is set by that cancellation,
+    # measured against the largest force so that small entries do not demand
+    # more than the difference can deliver.
+    ε = 1.0e-4 * mean_edge
+    f_scale = maximum(abs, f0)
     for _ in 1:12
         i = rand(1:num_dofs)
         e = zeros(size(u0))
         e[i] = ε
         Ep, _, _ = energy_force(u0 + e)
         Em, _, _ = energy_force(u0 - e)
-        @test (Ep - Em) / (2ε) ≈ f0[i] atol = 1.0e-5 * max(1.0, abs(f0[i]))
+        @test (Ep - Em) / (2ε) ≈ f0[i] atol = 1.0e-6 * max(abs(f0[i]), 1.0e-2 * f_scale)
     end
     δ = randn(size(u0))
     δ ./= norm(δ)
