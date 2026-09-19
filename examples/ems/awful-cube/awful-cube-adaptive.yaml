@@ -61,3 +61,8 @@ solver:
   line search backtrack factor: 0.5
   line search decrease factor: 1.0e-04
   line search maximum iterations: 16
+  # Stop a smoothing phase when the energy stalls, so that the work moves to
+  # the topology phase instead of iterating on a mesh that node motion can no
+  # longer improve.
+  energy stagnation window: 5
+  energy stagnation tolerance: 1.0e-03

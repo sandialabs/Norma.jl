@@ -5,7 +5,7 @@
 # top-level Norma.jl directory.
 
 # Topological operations of the adaptivity loop (docs/notes/ems-adaptivity):
-# cavity proposals accepted through one gate on the smoothing energy.
+# cavity proposals accepted by one test on the smoothing energy.
 
 function AdaptivityOptions(params::Parameters)
     return AdaptivityOptions(
@@ -52,10 +52,10 @@ function energy_densities(model::SolidMechanics, topology::MeshTopology)
     return densities
 end
 
-# The gate: a proposal is accepted when the energy of the new elements is
-# below that of the old ones by the relative margin and no new element
-# exceeds the allowed density.  Returns the proposal or nothing.
-function gate(
+# The acceptance test: a proposal is accepted when the energy of the new
+# elements is below that of the old ones by the relative margin and no new
+# element exceeds the allowed density.  Returns the proposal or nothing.
+function accept_proposal(
     model::SolidMechanics,
     topology::MeshTopology,
     old_elements::Vector{Int},
@@ -189,7 +189,7 @@ function swapped_connectivity(
 end
 
 # Try to swap the interior edge (a, b): evaluate every triangulation of its
-# ring, keep the one of least energy, and pass it through the gate.  Returns
+# ring, keep the one of least energy, and submit it to the acceptance test.  Returns
 # the accepted proposal or nothing.
 function try_edge_swap(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int, options::AdaptivityOptions)
     ring = edge_ring(topology, a, b)
@@ -212,7 +212,7 @@ function try_edge_swap(model::SolidMechanics, topology::MeshTopology, a::Int, b:
         end
     end
     best === nothing && return nothing
-    return gate(model, topology, elements, best, block, options)
+    return accept_proposal(model, topology, elements, best, block, options)
 end
 
 # Candidate elements: those above the desired density, dilated by the given

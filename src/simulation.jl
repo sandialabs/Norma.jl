@@ -1326,12 +1326,12 @@ function schwarz(sim::MultiDomainSimulation)
         compute_interface_predictor!(sim)
     end
 
-    # Interface-jump gate for adjoint-paired impedance interfaces: their slow
+    # Interface-jump criterion for adjoint-paired impedance interfaces: their slow
     # jump mode contributes almost nothing to ΔU while still far from the
     # fixed point, and the dashpot dissipates whatever jump the iteration
     # leaves behind (measured: −16% of a wave packet crossing a conforming
     # interface at the 1.0e-8 default tolerance) — see paired_impedance_jump
-    # (schwarz.jl). The gate holds convergence only while the jump is actually
+    # (schwarz.jl). The criterion withholds convergence only while the jump is actually
     # contracting: a jump mode with no dashpot authority (e.g. a quiescent
     # interface) can stall above the tolerance, and holding then just rides
     # the Schwarz iteration cap without improving the answer, so a stalled jump is
@@ -1422,7 +1422,7 @@ function schwarz(sim::MultiDomainSimulation)
             # Early exit: if the initial absolute update already meets the absolute
             # tolerance, no further Schwarz iterations are needed. The relative test
             # still cannot be applied on iteration 0 (no prior iterate). Paired
-            # impedance interfaces must also clear the jump gate here, since this
+            # impedance interfaces must also satisfy the jump criterion here, since this
             # path bypasses controller.converged entirely.
             if ΔU ≤ sim.controller.absolute_tolerance &&
                 paired_impedance_jump(sim) ≤ sim.controller.relative_tolerance

@@ -1,4 +1,4 @@
-# Edge swaps and the acceptance gate of the adaptivity loop
+# Edge swaps and the acceptance test of the adaptivity loop
 # (docs/notes/ems-adaptivity), on a hand-built cavity and on a mesh.
 using LinearAlgebra
 using Random
@@ -111,7 +111,7 @@ options = Norma.AdaptivityOptions(0.05, Inf, 1.0e-8, 2, 10, 2, true)
         @test proposal === nothing
     end
     # A 3-to-2 swap: three elongated elements around a long edge piercing a
-    # triangle become two near-regular ones; the gate accepts it.
+    # triangle become two near-regular ones; the swap is accepted.
     tri_angles = (0.0, 2π / 3, 4π / 3)
     tri = hcat([0.0, 0.0, -0.8h], [0.0, 0.0, 0.8h], [[0.6h * cos(t), 0.6h * sin(t), 0.0] for t in tri_angles]...)
     tri_conn = hcat([[a, b, 3, 4], [a, b, 4, 5], [a, b, 5, 3]]...)
@@ -135,7 +135,7 @@ options = Norma.AdaptivityOptions(0.05, Inf, 1.0e-8, 2, 10, 2, true)
     @test all(Norma.element_volume(topology3, e) > 0.0 for e in 1:2)
     @test all(1 <= length(v) <= 2 for v in values(topology3.faces))
     @test length(Norma.boundary_faces(topology3)) == 6
-    # A strict gate refuses the same swap when the required decrease is large.
+    # The same swap is refused when the required decrease is large.
     strict = Norma.AdaptivityOptions(0.05, Inf, 10.0, 2, 10, 2, true)
     @test Norma.try_edge_swap(model, Norma.build_topology(tri, tri_conn), a, b, strict) === nothing
     Norma.finalize_writing(sim)
@@ -223,6 +223,8 @@ end
             "line search backtrack factor" => 0.5,
             "line search decrease factor" => 1.0e-04,
             "line search maximum iterations" => 16,
+            "energy stagnation window" => 5,
+            "energy stagnation tolerance" => 1.0e-03,
         ),
     )
     sim = Norma.run(params)

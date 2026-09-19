@@ -119,7 +119,7 @@ of the elements of highest energy density are swapped where a swap lowers the
 energy of the elements around the edge, the new mesh is written as
 `<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
 phase accepts no operation or the outer iterations are exhausted. Every
-operation passes through one gate: the energy of the new elements must be
+operation is accepted by one test: the energy of the new elements must be
 below that of the old ones by the relative margin, and no new element may
 exceed the allowed density. The mesh must consist of four-node tetrahedra.
 Node sets and side sets are carried over to the written meshes.

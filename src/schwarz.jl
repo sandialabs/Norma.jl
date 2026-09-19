@@ -1455,9 +1455,9 @@ end
 # dashpot then dissipates (measured: −16% of the energy of a wave packet
 # crossing a conforming interface at the 1.0e-8 default tolerance, restored to
 # −0.003% once the jump is actually converged). The jump vanishes at the true
-# fixed point, so it serves as an additional convergence gate; see
+# fixed point, so it serves as an additional convergence criterion; see
 # update_schwarz_convergence_criterion (simulation.jl). Displacement and
-# velocity jumps are gated separately, each relative to its own trace scale;
+# velocity jumps are tested separately, each relative to its own trace scale;
 # traces whose scale is below the controller's absolute tolerance (velocity:
 # divided by the controller step) are quiescent and skipped so roundoff on an
 # idle interface cannot stall the iteration.

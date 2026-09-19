@@ -463,7 +463,7 @@ end
 # Energies of a set of elements given by their connectivity into `positions`,
 # evaluated exactly as the assembly evaluates them (same shape functions,
 # quadrature, ideal element, and metric-space deformation gradient), for the
-# acceptance gate of the adaptivity loop: the elements need not exist in the
+# acceptance test of the adaptivity loop: the elements need not exist in the
 # mesh.  `sample_positions` holds the coordinates at which the target is
 # sampled; at a topology phase it is the same array as `positions`, during a
 # smoothing phase it is the original mesh.  An inverted or degenerate element

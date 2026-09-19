@@ -212,7 +212,7 @@ because Section~\ref{sec:triggers} transplants it.
 
 The options structure \code{AdaptOpts} carries \emph{desired} and
 \emph{allowed} values with distinct roles: desired values select
-candidates for work, allowed values are hard gates that no accepted
+candidates for work, allowed values are hard limits that no accepted
 operation may violate. The defaults are: metric edge lengths desired
 within $[1/\sqrt{2},\,\sqrt{2}]$, length allowed up to $2\sqrt{2}$;
 element quality desired at least $0.30$ (three dimensions), quality
@@ -233,7 +233,7 @@ touching the mesh if it holds. Otherwise it runs two phases.
 \item \emph{Length phase.} Alternate refinement of edges longer than
   $\sqrt{2}$ and collapse of edges shorter than $1/\sqrt{2}$, repeating
   until neither operator changes anything. Acceptance in this phase
-  enforces only the hard gates: a refinement is accepted if the worst new
+  enforces only the hard limits: a refinement is accepted if the worst new
   element stays above the allowed quality; a collapse additionally may
   not create edges beyond the allowed length. Quality may therefore
   \emph{decrease} in this phase, down to the floor.
@@ -327,7 +327,7 @@ Build and distribution &
 Acceptance criterion &
   Fixed: metric-conditioned mean ratio and the length band; an energy
   criterion requires patching the library &
-  Any: the energy gate of Section~\ref{sec:monotonicity}, a geometric
+  Any: the energy criterion of Section~\ref{sec:monotonicity}, a geometric
   floor, or both \\
 Coupling with smoothing &
   Loose: the two tools optimize different objectives &
@@ -422,7 +422,7 @@ moves the mesh toward the target size is a decrease of the same
 functional the smoother minimizes: a too-large element has a large
 volumetric energy and its children, each nearer the target volume, have
 less; so size-driven splits and collapses need no separate phase and no
-exemption from the acceptance gate, and the length band of \omegah{}
+exemption from the acceptance test, and the length band of \omegah{}
 survives only as the inexpensive way to select which edges to try.
 Second, the volume floor of the rules \code{size field} and
 \code{metric field}, which scales the target up to the volume of the
@@ -582,7 +582,7 @@ in energy, to \emph{every} operation of the quality phase, and pairing
 it with a monotone smoothing phase. Both are stated against the
 intrinsic functional \eqref{eq:intrinsic}.
 
-\subsection{The acceptance gate}
+\subsection{The acceptance test}
 
 A topological operation replaces the elements $C_{\text{old}}$ of a
 cavity by new elements $C_{\text{new}}$ at fixed nodal positions
@@ -594,7 +594,7 @@ see Remark~\ref{rem:relax}). The operation is accepted if and only if
 \sum_{e \in C_{\text{old}}} W_e(\bs{x}) \;-\; \delta,
 \qquad\text{and}\qquad
 \max_{e \in C_{\text{new}}} \hat{w}_e \;\leq\; \hat{w}_{\text{all}},
-\label{eq:gate}
+\label{eq:acceptance}
 \end{equation}
 with $\delta > 0$ a small relative margin (for example $10^{-8}$ times
 the old cavity energy) that precludes cycles of operations accepted at
@@ -619,9 +619,9 @@ separate length band for size, and are blind to the orientation of an
 element relative to an anisotropic target unless the element is first
 mapped into the metric space. And it carries the inversion barrier. The
 geometric measures keep two roles. The first is the hard floor: the
-gate compares cavity sums, and a proposal could lower the sum while
+test compares cavity sums, and a proposal could lower the sum while
 creating one element worse than the analysis code tolerates, so the
-second condition of \eqref{eq:gate} may be stated, in place of or in
+second condition of \eqref{eq:acceptance} may be stated, in place of or in
 addition to $\hat w_{\text{all}}$, as the minimum scaled Jacobian or
 mean ratio the solver requires; both are cheap, and the geometric one
 is what the analysts already ask for, so reporting it keeps the results
@@ -652,8 +652,8 @@ descent into provable descent.
 topological work]
 \label{prop:descent}
 Let the coupled loop consist of smoothing phases with the end-of-phase
-safeguard and topological operations accepted by the gate
-\eqref{eq:gate}. Then the sequence of values of $D$ sampled at phase
+safeguard and topological operations accepted by the test
+\eqref{eq:acceptance}. Then the sequence of values of $D$ sampled at phase
 boundaries and after each accepted operation is nonincreasing and
 bounded below by zero, hence convergent; each accepted operation
 decreases $D$ by at least $\delta$ times the corresponding cavity
@@ -664,22 +664,22 @@ is finite.
 
 \begin{proof}
 Only cavity elements change in a topological operation, so
-\eqref{eq:gate} implies $D$ decreases by at least $\delta$ across it.
+\eqref{eq:acceptance} implies $D$ decreases by at least $\delta$ across it.
 The safeguard makes each smoothing phase nonincreasing in $D$ by
 construction. A nonincreasing sequence bounded below converges, and a
 uniform positive decrement per accepted operation bounds their number.
 \end{proof}
 
 The guarantee lives in exactly one place: a single acceptance routine
-implementing \eqref{eq:gate}, called by every operator. No operator
+implementing \eqref{eq:acceptance}, called by every operator. No operator
 carries its own criterion.
 
 \begin{remark}[Splits participate honestly]
 \label{rem:splits}
 Because the equal-volume energy is scale-invariant, bisecting a badly
 stretched element into two better-shaped children genuinely lowers the
-cavity energy, and refinement needs no exemption from the gate
-\eqref{eq:gate}. With a prescribed target the same holds for
+cavity energy, and refinement needs no exemption from the test
+\eqref{eq:acceptance}. With a prescribed target the same holds for
 size-driven refinement and coarsening, since the metric-conditioned
 energy \eqref{eq:metric-functional} penalizes the wrong size directly.
 \end{remark}
@@ -689,7 +689,7 @@ energy \eqref{eq:metric-functional} penalizes the wrong size directly.
 For a split, place the new node at the edge midpoint---projected to the
 surface by \code{return\_to\_surface!} when the edge lies on the
 boundary---and run a few iterations of cavity-local smoothing with the
-cavity boundary fixed before evaluating \eqref{eq:gate}. The cost is a
+cavity boundary fixed before evaluating \eqref{eq:acceptance}. The cost is a
 handful of element evaluations; the benefit is that each operation is
 judged at its locally relaxed optimum rather than at an arbitrary
 initial placement, which raises the acceptance rate substantially. This
@@ -792,17 +792,17 @@ Step 4.
   sets; node-set and side-set membership is stored as per-entity flags
   so operations can update it. Four-node tetrahedra only, matching the
   existing restriction of \code{create\_smooth\_reference}.
-\item \emph{Edge swap and the acceptance gate; first coupled loop.}
+\item \emph{Edge swap and the acceptance test; first coupled loop.}
   Implement the three-dimensional edge swap: extract the loop of
   elements around an edge (at most seven, following \omegah{}),
   enumerate the tabulated triangulations of the surrounding polygon,
   and select the best; implement the single acceptance routine
-  \eqref{eq:gate}; wire the outer driver (smoothing phase, candidate
+  \eqref{eq:acceptance}; wire the outer driver (smoothing phase, candidate
   collection, swap passes, repeat). Swaps move no nodes and need no
   state transfer, so this milestone alone should reproduce most of the
   observed benefit of the alternation.
-\item \emph{Edge collapse.} Sliver removal under the gate
-  \eqref{eq:gate}; collapses on the boundary are restricted to
+\item \emph{Edge collapse.} Sliver removal under the acceptance test
+  \eqref{eq:acceptance}; collapses on the boundary are restricted to
   boundary edges with the surviving node kept on the surface through
   the \code{Surface} level-set machinery; nodes belonging to node sets
   are never removed; an orientation guard rejects collapses that would
@@ -810,11 +810,11 @@ Step 4.
   cheaply before the energy evaluation).
 \item \emph{Edge split and the size target.} Midpoint placement with
   surface projection for boundary edges, cavity-local relaxation per
-  Remark~\ref{rem:relax}, then the gate. With a prescribed target,
+  Remark~\ref{rem:relax}, then the acceptance test. With a prescribed target,
   edges longer than $\sqrt2$ or shorter than $1/\sqrt2$ in the metric
   join the candidate set, the target is used \code{unrestricted}, and a
   new element takes the metric at its centroid; these operations pass
-  through the same gate as the others. The acceptance case is the tube
+  through the same test as the others. The acceptance case is the tube
   of the anisotropic note with a radial size of a quarter of the wall,
   which smoothing alone cannot reach.
 \item \emph{Orchestration and output.} After each topology phase,
@@ -857,10 +857,10 @@ Step 4.
   stale-adjacency defects. Within a pass, operations are applied
   through tombstones---dead elements and nodes are marked, new ones
   appended---and the arrays are compacted once at the end of the pass.
-\item \emph{One cavity abstraction, one gate.} Every operator produces
+\item \emph{One cavity abstraction, one acceptance test.} Every operator produces
   a cavity proposal: the identifiers of the old elements, the proposed
   new connectivity, and optionally a new node. A single routine
-  evaluates \eqref{eq:gate} and applies or discards the proposal. The
+  evaluates \eqref{eq:acceptance} and applies or discards the proposal. The
   monotonicity guarantee then has exactly one owner in the code.
 \item \emph{Sequential priority order now, independent sets later.}
   The Luby-style independent set of \omegah{} exists for distributed
@@ -893,7 +893,7 @@ Step 4.
 Ranked by importance.
 
 \begin{enumerate}[itemsep=2pt]
-\item \emph{The gate and the kernel.} The single functional of
+\item \emph{The acceptance test and the kernel.} The single functional of
   Section~\ref{sec:intrinsic} is the load-bearing design decision. It
   should be validated by a small standalone prototype---a single cavity
   with hand-verified energies before and after a swap, a collapse, and a
@@ -902,7 +902,7 @@ Ranked by importance.
 \item \emph{Boundary collapses on curved surfaces.} The level-set
   projection and the energy test can conflict: a collapse that lowers
   the cavity energy may move the surviving node to a surface position
-  that raises it again after projection. The gate must therefore be
+  that raises it again after projection. The test must therefore be
   evaluated \emph{after} projection, and boundary collapses should be
   expected to have a lower acceptance rate.
 \item \emph{Four-node tetrahedra only.} This is a decision, not a
@@ -914,9 +914,9 @@ Ranked by importance.
   must be on the density and the cavity comparison on the sums
   (Section~\ref{sec:monotonicity}); a threshold on the element energy
   would favor large elements.
-\item \emph{Geometric floor versus energy gate.} An operation may lower
+\item \emph{Geometric floor versus energy test.} An operation may lower
   the cavity energy while creating an element below the geometric floor
-  the analysis requires; the floor is part of the gate for that reason,
+  the analysis requires; the floor is part of the acceptance test for that reason,
   and its value should be taken from the analysis code, not from the
   smoother.
 \end{enumerate}
@@ -940,7 +940,7 @@ hand-off cannot be part of a public workflow; both remain useful as
 references for validation. The algorithms are: the transplanted \omegah{} trigger
 logic---two-tier thresholds on the energy density, candidate dilation by
 adjacency layers, swaps before collapses, progress-based
-termination---; the acceptance gate \eqref{eq:gate}, which strengthens
+termination---; the acceptance test \eqref{eq:acceptance}, which strengthens
 the strict-improvement filter of \omegah{} from the cavity minimum to
 the cavity sum and thereby makes local acceptance imply global descent
 (Proposition~\ref{prop:descent}); and the windowed stagnation test
@@ -950,7 +950,7 @@ terminator of the outer loop. Norma already provides the per-element
 energy field, the metric-space ideal element, the analytic surface
 constraints, and the mesh-replacement orchestration; the genuinely new
 construction is the in-memory topology cache with adjacency, the three
-cavity operators, and the single gate through which all of them pass.
+cavity operators, and the single acceptance test that all of them pass.
 
 \begin{thebibliography}{9}
 

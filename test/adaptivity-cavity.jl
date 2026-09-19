@@ -160,7 +160,7 @@ collapsed_conn = orient!(reshape([1, 2, 3, 4], 4, 1), star_positions)
             @test all(energies .>= 0.0)
             @test sum(energies) ≈ reference_energy(sim, conn, positions) rtol = 1.0e-12 atol = 1.0e-24
         end
-        # The gate compares cavity sums; here the collapse restores the regular
+        # The acceptance test compares cavity sums; here the collapse restores the regular
         # outer tetrahedron, which the equal-volume rule scores as ideal.
         star = sum(Norma.element_energies(model, 1, star_conn, star_positions))
         collapsed = sum(Norma.element_energies(model, 1, collapsed_conn, star_positions))
@@ -182,7 +182,7 @@ collapsed_conn = orient!(reshape([1, 2, 3, 4], 4, 1), star_positions)
                 2.5^3 * sum(Norma.element_energies(model, 1, loop_conn, loop_positions)) rtol = 1.0e-12
         end
     end
-    # The two swapped configurations differ, so the gate can discriminate.
+    # The two swapped configurations differ, so the acceptance test can discriminate.
     ea = sum(Norma.element_energies(metric_sim.model, 1, swap_a, loop_positions))
     eb = sum(Norma.element_energies(metric_sim.model, 1, swap_b, loop_positions))
     @test abs(ea - eb) > 1.0e-6 * max(ea, eb)
