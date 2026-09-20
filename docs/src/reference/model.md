@@ -168,8 +168,26 @@ operation can improve the sum while creating one flat element; the floor
 is stated in the scaled Jacobian that the analysis codes require. The mesh must consist of four-node tetrahedra.
 Node sets and side sets are carried over to the written meshes.
 
+The energy test alone cannot refine or coarsen a smoothed mesh toward a
+prescribed target by more than a factor of about 1.5 in edge length: a split
+bisects the elements around the edge and roughly halves their scaled
+Jacobian, and with equal bulk and shear moduli that shape penalty outweighs
+the size gain until the edges are far longer than the target (on a plate
+refined toward a sinusoid, every split of the 920 edges beyond the band
+raised the cavity energy, by 52 percent at the median). A larger bulk
+modulus makes the splits favorable but also makes the smoothing sacrifice
+shape for size. `size criterion: length` therefore accepts the size
+operations, the splits of edges longer than √2 and the collapses of edges
+shorter than 1/√2 in the target, on the edge length alone, subject to the
+geometric floor and, for collapses, the set and surface constraints, with
+the energy as a validity check only; the swaps and the shape-driven
+operations keep the energy test. Under refinement the floor throttles the
+splits (a floor of 0.35 let 981 of 29797 splits through on that plate,
+none 29222), so a low floor such as 0.15 suits a refinement stage.
+
 | Key | Required | Default | Meaning |
 |---|---|---|---|
+| `size criterion` | no | `energy` | `energy`: every operation must lower the cavity energy; `length`: the splits and collapses of edges outside the length band of the prescribed target are accepted on the length alone, subject to the floor and the constraints |
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |
 | `allowed energy density` | no | `Inf` | no accepted operation may create an element above this |
 | `minimum scaled Jacobian` | no | `0` | geometric floor: no accepted operation may create an element with a scaled Jacobian below this, unless the worst element of the cavity was already below it and the new worst is no worse |
@@ -205,3 +223,4 @@ See `examples/ems/` for smoothing cases.
 - Metric given as a tensor: `examples/ems/cube/cube-tensor.yaml`
 - Metric carried by the nodes of the input mesh: `examples/ems/cube/cube-metric-nodal.yaml`
 - Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`
+- Refinement toward a prescribed size field in stages: `examples/ems/plate/plate-sinusoid.yaml` with `refine.jl`

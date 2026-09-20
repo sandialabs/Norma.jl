@@ -1,0 +1,83 @@
+type: single
+input mesh file: plate.g
+output mesh file: plate-sinusoid.e
+# A prescribed size field that refines toward a sinusoid through a plate of
+# 1 x 1 x 0.1, one element thick at the far-field size 0.1: the size falls
+# geometrically from the far field to the sinusoid, and the near-field size is
+# halved in four stages (refine.jl) as a localizing deformation would demand.
+adaptivity:
+  # The size operations are accepted on the edge length in the target: the
+  # energy test alone refuses to bisect well-shaped elements until they are
+  # about 1.5 times too large, and the geometric floor is kept low because a
+  # bisection halves the scaled Jacobian of the elements it cuts, which the
+  # smoothing and the swaps that follow repair.
+  size criterion: length
+  desired energy density: 0.05
+  minimum scaled Jacobian: 0.15
+  adjacency layers: 2
+  maximum passes: 10
+  outer iterations: 8
+model:
+  type: mesh smoothing
+  # Prescribed target: the edge length of the regular tetrahedron with the
+  # mean volume of the elements of the input mesh, so the ideal element is
+  # the same for every element and every phase of the loop.
+  smooth reference: size field unrestricted
+  # Stage 1 of the refinement: h = h_f (h_c / h_f)^s with the far-field size
+  # h_c = 0.1, the near-field size h_f = 0.05, and s = 2 |x - (0.1 sin(4 pi y)
+  # + 0.5)| the scaled distance in x from the sinusoid.  refine.jl halves h_f
+  # four times, to 0.00625, starting each stage from the mesh of the last.
+  size field: "0.05 * 2.0^(2 * abs(x - (0.1 * sin(4 * pi * y) + 0.5)))"
+  material:
+    blocks:
+      plate: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0
+      shear modulus: 1.0
+      density: 1.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 200
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
+  # Stop a smoothing phase when the energy stalls, so that the work moves to
+  # the topology phase instead of iterating on a mesh that node motion can no
+  # longer improve.
+  energy stagnation window: 5
+  energy stagnation tolerance: 1.0e-03

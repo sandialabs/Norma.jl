@@ -17,6 +17,34 @@ struct AdaptivityOptions
     swaps::Bool
     collapses::Bool
     splits::Bool
+    size_by_length::Bool         # size operations accepted on the edge length alone, not the energy
+end
+
+function AdaptivityOptions(
+    desired_density::Real,
+    allowed_density::Real,
+    minimum_scaled_jacobian::Real,
+    minimum_decrease::Real,
+    adjacency_layers::Integer,
+    maximum_passes::Integer,
+    outer_iterations::Integer,
+    swaps::Bool,
+    collapses::Bool,
+    splits::Bool,
+)
+    return AdaptivityOptions(
+        desired_density,
+        allowed_density,
+        minimum_scaled_jacobian,
+        minimum_decrease,
+        adjacency_layers,
+        maximum_passes,
+        outer_iterations,
+        swaps,
+        collapses,
+        splits,
+        false,
+    )
 end
 
 # The node an edge split adds: its position after placement and local

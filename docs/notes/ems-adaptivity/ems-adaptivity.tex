@@ -422,13 +422,20 @@ number: it vanishes only for a unit element of the metric, it diverges at
 inversion, and it reduces to the isotropic energy for equal sizes. This
 is the functional the loop should use whenever a target is prescribed,
 and it changes two things in what follows. First, an operation that
-moves the mesh toward the target size is a decrease of the same
-functional the smoother minimizes: a too-large element has a large
-volumetric energy and its children, each nearer the target volume, have
-less; so size-driven splits and collapses need no separate phase and no
-exemption from the acceptance test, and the length band of \omegah{}
-survives only as the inexpensive way to select which edges to try.
-Second, the volume floor of the rules \code{size field} and
+moves the mesh toward the target size is, in the sum over the mesh
+after smoothing, a decrease of the same functional the smoother
+minimizes: a too-large element has a large volumetric energy and its
+children, each nearer the target volume, have less. The cavity test
+sees only part of this. A split bisects the elements around the edge
+and roughly halves their scaled Jacobian, and the shape penalty of the
+halves, before the smoothing and the swaps that repair them, outweighs
+the size gain until the edge is far longer than the target: measured on
+the plate of Section~\ref{sec:plate}, with equal bulk and shear moduli,
+every split of the edges beyond the band raised the cavity energy, and
+the loop stalled at about $1.5$ times the target. The size operations
+are therefore accepted on the edge length in the target
+(Section~\ref{sec:length}) and the energy decides the shape within the
+band. Second, the volume floor of the rules \code{size field} and
 \code{metric field}, which scales the target up to the volume of the
 original element, exists only because smoothing cannot change the number
 of elements; in the coupled loop it is unnecessary and the
@@ -641,6 +648,59 @@ different target sizes, because the element energy is the density times
 the ideal volume. Thresholds and the floor are therefore on the density
 $\hat w_e$, while the cavity comparison is on the sums, which weight
 elements by their target volume as a global objective should.
+
+\subsection{The size operations under the length criterion}
+\label{sec:length}
+
+The argument above, that one functional decides every operation, holds
+for the swaps and for the shape-driven collapses and splits, and it
+fails for the size operations, for a reason the measurements of
+Section~\ref{sec:plate} make plain. Consider a smoothed mesh whose
+edges are $r$ times the target. Bisecting an element halves its size
+mismatch but also roughly halves its scaled Jacobian, since the half has
+the height of the parent on half its base, and the Seth--Hill energy
+with equal bulk and shear moduli charges more for that shape than it
+returns for the size until $r$ is about $1.5$ to $2$ (the volumetric
+term grows as the fourth power of the mismatch, the isochoric term is
+already of order one for the half). The smoothing and the swaps that
+follow repair the halves, but the cavity test cannot foresee them. A
+heavier bulk modulus lets the splits through (with the bulk modulus 64
+times the shear modulus, 897 of 906 long-edge splits lowered the cavity
+energy on the plate) at the price of the smoothing, which then trades
+shape for size: over three refinement stages the median scaled
+Jacobian fell from $0.50$ to $0.33$ and the minimum to $0.025$. The two
+roles of the functional, to accept a refinement and to shape the
+elements, want different weights, and no single pair serves both.
+
+Under \code{size criterion: length} the loop therefore does what every
+metric-based adaptation code does: an edge longer than $\sqrt2$ in the
+target is split and an edge shorter than $1/\sqrt2$ is collapsed on the
+length alone, subject to the geometric floor, the set and surface
+constraints, and a finite energy (the validity check), while the swaps
+and the shape-driven collapses and splits keep the energy test
+\eqref{eq:acceptance}. Two guards make the length criterion consistent.
+Without them the loop churned at hundreds of operations per pass: a
+split of an edge in a flat cavity creates edges from the new node to the
+ring shorter than the band, which the next pass collapses, and a
+collapse of a short edge onto a far node creates edges longer than the
+band, which the next pass splits; and in a pass with no accepted swap
+the shape-driven collapses, judged by the energy that favors fewer and
+larger elements, removed what the length-driven splits had added. So
+under the length criterion no collapse or split, length-driven or
+shape-driven, may create an edge outside the band: the target decides
+the sizes and the energy decides the shape within the band. With the
+guards the passes of a topology phase end at zero operations and the
+adaptivity iterations converge (on the first stage of the plate: 1126,
+391, 142, 68, 44, 38, 23, 17 operations).
+
+The floor interacts with refinement. Because a bisection halves the
+scaled Jacobian, a floor of $0.35$ on a mesh whose median is $0.58$
+rejects nearly every split (on the plate, 981 of 29797 splits passed it,
+against 29222 without a floor), so a refinement stage wants a low floor,
+$0.15$ in the examples, and relies on the smoothing and the swaps to
+raise the quality afterwards. The floor of $0.35$ that served the
+distorted cube, where the target equals the mesh size and the size
+operations are few, is a quality guard for that regime.
 
 \subsection{The smoothing phase}
 
@@ -1020,13 +1080,90 @@ surfaces, floor $0.3$), the size operations dominate: the first topology
 phase accepts 906 operations, mostly splits of the edges longer than
 $\sqrt2 \times 0.08$, and takes the mesh from 5657 to 8896 elements, with
 the new boundary nodes placed on the cylinders and the caps; the next
-two phases accept 76 and 18 operations and end at 9012 elements. The
-energy goes from $3.01$ after the first smoothing to $2.24$ at the end;
-the remaining value is the size mismatch of the edges that the band
-$[0.08/\sqrt2, 0.08\sqrt2]$ accepts, since an edge of $0.12$ is split
-once into halves of $0.06$ that are inside the band. The test with a
-target of $0.24$ shows the opposite: the short edges are collapsed, the
-count falls, and the boundary stays closed and covered by the side sets.
+two phases accept 76 and 18 operations and end at 9012 elements, under
+the energy criterion. A mesh at the target has about $(0.12/0.08)^3
+\times 5657 \approx 19000$ elements, so this is the stall of
+Section~\ref{sec:length}: the remaining energy, $2.24$, is the size
+mismatch of the edges whose bisection the cavity test refuses. Under
+the length criterion, one topology phase of six passes without smoothing
+takes the fraction of edges inside the band from $0.43$ (energy
+criterion, 8896 elements) to $0.78$ (24638 elements; test 133), and the
+example, now run with \code{size criterion: length}, a floor of $0.15$,
+and six adaptivity iterations, accepts 8801, 1864, 721, 356, 225, and
+134 operations and ends at 25544 elements with 88 percent of the edges
+inside the band and the median edge ratio $0.97$; the scaled Jacobian
+ends at a minimum of $0.24$ and a median of $0.59$, against $0.41$ and
+$0.82$ for the input mesh, whose edges were $1.5$ times the target. The
+smoothing energy rises from $3.01$ to $5.42$ over the refinement: with
+equal moduli the functional charges the shapes of the bisected elements
+more than it credits their sizes, which is the measured reason the size
+operations are not judged by it The test with a target of
+$0.24$ shows the opposite: the short edges are collapsed, the count
+falls, and the boundary stays closed and covered by the side sets.
+
+\subsection{The plate refined toward a sinusoid}
+\label{sec:plate}
+
+The example of \code{examples/ems/plate} reproduces a thought experiment
+of the September 2026 program review: a plate of $1 \times 1 \times 0.1$
+meshed at the far-field size $h_c = 0.1$, one element through the
+thickness (689 tetrahedra), and a size field
+\begin{equation}
+h(x, y) = h_f \left(\frac{h_c}{h_f}\right)^{s},
+\qquad
+s = 2\,\lvert x - (0.1 \sin 4\pi y + 0.5)\rvert,
+\end{equation}
+that falls geometrically from the far field to the near-field size
+$h_f$ on a sinusoid through the plate, as a localizing deformation
+would demand. The near-field size is halved in four stages, from $0.05$
+to $0.00625$, each stage running the adaptivity loop on the smoothed
+mesh of the stage before (\code{refine.jl}); the size field is given as
+an expression in $x$ and $y$ and the stage sets $h_f$ in it. The
+formula makes the size exceed $h_c$ in the corners, where $s$ reaches
+$1.2$; it is used as written. A mesh exactly at the target has about
+$2900$, $12\,800$, $69\,000$, and $420\,000$ elements at the four
+stages.
+
+Under the energy criterion, with equal moduli and a floor of $0.35$,
+the first stage stalled at 1068 elements with 920 of its 1680 edges
+beyond the band, every split raising the cavity energy by 52 percent at
+the median, and the mesh looked like the input with a few more
+elements. Under the length criterion, with a floor of $0.15$ and equal
+moduli, the stages give
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+stage & $h_f$ & elements & min SJ & median SJ & edges in band \\
+\midrule
+1 & 0.05 & 3404 & 0.24 & 0.59 & 89 \% \\
+2 & 0.025 & 15199 & 0.21 & 0.62 & 91 \% \\
+3 & 0.0125 & 81721 & 0.17 & 0.64 & 93 \% \\
+4 & 0.00625 & 487213 & 0.14 & 0.65 & 94 \% \\
+\bottomrule
+\end{tabular}
+\end{center}
+with the edge ratio to the target at the median $1.00$ and its 5 and 95
+percent quantiles at $0.72$ and $1.4$ throughout; SJ is the scaled
+Jacobian. Figure~\ref{fig:plate} shows the top face of the mesh after
+each stage against the prescribed size. The operations accepted per
+adaptivity iteration fall by a factor of two to four each time
+(stage 4: 177294, 41713, 17372, 9470, 5565, 3441, 2342, 1792), and the
+smoothing energy after each phase is above the energy before it, as on
+the tube, since the bisected elements cost more in shape than they
+return in size under equal moduli. The four stages took 4, 7, 43, and
+230 minutes on 16 threads; the last is dominated by the eight smoothing
+phases of up to 200 L-BFGS iterations on half a million elements. The
+element count exceeds that of a mesh at the target by 15 to 20 percent
+at every stage, the overshoot of bisection: an edge just beyond
+$\sqrt2$ is split into halves just above $1/\sqrt2$, below the target.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/plate-stages.pdf}
+\caption{Plate refined toward a sinusoid: the prescribed size field and
+the top face of the mesh after each of the four stages.}
+\label{fig:plate}
+\end{figure}
 
 \section{Risks and open questions}
 \label{sec:risks}
@@ -1084,7 +1221,12 @@ adjacency layers, swaps before collapses, progress-based
 termination---; the acceptance test \eqref{eq:acceptance}, which strengthens
 the strict-improvement filter of \omegah{} from the cavity minimum to
 the cavity sum and thereby makes local acceptance imply global descent
-(Proposition~\ref{prop:descent}); and the windowed stagnation test
+(Proposition~\ref{prop:descent}), with one measured exception: the
+size operations toward a prescribed target, which the cavity test
+refuses beyond a ratio of about $1.5$ because a bisection halves the
+shape quality before the smoothing repairs it, are accepted on the edge
+length in the target, within a band that no collapse or split may leave
+(Section~\ref{sec:length}); and the windowed stagnation test
 \eqref{eq:stagnation} with explicit detection of the topological lock,
 which supplies both the trigger for the topology phase and the
 terminator of the outer loop. Norma already provided the per-element

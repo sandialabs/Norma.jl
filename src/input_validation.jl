@@ -186,6 +186,7 @@ const METRIC_FIELD_KEYS = Set([
 ])
 
 const ADAPTIVITY_KEYS = Set([
+    "size criterion",
     "desired energy density",
     "allowed energy density",
     "minimum scaled Jacobian",

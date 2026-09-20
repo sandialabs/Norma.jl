@@ -7,11 +7,14 @@ output mesh file: tube-adaptive.e
 # surfaces, and the nodes that the splits add on the boundary are placed on
 # them.  Each adapted mesh is written as tube-adaptive-adapted-<k>.g.
 adaptivity:
+  # The size operations are accepted on the edge length in the target; under
+  # the energy test the refinement stops at about 1.5 times the target.
+  size criterion: length
   desired energy density: 0.05
-  minimum scaled Jacobian: 0.3
+  minimum scaled Jacobian: 0.15
   adjacency layers: 2
   maximum passes: 10
-  outer iterations: 3
+  outer iterations: 6
 model:
   type: mesh smoothing
   smooth reference: size field unrestricted

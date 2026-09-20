@@ -5,9 +5,15 @@
 # top-level Norma.jl directory.
 
 # Topological operations of the adaptivity loop (docs/notes/ems-adaptivity):
-# cavity proposals accepted by one test on the smoothing energy.
+# cavity proposals accepted by one test on the smoothing energy, or, for the
+# size operations under `size criterion: length`, on the edge length in the
+# prescribed target with the energy as a validity check only.
 
 function AdaptivityOptions(params::Parameters)
+    size_criterion = get(params, "size criterion", "energy")
+    if !(size_criterion in ("energy", "length"))
+        norma_abort("\"size criterion\" in \"adaptivity\" must be \"energy\" or \"length\"; got \"$size_criterion\"")
+    end
     return AdaptivityOptions(
         Float64(get(params, "desired energy density", 0.1)),
         Float64(get(params, "allowed energy density", Inf)),
@@ -19,6 +25,7 @@ function AdaptivityOptions(params::Parameters)
         Bool(get(params, "swaps", true)),
         Bool(get(params, "collapses", true)),
         Bool(get(params, "splits", true)),
+        size_criterion == "length",
     )
 end
 
@@ -90,14 +97,17 @@ function accept_proposal(
     old_elements::Vector{Int},
     new_connectivity::Matrix{Int},
     block::Int,
-    options::AdaptivityOptions,
+    options::AdaptivityOptions;
+    require_decrease::Bool=true,
 )
     positions = topology.positions
     old_energy = sum(element_energies(model, block, topology.connectivity[:, old_elements], positions))
     new_energies = element_energies(model, block, new_connectivity, positions)
     all(isfinite, new_energies) || return nothing
     new_energy = sum(new_energies)
-    new_energy ≤ old_energy - options.minimum_decrease * old_energy || return nothing
+    if require_decrease
+        new_energy ≤ old_energy - options.minimum_decrease * old_energy || return nothing
+    end
     if isfinite(options.allowed_density)
         volumes = ideal_element_volumes(model, block, new_connectivity, positions)
         maximum(new_energies ./ volumes) ≤ options.allowed_density || return nothing
@@ -282,7 +292,14 @@ end
 # Try to remove node b by collapsing the edge (a, b) onto a: the elements
 # that contain both nodes are removed and the others around b receive a in
 # its place.  Returns the accepted proposal or nothing.
-function try_edge_collapse(model::SolidMechanics, topology::MeshTopology, b::Int, a::Int, options::AdaptivityOptions)
+function try_edge_collapse(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    b::Int,
+    a::Int,
+    options::AdaptivityOptions;
+    by_length::Bool=false,
+)
     (topology.node_alive[a] && topology.node_alive[b]) || return nothing
     may_collapse(topology, b, a) || return nothing
     star = collect(node_elements(topology, b))
@@ -299,7 +316,14 @@ function try_edge_collapse(model::SolidMechanics, topology::MeshTopology, b::Int
     for i in eachindex(new_connectivity)
         new_connectivity[i] == b && (new_connectivity[i] = a)
     end
-    return accept_proposal(model, topology, star, new_connectivity, block, options, b, a)
+    if options.size_by_length
+        # No edge from the surviving node may become longer than the band.
+        for q in unique(vec(new_connectivity))
+            q == a && continue
+            metric_edge_length(model, topology, a, q) ≤ LENGTH_BAND[2] || return nothing
+        end
+    end
+    return accept_proposal(model, topology, star, new_connectivity, block, options, b, a; require_decrease=!by_length)
 end
 
 function accept_proposal(
@@ -310,9 +334,10 @@ function accept_proposal(
     block::Int,
     options::AdaptivityOptions,
     removed_node::Int,
-    surviving_node::Int,
+    surviving_node::Int;
+    require_decrease::Bool=true,
 )
-    proposal = accept_proposal(model, topology, old_elements, new_connectivity, block, options)
+    proposal = accept_proposal(model, topology, old_elements, new_connectivity, block, options; require_decrease)
     proposal === nothing && return nothing
     return CavityProposal(
         proposal.old_elements,
@@ -414,7 +439,14 @@ end
 # of the boundary faces that contain the edge, inherits the side sets of
 # those faces and the node sets common to both ends of a boundary edge, is
 # relaxed locally, and the result is submitted to the acceptance test.
-function try_edge_split(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int, options::AdaptivityOptions)
+function try_edge_split(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    a::Int,
+    b::Int,
+    options::AdaptivityOptions;
+    by_length::Bool=false,
+)
     (topology.node_alive[a] && topology.node_alive[b]) || return nothing
     ring = edge_elements(topology, a, b)
     isempty(ring) && return nothing
@@ -462,7 +494,17 @@ function try_edge_split(model::SolidMechanics, topology::MeshTopology, a::Int, b
     end
     isfinite(energy_after) || return nothing
     energy_before = sum(element_energies(model, block, topology.connectivity[:, ring], topology.positions))
-    energy_after ≤ energy_before - options.minimum_decrease * energy_before || return nothing
+    if options.size_by_length
+        # No new edge from the split node may be shorter than the band.
+        for p in unique(vec(topology.connectivity[:, ring]))
+            (p == a || p == b) && continue
+            xp = SVector{3,Float64}(view(topology.positions, :, p))
+            metric_length(model, position, xp, (a, b, p, p)) ≥ LENGTH_BAND[1] || return nothing
+        end
+    end
+    if !by_length
+        energy_after ≤ energy_before - options.minimum_decrease * energy_before || return nothing
+    end
     positions = PositionsWithNode(topology.positions, position)
     if isfinite(options.allowed_density)
         energies = element_energies(model, block, connectivity, positions; metric)
@@ -481,7 +523,7 @@ function long_edges(model::SolidMechanics, topology::MeshTopology)
     edges = Tuple{Int,Int}[]
     (model.metric_field === nothing && model.size_field === nothing) && return edges
     for edge in keys(topology.edges)
-        metric_edge_length(model, topology, edge[1], edge[2]) > sqrt(2.0) && push!(edges, edge)
+        metric_edge_length(model, topology, edge[1], edge[2]) > LENGTH_BAND[2] && push!(edges, edge)
     end
     return edges
 end
@@ -501,14 +543,16 @@ function split_pass!(model::SolidMechanics, topology::MeshTopology, options::Ada
             end
         end
     end
-    union!(edges, long_edges(model, topology))
+    size_edges = Set(long_edges(model, topology))
+    union!(edges, size_edges)
     ranked = collect(edges)
     edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
     sort!(ranked; by=edge_energy, rev=true)
     accepted = 0
     decrease = 0.0
     for (a, b) in ranked
-        proposal = try_edge_split(model, topology, a, b, options)
+        by_length = options.size_by_length && (a, b) in size_edges
+        proposal = try_edge_split(model, topology, a, b, options; by_length)
         proposal === nothing && continue
         apply!(topology, proposal; metric=model.metric_field)
         accepted += 1
@@ -517,31 +561,37 @@ function split_pass!(model::SolidMechanics, topology::MeshTopology, options::Ada
     return accepted, decrease
 end
 
-# Metric factor of the prescribed target on an edge: the scalar 1/h at the
-# midpoint for a size field, F_M for a metric field (sampled at the midpoint
-# by the function sources, averaged over the two nodes by the nodal sources),
-# nothing for the legacy rules, which prescribe no length.
-function metric_factor_on_edge(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int)
-    xa = SVector{3,Float64}(view(topology.positions, :, a))
-    xb = SVector{3,Float64}(view(topology.positions, :, b))
+# Length of the segment between two points measured in the prescribed
+# target, or NaN without one: the scalar 1/h at the midpoint for a size
+# field, F_M for a metric field, sampled at the midpoint by the function
+# sources and averaged over `nodes` by the nodal sources (the nodes whose
+# mean is the midpoint: the two ends of an edge, or (a, b, p, p) for the
+# segment from the midpoint of edge (a, b) to a node p).
+function metric_length(model::SolidMechanics, xa::SVector{3,Float64}, xb::SVector{3,Float64}, nodes)
     midpoint = 0.5 * (xa + xb)
     if model.metric_field !== nothing
-        h, R = principal_metric(model.metric_field.source, (a, b), midpoint, model.time)
-        return SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
+        h, R = principal_metric(model.metric_field.source, nodes, midpoint, model.time)
+        F_M = SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
+        return norm(F_M * (xb - xa))
     elseif model.size_field !== nothing
-        return SMatrix{3,3,Float64,9}(I) / model.size_field((model.time, midpoint[1], midpoint[2], midpoint[3]))
+        return norm(xb - xa) / model.size_field((model.time, midpoint[1], midpoint[2], midpoint[3]))
     end
-    return nothing
+    return NaN
 end
 
 # Length of an edge measured in the prescribed target, or NaN without one.
 function metric_edge_length(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int)
-    F_M = metric_factor_on_edge(model, topology, a, b)
-    F_M === nothing && return NaN
     xa = SVector{3,Float64}(view(topology.positions, :, a))
     xb = SVector{3,Float64}(view(topology.positions, :, b))
-    return norm(F_M * (xb - xa))
+    return metric_length(model, xa, xb, (a, b))
 end
+
+# The length band of the prescribed target: edges shorter than the lower
+# bound are collapsed, edges longer than the upper bound are split, and under
+# `size criterion: length` no collapse or split may create an edge outside
+# the band, so that the operations cannot undo each other and the energy
+# decides the shape within the band only.
+const LENGTH_BAND = (1.0 / sqrt(2.0), sqrt(2.0))
 
 # Edges shorter than 1/sqrt(2) in the prescribed target, the collapse
 # candidates of the size phase; empty without a target.
@@ -549,7 +599,7 @@ function short_edges(model::SolidMechanics, topology::MeshTopology)
     edges = Tuple{Int,Int}[]
     (model.metric_field === nothing && model.size_field === nothing) && return edges
     for edge in keys(topology.edges)
-        metric_edge_length(model, topology, edge[1], edge[2]) < 1.0 / sqrt(2.0) && push!(edges, edge)
+        metric_edge_length(model, topology, edge[1], edge[2]) < LENGTH_BAND[1] && push!(edges, edge)
     end
     return edges
 end
@@ -570,7 +620,8 @@ function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::
             end
         end
     end
-    union!(edges, short_edges(model, topology))
+    size_edges = Set(short_edges(model, topology))
+    union!(edges, size_edges)
     ranked = collect(edges)
     edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
     sort!(ranked; by=edge_energy, rev=true)
@@ -578,8 +629,9 @@ function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::
     decrease = 0.0
     for (a, b) in ranked
         (topology.node_alive[a] && topology.node_alive[b]) || continue
-        proposal = try_edge_collapse(model, topology, b, a, options)
-        proposal === nothing && (proposal = try_edge_collapse(model, topology, a, b, options))
+        by_length = options.size_by_length && (a, b) in size_edges
+        proposal = try_edge_collapse(model, topology, b, a, options; by_length)
+        proposal === nothing && (proposal = try_edge_collapse(model, topology, a, b, options; by_length))
         proposal === nothing && continue
         apply!(topology, proposal; metric=model.metric_field)
         accepted += 1
@@ -646,31 +698,39 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
     total_accepted = 0
     total_decrease = 0.0
     for pass in 1:options.maximum_passes
-        accepted = 0
+        accepted_swaps = accepted_collapses = accepted_splits = 0
         decrease = 0.0
         if options.swaps
             accepted_swaps, decrease_swaps = swap_pass!(model, topology, options)
-            accepted += accepted_swaps
             decrease += decrease_swaps
         end
         # The edges outside the length band of a prescribed target are
         # collapsed or split in every pass.  Collapses and splits driven by
         # the shape alone remove or add resolution, so they are tried only in
         # a pass where no swap was accepted.
-        shape = accepted == 0
+        shape = accepted_swaps == 0
         if options.collapses
             accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape)
-            accepted += accepted_collapses
             decrease += decrease_collapses
         end
         if options.splits
             accepted_splits, decrease_splits = split_pass!(model, topology, options, shape)
-            accepted += accepted_splits
             decrease += decrease_splits
         end
+        accepted = accepted_swaps + accepted_collapses + accepted_splits
         node_map, _ = compact!(topology)
         compact_metric!(model.metric_field, findall(>(0), node_map))
-        norma_logf(0, :info, "Topology pass %d: %d operations accepted, energy decrease %.6e", pass, accepted, decrease)
+        norma_logf(
+            0,
+            :info,
+            "Topology pass %d: %d operations accepted (%d swaps, %d collapses, %d splits), energy decrease %.6e",
+            pass,
+            accepted,
+            accepted_swaps,
+            accepted_collapses,
+            accepted_splits,
+            decrease,
+        )
         total_accepted += accepted
         total_decrease += decrease
         accepted == 0 && break

@@ -390,6 +390,8 @@ end
 # sampled; at a topology phase it is the same array as `positions`, during a
 # smoothing phase it is the original mesh.  An inverted or degenerate element
 # gets an infinite energy.
+const DEGENERATE_JACOBIAN = 1.0e-12
+
 function element_energies(
     model::SolidMechanics,
     block_index::Int,
@@ -423,9 +425,12 @@ function element_energies(
             F = element_current_position * dNdX'
             # Both determinants are checked: for a nearly flat element they
             # can differ in sign by roundoff, and the energy takes fractional
-            # powers of det(F).
+            # powers of det(F).  The energy computes det(F) again, and the
+            # fused multiply-add contraction of the kernels can round the two
+            # evaluations differently, so a Jacobian within roundoff of zero
+            # counts as degenerate rather than being passed on.
             J = det(F)
-            if det(dxdξ) ≤ 0.0 || J ≤ 0.0 || isfinite(J) == false
+            if det(dxdξ) ≤ 0.0 || J ≤ DEGENERATE_JACOBIAN || isfinite(J) == false
                 energy = Inf
                 break
             end

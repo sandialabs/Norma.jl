@@ -16,8 +16,9 @@ docs/build/
 .vscode
 *.e
 *.exo
-# Meshes written by the adaptivity loop
+# Meshes written by the adaptivity loop and by the refinement stages of the plate example
 *-adapted-*.g
+examples/ems/plate/plate-stage-*.g
 .JuliaFormatter.toml
 CLAUDE.md
 
