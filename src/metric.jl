@@ -11,6 +11,16 @@
 # adaptivity loop carries through its operations and writes to the adapted
 # mesh.
 
+# The unit regular tetrahedron of the smoothing rules, with edges of unit
+# length; the ideal element is this shape scaled by the target size.
+const UNIT_TETRAHEDRON = SMatrix{3,4,Float64,12}(
+    0.5 / sqrt(2.0) * [
+        1 -1 -1 1
+        1 -1 1 -1
+        1 1 -1 -1
+    ],
+)
+
 # Order of the six components of a symmetric tensor in the input and the
 # output: M_xx, M_yy, M_zz, M_xy, M_yz, M_zx.
 const METRIC_COMPONENT_SUFFIXES = ("xx", "yy", "zz", "xy", "yz", "zx")
@@ -449,17 +459,18 @@ end
 # topology can accommodate.
 function create_metric_reference(
     metric_field::MetricField, element_ref_pos::AbstractMatrix{Float64}, time::Float64; node_indices=nothing
-)
-    centroid = SVector{3,Float64}(
-        (element_ref_pos[1, 1] + element_ref_pos[1, 2] + element_ref_pos[1, 3] + element_ref_pos[1, 4]) / 4.0,
-        (element_ref_pos[2, 1] + element_ref_pos[2, 2] + element_ref_pos[2, 3] + element_ref_pos[2, 4]) / 4.0,
-        (element_ref_pos[3, 1] + element_ref_pos[3, 2] + element_ref_pos[3, 3] + element_ref_pos[3, 4]) / 4.0,
-    )
-    h, R = principal_metric(metric_field.source, node_indices, centroid, time)
+)::Tuple{SMatrix{3,4,Float64,12},SMatrix{3,3,Float64,9},SMatrix{3,3,Float64,9}}
+    X = SMatrix{3,4,Float64,12}(element_ref_pos)
+    centroid = (X[:, 1] + X[:, 2] + X[:, 3] + X[:, 4]) / 4.0
+    # The source is dispatched on dynamically; the declared result keeps the
+    # caller typed.
+    h, R = principal_metric(
+        metric_field.source, node_indices, centroid, time
+    )::Tuple{SVector{3,Float64},SMatrix{3,3,Float64,9}}
     if metric_field.restricted
-        u = SVector{3,Float64}(view(element_ref_pos, :, 2)) - SVector{3,Float64}(view(element_ref_pos, :, 1))
-        v = SVector{3,Float64}(view(element_ref_pos, :, 3)) - SVector{3,Float64}(view(element_ref_pos, :, 1))
-        w = SVector{3,Float64}(view(element_ref_pos, :, 4)) - SVector{3,Float64}(view(element_ref_pos, :, 1))
+        u = X[:, 2] - X[:, 1]
+        v = X[:, 3] - X[:, 1]
+        w = X[:, 4] - X[:, 1]
         element_volume = dot(u, cross(v, w)) / 6.0
         ideal_volume = h[1] * h[2] * h[3] / (6.0 * sqrt(2.0))
         if ideal_volume < element_volume
@@ -468,13 +479,7 @@ function create_metric_reference(
     end
     F_M = SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
     F_M_inv = R * SMatrix{3,3,Float64,9}(Diagonal(h))
-    c = 0.5 / sqrt(2.0)
-    Y = c * [
-        1 -1 -1 1
-        1 -1 1 -1
-        1 1 -1 -1
-    ]
-    return F_M_inv * Y, F_M, F_M_inv
+    return F_M_inv * UNIT_TETRAHEDRON, F_M, F_M_inv
 end
 
 # Nodal metric data for the output: sizes (3 × n) and rotation vectors

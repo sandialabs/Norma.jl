@@ -38,7 +38,48 @@ function AdaptivityOptions(params::Parameters)
         Bool(get(params, "face swaps", false)),
         Bool(get(params, "boundary swaps", false)),
         deg2rad(Float64(get(params, "boundary swap angle", 20.0))),
+        Float64(get(params, "desired scaled Jacobian", 0.9)),
     )
+end
+
+# Forget the refusals of every edge and face of the elements added since
+# `first_new`, whose cavities have changed, and drop the dead ones.
+function forget_changed!(memory::PhaseMemory, topology::MeshTopology, first_new::Int)
+    for e in first_new:length(topology.element_alive)
+        c = view(topology.connectivity, :, e)
+        for i in 1:4, j in (i + 1):4
+            edge = sorted_edge(c[i], c[j])
+            delete!(memory.swaps, edge)
+            delete!(memory.boundary_swaps, edge)
+            delete!(memory.collapses, edge)
+            delete!(memory.splits, edge)
+        end
+        for face in element_faces(topology, e)
+            delete!(memory.face_swaps, face)
+        end
+    end
+    return memory
+end
+
+# Renumber the memory after a compaction.
+function remap!(memory::PhaseMemory, node_map::Vector{Int})
+    all(i -> node_map[i] == i, eachindex(node_map)) && return memory
+    for set in (memory.swaps, memory.boundary_swaps, memory.collapses, memory.splits)
+        kept = Tuple{Int,Int}[]
+        for (a, b) in set
+            (node_map[a] > 0 && node_map[b] > 0) && push!(kept, sorted_edge(node_map[a], node_map[b]))
+        end
+        empty!(set)
+        union!(set, kept)
+    end
+    kept_faces = NTuple{3,Int}[]
+    for face in memory.face_swaps
+        all(n -> node_map[n] > 0, face) || continue
+        push!(kept_faces, sorted_face(node_map[face[1]], node_map[face[2]], node_map[face[3]]))
+    end
+    empty!(memory.face_swaps)
+    union!(memory.face_swaps, kept_faces)
+    return memory
 end
 
 # Relative increase of the cavity minimum of the scaled Jacobian that an
@@ -332,9 +373,12 @@ end
 function configuration_score(
     model::SolidMechanics, topology::MeshTopology, block::Int, connectivity::Matrix{Int}, options::AdaptivityOptions
 )
+    # Under the scaled Jacobian criterion the energies of the chosen
+    # configuration are computed once by the acceptance test, as its
+    # validity check.
+    options.shape_by_quality && return -minimum(scaled_jacobians(topology.positions, connectivity))
     energies = element_energies(model, block, connectivity, topology.positions)
     all(isfinite, energies) || return Inf
-    options.shape_by_quality && return -minimum(scaled_jacobians(topology.positions, connectivity))
     return sum(energies)
 end
 
@@ -826,7 +870,13 @@ end
 # the energy around them: the long edges of the target always, and the edges
 # of the elements above the desired density when the shape-driven operations
 # are on.
-function split_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions, shape::Bool)
+function split_pass!(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    options::AdaptivityOptions,
+    shape::Bool;
+    memory::PhaseMemory=PhaseMemory(),
+)
     densities = energy_densities(model, topology)
     edges = Set{Tuple{Int,Int}}()
     if shape
@@ -839,6 +889,7 @@ function split_pass!(model::SolidMechanics, topology::MeshTopology, options::Ada
     end
     size_edges = Set(long_edges(model, topology))
     union!(edges, size_edges)
+    setdiff!(edges, memory.splits)
     ranked = collect(edges)
     edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
     sort!(ranked; by=edge_energy, rev=true)
@@ -846,8 +897,12 @@ function split_pass!(model::SolidMechanics, topology::MeshTopology, options::Ada
     decrease = 0.0
     for (a, b) in ranked
         by_length = options.size_by_length && (a, b) in size_edges
+        ring_intact = all(topology.element_alive[e] for e in edge_elements(topology, a, b))
         proposal = try_edge_split(model, topology, a, b, options; by_length)
-        proposal === nothing && continue
+        if proposal === nothing
+            ring_intact && push!(memory.splits, (a, b))
+            continue
+        end
         apply!(topology, proposal; metric=model.metric_field)
         accepted += 1
         decrease += proposal.energy_before - proposal.energy_after
@@ -903,7 +958,13 @@ end
 # edges of the elements above the desired density when the shape-driven
 # operations are on.  Both directions of each edge are tried.  Returns the
 # number of accepted collapses and the decrease.
-function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions, shape::Bool)
+function collapse_pass!(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    options::AdaptivityOptions,
+    shape::Bool;
+    memory::PhaseMemory=PhaseMemory(),
+)
     densities = energy_densities(model, topology)
     edges = Set{Tuple{Int,Int}}()
     if shape
@@ -916,6 +977,7 @@ function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::
     end
     size_edges = Set(short_edges(model, topology))
     union!(edges, size_edges)
+    setdiff!(edges, memory.collapses)
     ranked = collect(edges)
     edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
     sort!(ranked; by=edge_energy, rev=true)
@@ -925,9 +987,13 @@ function collapse_pass!(model::SolidMechanics, topology::MeshTopology, options::
     for (a, b) in ranked
         (topology.node_alive[a] && topology.node_alive[b]) || continue
         by_length = options.size_by_length && (a, b) in size_edges
+        stars_intact = all(topology.element_alive[e] for n in (a, b) for e in node_elements(topology, n))
         proposal = try_edge_collapse(model, topology, b, a, options; by_length, created)
         proposal === nothing && (proposal = try_edge_collapse(model, topology, a, b, options; by_length, created))
-        proposal === nothing && continue
+        if proposal === nothing
+            stars_intact && push!(memory.collapses, (a, b))
+            continue
+        end
         apply!(topology, proposal; metric=model.metric_field)
         record!(created, proposal.new_connectivity)
         accepted += 1
@@ -940,6 +1006,17 @@ end
 # number of layers of node adjacency.
 function candidate_elements(topology::MeshTopology, densities::Vector{Float64}, options::AdaptivityOptions)
     candidates = falses(length(densities))
+    if options.shape_by_quality
+        # An operation accepted on the cavity minimum can only help the
+        # elements below the desired quality, and every edge of such an
+        # element is incident to it, so no dilation is needed.
+        alive = findall(topology.element_alive)
+        sj = scaled_jacobians(topology.positions, topology.connectivity[:, alive])
+        for (k, e) in enumerate(alive)
+            sj[k] < options.desired_quality && (candidates[e] = true)
+        end
+        return findall(candidates)
+    end
     for e in eachindex(densities)
         topology.element_alive[e] && densities[e] > options.desired_density && (candidates[e] = true)
     end
@@ -960,7 +1037,9 @@ end
 # then the faces (when enabled).  An edge or face whose cavity was changed
 # earlier in the pass is deferred to the next pass.  Returns the number of
 # accepted swaps and the total decrease of the energy.
-function swap_pass!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions)
+function swap_pass!(
+    model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions; memory::PhaseMemory=PhaseMemory()
+)
     densities = energy_densities(model, topology)
     candidates = candidate_elements(topology, densities, options)
     edges = Set{Tuple{Int,Int}}()
@@ -971,14 +1050,14 @@ function swap_pass!(model::SolidMechanics, topology::MeshTopology, options::Adap
         for i in 1:4, j in (i + 1):4
             edge = sorted_edge(c[i], c[j])
             if is_boundary_edge(topology, c[i], c[j])
-                options.boundary_swaps && push!(boundary_edges, edge)
-            else
+                options.boundary_swaps && !(edge in memory.boundary_swaps) && push!(boundary_edges, edge)
+            elseif !(edge in memory.swaps)
                 push!(edges, edge)
             end
         end
         if options.face_swaps
             for face in element_faces(topology, e)
-                length(get(topology.faces, face, Int[])) == 2 && push!(faces, face)
+                length(get(topology.faces, face, Int[])) == 2 && !(face in memory.face_swaps) && push!(faces, face)
             end
         end
     end
@@ -992,22 +1071,32 @@ function swap_pass!(model::SolidMechanics, topology::MeshTopology, options::Adap
     accepted = 0
     decrease = 0.0
     created = CreatedEntities()
-    function accept!(proposal)
-        proposal === nothing && return nothing
+    # A proposal is refused for the phase when its cavity is intact and the
+    # test refuses it; when the cavity was changed earlier in the pass the
+    # edge or face is deferred to the next pass instead.
+    function accept!(proposal, key, refused, cavity_intact)
+        if proposal === nothing
+            cavity_intact && push!(refused, key)
+            return nothing
+        end
         apply!(topology, proposal; metric=model.metric_field)
         record!(created, proposal.new_connectivity)
         accepted += 1
         decrease += proposal.energy_before - proposal.energy_after
         return nothing
     end
+    intact(a, b) = all(topology.element_alive[e] for e in edge_elements(topology, a, b))
     for (a, b) in ranked_boundary
-        accept!(try_boundary_edge_swap(model, topology, a, b, options; created))
+        proposal = try_boundary_edge_swap(model, topology, a, b, options; created)
+        accept!(proposal, (a, b), memory.boundary_swaps, intact(a, b))
     end
     for (a, b) in ranked
-        accept!(try_edge_swap(model, topology, a, b, options; created))
+        proposal = try_edge_swap(model, topology, a, b, options; created)
+        accept!(proposal, (a, b), memory.swaps, intact(a, b))
     end
     for face in ranked_faces
-        accept!(try_face_swap(model, topology, face, options; created))
+        proposal = try_face_swap(model, topology, face, options; created)
+        accept!(proposal, face, memory.face_swaps, all(topology.element_alive[e] for e in topology.faces[face]))
     end
     return accepted, decrease
 end
@@ -1019,6 +1108,7 @@ end
 function topology_phase!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions)
     total_accepted = 0
     total_decrease = 0.0
+    memory = PhaseMemory()
     for pass in 1:options.maximum_passes
         accepted_swaps = accepted_collapses = accepted_splits = 0
         decrease = 0.0
@@ -1026,15 +1116,18 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
         # starts from a current adjacency: the operations of one operator
         # are kept independent by the dead elements of their cavities, but
         # the next operator would otherwise not see the elements they made.
-        function compact_all!()
+        function compact_all!(first_new)
+            forget_changed!(memory, topology, first_new)
             node_map, _ = compact!(topology)
             compact_metric!(model.metric_field, findall(>(0), node_map))
+            remap!(memory, node_map)
             return nothing
         end
         if options.swaps
-            accepted_swaps, decrease_swaps = swap_pass!(model, topology, options)
+            first_new = length(topology.element_alive) + 1
+            accepted_swaps, decrease_swaps = swap_pass!(model, topology, options; memory)
             decrease += decrease_swaps
-            compact_all!()
+            compact_all!(first_new)
         end
         # The edges outside the length band of a prescribed target are
         # collapsed or split in every pass.  Collapses and splits driven by
@@ -1042,14 +1135,16 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
         # a pass where no swap was accepted.
         shape = accepted_swaps == 0
         if options.collapses
-            accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape)
+            first_new = length(topology.element_alive) + 1
+            accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape; memory)
             decrease += decrease_collapses
-            compact_all!()
+            compact_all!(first_new)
         end
         if options.splits
-            accepted_splits, decrease_splits = split_pass!(model, topology, options, shape)
+            first_new = length(topology.element_alive) + 1
+            accepted_splits, decrease_splits = split_pass!(model, topology, options, shape; memory)
             decrease += decrease_splits
-            compact_all!()
+            compact_all!(first_new)
         end
         accepted = accepted_swaps + accepted_collapses + accepted_splits
         norma_logf(

@@ -594,12 +594,14 @@ function stress_ad(material::Elastic, F::SMatrix{3,3,Float64,9})
     return W, P
 end
 
-function tangent_ad(material::Elastic, F::SMatrix{3,3,Float64,9})
-    Fv = Vector{Float64}(undef, 9)
-    Fv .= vec(F)
+# The static input fixes the chunk size of the differentiation at compile
+# time, so the return type is inferred; with a runtime-sized vector it is not,
+# and every caller of constitutive becomes dynamic, tangent requested or not.
+function tangent_ad(material::Elastic, F::SMatrix{3,3,Float64,9})::SArray{Tuple{3,3,3,3},Float64,4,81}
+    Fv = SVector{9,Float64}(F)
     W_func = x -> strain_energy(material, SMatrix{3,3,eltype(x),9}(x))
     Hmat = ForwardDiff.hessian(W_func, Fv)
-    return SArray{Tuple{3,3,3,3},Float64,4,81}(reshape(Hmat, 3, 3, 3, 3))
+    return SArray{Tuple{3,3,3,3},Float64,4,81}(Hmat)
 end
 
 # SethHill: manual (W, P) — shares intermediates — plus AD tangent.

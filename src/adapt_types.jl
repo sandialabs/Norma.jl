@@ -22,6 +22,7 @@ struct AdaptivityOptions
     face_swaps::Bool             # try the face swap (two elements into three) besides the edge swap
     boundary_swaps::Bool         # try the swap of boundary edges between faces of one flat patch
     boundary_swap_angle::Float64 # largest angle in radians between the two boundary faces of such an edge
+    desired_quality::Float64     # under the scaled Jacobian criterion, elements below this are candidates
 end
 
 # The options before the criteria and the extra operators, with those as
@@ -42,6 +43,7 @@ function AdaptivityOptions(
     face_swaps::Bool=false,
     boundary_swaps::Bool=false,
     boundary_swap_angle::Real=0.0,
+    desired_quality::Real=0.9,
 )
     return AdaptivityOptions(
         desired_density,
@@ -59,6 +61,7 @@ function AdaptivityOptions(
         face_swaps,
         boundary_swaps,
         boundary_swap_angle,
+        desired_quality,
     )
 end
 
@@ -102,6 +105,22 @@ function CavityProposal(
 )
     return CavityProposal(
         old_elements, new_connectivity, block, energy_before, energy_after, removed_node, surviving_node, split, nothing
+    )
+end
+
+# The edges and faces whose operation a topology phase has refused, kept
+# until an element around them changes: nodes do not move within a phase,
+# so a refused proposal stays refused until its cavity does.
+struct PhaseMemory
+    swaps::Set{Tuple{Int,Int}}
+    boundary_swaps::Set{Tuple{Int,Int}}
+    face_swaps::Set{NTuple{3,Int}}
+    collapses::Set{Tuple{Int,Int}}
+    splits::Set{Tuple{Int,Int}}
+end
+function PhaseMemory()
+    return PhaseMemory(
+        Set{Tuple{Int,Int}}(), Set{Tuple{Int,Int}}(), Set{NTuple{3,Int}}(), Set{Tuple{Int,Int}}(), Set{Tuple{Int,Int}}()
     )
 end
 

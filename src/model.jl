@@ -360,13 +360,13 @@ function smoothing_reference(
     node_indices=nothing,
     metric::Union{MetricField,Nothing}=model.metric_field,
 )
+    element_type == TETRA4 || norma_abort("Mesh smoothing supports four-node tetrahedra only")
+    X = SMatrix{3,4,Float64,12}(sample_pos)
     if metric !== nothing
-        return create_metric_reference(metric, sample_pos, model.time; node_indices=node_indices)
+        return create_metric_reference(metric, X, model.time; node_indices=node_indices)
     end
-    sample_pos isa Matrix{Float64} || (sample_pos = Matrix{Float64}(sample_pos))
-    X = create_smooth_reference(model.smooth_reference, element_type, sample_pos, model.size_field, model.time)
     I3 = SMatrix{3,3,Float64,9}(I)
-    return X, I3, I3
+    return smoothing_size(model.smooth_reference, X, model.size_field, model.time) * UNIT_TETRAHEDRON, I3, I3
 end
 
 # Volume of the ideal reference element of every element of a block, for the
@@ -376,7 +376,9 @@ function ideal_volumes(model::SolidMechanics, block_index::Int)
     volumes = Vector{Float64}(undef, block.num_elements)
     for element in 1:block.num_elements
         node_indices = view(block.connectivity, :, element)
-        X, _, _ = smoothing_reference(model, block.element_type, model.reference[:, node_indices]; node_indices)
+        X, _, _ = smoothing_reference(
+            model, block.element_type, gather_nodal(model.reference, node_indices, block.N); node_indices
+        )
         volumes[element] = abs(dot(X[:, 2] - X[:, 1], cross(X[:, 3] - X[:, 1], X[:, 4] - X[:, 1]))) / 6.0
     end
     return volumes
@@ -408,11 +410,12 @@ function element_energies(
     energies = zeros(num_elements)
     for element in 1:num_elements
         node_indices = view(connectivity, :, element)
-        X, F_M, F_M_inv = smoothing_reference(
-            model, block.element_type, Matrix(sample_positions[:, node_indices]); node_indices, metric
+        sample = SMatrix{3,4,Float64,12}(
+            sample_positions[i, node_indices[j]] for i in 1:3, j in 1:4
         )
+        X, F_M, F_M_inv = smoothing_reference(model, block.element_type, sample; node_indices, metric)
         element_reference_position = gather_nodal(X, N)
-        element_current_position = gather_nodal(Matrix(positions[:, node_indices]), N)
+        element_current_position = SMatrix{3,4,Float64,12}(positions[i, node_indices[j]] for i in 1:3, j in 1:4)
         energy = 0.0
         for point in 1:num_points
             dNdξ = dN[:, :, point]
@@ -458,70 +461,72 @@ function pull_back_tangent(
     )
 end
 
+# Target size of the ideal element of a TETRA4 under a smoothing rule, from
+# the element's coordinates in the mesh that samples the target.
+function smoothing_size(
+    smooth_reference::String,
+    element_ref_pos::SMatrix{3,4,Float64,12},
+    size_field::Union{Function,Nothing},
+    time::Float64,
+)
+    u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
+    v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
+    w = element_ref_pos[:, 4] - element_ref_pos[:, 1]
+    if smooth_reference == "equal volume"
+        return equal_volume_tet_h(u, v, w)
+    elseif smooth_reference == "average edge length"
+        return avg_edge_length_tet_h(u, v, w)
+    elseif smooth_reference == "max"
+        return max(avg_edge_length_tet_h(u, v, w), equal_volume_tet_h(u, v, w))
+    elseif smooth_reference == "size field"
+        # Target edge length from the user-defined size field at the element
+        # reference centroid, combined with the volume criterion (max) to
+        # anchor the reference size and avoid sliver pathologies.
+        return max(size_field_tet_h(size_field, element_ref_pos, time), equal_volume_tet_h(u, v, w))
+    elseif smooth_reference == "size field unrestricted"
+        # Target edge length from the user-defined size field at the element
+        # reference centroid
+        return size_field_tet_h(size_field, element_ref_pos, time)
+    elseif smooth_reference == "metric field" || smooth_reference == "metric field unrestricted"
+        norma_abort("A metric field reference is built by create_metric_reference, not create_smooth_reference")
+    end
+    return norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
+end
+
 function create_smooth_reference(
     smooth_reference::String,
     element_type::ElementType,
-    element_ref_pos::Matrix{Float64},
+    element_ref_pos::AbstractMatrix{Float64},
     size_field::Union{Function,Nothing}=nothing,
     time::Float64=0.0,
-)::Matrix{Float64}
-    if element_type == TETRA4
-        u = element_ref_pos[:, 2] - element_ref_pos[:, 1]
-        v = element_ref_pos[:, 3] - element_ref_pos[:, 1]
-        w = element_ref_pos[:, 4] - element_ref_pos[:, 1]
-
-        if smooth_reference == "equal volume"
-            h = equal_volume_tet_h(u, v, w)
-        elseif smooth_reference == "average edge length"
-            h = avg_edge_length_tet_h(u, v, w)
-        elseif smooth_reference == "max"
-            h = max(avg_edge_length_tet_h(u, v, w), equal_volume_tet_h(u, v, w))
-        elseif smooth_reference == "size field"
-            # Target edge length from the user-defined size field at the element
-            # reference centroid, combined with the volume criterion (max) to
-            # anchor the reference size and avoid sliver pathologies.
-            h = max(size_field_tet_h(size_field, element_ref_pos, time), equal_volume_tet_h(u, v, w))
-        elseif smooth_reference == "size field unrestricted"
-            # Target edge length from the user-defined size field at the element
-            # reference centroid
-            h = size_field_tet_h(size_field, element_ref_pos, time)
-        elseif smooth_reference == "metric field" || smooth_reference == "metric field unrestricted"
-            norma_abort("A metric field reference is built by create_metric_reference, not create_smooth_reference")
-        else
-            norma_abort("Unknown type of mesh smoothing reference : $smooth_reference")
-        end
-
-        c = h * 0.5 / sqrt(2.0)
-        A = [
-            1 -1 -1 1
-            1 -1 1 -1
-            1 1 -1 -1
-        ]
-        return c * A
-    else
-        norma_abort("Unknown element type")
-    end
+)
+    element_type == TETRA4 || norma_abort("Unknown element type")
+    X = SMatrix{3,4,Float64,12}(element_ref_pos)
+    return smoothing_size(smooth_reference, X, size_field, time) * UNIT_TETRAHEDRON
 end
 
-function equal_volume_tet_h(u::Vector{Float64}, v::Vector{Float64}, w::Vector{Float64})
-    h = cbrt(sqrt(2.0) * dot(u, cross(v, w)))
-    return h
+function equal_volume_tet_h(u::SVector{3,Float64}, v::SVector{3,Float64}, w::SVector{3,Float64})
+    return cbrt(sqrt(2.0) * dot(u, cross(v, w)))
 end
 
-function avg_edge_length_tet_h(u::Vector{Float64}, v::Vector{Float64}, w::Vector{Float64})
-    h = (norm(u) + norm(v) + norm(w) + norm(u - v) + norm(u - w) + norm(v - w)) / 6.0
-    return h
+function avg_edge_length_tet_h(u::SVector{3,Float64}, v::SVector{3,Float64}, w::SVector{3,Float64})
+    return (norm(u) + norm(v) + norm(w) + norm(u - v) + norm(u - w) + norm(v - w)) / 6.0
 end
+
+# The compiled size field called through a function barrier, so that the
+# value is a Float64 to the caller although the field is stored untyped.
+evaluate_size_field(size_field::Function, args::NTuple{4,Float64})::Float64 = Float64(size_field(args))
 
 # Target edge length from the user-defined size field, evaluated at the element
-# reference centroid and the current time.  The field must be strictly positive
-# and finite to yield a valid (non-degenerate) reference element.
-function size_field_tet_h(size_field::Union{Function,Nothing}, element_ref_pos::Matrix{Float64}, time::Float64)
+# reference centroid.
+function size_field_tet_h(
+    size_field::Union{Function,Nothing}, element_ref_pos::SMatrix{3,4,Float64,12}, time::Float64
+)
     if size_field === nothing
         norma_abort("smooth reference = \"size field\" or \"size field unrestricted\" selected but no size field was compiled")
     end
-    centroid = vec(sum(element_ref_pos; dims=2) / size(element_ref_pos, 2))
-    h = size_field((time, centroid[1], centroid[2], centroid[3]))
+    centroid = (element_ref_pos[:, 1] + element_ref_pos[:, 2] + element_ref_pos[:, 3] + element_ref_pos[:, 4]) / 4.0
+    h = evaluate_size_field(size_field, (time, centroid[1], centroid[2], centroid[3]))
     if !isfinite(h) || h ≤ 0.0
         norma_abort(
             "Size field must be strictly positive and finite; got $h at centroid " *
@@ -1124,7 +1129,9 @@ function evaluate_element!(
     F_M = SMatrix{3,3,Float64,9}(I)
     F_M_inv = F_M
     if flags.mesh_smoothing == true
-        smooth, F_M, F_M_inv = smoothing_reference(model, element_type, model.reference[:, node_indices]; node_indices)
+        smooth, F_M, F_M_inv = smoothing_reference(
+            model, element_type, gather_nodal(model.reference, node_indices, N); node_indices
+        )
         element_reference_position = gather_nodal(smooth, N)
     else
         element_reference_position = gather_nodal(model.reference, node_indices, N)

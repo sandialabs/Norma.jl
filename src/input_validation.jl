@@ -191,6 +191,7 @@ const ADAPTIVITY_KEYS = Set([
     "face swaps",
     "boundary swaps",
     "boundary swap angle",
+    "desired scaled Jacobian",
     "desired energy density",
     "allowed energy density",
     "minimum scaled Jacobian",
