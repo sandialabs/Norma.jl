@@ -89,7 +89,7 @@ function length_closed_boundary(topology)
 end
 
 
-by_length(floor) = Norma.AdaptivityOptions(0.05, Inf, floor, 10.0, 2, 10, 2, true, true, true, true)
+by_length(floor) = Norma.AdaptivityOptions(0.05, Inf, floor, 10.0, 2, 10, 2, true, true, true; size_by_length=true)
 
 @testset "size_criterion_option" begin
     @test Norma.AdaptivityOptions(Dict{String,Any}()).size_by_length == false
@@ -182,7 +182,9 @@ end
         topology = Norma.build_topology(model)
         chi0 = Norma.euler_characteristic(topology)
         before = band_fraction(model, topology)
-        phase_options = Norma.AdaptivityOptions(0.05, Inf, 0.15, 1.0e-8, 2, 6, 2, true, true, true, length_criterion)
+        phase_options = Norma.AdaptivityOptions(
+            0.05, Inf, 0.15, 1.0e-8, 2, 6, 2, true, true, true; size_by_length=length_criterion
+        )
         accepted, _ = Norma.topology_phase!(model, topology, phase_options)
         @test accepted > 0
         fractions[length_criterion] = band_fraction(model, topology)

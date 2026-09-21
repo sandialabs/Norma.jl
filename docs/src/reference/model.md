@@ -185,9 +185,44 @@ operations keep the energy test. Under refinement the floor throttles the
 splits (a floor of 0.35 let 981 of 29797 splits through on that plate,
 none 29222), so a low floor such as 0.15 suits a refinement stage.
 
+The cavity energy sum can also accept a swap that leaves the worst element
+of the cavity as it was, and refuse one that raises it while raising the
+sum. `shape criterion: scaled Jacobian` accepts the swaps and the
+shape-driven collapses and splits when the minimum scaled Jacobian of the
+cavity rises, and chooses among the configurations of a swap the one with
+the best worst element; the energy remains the validity check. On the
+distorted cube this criterion together with `boundary swaps` brings the
+coupled loop to the quality of the staggered workflow of Norma smoothing
+alternated with the Sierra tool improve_mesh, which accepts on the same
+measure (minimum 0.41 against 0.38, mean 0.692 against 0.703 with the same
+Surface conditions, target, and smoothing); with the energy criterion alone
+the minimum was 0.36 and the mean 0.668, the deficit being on the boundary,
+where bisected boundary triangles were never repaired since only interior
+edges were swapped. `boundary swaps: true` swaps a boundary edge whose two
+boundary faces belong to one side set (or to none) and make an angle below
+`boundary swap angle`: the edge is replaced by the edge between the far
+nodes of the two faces, the faces by the two that contain the new edge, in
+the side set as well, and the chain of elements behind them by a
+triangulation of the resulting polygon. `face swaps: true` adds the swap of
+an interior face shared by two elements into the three elements around the
+edge between their apexes; measured on the distorted cube it lowers the
+quality under both criteria and is off by default.
+
+Within a pass the operations of one operator are independent, since every
+accepted operation marks the elements of its cavity dead and a later
+proposal touching a dead element is refused, but they may not create an
+edge or a face that exists in the mesh or was created earlier in the pass,
+so that no face is shared by more than two elements and the link of every
+edge stays a single ring. The topology is compacted after every operator,
+so that the collapses and splits see the elements the swaps made.
+
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `size criterion` | no | `energy` | `energy`: every operation must lower the cavity energy; `length`: the splits and collapses of edges outside the length band of the prescribed target are accepted on the length alone, subject to the floor and the constraints |
+| `shape criterion` | no | `energy` | `energy`: a swap or a shape-driven collapse or split must lower the cavity energy; `scaled Jacobian`: it must raise the minimum scaled Jacobian of the cavity |
+| `boundary swaps` | no | `false` | try the swap of boundary edges whose two boundary faces lie in one side set (or in none) and form a flat patch |
+| `boundary swap angle` | no | `20` | largest angle in degrees between the two boundary faces of an edge for its swap to be tried |
+| `face swaps` | no | `false` | try the swap of an interior face into the three elements around the edge between the apexes |
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |
 | `allowed energy density` | no | `Inf` | no accepted operation may create an element above this |
 | `minimum scaled Jacobian` | no | `0` | geometric floor: no accepted operation may create an element with a scaled Jacobian below this, unless the worst element of the cavity was already below it and the new worst is no worse |
@@ -195,7 +230,7 @@ none 29222), so a low floor such as 0.15 suits a refinement stage.
 | `adjacency layers` | no | `4` | rings of adjacent elements added to the candidate set |
 | `maximum passes` | no | `20` | passes of operations per topology phase |
 | `outer iterations` | no | `5` | alternations of smoothing and topology |
-| `swaps` | no | `true` | try edge swaps |
+| `swaps` | no | `true` | try the swaps of interior edges |
 | `collapses` | no | `true` | try edge collapses: with a prescribed target, the edges shorter than 1/√2 of it in every pass, and the edges of the elements above the desired density in a pass where no swap was accepted |
 | `splits` | no | `true` | try edge splits: with a prescribed target, the edges longer than √2 of it in every pass, and the edges of the elements above the desired density in a pass where no swap was accepted; the new node starts at the midpoint, is returned to the surfaces of the boundary faces of the edge, inherits their side sets and the node sets common to the ends of a boundary edge, and is relaxed locally before the test |
 

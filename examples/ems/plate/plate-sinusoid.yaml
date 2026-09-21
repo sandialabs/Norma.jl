@@ -10,8 +10,13 @@ adaptivity:
   # energy test alone refuses to bisect well-shaped elements until they are
   # about 1.5 times too large, and the geometric floor is kept low because a
   # bisection halves the scaled Jacobian of the elements it cuts, which the
-  # smoothing and the swaps that follow repair.
+  # smoothing and the swaps that follow repair.  The swaps are accepted on
+  # the minimum scaled Jacobian of the cavity, and the boundary edges of the
+  # flat faces are swapped too, which the comparison with the staggered
+  # workflow of Norma and improve_mesh showed to be what the boundary needs.
   size criterion: length
+  shape criterion: scaled Jacobian
+  boundary swaps: true
   desired energy density: 0.05
   minimum scaled Jacobian: 0.15
   adjacency layers: 2

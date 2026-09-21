@@ -1034,7 +1034,11 @@ and the energy after every L-BFGS step of the adaptive cube example
 (\code{examples/ems/awful-cube}): the distorted cube, 6955 elements,
 prescribed size $0.214$ (the edge of the regular tetrahedron with the mean
 volume of the input mesh), desired density $0.05$, floor $0.35$, two
-adjacency layers.
+adjacency layers, under the energy criterion for every operation and
+Dirichlet conditions on the node sets of the six faces. This is the
+first configuration of the loop; the example now runs the configuration
+of Section~\ref{sec:staggered}, and the figures of this subsection are
+kept for the record of what the energy criterion alone achieves.
 
 \begin{figure}[htbp]
 \centering
@@ -1071,6 +1075,112 @@ collapses $8.6$ and $0.39$; all three operators without the floor $8.5$
 and $0.29$, the splits having created a few flat elements whose smaller
 size penalty outweighed their shape. The floor is what keeps a single
 element from being sacrificed to the cavity sum.
+
+\subsection{Comparison with the staggered workflow}
+\label{sec:staggered}
+
+The workflow the loop replaces alternates Norma smoothing with the Sierra
+tool \code{improve\_mesh} (Section~\ref{sec:alternatives}). I ran it on
+the distorted cube on rigel, five alternations of the same smoothing
+input as the coupled loop and \code{improve\_mesh} with the target
+$0.214$ and its defaults (band $[1/\sqrt2, \sqrt2]$, quality metric the
+scaled Jacobian, up to 20 outer iterations, termination when the minimum
+stops improving), and the coupled loop with the length criterion for the
+size operations, a floor of $0.15$, and eight adaptivity iterations. Two
+findings preceded the comparison proper.
+
+\paragraph{Boundary conditions must be given on side sets.}
+\code{improve\_mesh} declares the nodes it creates with no parts
+(\code{StkEmendMesh::create\_node}), so a new boundary node belongs to
+no node set, while the sides it creates or swaps carry the side set parts
+of the sides they replace. With Dirichlet conditions on node sets, Norma
+does not hold the new nodes: after the first pass 15 to 27 nodes per face
+of the cube lay on the face outside its node set, and after five
+alternations 144 boundary nodes were off every face and the cube had
+bulged to $1.14$ in $x$ and $1.17$ in $y$. That run reported a minimum
+scaled Jacobian of $0.42$ and a mean of $0.706$, bought by the
+deformation. With side sets on the six faces and Surface conditions on
+them, which the loop's own splits, collapses, and boundary swaps also
+maintain, \code{improve\_mesh} keeps every boundary face in its side set
+and on its plane. Every number below is from that setting, on the same
+input mesh (the cube with side sets added), on the same machine; the
+run-to-run variation from floating point paths is about $0.03$ in the
+minimum and $0.005$ in the mean.
+
+\paragraph{The gap was on the boundary.} Under the energy criterion the
+coupled loop ended at 8066 elements, minimum $0.36$, mean $0.668$,
+against 8508, $0.38$, $0.703$ for the staggered workflow. The interior
+elements were nearly at par (mean $0.681$ against $0.709$) and the
+boundary elements were not ($0.652$ against $0.695$), with 72 to 88
+percent of the fifty worst elements of the coupled mesh on the boundary.
+Applying \code{improve\_mesh} once to the converged coupled mesh and
+smoothing again lifted the minimum from $0.36$ to $0.42$ and the mean
+from $0.671$ to $0.689$, so the difference lay in the topology operators,
+not in the smoothing, which is Norma's in both workflows. Reading the
+\code{emend} sources gave three candidates: it accepts an operation when
+the cavity minimum of the scaled Jacobian rises
+(\code{is\_first\_quality\_metric\_better\_than\_second\_with\_tolerance}),
+not when an energy sum falls; it swaps boundary edges within flat
+patches, re-triangulating the surface, whereas the loop swapped interior
+edges only, so that the boundary triangles bisected by the splits were
+never repaired; and it swaps faces (two elements into the three around the
+edge between their apexes). The candidate set was not a cause: making
+every element a candidate changed nothing.
+
+\paragraph{Measured remedies.} Each candidate is now an option of the
+\code{adaptivity} block, and Table~\ref{tab:staggered} measures them.
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+& elements & min & mean & interior & boundary \\
+\midrule
+staggered: Norma smoothing and \code{improve\_mesh} & 8508 & 0.38 & 0.703 & 0.709 & 0.695 \\
+coupled, energy criterion & 8066 & 0.36 & 0.668 & 0.681 & 0.652 \\
+coupled, scaled Jacobian criterion & 8356 & 0.37 & 0.689 & 0.704 & 0.668 \\
+coupled, energy criterion, boundary swaps & 8048 & 0.36 & 0.674 & 0.683 & 0.663 \\
+coupled, scaled Jacobian criterion, boundary swaps & 8258 & 0.41 & 0.692 & 0.701 & 0.681 \\
+the same with face swaps & 10146 & 0.34 & 0.684 & 0.691 & 0.675 \\
+\bottomrule
+\end{tabular}
+\caption{Distorted cube, target $0.214$, Surface conditions on the six
+faces, Seth--Hill smoothing in Norma for every row: the staggered
+workflow against the coupled loop with the length criterion for the size
+operations and a floor of $0.15$: the minimum and the mean of the scaled
+Jacobian over all elements, and its mean over the interior and the
+boundary elements.}
+\label{tab:staggered}
+\end{table}
+The scaled Jacobian criterion (\code{shape criterion: scaled Jacobian})
+recovers most of the interior; the boundary swaps
+(\code{boundary swaps: true}) recover the boundary; together they give a
+higher minimum than the staggered workflow, the interior at par, and a
+boundary mean within $0.015$, at the edge of the run-to-run variation.
+Face swaps lower the quality under both criteria, add elements, and keep
+the loop churning (203 operations at the eighth iteration), so they are
+off by default. The example \code{awful-cube-adaptive.yaml} now runs this
+configuration, and the slides of the study record its evolution: the
+first topology phase accepts 3055 operations, eight phases in all, 282
+solver steps, a minimum of $0.41$ and a mean of $0.69$ with 8258
+elements. Under the scaled Jacobian criterion the energy is no longer
+the acceptance test of the swaps, but it remains their validity check and
+the objective of the smoothing; Proposition~\ref{prop:descent} then
+covers the smoothing phases alone, and the termination of the topology
+phases rests on the strict rise of the cavity minimum, which bounds the
+number of operations as in \code{emend}.
+
+\paragraph{Consistency of a pass.} Face swaps exposed two hazards in the
+pass structure that the interior edge swaps had escaped by the shape of
+their cavities. The operations of one operator are independent, since an
+accepted operation marks its cavity dead and a proposal touching a dead
+element is refused, but the adjacency is rebuilt only at the end of a
+pass, so two operations could create the same edge or face, and a
+3-to-2 flip could create a face that already existed elsewhere, giving a
+face shared by four elements. Every swap and collapse now refuses to
+create an edge or a face that exists in the mesh or was created earlier
+in the pass, and the topology is compacted after every operator, so the
+collapses and splits see the elements the swaps made.
 
 \subsection{The tube}
 
@@ -1221,12 +1331,17 @@ adjacency layers, swaps before collapses, progress-based
 termination---; the acceptance test \eqref{eq:acceptance}, which strengthens
 the strict-improvement filter of \omegah{} from the cavity minimum to
 the cavity sum and thereby makes local acceptance imply global descent
-(Proposition~\ref{prop:descent}), with one measured exception: the
+(Proposition~\ref{prop:descent}), with two measured exceptions: the
 size operations toward a prescribed target, which the cavity test
 refuses beyond a ratio of about $1.5$ because a bisection halves the
 shape quality before the smoothing repairs it, are accepted on the edge
 length in the target, within a band that no collapse or split may leave
-(Section~\ref{sec:length}); and the windowed stagnation test
+(Section~\ref{sec:length}); and the swaps, which the comparison with the
+staggered workflow of Norma smoothing and \code{improve\_mesh}
+(Section~\ref{sec:staggered}) showed are better accepted on the cavity
+minimum of the scaled Jacobian, and which must include the boundary edges
+of flat patches, since the loop was behind that workflow on the boundary
+alone and matches it with both changes; and the windowed stagnation test
 \eqref{eq:stagnation} with explicit detection of the topological lock,
 which supplies both the trigger for the topology phase and the
 terminator of the outer loop. Norma already provided the per-element

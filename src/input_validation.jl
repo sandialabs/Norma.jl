@@ -187,6 +187,10 @@ const METRIC_FIELD_KEYS = Set([
 
 const ADAPTIVITY_KEYS = Set([
     "size criterion",
+    "shape criterion",
+    "face swaps",
+    "boundary swaps",
+    "boundary swap angle",
     "desired energy density",
     "allowed energy density",
     "minimum scaled Jacobian",

@@ -18,8 +18,14 @@ struct AdaptivityOptions
     collapses::Bool
     splits::Bool
     size_by_length::Bool         # size operations accepted on the edge length alone, not the energy
+    shape_by_quality::Bool       # shape operations accepted on the cavity minimum of the scaled Jacobian
+    face_swaps::Bool             # try the face swap (two elements into three) besides the edge swap
+    boundary_swaps::Bool         # try the swap of boundary edges between faces of one flat patch
+    boundary_swap_angle::Float64 # largest angle in radians between the two boundary faces of such an edge
 end
 
+# The options before the criteria and the extra operators, with those as
+# keywords, for the tests.
 function AdaptivityOptions(
     desired_density::Real,
     allowed_density::Real,
@@ -30,7 +36,12 @@ function AdaptivityOptions(
     outer_iterations::Integer,
     swaps::Bool,
     collapses::Bool,
-    splits::Bool,
+    splits::Bool;
+    size_by_length::Bool=false,
+    shape_by_quality::Bool=false,
+    face_swaps::Bool=false,
+    boundary_swaps::Bool=false,
+    boundary_swap_angle::Real=0.0,
 )
     return AdaptivityOptions(
         desired_density,
@@ -43,7 +54,11 @@ function AdaptivityOptions(
         swaps,
         collapses,
         splits,
-        false,
+        size_by_length,
+        shape_by_quality,
+        face_swaps,
+        boundary_swaps,
+        boundary_swap_angle,
     )
 end
 
@@ -56,6 +71,14 @@ struct SplitNode
     side_sets::Vector{Int}
     edge::Tuple{Int,Int}
     metric::Union{Nothing,Vector{Float64}}
+end
+
+# The change of a side set by the swap of a boundary edge: the two faces
+# that contained the edge are replaced by the two that contain the new edge.
+struct SurfaceSwap
+    side_set::Int
+    removed::Vector{NTuple{3,Int}}
+    added::Vector{NTuple{3,Int}}
 end
 
 # Result of one topological operation: the cavity replaced, the energies
@@ -71,4 +94,21 @@ struct CavityProposal
     removed_node::Int
     surviving_node::Int
     split::Union{Nothing,SplitNode}
+    surface::Union{Nothing,SurfaceSwap}
 end
+
+function CavityProposal(
+    old_elements, new_connectivity, block, energy_before, energy_after, removed_node, surviving_node, split
+)
+    return CavityProposal(
+        old_elements, new_connectivity, block, energy_before, energy_after, removed_node, surviving_node, split, nothing
+    )
+end
+
+# Edges and faces created by the operations of a pass, which the adjacency
+# does not know until the pass ends.
+struct CreatedEntities
+    edges::Set{Tuple{Int,Int}}
+    faces::Set{NTuple{3,Int}}
+end
+CreatedEntities() = CreatedEntities(Set{Tuple{Int,Int}}(), Set{NTuple{3,Int}}())
