@@ -99,7 +99,8 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(node_var_names, "size")
     end
     # Anisotropic smoothing: the principal sizes and the rotation vector of the
-    # metric field at each node (see nodal_metric_output).
+    # metric field at each node, and the metric and target tensors built from
+    # them (see nodal_metric_output and nodal_metric_tensors).
     if solid_model isa SolidMechanics && solid_model.mesh_smoothing == true && solid_model.metric_field !== nothing
         num_node_vars += 3
         append!(node_var_names, ["size_1", "size_2", "size_3"])
@@ -107,6 +108,9 @@ function initialize_writing(sim::SingleDomainSimulation)
             num_node_vars += 3
             append!(node_var_names, ["rotation_1", "rotation_2", "rotation_3"])
         end
+        num_node_vars += 12
+        append!(node_var_names, METRIC_TENSOR_NAMES)
+        append!(node_var_names, TARGET_TENSOR_NAMES)
     end
     Exodus.write_number_of_variables(output_mesh, NodalVariable, num_node_vars)
     Exodus.write_names(output_mesh, NodalVariable, node_var_names)
@@ -386,6 +390,13 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             for i in 1:3
                 Exodus.write_values(output_mesh, NodalVariable, time_index, "rotation_$i", rotation[i, :])
             end
+        end
+        metric, target = nodal_metric_tensors(model, positions, time)
+        for (i, name) in enumerate(METRIC_TENSOR_NAMES)
+            Exodus.write_values(output_mesh, NodalVariable, time_index, name, metric[i, :])
+        end
+        for (i, name) in enumerate(TARGET_TENSOR_NAMES)
+            Exodus.write_values(output_mesh, NodalVariable, time_index, name, target[i, :])
         end
     end
     if is_dynamic(integrator) == true

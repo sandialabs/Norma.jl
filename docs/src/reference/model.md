@@ -98,9 +98,33 @@ centroid of each element in the original mesh and held fixed during a solve,
 as for `size field`. `metric field` scales the three sizes uniformly so the
 ideal volume is never below the volume of the original element (the
 anisotropic form of the `size field` floor); `metric field unrestricted` does
-not. The sizes and rotation vector at the nodes are written as the nodal
-variables `size_1..3` and `rotation_1..3`. Formulation and tests:
+not. The output carries the metric at every node in three forms: the
+principal sizes and the rotation vector as `size_1..3` and `rotation_1..3`;
+the metric tensor `M = R diag(1/h²) Rᵀ` as `metric_xx`, `metric_yy`,
+`metric_zz`, `metric_xy`, `metric_yz`, `metric_zx`, whose quadratic form
+gives the squared length of a vector in the target; and the target tensor
+`T = R diag(h) Rᵀ` under the same six suffixes with the prefix `target`,
+whose eigenvectors are the principal directions and whose eigenvalues are
+the target edge lengths, which is the form a tool that reads scaled
+eigenvector tensors expects. Formulation and tests:
 `docs/notes/ems-anisotropic`.
+
+A metric is a target, not a promise: with the boundary held on its
+surfaces and the connectivity fixed, smoothing cannot change the number of
+elements across the domain, so a target whose sizes ask for more elements
+across a direction than the mesh has is unreachable. On the unit cube
+meshed at 0.1, an axis-aligned target with the first size 0.025 leaves the
+mesh isotropic: the solve reaches a strict local minimum (gradient below
+10⁻⁸, Hessian positive definite), the same one from a randomly displaced
+initial mesh, because the faces are fixed planes, so the extent across x is
+1 and the elements along a path across it are as many as the connectivity
+has. The same target rotated by 45 degrees is partly reachable, since a
+path can zigzag in the plane normal to the thin direction: the mean edge
+component along it goes from 0.052 to 0.029 against the 0.025 asked, with
+the energy five times lower. Ramping the sizes over the pseudo-time reaches
+the same minimum. The remedy is the topology of the `adaptivity` block: on
+that case it takes the energy from 7.3 × 10⁴ to 8.7 × 10³ in two
+iterations, at 11835 elements from 7677.
 
 ```yaml
 model:

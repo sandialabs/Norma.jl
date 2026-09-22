@@ -283,7 +283,13 @@ the mean of its two ends for the nodal sources.
   rotation vectors at the nodes are written by every source as the nodal
   variables \code{size\_1..3} and \code{rotation\_1..3}
   (\code{nodal\_metric\_output}, with frames followed for the tensor
-  sources), so the output of a run can be the input mesh of a nodal run.
+  sources), so the output of a run can be the input mesh of a nodal run,
+  and with them the two tensor forms (\code{nodal\_metric\_tensors}): the
+  metric tensor $\bs M = \bs R\,\mathrm{diag}(h_i^{-2})\,\bs R^T$ as
+  \code{metric\_xx} and its five companions, and the target tensor
+  $\bs T = \bs R\,\mathrm{diag}(h_i)\,\bs R^T$, whose eigenvalues are the
+  target edge lengths, as \code{target\_xx} and its companions, which is
+  the form a tool that reads scaled eigenvector tensors expects.
 \end{itemize}
 
 \section{Tests}
@@ -399,6 +405,36 @@ radial size of a quarter of the wall thickness on a mesh with one element
 through the wall, is not reachable by smoothing: the mesh barely moves and
 the misfit does not decrease. Such targets require the topological
 operations of the adaptivity note.
+
+The same obstruction has a sharper form on a closed domain, found while
+answering a question from Jay Foulk. On the unit cube meshed at $0.1$, with
+the six faces held as planes, an axis-aligned target of sizes
+$(0.025, 0.2, 0.2)$ leaves the mesh exactly isotropic: the mean edge
+component stays $(0.052, 0.052, 0.052)$, and the solve stops at a strict
+local minimum, with the gradient below $10^{-8}$ and the Hessian positive
+definite (smallest eigenvalue 399 over 4140 free degrees of freedom). A
+randomly displaced initial mesh, whose worst scaled Jacobian is $0.097$
+and whose energy starts at $1.10 \times 10^5$ instead of
+$8.06 \times 10^4$, converges to the same energy, $7.2675 \times 10^4$:
+the configuration is fixed by the constraints, not by the path. The reason
+is arithmetic. The faces are fixed planes, so the extent across $x$ is
+one, and the number of elements along a path across the mesh is what the
+connectivity gives, so the mean advance per element is pinned near $0.05$;
+a target of $0.025$ asks for twice as many layers as exist. Milder
+axis-aligned targets, $(0.05, 0.1414, 0.1414)$ and $(0.05, 0.2, 0.1)$,
+leave the mesh isotropic for the same reason.
+
+The same metric rotated by $45^\circ$ is partly reachable, because the
+thin direction is no longer normal to a pair of fixed faces and a path
+through the mesh can zigzag in the plane normal to it: the mean edge
+component along the thin direction goes from $0.052$ to $0.029$ against
+the $0.025$ asked, and the energy falls by a factor of five. Ramping the
+sizes from the mesh size to the target over the pseudo-time of the solve
+reaches the same minimum as the direct target, so this is not a matter of
+following the minimum. The remedy is topology: the same axis-aligned
+target under the adaptivity loop takes the energy from
+$7.27 \times 10^4$ to $8.7 \times 10^3$ in two iterations, at 11835
+elements from 7677.
 
 \section{Next steps}
 \label{sec:next}

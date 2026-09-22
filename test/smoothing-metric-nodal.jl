@@ -336,6 +336,48 @@ end
     rm(graded_file; force=true)
 end
 
+@testset "nodal_metric_tensors" begin
+    # The two tensor forms written at the nodes: the metric tensor, whose
+    # quadratic form is the squared length in the target, and the target
+    # tensor, whose eigenvalues are the target edge lengths.  Both must
+    # return the sizes and the principal directions they were built from.
+    h = SVector(0.05, 0.1414, 0.1414)
+    R = Norma.rt_of_rv(SVector(0.0, 0.0, π / 4))
+    params = metric_model(
+        "../examples/ems/cube/cube.g",
+        Dict{String,Any}("sizes" => nodal_cube_sizes, "rotation vector" => nodal_cube_rotation),
+    )
+    sim = Norma.create_simulation(params)
+    model = sim.model
+    positions = copy(model.reference)
+    metric, target = Norma.nodal_metric_tensors(model, positions, 0.0)
+    @test size(metric) == (6, size(positions, 2)) && size(target) == size(metric)
+    for n in (1, 7, size(positions, 2))
+        M = Norma.symmetric_from_components(SVector{6,Float64}(metric[:, n]))
+        @test M ≈ Norma.metric_tensor(h, R) rtol = 1.0e-10
+        hm, Rm = Norma.principal_of_tensor(M, R)
+        @test hm ≈ h rtol = 1.0e-8
+        T = Norma.symmetric_from_components(SVector{6,Float64}(target[:, n]))
+        e = eigen(Symmetric(T))
+        @test sort(e.values) ≈ sort(collect(h)) rtol = 1.0e-10
+        # The direction of the small size is the first column of R.
+        @test abs(dot(e.vectors[:, argmin(e.values)], R[:, 1])) ≈ 1.0 atol = 1.0e-8
+        # A vector along a principal direction has metric length one when it
+        # is as long as that size.
+        v = h[1] * R[:, 1]
+        @test sqrt(dot(v, M * v)) ≈ 1.0 rtol = 1.0e-10
+    end
+    # Without a rotation the tensors are diagonal.
+    axes_params = metric_model("../examples/ems/cube/cube.g", Dict{String,Any}("sizes" => nodal_cube_sizes))
+    sim_axes = Norma.create_simulation(axes_params)
+    metric_axes, target_axes = Norma.nodal_metric_tensors(sim_axes.model, positions, 0.0)
+    @test all(abs.(metric_axes[4:6, :]) .< 1.0e-14)
+    @test metric_axes[1, 1] ≈ 1.0 / 0.05^2 rtol = 1.0e-10
+    @test target_axes[1, 1] ≈ 0.05 rtol = 1.0e-10
+    Norma.finalize_writing(sim)
+    Norma.finalize_writing(sim_axes)
+end
+
 @testset "nodal_metric_adaptivity" begin
     # A graded nodal metric finer than the mesh through one topology phase:
     # the split nodes take the mean of the ends, the compacted data matches

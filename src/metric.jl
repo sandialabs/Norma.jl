@@ -522,6 +522,32 @@ function nodal_metric_output(model::SolidMechanics, positions::AbstractMatrix{Fl
     return sizes, rotation
 end
 
+# Names of the nodal variables of the two tensor forms of the metric at the
+# nodes: the metric tensor M = R diag(1/h^2) R', whose quadratic form gives
+# the squared length of a vector in the target, and the target tensor
+# T = R diag(h) R', whose eigenvectors are the principal directions and whose
+# eigenvalues are the target edge lengths, which is the form a tool that
+# reads "scaled eigenvector" tensors expects.
+const METRIC_TENSOR_NAMES = ["metric_$s" for s in METRIC_COMPONENT_SUFFIXES]
+const TARGET_TENSOR_NAMES = ["target_$s" for s in METRIC_COMPONENT_SUFFIXES]
+
+# The two tensor forms at every node, as 6 x n matrices in the component
+# order of METRIC_COMPONENT_SUFFIXES.
+function nodal_metric_tensors(model::SolidMechanics, positions::AbstractMatrix{Float64}, time::Float64)
+    sizes, rotation = nodal_metric_output(model, positions, time)
+    num_nodes = size(sizes, 2)
+    metric = zeros(6, num_nodes)
+    target = zeros(6, num_nodes)
+    for n in 1:num_nodes
+        h = SVector{3,Float64}(sizes[1, n], sizes[2, n], sizes[3, n])
+        R = rotation === nothing ? SMatrix{3,3,Float64,9}(I) :
+            rt_of_rv(SVector{3,Float64}(rotation[1, n], rotation[2, n], rotation[3, n]))
+        metric[:, n] = components_from_symmetric(metric_tensor(h, R))
+        target[:, n] = components_from_symmetric(SMatrix{3,3,Float64,9}(R * Diagonal(h) * R'))
+    end
+    return metric, target
+end
+
 # Nodal metric data carried through the adaptivity loop.  The data of the
 # node that splits the edge (a, b) is the mean of the ends, in the space the
 # source interpolates in; nothing for the function sources, which are
