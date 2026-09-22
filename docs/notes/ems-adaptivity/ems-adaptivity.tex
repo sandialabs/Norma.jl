@@ -19,7 +19,7 @@
 and Topological Mesh Adaptation:\\
 Design of an Adaptivity Loop for Norma}
 \author{Alejandro Mota}
-\date{August 2026, revised September 19, 2026}
+\date{August 2026, revised September 22, 2026}
 
 \begin{document}
 \maketitle
@@ -55,7 +55,14 @@ adjacency data structures, and a ranked list of risks. The loop was
 implemented in September 2026 (Section~\ref{sec:implementation}); on a
 distorted cube it raises the minimum scaled Jacobian from $0.004$ to
 $0.35$ and the median from $0.56$ to $0.69$, where smoothing alone stalls
-at $0.15$ and $0.47$.
+at $0.15$ and $0.47$. The measurements then qualified the acceptance on
+the energy: the size operations toward a prescribed target are accepted
+on the edge length in the target, and the swaps on the cavity minimum of
+the scaled Jacobian, measured in the metric space under a metric, with
+the boundary edges of flat patches swapped as well; with these the loop
+matches the staggered workflow of Norma smoothing and
+\code{improve\_mesh} on the distorted cube and comes within $0.01$ of its
+mean on a plate refined in four stages.
 \end{abstract}
 
 \tableofcontents
@@ -996,25 +1003,44 @@ Steps 1 to 7 were carried out between September 18 and 19, 2026
   their side sets and the node sets common to the ends of a boundary
   edge, relaxed locally with the cavity fixed before the test; on a
   boundary without an analytic surface it stays at the midpoint.
+\item \emph{Boundary edge swap}: a boundary edge whose two boundary
+  faces lie in one side set (or in none) and make an angle below
+  \code{boundary swap angle} is replaced by the edge between the far
+  nodes of the two faces, the faces by the two that contain the new edge,
+  in the side set as well, and the chain of elements behind them by a
+  triangulation of the resulting polygon. \emph{Face swap}: an interior
+  face shared by two elements into the three elements around the edge
+  between their apexes; off by default (Section~\ref{sec:staggered}).
 \item \emph{Acceptance test} (\code{accept\_proposal}): the energy of
   the new elements below that of the old ones by a relative margin
   (default $10^{-8}$), no new element above the allowed density, and the
   geometric floor: no new element with a scaled Jacobian below
   \code{minimum scaled Jacobian} unless the worst element of the cavity
-  was already below it and the new worst is no worse.
+  was already below it and the new worst is no worse. Under
+  \code{size criterion: length} the splits and collapses of edges outside
+  the band are accepted on the length alone (Section~\ref{sec:length});
+  under \code{shape criterion: scaled Jacobian} the swaps and the
+  shape-driven collapses and splits must raise the cavity minimum of the
+  scaled Jacobian (Section~\ref{sec:staggered}). In both the energy
+  remains a validity check, and under a metric every shape measure is
+  taken in the metric space.
 \item \emph{Driver}: candidates above the desired density dilated by
   adjacency layers; swaps in decreasing order of ring energy with
   deferral of cavities changed earlier in the pass; with a prescribed
   target the edges outside the band $[1/\sqrt2, \sqrt2]$ collapsed or
-  split in every pass, and shape-driven collapses and splits only in a
-  pass without accepted swaps; compaction after every pass; passes until
-  none accepts or a cap; the adapted mesh written and smoothed again
+  split in every pass (before the swaps with \code{size operations
+  first}, the splits longest first in the target), and shape-driven
+  collapses and splits only in a pass without accepted swaps unless
+  \code{shape operations every pass}; no operation may create an edge or
+  a face that exists or was created earlier in the pass; compaction after
+  every operator; refused proposals remembered for the phase and retried
+  only when their cavity changes; passes until none accepts or a cap; the adapted mesh written and smoothed again
   until a topology phase accepts nothing or the outer iterations are
   exhausted. The smoothing phases end on the energy stagnation exit of
   the solver (\code{energy stagnation window} and \code{tolerance}).
   Input: the top-level \code{adaptivity} block
   (\code{docs/src/reference/model.md}).
-\item \emph{Tests} 127 to 131: the kernel on hand-built cavities against
+\item \emph{Tests} 127 to 131, 133, and 134: the kernel on hand-built cavities against
   an independent evaluation and against the assembled energy; the
   topology (Euler characteristic, boundary faces against side sets,
   Exodus round trip with the side numbering); each operator on a
@@ -1022,7 +1048,11 @@ Steps 1 to 7 were carried out between September 18 and 19, 2026
   the tube, with the invariants checked (Euler characteristic, closed
   boundary, side sets covering it, new boundary nodes on the analytic
   surfaces to $10^{-8}$, every node on a face of the cube in the node set
-  of that face, energy decrease accounted for).
+  of that face, energy decrease accounted for); the length criterion on
+  the tube toward a finer and a coarser target (133); and the options,
+  the ranking, the quality in the metric space, the face swap, the
+  boundary swap, the guard against created entities, and a topology phase
+  on the cube under three combinations of the options (134).
 \end{itemize}
 
 \subsection{The distorted cube}
@@ -1286,7 +1316,7 @@ $0.82$ for the input mesh, whose edges were $1.5$ times the target. The
 smoothing energy rises from $3.01$ to $5.42$ over the refinement: with
 equal moduli the functional charges the shapes of the bisected elements
 more than it credits their sizes, which is the measured reason the size
-operations are not judged by it The test with a target of
+operations are not judged by it. The test with a target of
 $0.24$ shows the opposite: the short edges are collapsed, the count
 falls, and the boundary stays closed and covered by the side sets.
 
@@ -1313,12 +1343,19 @@ $1.2$; it is used as written. A mesh exactly at the target has about
 $2900$, $12\,800$, $69\,000$, and $420\,000$ elements at the four
 stages.
 
+The measurements below record how the example came to its present
+configuration; its current results, with the scaled Jacobian criterion,
+boundary swaps, the size operations first, and the splits longest first,
+are at the end of Section~\ref{sec:staggered}, with the comparison
+against the staggered workflow and the present cost of 40 minutes for
+the four stages.
+
 Under the energy criterion, with equal moduli and a floor of $0.35$,
 the first stage stalled at 1068 elements with 920 of its 1680 edges
 beyond the band, every split raising the cavity energy by 52 percent at
 the median, and the mesh looked like the input with a few more
-elements. Under the length criterion, with a floor of $0.15$ and equal
-moduli, the stages give
+elements. Under the length criterion, with a floor of $0.15$, equal moduli, and
+the energy criterion for the swaps, the stages gave
 \begin{center}
 \begin{tabular}{lrrrrr}
 \toprule
@@ -1340,7 +1377,8 @@ adaptivity iteration fall by a factor of two to four each time
 smoothing energy after each phase is above the energy before it, as on
 the tube, since the bisected elements cost more in shape than they
 return in size under equal moduli. The four stages took 4, 7, 43, and
-230 minutes on 16 threads; the last is dominated by the eight smoothing
+230 minutes on 16 threads before the performance work of
+Section~\ref{sec:staggered}; the last is dominated by the eight smoothing
 phases of up to 200 L-BFGS iterations on half a million elements. The
 element count exceeds that of a mesh at the target by 15 to 20 percent
 at every stage, the overshoot of bisection: an edge just beyond
@@ -1357,35 +1395,53 @@ the top face of the mesh after each of the four stages.}
 \section{Risks and open questions}
 \label{sec:risks}
 
-Ranked by importance.
+The risks this note ranked before the implementation, and how each was
+resolved, followed by the questions that remain open.
 
 \begin{enumerate}[itemsep=2pt]
-\item \emph{The acceptance test and the kernel.} The single functional of
-  Section~\ref{sec:intrinsic} is the load-bearing design decision. It
-  should be validated by a small standalone prototype---a single cavity
-  with hand-verified energies before and after a swap, a collapse, and a
-  split, with the metric-sampled ideal and with the equal-volume
-  fallback---before Step 4 is undertaken.
-\item \emph{Boundary collapses on curved surfaces.} The level-set
-  projection and the energy test can conflict: a collapse that lowers
-  the cavity energy may move the surviving node to a surface position
-  that raises it again after projection. The test must therefore be
-  evaluated \emph{after} projection, and boundary collapses should be
-  expected to have a lower acceptance rate.
-\item \emph{Four-node tetrahedra only.} This is a decision, not a
-  restriction to be lifted: the smoothing and the operators are written
-  for four-node tetrahedra, and higher-order meshes are produced by
-  conversion after the loop. The input documentation should say so.
-\item \emph{Energy thresholds across target sizes.} The element energy
-  is the density times the ideal volume, so thresholds and the floor
-  must be on the density and the cavity comparison on the sums
-  (Section~\ref{sec:monotonicity}); a threshold on the element energy
-  would favor large elements.
-\item \emph{Geometric floor versus energy test.} An operation may lower
-  the cavity energy while creating an element below the geometric floor
-  the analysis requires; the floor is part of the acceptance test for that reason,
-  and its value should be taken from the analysis code, not from the
-  smoother.
+\item \emph{The acceptance test and the kernel.} The kernel was
+  validated on hand-built cavities, against an independent evaluation
+  and the assembled energy, before the loop was built (test 127). The
+  single functional then proved the wrong test for two classes of
+  operation: the size operations toward a target, refused by the cavity
+  sum beyond a ratio of about $1.5$ (Section~\ref{sec:length}), and the
+  swaps, better judged by the cavity minimum of the scaled Jacobian
+  (Section~\ref{sec:staggered}). The energy remains the objective of the
+  smoothing and the validity check of every operation.
+\item \emph{Boundary collapses on curved surfaces.} Resolved by
+  construction: a collapse keeps the position of the surviving node,
+  which must lie on every surface of the removed node, so no projection
+  follows the test.
+\item \emph{Four-node tetrahedra only.} A decision, stated in the input
+  documentation; higher-order meshes are produced by conversion after
+  the loop.
+\item \emph{Energy thresholds across target sizes.} The thresholds are
+  on the density and the cavity comparison on the sums
+  (Section~\ref{sec:monotonicity}), as planned.
+\item \emph{Geometric floor versus energy test.} The floor is part of the
+  acceptance test under every criterion.
+\end{enumerate}
+
+Open questions:
+\begin{enumerate}[itemsep=2pt]
+\item \emph{Subdivision.} On the plate the loop remains about $0.01$
+  below the staggered workflow in the mean scaled Jacobian. The
+  difference is the subdivision: \code{improve\_mesh} refines an element
+  whose edges are all long with a template, one into eight, whereas
+  bisection one edge at a time gives the same count with worse shapes.
+\item \emph{Termination under the scaled Jacobian criterion.} Descent of
+  the energy (Proposition~\ref{prop:descent}) then covers the smoothing
+  phases alone; the topology phases terminate on the strict rise of the
+  cavity minimum, which bounds the number of operations but not the
+  energy across a phase.
+\item \emph{Over-constrained targets.} A target that asks for more
+  elements across a direction bounded by fixed faces than the mesh has is
+  a strict local minimum of the smoothing; the topology reaches it
+  (\code{docs/notes/ems-anisotropic}), but the loop does not detect the
+  situation, and a smoothing run alone reports convergence.
+\item \emph{A metric from a solution.} The loop takes its target as
+  given; the construction of a metric from the recovered Hessian of a
+  field is the next step of the anisotropic note.
 \end{enumerate}
 
 \section{Summary}
@@ -1428,7 +1484,8 @@ energy field, the metric-space ideal element, the analytic surface
 constraints, and the mesh-replacement orchestration; the new construction
 is the in-memory topology cache with adjacency, the three cavity
 operators, and the single acceptance test that all of them pass. All of
-it is in place as of September 19, 2026; the measurements of
+it is in place as of September 22, 2026, with every shape measure taken
+in the metric space when the target is a metric; the measurements of
 Section~\ref{sec:implementation} confirm the premise of the note, that
 the alternation improves the mesh far beyond either mechanism alone.
 

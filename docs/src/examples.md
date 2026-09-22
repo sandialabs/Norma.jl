@@ -24,7 +24,7 @@ Norma.run("bars.yaml")
 | `examples/nonoverlap/` | Non-overlapping Schwarz coupling, including the impedance method and subcycled cases |
 | `examples/contact/` | Contact via Schwarz (static, implicit, explicit) |
 | `examples/adaptive-time-stepping/` | Adaptive time stepping and mesh swapping |
-| `examples/ems/` | Mesh-smoothing cases |
+| `examples/ems/` | Mesh smoothing toward size and metric fields, and smoothing alternated with topological operations |
 | `examples/ahead/` | Application-motivated cases, including the reduced-order-model workflow |
 
 Each example is a self-contained set of a YAML input file and its Exodus mesh.

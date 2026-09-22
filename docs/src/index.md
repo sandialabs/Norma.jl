@@ -110,6 +110,12 @@ Capabilities currently implemented:
 
 - Triggered by time, stress-recovery error, overlap displacement error, or the elastic-to-plastic transition
 
+**Mesh smoothing and adaptivity** (four-node tetrahedra)
+
+- Energy-minimization smoothing toward a prescribed size field or an anisotropic metric field, given by expressions or by nodal variables of the input mesh
+- Smoothing alternated with edge swaps, collapses, and splits, with the boundary kept on its surfaces and side sets
+- Output of the element energy density and of the metric at every node
+
 **Nodal recovery and field transfer**
 
 - L2-projection recovery (lumped and consistent) of stress, von Mises stress, deformation gradient, and internal variables

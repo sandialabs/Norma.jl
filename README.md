@@ -94,6 +94,9 @@ algorithms, with an emphasis on extensibility and experimentation:
 - **Boundary conditions:** Dirichlet, Neumann traction and follower pressure,
   Robin, and inclined-surface (roller) support.
 - **Adaptive mesh swapping**, **nodal field recovery**, and **Exodus/CSV output**.
+- **Mesh improvement:** energy-minimization smoothing of tetrahedral meshes
+  toward a prescribed size or anisotropic metric field, alternated with edge
+  swaps, collapses, and splits.
 - **Reduced-order models:** Operator Inference and RBF kernel ROMs, documented
   with the [`norma-opinf`](https://github.com/sandialabs/norma-opinf) companion
   package.

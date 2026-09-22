@@ -11,7 +11,7 @@
 
 \title{Anisotropic Energetic Mesh Smoothing with a Metric Tensor Field in Norma}
 \author{Alejandro Mota}
-\date{September 2026}
+\date{September 2026, revised September 22, 2026}
 
 \begin{document}
 \maketitle
@@ -345,15 +345,25 @@ the mean of its two ends for the nodal sources.
   sampled at the nodes agrees with the analytic field to $2\%$ and not to
   $10^{-8}$; a missing variable, a bad time index, and a nonpositive size
   are rejected;
+\item the two tensor forms written at the nodes: the metric tensor
+  reproduces $\bs R\,\mathrm{diag}(h_i^{-2})\,\bs R^T$ and its sizes, a
+  vector along a principal direction as long as its size has metric
+  length one, the target tensor has the sizes as eigenvalues and the
+  first principal direction as the eigenvector of the smallest, and
+  without a rotation both are diagonal;
 \item one adaptivity loop of two iterations on the cube with graded nodal
   sizes finer than the mesh, splits only: the adapted meshes carry the
   variables under the input names, the carried data matches the final
   mesh node for node, and every carried size lies within the range of the
   input.
 \end{enumerate}
-The existing smoothing tests (51, 119), the adaptivity tests (127 to
-131), and the input-validation sweep of the examples (122) pass
-unchanged.
+The scaled Jacobian in the metric space, which every shape measure of the
+adaptivity loop uses under a metric, is checked in test 134: the ideal
+element of an anisotropic target measures one in the metric and below
+$0.6$ in physical space, and the regular tetrahedron of the geometric
+size the reverse. The existing smoothing tests (51, 119),
+the adaptivity tests (127 to 131, 133, 134), and the input-validation
+sweep of the examples (122) pass unchanged.
 
 \section{Examples}
 \label{sec:examples}

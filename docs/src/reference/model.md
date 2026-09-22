@@ -113,7 +113,7 @@ A metric is a target, not a promise: with the boundary held on its
 surfaces and the connectivity fixed, smoothing cannot change the number of
 elements across the domain, so a target whose sizes ask for more elements
 across a direction than the mesh has is unreachable. On the unit cube
-meshed at 0.1, an axis-aligned target with the first size 0.025 leaves the
+meshed at 0.1, an axis-aligned target of sizes (0.025, 0.2, 0.2) leaves the
 mesh isotropic: the solve reaches a strict local minimum (gradient below
 10⁻⁸, Hessian positive definite), the same one from a randomly displaced
 initial mesh, because the faces are fixed planes, so the extent across x is
@@ -123,14 +123,16 @@ path can zigzag in the plane normal to the thin direction: the mean edge
 component along it goes from 0.052 to 0.029 against the 0.025 asked, with
 the energy five times lower. Ramping the sizes over the pseudo-time reaches
 the same minimum. The remedy is the topology of the `adaptivity` block: on
-that case it takes the energy from 7.3 × 10⁴ to 8.7 × 10³ in two
-iterations, at about 11000 elements from 7677, and the mean edge component
-along the thin direction from 0.052 to 0.013 against the 0.0125 that the
-target implies, with 97 percent of the edges inside the band in the metric
+that case it takes the energy from 7.3 × 10⁴ to 9.4 × 10² over twelve
+iterations, at 10801 elements from 7677, and the mean edge components from
+(0.052, 0.052, 0.052) to (0.0134, 0.091, 0.091) against the
+(0.0125, 0.1, 0.1) that the target implies, with 96.8 percent of the edges
+inside the band in the metric and every boundary node on its face
 (`examples/ems/cube/cube-metric-adaptive.yaml`). The two orientations then
-agree, as they must: with topology allowed, the axis-aligned target and the
-same target at 45 degrees end at the same edge components and the same
-fraction inside the band.
+agree, as they must: the same target at 45 degrees
+(`examples/ems/cube/cube-metric-rotated-adaptive.yaml`) ends at 10768
+elements, edge components (0.0134, 0.094, 0.090), and 96.2 percent inside
+the band.
 
 ```yaml
 model:
@@ -166,7 +168,7 @@ the nodal metric follows the operations (a split node takes the mean of the
 ends of its edge) and the adapted meshes carry it under the same variable
 names, so the input applies to them unchanged. The output of a metric run
 carries `size_1..3` and `rotation_1..3`, so it can serve as the input mesh
-of a nodal run.
+of a nodal run, and `metric_*` and `target_*`, so either tensor form can.
 
 ```yaml
 input mesh file: cube-metric.e
@@ -182,21 +184,31 @@ model:
 ### Adaptivity: smoothing alternated with topological operations
 
 A top-level `adaptivity` block turns a mesh smoothing run into the coupled
-loop of `docs/notes/ems-adaptivity`: the mesh is smoothed, the interior edges
-of the elements of highest energy density are swapped where a swap lowers the
-energy of the elements around the edge, edges are collapsed where a collapse
-does (a node is removed only onto a node that carries its node sets and lies
-on its surfaces, along a boundary edge if it is on the boundary), edges are
-split where a split does, the new mesh is written as
+loop of `docs/notes/ems-adaptivity`: the mesh is smoothed, then a topology
+phase swaps edges (interior ones, and with `boundary swaps` boundary ones),
+collapses edges (a node is removed only onto a node that carries its node
+sets and lies on its surfaces, along a boundary edge if it is on the
+boundary), and splits edges, the new mesh is written as
 `<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
-phase accepts no operation or the outer iterations are exhausted. Every
-operation is accepted by one test: the energy of the new elements must be
-below that of the old ones by the relative margin, no new element may exceed
-the allowed density, and the worst new element must respect the geometric
-floor. The energy sums the elements of the cavity, so without the floor an
-operation can improve the sum while creating one flat element; the floor
-is stated in the scaled Jacobian that the analysis codes require. The mesh must consist of four-node tetrahedra.
-Node sets and side sets are carried over to the written meshes.
+phase accepts no operation or the outer iterations are exhausted. The mesh
+must consist of four-node tetrahedra. Node sets and side sets are carried
+over to the written meshes, and a split node on the boundary joins the side
+sets of the faces it lies on.
+
+Each operation is accepted by the test its criterion names. With the
+defaults every operation must lower the energy of the elements around it
+(its cavity) by the relative margin; `size criterion: length` and
+`shape criterion: scaled Jacobian`, described below, replace that test for
+the size operations and the shape operations. Whatever the criterion, no
+new element may exceed the allowed density, and the worst new element must
+respect the geometric floor. The energy sums the elements of the cavity, so
+without the floor an operation can improve the sum while creating one flat
+element; the floor is stated in the scaled Jacobian that the analysis codes
+require. The combination recommended for refinement, coarsening, and
+repair alike is the length criterion, the scaled Jacobian criterion,
+boundary swaps, and the size operations first, as in the sample below and
+in every adaptive example except `tube-adaptive.yaml`, which keeps the
+energy test for the swaps.
 
 The energy test alone cannot refine or coarsen a smoothed mesh toward a
 prescribed target by more than a factor of about 1.5 in edge length: a split
@@ -298,6 +310,11 @@ converged mesh of half a million elements this takes a pass from about
 
 ```yaml
 adaptivity:
+  size criterion: length
+  shape criterion: scaled Jacobian
+  boundary swaps: true
+  size operations first: true
+  minimum scaled Jacobian: 0.15
   desired energy density: 0.05
   adjacency layers: 2
   maximum passes: 10
@@ -305,8 +322,14 @@ adaptivity:
 ```
 
 Examples: `examples/ems/awful-cube/awful-cube-adaptive.yaml` (a distorted
-cube improved at its own mesh size) and `examples/ems/tube/tube-adaptive.yaml`
-(a tube refined toward a finer target with its nodes on analytic surfaces).
+cube improved at its own mesh size), `examples/ems/tube/tube-adaptive.yaml`
+(a tube refined toward a finer target with its nodes on analytic surfaces),
+`examples/ems/plate/plate-sinusoid.yaml` (a plate refined in stages toward a
+sinusoidal size field), `examples/ems/tube/tube-metric-adaptive.yaml`
+(refinement and coarsening toward a graded metric), and
+`examples/ems/cube/cube-metric-adaptive.yaml` with
+`cube-metric-rotated-adaptive.yaml` (an anisotropic target in two
+orientations).
 Formulation, design, and measurements: `docs/notes/ems-adaptivity`.
 
 Mesh smoothing is a specialized capability; most simulations omit these keys.
