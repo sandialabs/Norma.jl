@@ -218,6 +218,21 @@ acceptance test. Ranking the cavities worst first, more alternation with
 fewer passes, and shape operations in every pass were measured and gain
 nothing.
 
+Under a metric field every shape measure of the loop, the criterion, the
+floor, the candidates, and the ranking, is the scaled Jacobian of the
+element mapped by the metric factor, so that an element matching an
+anisotropic target is regular and measures one. Measured in physical
+space instead, the criterion penalizes the elongation the target asks for,
+the swaps undo what the smoother does, and the loop does not converge (on
+the tube under its graded metric the operations per iteration stayed at
+220 to 440 and the energy tripled; in the metric space they fall 167, 72,
+49, 37, 20, 13 and the mesh reaches 99.6 percent of its edges inside the
+band). The splits of edges beyond the band are tried longest first in the
+target, as in longest-edge bisection, which bounds the shape of the
+children; on the plate this raised the mean scaled Jacobian of the final
+stage from 0.696 to 0.702 and the minimum of the third from 0.22 to 0.33,
+within 0.011 of the staggered workflow.
+
 Within a pass the operations of one operator are independent, since every
 accepted operation marks the elements of its cavity dead and a later
 proposal touching a dead element is refused, but they may not create an
@@ -233,7 +248,7 @@ converged mesh of half a million elements this takes a pass from about
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `size criterion` | no | `energy` | `energy`: every operation must lower the cavity energy; `length`: the splits and collapses of edges outside the length band of the prescribed target are accepted on the length alone, subject to the floor and the constraints |
-| `shape criterion` | no | `energy` | `energy`: a swap or a shape-driven collapse or split must lower the cavity energy; `scaled Jacobian`: it must raise the minimum scaled Jacobian of the cavity |
+| `shape criterion` | no | `energy` | `energy`: a swap or a shape-driven collapse or split must lower the cavity energy; `scaled Jacobian`: it must raise the minimum scaled Jacobian of the cavity, measured in the metric space under a metric field |
 | `boundary swaps` | no | `false` | try the swap of boundary edges whose two boundary faces lie in one side set (or in none) and form a flat patch |
 | `boundary swap angle` | no | `20` | largest angle in degrees between the two boundary faces of an edge for its swap to be tried |
 | `size operations first` | no | `false` | collapse and split the edges outside the band before the swaps in every pass, rather than after; recommended, since the swaps then act on elements already near their target size |
@@ -276,3 +291,4 @@ See `examples/ems/` for smoothing cases.
 - Metric carried by the nodes of the input mesh: `examples/ems/cube/cube-metric-nodal.yaml`
 - Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`
 - Refinement toward a prescribed size field in stages: `examples/ems/plate/plate-sinusoid.yaml` with `refine.jl`
+- Refinement and coarsening toward a metric: `examples/ems/tube/tube-metric-adaptive.yaml`

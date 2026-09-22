@@ -1216,6 +1216,39 @@ converged stage 4 mesh the first swap pass goes from 197 to 92 s and the
 following passes from about 200 to 7 s; the first three stages of the
 plate, rerun, took 3, 7, and 39 minutes.
 
+\paragraph{Quality in the metric space, and the order of the splits.}
+Rerunning the anisotropic examples with the faster code reproduced their
+energies step for step, but the loop under a metric target did not
+converge: on the tube with the graded axial size of the anisotropic note
+the operations per iteration stayed at 220 to 440 and the smoothed
+energy rose from 795 to 3061. The shape measures were the scaled Jacobian
+in physical space, which penalizes the elongation the target asks for, so
+the swaps undid what the smoother did. Every shape measure of the loop,
+the criterion, the floor, the candidates, and the ranking, is now the
+scaled Jacobian of the element mapped by the metric factor $\bs F_M$
+sampled on it, in which an element that matches the target is regular;
+without a metric the measure is unchanged, since a scalar size scales all
+edges alike. The tube then converges (167, 72, 49, 37, 20, 13 operations),
+from 5657 to 6043 elements, with the metric quality from a minimum of
+$0.17$ and a mean of $0.66$ to $0.43$ and $0.77$, $99.6$ percent of the
+edges inside the band in the metric against $87.5$ percent on the input,
+and every boundary node on its surface
+(\code{examples/ems/tube/tube-metric-adaptive.yaml}). On the plate the
+order of the operators gained nothing, refinement being what dominates
+there, but the order of the splits did: they are tried longest first in
+the target, as in longest-edge bisection, which is what bounds the shape
+of the children: the four stages then reach means of $0.682$, $0.692$,
+$0.701$, and $0.702$ with minima of $0.39$, $0.38$, $0.33$, and $0.32$,
+from $0.671$, $0.680$, $0.693$, $0.696$ and $0.37$, $0.32$, $0.22$,
+$0.33$ before, against $0.690$, $0.700$, $0.709$, $0.713$ and $0.40$,
+$0.37$, $0.35$, $0.32$ for the staggered workflow, with 3389, 15043,
+81616, and 486814 elements. The remaining $0.01$ in the mean is the
+subdivision itself: \code{improve\_mesh} refines an element whose edges
+are all long with a template, one into eight, whereas bisection one edge
+at a time gives the same count with worse shapes. With the faster code
+the four stages of the plate take 40 minutes on 16 threads, against about
+14 hours before.
+
 \paragraph{Consistency of a pass.} Face swaps exposed two hazards in the
 pass structure that the interior edge swaps had escaped by the shape of
 their cavities. The operations of one operator are independent, since an

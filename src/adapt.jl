@@ -88,15 +88,37 @@ end
 # operation must achieve under `shape criterion: scaled Jacobian`.
 const MINIMUM_QUALITY_INCREASE = 1.0e-6
 
+# Scaled Jacobians of the elements of a connectivity, in the metric space of
+# the target when a metric field is prescribed: each element is mapped by
+# the factor F_M of the metric sampled on it, so that an element that
+# matches an anisotropic target is regular and measures one, and the shape
+# criteria of the loop cannot fight the smoother over the elongation the
+# target asks for.  Without a metric field the measure is the geometric one
+# (a scalar size scales all edges alike and leaves it unchanged).
+function quality_jacobians(
+    model::SolidMechanics, positions::AbstractMatrix{Float64}, connectivity::AbstractMatrix{<:Integer}
+)
+    model.metric_field === nothing && return scaled_jacobians(positions, connectivity)
+    quality = Vector{Float64}(undef, size(connectivity, 2))
+    for e in 1:size(connectivity, 2)
+        node_indices = view(connectivity, :, e)
+        X = SMatrix{3,4,Float64,12}(positions[i, node_indices[j]] for i in 1:3, j in 1:4)
+        _, F_M, _ = create_metric_reference(model.metric_field, X, model.time; node_indices)
+        quality[e] = tetrahedron_scaled_jacobian(F_M * X)
+    end
+    return quality
+end
+
 # Whether the new elements of a cavity raise its minimum scaled Jacobian.
 function raises_minimum_quality(
+    model::SolidMechanics,
     topology::MeshTopology,
     old_elements::Vector{Int},
     new_connectivity::AbstractMatrix{<:Integer},
     positions::AbstractMatrix{Float64},
 )
-    old_minimum = minimum(scaled_jacobians(topology.positions, topology.connectivity[:, old_elements]))
-    new_minimum = minimum(scaled_jacobians(positions, new_connectivity))
+    old_minimum = minimum(quality_jacobians(model, topology.positions, topology.connectivity[:, old_elements]))
+    new_minimum = minimum(quality_jacobians(model, positions, new_connectivity))
     return new_minimum > old_minimum * (1.0 + MINIMUM_QUALITY_INCREASE)
 end
 
@@ -113,9 +135,8 @@ function ideal_element_volumes(
     volumes = Vector{Float64}(undef, size(connectivity, 2))
     for e in 1:size(connectivity, 2)
         node_indices = view(connectivity, :, e)
-        X, _, _ = smoothing_reference(
-            model, block.element_type, Matrix(sample_positions[:, node_indices]); node_indices, metric
-        )
+        sample = SMatrix{3,4,Float64,12}(sample_positions[i, node_indices[j]] for i in 1:3, j in 1:4)
+        X, _, _ = smoothing_reference(model, block.element_type, sample; node_indices, metric)
         volumes[e] = abs(tetrahedron_volume(X))
     end
     return volumes
@@ -146,6 +167,7 @@ function passes_scaled_jacobian_floor(old_minimum::Float64, new_minimum::Float64
 end
 
 function passes_scaled_jacobian_floor(
+    model::SolidMechanics,
     topology::MeshTopology,
     old_elements::Vector{Int},
     new_connectivity::AbstractMatrix{<:Integer},
@@ -153,8 +175,8 @@ function passes_scaled_jacobian_floor(
     floor::Float64,
 )
     floor ≤ 0.0 && return true
-    old_minimum = minimum(scaled_jacobians(topology.positions, topology.connectivity[:, old_elements]))
-    new_minimum = minimum(scaled_jacobians(positions, new_connectivity))
+    old_minimum = minimum(quality_jacobians(model, topology.positions, topology.connectivity[:, old_elements]))
+    new_minimum = minimum(quality_jacobians(model, positions, new_connectivity))
     return passes_scaled_jacobian_floor(old_minimum, new_minimum, floor)
 end
 
@@ -178,7 +200,7 @@ function accept_proposal(
     new_energy = sum(new_energies)
     if require_decrease
         if options.shape_by_quality
-            raises_minimum_quality(topology, old_elements, new_connectivity, positions) || return nothing
+            raises_minimum_quality(model, topology, old_elements, new_connectivity, positions) || return nothing
         else
             new_energy ≤ old_energy - options.minimum_decrease * old_energy || return nothing
         end
@@ -188,7 +210,7 @@ function accept_proposal(
         maximum(new_energies ./ volumes) ≤ options.allowed_density || return nothing
     end
     floor = options.minimum_scaled_jacobian
-    passes_scaled_jacobian_floor(topology, old_elements, new_connectivity, positions, floor) || return nothing
+    passes_scaled_jacobian_floor(model, topology, old_elements, new_connectivity, positions, floor) || return nothing
     return CavityProposal(old_elements, new_connectivity, block, old_energy, new_energy, 0, 0, nothing)
 end
 
@@ -378,7 +400,7 @@ function configuration_score(
     # Under the scaled Jacobian criterion the energies of the chosen
     # configuration are computed once by the acceptance test, as its
     # validity check.
-    options.shape_by_quality && return -minimum(scaled_jacobians(topology.positions, connectivity))
+    options.shape_by_quality && return -minimum(quality_jacobians(model, topology.positions, connectivity))
     energies = element_energies(model, block, connectivity, topology.positions)
     all(isfinite, energies) || return Inf
     return sum(energies)
@@ -841,7 +863,7 @@ function try_edge_split(
     positions = PositionsWithNode(topology.positions, position)
     if !by_length
         if options.shape_by_quality
-            raises_minimum_quality(topology, collect(ring), connectivity, positions) || return nothing
+            raises_minimum_quality(model, topology, collect(ring), connectivity, positions) || return nothing
         else
             energy_after ≤ energy_before - options.minimum_decrease * energy_before || return nothing
         end
@@ -852,7 +874,7 @@ function try_edge_split(
         maximum(energies ./ volumes) ≤ options.allowed_density || return nothing
     end
     floor = options.minimum_scaled_jacobian
-    passes_scaled_jacobian_floor(topology, collect(ring), connectivity, positions, floor) || return nothing
+    passes_scaled_jacobian_floor(model, topology, collect(ring), connectivity, positions, floor) || return nothing
     split = SplitNode(position, node_sets, side_sets, (a, b), node_metric)
     return CavityProposal(collect(ring), connectivity, block, energy_before, energy_after, 0, 0, split)
 end
@@ -882,7 +904,7 @@ function split_pass!(
     densities = energy_densities(model, topology)
     edges = Set{Tuple{Int,Int}}()
     if shape
-        for e in candidate_elements(topology, densities, options)
+        for e in candidate_elements(model, topology, densities, options)
             c = view(topology.connectivity, :, e)
             for i in 1:4, j in (i + 1):4
                 push!(edges, sorted_edge(c[i], c[j]))
@@ -893,8 +915,17 @@ function split_pass!(
     union!(edges, size_edges)
     setdiff!(edges, memory.splits)
     ranked = collect(edges)
-    edge_energy(edge) = cavity_rank(topology, densities, edge_elements(topology, edge[1], edge[2]), options)
-    sort!(ranked; by=edge_energy, rev=true)
+    # The edges beyond the band are split longest first, in the target, as
+    # in longest-edge bisection, which is what bounds the shape of the
+    # children; the shape-driven candidates follow by their cavity rank.
+    function split_rank(edge)
+        (a, b) = edge
+        if options.size_by_length && edge in size_edges
+            return (1, metric_edge_length(model, topology, a, b))
+        end
+        return (0, cavity_rank(model, topology, densities, edge_elements(topology, a, b), options))
+    end
+    sort!(ranked; by=split_rank, rev=true)
     accepted = 0
     decrease = 0.0
     for (a, b) in ranked
@@ -970,7 +1001,7 @@ function collapse_pass!(
     densities = energy_densities(model, topology)
     edges = Set{Tuple{Int,Int}}()
     if shape
-        for e in candidate_elements(topology, densities, options)
+        for e in candidate_elements(model, topology, densities, options)
             c = view(topology.connectivity, :, e)
             for i in 1:4, j in (i + 1):4
                 push!(edges, sorted_edge(c[i], c[j]))
@@ -981,7 +1012,7 @@ function collapse_pass!(
     union!(edges, size_edges)
     setdiff!(edges, memory.collapses)
     ranked = collect(edges)
-    edge_energy(edge) = cavity_rank(topology, densities, edge_elements(topology, edge[1], edge[2]), options)
+    edge_energy(edge) = cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options)
     sort!(ranked; by=edge_energy, rev=true)
     accepted = 0
     decrease = 0.0
@@ -1006,14 +1037,16 @@ end
 
 # Candidate elements: those above the desired density, dilated by the given
 # number of layers of node adjacency.
-function candidate_elements(topology::MeshTopology, densities::Vector{Float64}, options::AdaptivityOptions)
+function candidate_elements(
+    model::SolidMechanics, topology::MeshTopology, densities::Vector{Float64}, options::AdaptivityOptions
+)
     candidates = falses(length(densities))
     if options.shape_by_quality
         # An operation accepted on the cavity minimum can only help the
         # elements below the desired quality, and every edge of such an
         # element is incident to it, so no dilation is needed.
         alive = findall(topology.element_alive)
-        sj = scaled_jacobians(topology.positions, topology.connectivity[:, alive])
+        sj = quality_jacobians(model, topology.positions, topology.connectivity[:, alive])
         for (k, e) in enumerate(alive)
             sj[k] < options.desired_quality && (candidates[e] = true)
         end
@@ -1038,14 +1071,12 @@ end
 # elements around an edge or a face, or, under the scaled Jacobian
 # criterion, the negative of their minimum scaled Jacobian, so that the
 # worst cavities are tried first in either case.
-function cavity_rank(topology::MeshTopology, densities::Vector{Float64}, elements, options::AdaptivityOptions)
+function cavity_rank(
+    model::SolidMechanics, topology::MeshTopology, densities::Vector{Float64}, elements, options::AdaptivityOptions
+)
     if options.shape_by_quality
-        worst = 1.0
-        for e in elements
-            sj = tetrahedron_scaled_jacobian(view(topology.positions, :, view(topology.connectivity, :, e)))
-            worst = min(worst, sj)
-        end
-        return -worst
+        isempty(elements) && return -1.0
+        return -minimum(quality_jacobians(model, topology.positions, topology.connectivity[:, collect(elements)]))
     end
     return sum(densities[e] for e in elements; init=0.0)
 end
@@ -1059,7 +1090,7 @@ function swap_pass!(
     model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions; memory::PhaseMemory=PhaseMemory()
 )
     densities = energy_densities(model, topology)
-    candidates = candidate_elements(topology, densities, options)
+    candidates = candidate_elements(model, topology, densities, options)
     edges = Set{Tuple{Int,Int}}()
     boundary_edges = Set{Tuple{Int,Int}}()
     faces = Set{NTuple{3,Int}}()
@@ -1081,8 +1112,8 @@ function swap_pass!(
     end
     # Rank the edges and faces by the energy of the elements around them, in
     # decreasing order.
-    ring_energy(edge) = cavity_rank(topology, densities, edge_elements(topology, edge[1], edge[2]), options)
-    face_energy(face) = cavity_rank(topology, densities, get(topology.faces, face, Int[]), options)
+    ring_energy(edge) = cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options)
+    face_energy(face) = cavity_rank(model, topology, densities, get(topology.faces, face, Int[]), options)
     ranked_boundary = sort!(collect(boundary_edges); by=ring_energy, rev=true)
     ranked = sort!(collect(edges); by=ring_energy, rev=true)
     ranked_faces = sort!(collect(faces); by=face_energy, rev=true)

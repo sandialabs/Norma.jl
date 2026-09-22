@@ -95,6 +95,8 @@ function quality_closed_boundary(topology)
 end
 
 @testset "quality_options" begin
+    sim = quality_model("../examples/ems/cube/cube.g", "cube", "quality-options.e"; size_field="0.1")
+    model = sim.model
     o = Norma.AdaptivityOptions(Dict{String,Any}())
     @test !o.shape_by_quality && !o.face_swaps && !o.boundary_swaps
     o = Norma.AdaptivityOptions(
@@ -123,18 +125,86 @@ end
     densities = [1.0, 3.0]
     energy_options = Norma.AdaptivityOptions(Dict{String,Any}())
     quality_options = Norma.AdaptivityOptions(Dict{String,Any}("shape criterion" => "scaled Jacobian"))
-    @test Norma.cavity_rank(topology, densities, [1, 2], energy_options) == 4.0
+    @test Norma.cavity_rank(model, topology, densities, [1, 2], energy_options) == 4.0
     sj = Norma.scaled_jacobians(positions, conn)
-    @test Norma.cavity_rank(topology, densities, [1, 2], quality_options) == -minimum(sj)
-    @test Norma.cavity_rank(topology, densities, [1], quality_options) == -sj[1]
+    @test Norma.cavity_rank(model, topology, densities, [1, 2], quality_options) == -minimum(sj)
+    @test Norma.cavity_rank(model, topology, densities, [1], quality_options) == -sj[1]
     # The minimum must rise by the relative tolerance.
     positions = [0.0 1.0 0.0 0.0; 0.0 0.0 1.0 0.0; 0.0 0.0 0.0 1.0]
     conn = reshape([1, 2, 3, 4], 4, 1)
     topology = Norma.build_topology(positions, conn)
     better = copy(positions)
     better[:, 4] = [1 / 3, 1 / 3, sqrt(2 / 3)]
-    @test Norma.raises_minimum_quality(topology, [1], conn, better)
-    @test !Norma.raises_minimum_quality(topology, [1], conn, positions)
+    @test Norma.raises_minimum_quality(model, topology, [1], conn, better)
+    @test !Norma.raises_minimum_quality(model, topology, [1], conn, positions)
+    Norma.finalize_writing(sim)
+    rm("quality-options.e"; force=true)
+end
+
+@testset "metric_quality" begin
+    # Under a metric field the shape quality is measured in the metric
+    # space: the unit regular tetrahedron scaled by the principal sizes is
+    # the ideal element, elongated in physical space but regular in the
+    # metric, so the loop does not fight the smoother over its elongation.
+    params = Dict{String,Any}(
+        "type" => "single",
+        "name" => "metric-quality",
+        "input mesh file" => "../examples/ems/cube/cube.g",
+        "output mesh file" => "metric-quality.e",
+        "Exodus output interval" => 0,
+        "CSV output interval" => 0,
+        "model" => Dict{String,Any}(
+            "type" => "mesh smoothing",
+            "smooth reference" => "metric field unrestricted",
+            "metric field" => Dict{String,Any}("sizes" => ["0.05", "0.2", "0.2"]),
+            "material" => Dict{String,Any}(
+                "elastic" => Dict{String,Any}(
+                    "model" => "seth-hill",
+                    "m" => 2,
+                    "n" => 2,
+                    "bulk modulus" => 1.0,
+                    "shear modulus" => 1.0,
+                    "density" => 1.0,
+                ),
+                "blocks" => Dict{String,Any}("cube" => "elastic"),
+            ),
+        ),
+        "time integrator" =>
+            Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0),
+        "solver" => Dict{String,Any}(
+            "type" => "steepest descent",
+            "step" => "lbfgs",
+            "memory" => 10,
+            "minimum iterations" => 1,
+            "maximum iterations" => 2,
+            "relative tolerance" => 1.0e-12,
+            "absolute tolerance" => 1.0e-10,
+            "step length" => 1.0e-3,
+            "use line search" => true,
+            "line search backtrack factor" => 0.5,
+            "line search decrease factor" => 1.0e-04,
+            "line search maximum iterations" => 16,
+        ),
+    )
+    sim = Norma.create_simulation(params)
+    model = sim.model
+    ideal = Matrix(Norma.UNIT_TETRAHEDRON)
+    ideal[1, :] .*= 0.05
+    ideal[2, :] .*= 0.2
+    ideal[3, :] .*= 0.2
+    conn = reshape([1, 2, 3, 4], 4, 1)
+    if Norma.tetrahedron_volume(ideal) < 0.0
+        conn[3], conn[4] = conn[4], conn[3]
+    end
+    @test Norma.scaled_jacobians(ideal, conn)[1] < 0.6
+    @test Norma.quality_jacobians(model, ideal, conn)[1] ≈ 1.0 atol = 1.0e-12
+    # The regular tetrahedron of the geometric size, which the metric does
+    # not want, measures below one in the metric.
+    regular = 0.1 * Matrix(Norma.UNIT_TETRAHEDRON)
+    @test Norma.scaled_jacobians(regular, conn)[1] ≈ 1.0 atol = 1.0e-12
+    @test Norma.quality_jacobians(model, regular, conn)[1] < 0.6
+    Norma.finalize_writing(sim)
+    rm("metric-quality.e"; force=true)
 end
 
 @testset "face_swap" begin
