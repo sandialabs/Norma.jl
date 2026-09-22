@@ -206,7 +206,17 @@ the side set as well, and the chain of elements behind them by a
 triangulation of the resulting polygon. `face swaps: true` adds the swap of
 an interior face shared by two elements into the three elements around the
 edge between their apexes; measured on the distorted cube it lowers the
-quality under both criteria and is off by default.
+quality under both criteria and is off by default. The order of the
+operators within a pass matters as well: with `size operations first: true`
+the edges outside the band are split and collapsed before the swaps, as
+improve_mesh does, and on the distorted cube this raises the final mean from
+0.692 to 0.698 and the minimum from 0.39 to 0.41; the loop applied to the
+mesh that the staggered workflow produced improves it further (minimum 0.38
+to 0.44, mean 0.703 to 0.707), so the remaining difference between the two
+workflows from the distorted input is the path each takes, not the
+acceptance test. Ranking the cavities worst first, more alternation with
+fewer passes, and shape operations in every pass were measured and gain
+nothing.
 
 Within a pass the operations of one operator are independent, since every
 accepted operation marks the elements of its cavity dead and a later
@@ -226,6 +236,8 @@ converged mesh of half a million elements this takes a pass from about
 | `shape criterion` | no | `energy` | `energy`: a swap or a shape-driven collapse or split must lower the cavity energy; `scaled Jacobian`: it must raise the minimum scaled Jacobian of the cavity |
 | `boundary swaps` | no | `false` | try the swap of boundary edges whose two boundary faces lie in one side set (or in none) and form a flat patch |
 | `boundary swap angle` | no | `20` | largest angle in degrees between the two boundary faces of an edge for its swap to be tried |
+| `size operations first` | no | `false` | collapse and split the edges outside the band before the swaps in every pass, rather than after; recommended, since the swaps then act on elements already near their target size |
+| `shape operations every pass` | no | `false` | try the shape-driven collapses and splits in every pass, not only in a pass that accepted no swap |
 | `desired scaled Jacobian` | no | `0.9` | under `shape criterion: scaled Jacobian`, the elements below this are the candidates of the swaps and the shape-driven operations, without dilation; lowering it focuses the phase on the worst elements and shortens it |
 | `face swaps` | no | `false` | try the swap of an interior face into the three elements around the edge between the apexes |
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |

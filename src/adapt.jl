@@ -39,6 +39,8 @@ function AdaptivityOptions(params::Parameters)
         Bool(get(params, "boundary swaps", false)),
         deg2rad(Float64(get(params, "boundary swap angle", 20.0))),
         Float64(get(params, "desired scaled Jacobian", 0.9)),
+        Bool(get(params, "size operations first", false)),
+        Bool(get(params, "shape operations every pass", false)),
     )
 end
 
@@ -891,7 +893,7 @@ function split_pass!(
     union!(edges, size_edges)
     setdiff!(edges, memory.splits)
     ranked = collect(edges)
-    edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
+    edge_energy(edge) = cavity_rank(topology, densities, edge_elements(topology, edge[1], edge[2]), options)
     sort!(ranked; by=edge_energy, rev=true)
     accepted = 0
     decrease = 0.0
@@ -979,7 +981,7 @@ function collapse_pass!(
     union!(edges, size_edges)
     setdiff!(edges, memory.collapses)
     ranked = collect(edges)
-    edge_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
+    edge_energy(edge) = cavity_rank(topology, densities, edge_elements(topology, edge[1], edge[2]), options)
     sort!(ranked; by=edge_energy, rev=true)
     accepted = 0
     decrease = 0.0
@@ -1032,6 +1034,22 @@ function candidate_elements(topology::MeshTopology, densities::Vector{Float64}, 
     return findall(candidates)
 end
 
+# Score by which the operations of a pass are ranked: the energy of the
+# elements around an edge or a face, or, under the scaled Jacobian
+# criterion, the negative of their minimum scaled Jacobian, so that the
+# worst cavities are tried first in either case.
+function cavity_rank(topology::MeshTopology, densities::Vector{Float64}, elements, options::AdaptivityOptions)
+    if options.shape_by_quality
+        worst = 1.0
+        for e in elements
+            sj = tetrahedron_scaled_jacobian(view(topology.positions, :, view(topology.connectivity, :, e)))
+            worst = min(worst, sj)
+        end
+        return -worst
+    end
+    return sum(densities[e] for e in elements; init=0.0)
+end
+
 # One pass of swaps over the candidate elements in decreasing order of
 # cavity energy: the boundary edges (when enabled), then the interior edges,
 # then the faces (when enabled).  An edge or face whose cavity was changed
@@ -1063,8 +1081,8 @@ function swap_pass!(
     end
     # Rank the edges and faces by the energy of the elements around them, in
     # decreasing order.
-    ring_energy(edge) = sum(densities[e] for e in edge_elements(topology, edge[1], edge[2]); init=0.0)
-    face_energy(face) = sum(densities[e] for e in get(topology.faces, face, Int[]); init=0.0)
+    ring_energy(edge) = cavity_rank(topology, densities, edge_elements(topology, edge[1], edge[2]), options)
+    face_energy(face) = cavity_rank(topology, densities, get(topology.faces, face, Int[]), options)
     ranked_boundary = sort!(collect(boundary_edges); by=ring_energy, rev=true)
     ranked = sort!(collect(edges); by=ring_energy, rev=true)
     ranked_faces = sort!(collect(faces); by=face_energy, rev=true)
@@ -1109,6 +1127,7 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
     total_accepted = 0
     total_decrease = 0.0
     memory = PhaseMemory()
+    previous_swaps = 1
     for pass in 1:options.maximum_passes
         accepted_swaps = accepted_collapses = accepted_splits = 0
         decrease = 0.0
@@ -1123,29 +1142,42 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
             remap!(memory, node_map)
             return nothing
         end
-        if options.swaps
+        function swaps!()
+            options.swaps || return nothing
             first_new = length(topology.element_alive) + 1
             accepted_swaps, decrease_swaps = swap_pass!(model, topology, options; memory)
             decrease += decrease_swaps
             compact_all!(first_new)
+            return nothing
         end
         # The edges outside the length band of a prescribed target are
         # collapsed or split in every pass.  Collapses and splits driven by
         # the shape alone remove or add resolution, so they are tried only in
-        # a pass where no swap was accepted.
-        shape = accepted_swaps == 0
-        if options.collapses
-            first_new = length(topology.element_alive) + 1
-            accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape; memory)
-            decrease += decrease_collapses
-            compact_all!(first_new)
+        # a pass where no swap was accepted (in the pass before, when the size
+        # operations come first).
+        function size_operations!(shape)
+            if options.collapses
+                first_new = length(topology.element_alive) + 1
+                accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape; memory)
+                decrease += decrease_collapses
+                compact_all!(first_new)
+            end
+            if options.splits
+                first_new = length(topology.element_alive) + 1
+                accepted_splits, decrease_splits = split_pass!(model, topology, options, shape; memory)
+                decrease += decrease_splits
+                compact_all!(first_new)
+            end
+            return nothing
         end
-        if options.splits
-            first_new = length(topology.element_alive) + 1
-            accepted_splits, decrease_splits = split_pass!(model, topology, options, shape; memory)
-            decrease += decrease_splits
-            compact_all!(first_new)
+        if options.size_first
+            size_operations!(options.shape_every_pass || previous_swaps == 0)
+            swaps!()
+        else
+            swaps!()
+            size_operations!(options.shape_every_pass || accepted_swaps == 0)
         end
+        previous_swaps = accepted_swaps
         accepted = accepted_swaps + accepted_collapses + accepted_splits
         norma_logf(
             0,

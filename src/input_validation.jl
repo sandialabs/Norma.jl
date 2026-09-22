@@ -192,6 +192,8 @@ const ADAPTIVITY_KEYS = Set([
     "boundary swaps",
     "boundary swap angle",
     "desired scaled Jacobian",
+    "size operations first",
+    "shape operations every pass",
     "desired energy density",
     "allowed energy density",
     "minimum scaled Jacobian",

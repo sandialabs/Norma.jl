@@ -1170,6 +1170,52 @@ covers the smoothing phases alone, and the termination of the topology
 phases rests on the strict rise of the cavity minimum, which bounds the
 number of operations as in \code{emend}.
 
+\paragraph{The residual and the cost.} Two more measurements, made
+on sirius after the runs on rigel. The loop applied to the mesh that the
+staggered workflow produced improves it further, from a minimum of
+$0.38$ and a mean of $0.703$ to $0.44$ and $0.707$, so the acceptance
+test admits nothing harmful and the operators are at least as capable;
+the residual between the two workflows from the distorted input is the
+path each takes. Of the differences in path, the order of the operators
+within a pass is the one that matters: \code{improve\_mesh} refines and
+collapses to the size band before it swaps, and with
+\code{size operations first: true} the loop reaches a mean of $0.698$
+and a minimum of $0.41$ from $0.692$ and $0.39$, against $0.703$ and
+$0.38$ for the staggered workflow. Ranking the cavities worst first
+(which the scaled Jacobian criterion now does), more alternation with
+fewer passes per phase, and the shape-driven operations in every pass
+were each measured and gain nothing. On one machine the loop is
+deterministic, so these differences are real, but between machines the
+floating point path changes the minimum by about $0.03$ and the mean by
+$0.005$, which is the size of what remains.
+
+The cost was a separate matter. On the plate the loop spent ten of its
+twelve hours at the last stage in the topology phases and most of the
+rest in smoothing runs at twelve seconds per L-BFGS iteration on half a
+million elements. Profiles on rigel found two implementation defects
+rather than anything in the algorithm. The force evaluation of a
+smoothing model allocated 19 KB per element and scaled by only a factor
+of two on sixteen threads: the smoothing reference was built from column
+slices and dynamic matrices, the size field was called through an
+untyped function field, and the tangent by automatic differentiation
+used a runtime-sized vector, which left its return type, and with it the
+whole constitutive tuple even without a tangent, inferred as \code{Any},
+so that everything downstream was dynamic. With a static reference, a
+typed barrier for the size field, and a static input to the
+differentiation, an evaluation of 85 thousand elements goes from $1.48$
+s and $1.5$ GB to $0.11$ s and $44$ MB, and on 505 thousand elements
+from $11.1$ to $0.9$ microseconds per element on sixteen threads. The
+topology phase tried every candidate edge in every pass and computed the
+energies of every configuration of a swap; nodes do not move within a
+phase, so a refused proposal is now remembered for the phase and retried
+only when an element around it has changed, the configurations of a
+swap are scored by the scaled Jacobian with the energy of the chosen one
+computed once as the validity check, and the candidates under that
+criterion are the elements below \code{desired scaled Jacobian}. On the
+converged stage 4 mesh the first swap pass goes from 197 to 92 s and the
+following passes from about 200 to 7 s; the first three stages of the
+plate, rerun, took 3, 7, and 39 minutes.
+
 \paragraph{Consistency of a pass.} Face swaps exposed two hazards in the
 pass structure that the interior edge swaps had escaped by the shape of
 their cavities. The operations of one operator are independent, since an

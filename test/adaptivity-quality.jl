@@ -108,7 +108,25 @@ end
     @test o.shape_by_quality && o.face_swaps && o.boundary_swaps
     @test o.boundary_swap_angle ≈ deg2rad(5.0)
     @test Norma.AdaptivityOptions(Dict{String,Any}("boundary swaps" => true)).boundary_swap_angle ≈ deg2rad(20.0)
+    @test Norma.AdaptivityOptions(Dict{String,Any}()).desired_quality == 0.9
+    @test !Norma.AdaptivityOptions(Dict{String,Any}()).size_first
+    @test Norma.AdaptivityOptions(Dict{String,Any}("size operations first" => true)).size_first
+    @test Norma.AdaptivityOptions(Dict{String,Any}("desired scaled Jacobian" => 0.6)).desired_quality == 0.6
     @test_throws Exception Norma.AdaptivityOptions(Dict{String,Any}("shape criterion" => "quality"))
+    # The ranking of a cavity: the energy of its elements, or under the
+    # scaled Jacobian criterion the negative of its worst element, so that
+    # the worst cavities sort first in decreasing order either way.
+    positions = [0.0 1.0 0.0 0.0 1.0; 0.0 0.0 1.0 0.0 1.0; 0.0 0.0 0.0 1.0 0.05]
+    conn = [1 2; 2 5; 3 3; 4 4]
+    @test all(Norma.tetrahedron_volume(positions[:, conn[:, e]]) > 0.0 for e in 1:2)
+    topology = Norma.build_topology(positions, conn)
+    densities = [1.0, 3.0]
+    energy_options = Norma.AdaptivityOptions(Dict{String,Any}())
+    quality_options = Norma.AdaptivityOptions(Dict{String,Any}("shape criterion" => "scaled Jacobian"))
+    @test Norma.cavity_rank(topology, densities, [1, 2], energy_options) == 4.0
+    sj = Norma.scaled_jacobians(positions, conn)
+    @test Norma.cavity_rank(topology, densities, [1, 2], quality_options) == -minimum(sj)
+    @test Norma.cavity_rank(topology, densities, [1], quality_options) == -sj[1]
     # The minimum must rise by the relative tolerance.
     positions = [0.0 1.0 0.0 0.0; 0.0 0.0 1.0 0.0; 0.0 0.0 0.0 1.0]
     conn = reshape([1, 2, 3, 4], 4, 1)
@@ -281,7 +299,7 @@ end
     # criterion does, the boundary stays closed, covered by the side sets,
     # and on the planes, and the mesh is consistent after every operator.
     results = Dict{String,Float64}()
-    for (name, quality, boundary) in (("energy", false, false), ("quality", true, true))
+    for (name, quality, boundary) in (("energy", false, false), ("quality", true, true), ("size-first", true, true))
         sim = quality_model("../examples/ems/awful-cube/awful-cube.g", "awful", "quality-$name.e"; surfaces=true)
         Norma.run(sim)
         model = sim.model
@@ -290,7 +308,10 @@ end
         sj0 = minimum(Norma.scaled_jacobians(topology.positions, topology.connectivity))
         options = Norma.AdaptivityOptions(
             0.05, Inf, 0.15, 1.0e-8, 2, 4, 2, true, true, true;
-            size_by_length=true, shape_by_quality=quality, boundary_swaps=boundary,
+            size_by_length=true,
+            shape_by_quality=quality,
+            boundary_swaps=boundary,
+            size_first=(name == "size-first"),
         )
         accepted, _ = Norma.topology_phase!(model, topology, options)
         @test accepted > 0
@@ -315,7 +336,9 @@ end
     end
     println(
         "minimum scaled Jacobian after one phase: energy criterion $(results["energy"]), ",
-        "scaled Jacobian criterion with boundary swaps $(results["quality"])",
+        "scaled Jacobian criterion with boundary swaps $(results["quality"]), ",
+        "size operations first $(results["size-first"])",
     )
     @test results["quality"] > results["energy"]
+    @test results["size-first"] > results["energy"]
 end

@@ -12,6 +12,7 @@ adaptivity:
   size criterion: length
   shape criterion: scaled Jacobian
   boundary swaps: true
+  size operations first: true
   desired energy density: 0.05
   minimum scaled Jacobian: 0.15
   adjacency layers: 2

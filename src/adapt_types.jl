@@ -23,6 +23,8 @@ struct AdaptivityOptions
     boundary_swaps::Bool         # try the swap of boundary edges between faces of one flat patch
     boundary_swap_angle::Float64 # largest angle in radians between the two boundary faces of such an edge
     desired_quality::Float64     # under the scaled Jacobian criterion, elements below this are candidates
+    size_first::Bool             # collapse and split before swapping in every pass, rather than after
+    shape_every_pass::Bool       # try the shape-driven collapses and splits in every pass
 end
 
 # The options before the criteria and the extra operators, with those as
@@ -44,6 +46,8 @@ function AdaptivityOptions(
     boundary_swaps::Bool=false,
     boundary_swap_angle::Real=0.0,
     desired_quality::Real=0.9,
+    size_first::Bool=false,
+    shape_every_pass::Bool=false,
 )
     return AdaptivityOptions(
         desired_density,
@@ -62,6 +66,8 @@ function AdaptivityOptions(
         boundary_swaps,
         boundary_swap_angle,
         desired_quality,
+        size_first,
+        shape_every_pass,
     )
 end
 
