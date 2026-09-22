@@ -373,12 +373,17 @@ end
 # energy density written with the smoothing output.
 function ideal_volumes(model::SolidMechanics, block_index::Int)
     block = model.blocks[block_index]
-    volumes = Vector{Float64}(undef, block.num_elements)
-    for element in 1:block.num_elements
-        node_indices = view(block.connectivity, :, element)
-        X, _, _ = smoothing_reference(
-            model, block.element_type, gather_nodal(model.reference, node_indices, block.N); node_indices
-        )
+    # Behind a barrier on the untyped shape functions, as element_energies is.
+    return ideal_volumes(model, block.element_type, block.connectivity, block.N)
+end
+
+function ideal_volumes(
+    model::SolidMechanics, element_type::ElementType, connectivity::Matrix{<:Integer}, N::SMatrix
+)
+    volumes = Vector{Float64}(undef, size(connectivity, 2))
+    for element in 1:size(connectivity, 2)
+        node_indices = view(connectivity, :, element)
+        X, _, _ = smoothing_reference(model, element_type, gather_nodal(model.reference, node_indices, N); node_indices)
         volumes[element] = abs(dot(X[:, 2] - X[:, 1], cross(X[:, 3] - X[:, 1], X[:, 4] - X[:, 1]))) / 6.0
     end
     return volumes
@@ -403,8 +408,35 @@ function element_energies(
     metric::Union{MetricField,Nothing}=model.metric_field,
 )
     block = model.blocks[block_index]
-    material = model.materials[block_index]
-    N, dN, ip_weights = block.N, block.dN, block.weights
+    # The shape functions are stored untyped on the block, so the loop runs
+    # behind a barrier that specializes on their concrete types; without it
+    # every operation in it is dispatched at run time and allocates.
+    return element_energies(
+        model,
+        block.element_type,
+        model.materials[block_index],
+        block.N,
+        block.dN,
+        block.weights,
+        connectivity,
+        positions,
+        sample_positions,
+        metric,
+    )
+end
+
+function element_energies(
+    model::SolidMechanics,
+    element_type::ElementType,
+    material::Material,
+    N::SMatrix,
+    dN::SArray,
+    ip_weights::AbstractVector,
+    connectivity::AbstractMatrix{<:Integer},
+    positions::AbstractMatrix{Float64},
+    sample_positions::AbstractMatrix{Float64},
+    metric::Union{MetricField,Nothing},
+)
     num_points = size(N, 2)
     num_elements = size(connectivity, 2)
     energies = zeros(num_elements)
@@ -413,7 +445,7 @@ function element_energies(
         sample = SMatrix{3,4,Float64,12}(
             sample_positions[i, node_indices[j]] for i in 1:3, j in 1:4
         )
-        X, F_M, F_M_inv = smoothing_reference(model, block.element_type, sample; node_indices, metric)
+        X, F_M, F_M_inv = smoothing_reference(model, element_type, sample; node_indices, metric)
         element_reference_position = gather_nodal(X, N)
         element_current_position = SMatrix{3,4,Float64,12}(positions[i, node_indices[j]] for i in 1:3, j in 1:4)
         energy = 0.0

@@ -131,12 +131,12 @@ function ideal_element_volumes(
     sample_positions::AbstractMatrix{Float64};
     metric::Union{MetricField,Nothing}=model.metric_field,
 )
-    block = model.blocks[block_index]
+    element_type = model.blocks[block_index].element_type
     volumes = Vector{Float64}(undef, size(connectivity, 2))
     for e in 1:size(connectivity, 2)
         node_indices = view(connectivity, :, e)
         sample = SMatrix{3,4,Float64,12}(sample_positions[i, node_indices[j]] for i in 1:3, j in 1:4)
-        X, _, _ = smoothing_reference(model, block.element_type, sample; node_indices, metric)
+        X, _, _ = smoothing_reference(model, element_type, sample; node_indices, metric)
         volumes[e] = abs(tetrahedron_volume(X))
     end
     return volumes
