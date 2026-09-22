@@ -124,7 +124,13 @@ component along it goes from 0.052 to 0.029 against the 0.025 asked, with
 the energy five times lower. Ramping the sizes over the pseudo-time reaches
 the same minimum. The remedy is the topology of the `adaptivity` block: on
 that case it takes the energy from 7.3 × 10⁴ to 8.7 × 10³ in two
-iterations, at 11835 elements from 7677.
+iterations, at about 11000 elements from 7677, and the mean edge component
+along the thin direction from 0.052 to 0.013 against the 0.0125 that the
+target implies, with 97 percent of the edges inside the band in the metric
+(`examples/ems/cube/cube-metric-adaptive.yaml`). The two orientations then
+agree, as they must: with topology allowed, the axis-aligned target and the
+same target at 45 degrees end at the same edge components and the same
+fraction inside the band.
 
 ```yaml
 model:
@@ -316,3 +322,4 @@ See `examples/ems/` for smoothing cases.
 - Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`
 - Refinement toward a prescribed size field in stages: `examples/ems/plate/plate-sinusoid.yaml` with `refine.jl`
 - Refinement and coarsening toward a metric: `examples/ems/tube/tube-metric-adaptive.yaml`
+- A metric that smoothing alone cannot reach: `examples/ems/cube/cube-metric-adaptive.yaml`

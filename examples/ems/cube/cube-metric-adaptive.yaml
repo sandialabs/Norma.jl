@@ -1,0 +1,77 @@
+# An anisotropic target that smoothing alone cannot reach, and the
+# topological operations can.  The metric asks for elements eight times
+# thinner along x than across it, at the volume of an isotropic element of
+# the mesh size 0.1.  With the six faces held as planes and the connectivity
+# fixed, the extent across x is one and the elements along a path across it
+# are as many as the connectivity gives, so the mean advance per element is
+# pinned near 0.05 and the mesh stays isotropic at a strict local minimum of
+# the energy (see docs/notes/ems-anisotropic).  Splits and collapses supply
+# the layers, and every shape measure of the loop is taken in the metric
+# space, where an element that matches the target is regular.
+type: single
+input mesh file: cube.g
+output mesh file: cube-metric-adaptive.e
+adaptivity:
+  size criterion: length
+  shape criterion: scaled Jacobian
+  boundary swaps: true
+  size operations first: true
+  desired energy density: 0.05
+  minimum scaled Jacobian: 0.15
+  adjacency layers: 2
+  maximum passes: 10
+  outer iterations: 12
+model:
+  type: mesh smoothing
+  # Anisotropic target: a constant metric with the small size along the
+  # direction at 45 degrees in the x-y plane and the larger sizes across it,
+  # at the volume of an isotropic element of size 0.1 (the mesh size).  The energy is
+  # evaluated in the metric space, so the orientation of the elements is part
+  # of the objective (see docs/notes/ems-anisotropic).
+  smooth reference: metric field unrestricted
+  metric field:
+    sizes: ["0.025", "0.2", "0.2"]
+  material:
+    blocks:
+      cube: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0e+03
+      shear modulus: 1.0e+03
+      density: 1000.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0e-01
+boundary conditions:
+  Surface:
+    - side set: ssx-
+      function: "x + 0.5"
+    - side set: ssx+
+      function: "x - 0.5"
+    - side set: ssy-
+      function: "y + 0.5"
+    - side set: ssy+
+      function: "y - 0.5"
+    - side set: ssz-
+      function: "z + 0.5"
+    - side set: ssz+
+      function: "z - 0.5"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 400
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
+  energy stagnation window: 5
+  energy stagnation tolerance: 1.0e-03

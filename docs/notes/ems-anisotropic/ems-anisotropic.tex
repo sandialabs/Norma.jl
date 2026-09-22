@@ -433,8 +433,18 @@ sizes from the mesh size to the target over the pseudo-time of the solve
 reaches the same minimum as the direct target, so this is not a matter of
 following the minimum. The remedy is topology: the same axis-aligned
 target under the adaptivity loop takes the energy from
-$7.27 \times 10^4$ to $8.7 \times 10^3$ in two iterations, at 11835
-elements from 7677.
+$7.27 \times 10^4$ to $9.4 \times 10^2$ over twelve iterations, at 10663
+elements from 7677, and the mean edge components to
+$(0.0136, 0.090, 0.092)$ against the $(0.0125, 0.1, 0.1)$ that the target
+implies, with $96.8$ percent of the edges inside the band measured in the
+metric and every boundary node still on its face. The same target at
+$45^\circ$ ends at $(0.0136, 0.093, 0.089)$ and $96.4$ percent: with
+topology allowed the two orientations agree, as they must, and the
+difference that node motion alone shows between them is an artifact of
+what the fixed connectivity permits. The example is
+\code{examples/ems/cube/cube-metric-adaptive.yaml}; each smoothing phase
+ends on the energy stagnation exit after 9 to 18 L-BFGS iterations, and
+the twelve alternations take four minutes on eight threads.
 
 \section{Next steps}
 \label{sec:next}
