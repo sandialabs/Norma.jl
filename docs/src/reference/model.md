@@ -322,4 +322,4 @@ See `examples/ems/` for smoothing cases.
 - Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`
 - Refinement toward a prescribed size field in stages: `examples/ems/plate/plate-sinusoid.yaml` with `refine.jl`
 - Refinement and coarsening toward a metric: `examples/ems/tube/tube-metric-adaptive.yaml`
-- A metric that smoothing alone cannot reach: `examples/ems/cube/cube-metric-adaptive.yaml`
+- A metric that smoothing alone cannot reach: `examples/ems/cube/cube-metric-adaptive.yaml`, and the same target turned by 45 degrees: `examples/ems/cube/cube-metric-rotated-adaptive.yaml`

@@ -441,10 +441,14 @@ metric and every boundary node still on its face. The same target at
 $45^\circ$ ends at $(0.0136, 0.093, 0.089)$ and $96.4$ percent: with
 topology allowed the two orientations agree, as they must, and the
 difference that node motion alone shows between them is an artifact of
-what the fixed connectivity permits. The example is
-\code{examples/ems/cube/cube-metric-adaptive.yaml}; each smoothing phase
-ends on the energy stagnation exit after 9 to 18 L-BFGS iterations, and
-the twelve alternations take four minutes on eight threads.
+what the fixed connectivity permits. The two examples are
+\code{examples/ems/cube/cube-metric-adaptive.yaml} and
+\code{cube-metric-rotated-adaptive.yaml}, which run the same target in the
+two orientations and end at 10801 and 10768 elements with mean edge
+components $(0.0134, 0.091, 0.091)$ and $(0.0134, 0.094, 0.090)$ and
+$96.8$ and $96.2$ percent of their edges inside the band. Each smoothing
+phase ends on the energy stagnation exit after 9 to 18 L-BFGS iterations,
+and the twelve alternations take four minutes on eight threads.
 
 \section{Next steps}
 \label{sec:next}
