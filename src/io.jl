@@ -350,7 +350,9 @@ end
 function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     params = sim.params
     integrator = sim.integrator
-    time = sim.controller.time
+    # A run that continues a sequence of files writes its times after those
+    # of the file before it (see run_adaptive).
+    time = sim.controller.time + get(params, "exodus_time_offset", 0.0)
     output_mesh = params["output_mesh"]
     # Increment the per-file frame counter and use it as the Exodus time_index.
     # This ensures sequential writes (1, 2, 3, …) even when the global

@@ -185,7 +185,7 @@ end
         "name" => "adaptive",
         "input mesh file" => "../examples/ems/awful-cube/awful-cube.g",
         "output mesh file" => "adaptive.e",
-        "Exodus output interval" => 0,
+        "Exodus output interval" => 1.0,
         "CSV output interval" => 0,
         "adaptivity" => Dict{String,Any}(
             "desired energy density" => 0.05, "adjacency layers" => 2, "maximum passes" => 5, "outer iterations" => 2
@@ -234,7 +234,21 @@ end
     sim = Norma.run(params)
     @test sim.model.failed == false
     @test isfile("adaptive-adapted-1.g")
-    @test isfile("adaptive-adapted-1.e")
+    # The smoothing outputs form a sequence that ParaView opens as one: the
+    # output name, then the suffixes -s_0002 onward, with the times of each
+    # file continuing one time step after the last of the file before it.
+    @test Norma.sequence_file_name("adaptive.e", 1) == "adaptive.e"
+    @test Norma.sequence_file_name("adaptive.e", 2) == "adaptive.e-s_0002"
+    @test Norma.sequence_file_name("adaptive.e", 12345) == "adaptive.e-s_12345"
+    @test isfile("adaptive.e-s_0002")
+    @test !isfile("adaptive-adapted-1.e")
+    times = Float64[]
+    for file in ("adaptive.e", "adaptive.e-s_0002")
+        exo = ExodusDatabase(file, "r")
+        append!(times, Exodus.read_times(exo))
+        Exodus.close(exo)
+    end
+    @test times ≈ [0.0, 1.0, 2.0, 3.0]
     # The final mesh is the last adapted one and its smoothing energy is
     # below that of the smoothed original mesh.
     first = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "adaptive-first.e"; size_field="0.214")
@@ -243,6 +257,6 @@ end
     for f in ("adaptive.e", "adaptive-first.e"), k in 1:2
         rm(f; force=true)
         rm("adaptive-adapted-$k.g"; force=true)
-        rm("adaptive-adapted-$k.e"; force=true)
+        rm(Norma.sequence_file_name("adaptive.e", k + 1); force=true)
     end
 end

@@ -1233,13 +1233,26 @@ end
 # adapted mesh is written; nothing by default.
 const TOPOLOGY_PHASE_OBSERVER = Ref{Any}(nothing)
 
+# The name of the file at the given position of a sequence that ParaView
+# opens as one: the first file keeps its name, and the others append -s_
+# and the position in four or more digits.
+function sequence_file_name(file::AbstractString, position::Integer)
+    return position == 1 ? String(file) : file * "-s_" * lpad(position, 4, '0')
+end
+
 # The coupled loop: smoothing on the current mesh, a topology phase, a new
 # mesh written to disk, and smoothing again on it, until a topology phase
-# accepts nothing or the outer iterations are exhausted.  Each smoothed and
-# adapted mesh is a separate Exodus file, numbered after the input name.
+# accepts nothing or the outer iterations are exhausted.  Each adapted mesh
+# is a separate Exodus file, numbered after the output name, and so is the
+# output of each smoothing phase: the first under the output name, the
+# following ones with the suffixes -s_0002, -s_0003, and so on, which
+# ParaView opens as one sequence.  The times written in a file continue
+# from the file before it, one time step after its last, since ParaView
+# orders the sequence by time and shows only one file at a repeated time.
 function run_adaptive(params::Parameters)
     options = AdaptivityOptions(get(params, "adaptivity", Parameters()))
-    name = stripped_name(params["output mesh file"])
+    output_file = params["output mesh file"]
+    name = stripped_name(output_file)
     sim = create_simulation(params)
     run(sim)
     model = sim.model
@@ -1261,7 +1274,11 @@ function run_adaptive(params::Parameters)
         write_topology(topology, mesh_file; nodal_variables=metric_nodal_variables(model.metric_field))
         next_params = deepcopy(params)
         next_params["input mesh file"] = mesh_file
-        next_params["output mesh file"] = "$name-adapted-$iteration.e"
+        next_params["output mesh file"] = sequence_file_name(output_file, iteration + 1)
+        controller = sim.controller
+        time_offset = get(sim.params, "exodus_time_offset", 0.0)
+        elapsed = controller.time - controller.initial_time
+        next_params["exodus_time_offset"] = time_offset + elapsed + controller.time_step
         sim = create_simulation(next_params)
         run(sim)
         model = sim.model

@@ -426,8 +426,9 @@ end
     for file in (mesh_file, adapted, "metric-nodal-adapt-adapted-1.g", "metric-nodal-adapt.e")
         rm(file; force=true)
     end
-    rm("metric-nodal-adapt-adapted-1.e"; force=true)
-    rm("metric-nodal-adapt-adapted-2.e"; force=true)
+    rm("metric-nodal-adapt.e-s_0002"; force=true)
+    rm("metric-nodal-adapt.e-s_0003"; force=true)
+    @test !isfile("metric-nodal-adapt-adapted-1.e")
     rm("metric-nodal-cube.g"; force=true)
     for k in 1:nodal_output_counter[]
         rm("metric-nodal-$k.e"; force=true)

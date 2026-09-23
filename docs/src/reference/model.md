@@ -190,7 +190,13 @@ collapses edges (a node is removed only onto a node that carries its node
 sets and lies on its surfaces, along a boundary edge if it is on the
 boundary), and splits edges, the new mesh is written as
 `<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
-phase accepts no operation or the outer iterations are exhausted. The mesh
+phase accepts no operation or the outer iterations are exhausted. The
+output of the first smoothing phase is the `output mesh file`, and that of
+each later phase appends `-s_0002`, `-s_0003`, and so on
+(`cube.e`, `cube.e-s_0002`, ...), which ParaView opens as one sequence; the
+times written in each file continue one time step after the last time of
+the file before it, since ParaView orders the sequence by time and shows
+only one file at a repeated time. The mesh
 must consist of four-node tetrahedra. Node sets and side sets are carried
 over to the written meshes, and a split node on the boundary joins the side
 sets of the faces it lies on.
