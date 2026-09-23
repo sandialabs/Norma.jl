@@ -436,8 +436,7 @@ function write_topology(
         Int32(length(topology.node_sets)),
         Int32(length(topology.side_sets)),
     )
-    isfile(file_name) && rm(file_name; force=true)
-    exo = Exodus.ExodusDatabase{Int32,Int32,Int32,Float64}(file_name, "w", init)
+    exo = create_exodus_database(file_name, init; title="Norma adapted mesh")
     Exodus.write_coordinates(exo, topology.positions)
     # Elements are written block by block; Exodus numbers them globally in
     # that order, which the side sets refer to.

@@ -7,6 +7,35 @@
 using DelimitedFiles
 using Format
 
+# Create an Exodus database for writing, as the write-mode constructor of
+# Exodus.jl does, but with a title.  That constructor passes an uninitialized
+# buffer as the title, so the file gets up to 80 bytes of stale memory, and
+# its reader gives ex_get_init a buffer of 80 bytes where the library writes
+# the title and its terminator, up to 81.  A file written by the constructor
+# can thus overwrite one byte of the Julia heap each time it is opened, which
+# crashed the adaptivity tests on macOS (a corrupted type tag found during
+# dispatch).  With a title shorter than 80 characters the reader is safe.
+function create_exodus_database(file_name::AbstractString, init::Exodus.Initialization; title::AbstractString="Norma")
+    length(codeunits(title)) < Exodus.MAX_LINE_LENGTH || norma_abort("Exodus title must be shorter than 80 bytes")
+    isfile(file_name) && rm(file_name; force=true)
+    exo = @ccall Exodus.libexodus.ex_create_int(
+        String(file_name)::Cstring, Exodus.EX_WRITE::Cint, Exodus.cpu_word_size::Ref{Cint},
+        sizeof(Float64)::Ref{Cint}, Exodus.EX_API_VERS_NODOT::Cint,
+    )::Cint
+    exo < 0 && norma_abort("Cannot create Exodus file $file_name")
+    error_code = @ccall Exodus.libexodus.ex_put_init(
+        exo::Cint, String(title)::Cstring, Exodus.num_dimensions(init)::Clonglong,
+        Exodus.num_nodes(init)::Clonglong, Exodus.num_elements(init)::Clonglong,
+        Exodus.num_element_blocks(init)::Clonglong, Exodus.num_node_sets(init)::Clonglong,
+        Exodus.num_side_sets(init)::Clonglong,
+    )::Cint
+    error_code < 0 && norma_abort("Cannot write the initialization of Exodus file $file_name")
+    D = Dict{String,Int32}
+    return Exodus.ExodusDatabase{Int32,Int32,Int32,Float64}(
+        exo, "w", String(file_name), init, D(), D(), D(), D(), D(), D(), D(), D()
+    )
+end
+
 function _is_output_time(time::Float64, initial_time::Float64, interval::Float64; tol::Float64=1e-10)
     interval <= 0.0 && return false
     elapsed = time - initial_time

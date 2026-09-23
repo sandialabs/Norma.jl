@@ -185,6 +185,17 @@ end
     file = "topology-written.g"
     Norma.write_topology(topology, file)
     exo = ExodusDatabase(file, "r")
+    # The title is the one given, not stale memory: Exodus.jl reads the title
+    # into 80 bytes where the library writes up to 81, so a title of 80
+    # characters or more corrupts the heap on every open.  Read here into a
+    # buffer with room to spare.
+    title = zeros(UInt8, 2 * Exodus.MAX_LINE_LENGTH)
+    counts = [Ref{Int32}(0) for _ in 1:6]
+    @test 0 == @ccall Exodus.libexodus.ex_get_init(
+        Exodus.get_file_id(exo)::Cint, title::Ptr{UInt8}, counts[1]::Ptr{Int32}, counts[2]::Ptr{Int32},
+        counts[3]::Ptr{Int32}, counts[4]::Ptr{Int32}, counts[5]::Ptr{Int32}, counts[6]::Ptr{Int32},
+    )::Cint
+    @test String(title[1:(findfirst(iszero, title) - 1)]) == "Norma adapted mesh"
     X = Exodus.read_coordinates(exo)
     @test size(X, 2) == nn0
     ids = Exodus.read_ids(exo, Block)
