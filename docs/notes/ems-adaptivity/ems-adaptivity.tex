@@ -1034,9 +1034,12 @@ Steps 1 to 7 were carried out between September 18 and 19, 2026
   \code{shape operations every pass}; no operation may create an edge or
   a face that exists or was created earlier in the pass; compaction after
   every operator; refused proposals remembered for the phase and retried
-  only when their cavity changes; passes until none accepts or a cap; the adapted mesh written and smoothed again
-  until a topology phase accepts nothing or the outer iterations are
-  exhausted. The smoothing phases end on the energy stagnation exit of
+  only when their cavity changes; passes until none accepts or a cap; the adapted mesh written (as
+  \code{<output name>-adapted-<k>.g}) and smoothed again until a topology
+  phase accepts nothing or the outer iterations are exhausted, the outputs of
+  the smoothing phases after the first written with the suffixes
+  \code{-s\_0002}, \code{-s\_0003}, and so on, and their times continued from
+  one file to the next, so that ParaView opens them as one sequence. The smoothing phases end on the energy stagnation exit of
   the solver (\code{energy stagnation window} and \code{tolerance}).
   Input: the top-level \code{adaptivity} block
   (\code{docs/src/reference/model.md}).

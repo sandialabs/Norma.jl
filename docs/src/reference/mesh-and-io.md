@@ -46,6 +46,16 @@ displacements (`disp_x/y/z`). Dynamic time integrators add velocities
 [`nodal recovery`](model.md) adds recovered nodal fields such as stress
 components, von Mises stress, the deformation gradient, and internal variables.
 Element output includes per-quadrature stresses and the element stored energy.
+A [mesh smoothing](model.md) run adds the element variable `energy_density`,
+the smoothing energy per unit ideal volume, and the target at every node:
+`size` under a size field; under a metric field the principal sizes
+`size_1..3`, the rotation vector `rotation_1..3` (when the target has one),
+and the metric and target tensors `metric_xx`, `metric_yy`, `metric_zz`,
+`metric_xy`, `metric_yz`, `metric_zx` and `target_xx` through `target_zx`.
+A smoothing run with an `adaptivity` block writes each adapted mesh as
+`<output name>-adapted-<k>.g` and the output of each smoothing phase after
+the first as `<output mesh file>-s_0002`, `-s_0003`, and so on, which
+ParaView opens as one sequence.
 These field names are produced by the output writer and are not input keys.
 
 ## Canonical examples

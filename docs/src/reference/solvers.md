@@ -82,7 +82,9 @@ solver:
 A mesh being smoothed can reach the energy floor its topology permits long
 before the residual tolerances are met: near that floor the solver keeps
 reducing the gradient without reducing the energy, since the remedy is
-topology modification with an external tool, not more iterations. With
+topology modification, not more iterations. The `adaptivity` block of the
+[model reference](model.md) supplies it, and ends every smoothing phase of its
+loop on this exit, so its examples set the window. With
 `energy stagnation window` set to ``W > 0``, the solve stops once the energy
 decrease over the last ``W`` iterations, relative to the current energy, stays
 below `energy stagnation tolerance` for ``W`` consecutive iterations. The
@@ -91,7 +93,8 @@ times the energy itself. On trigger the step is accepted as converged, a
 message advising topology modification is logged, and the solver's
 `stagnated` flag is raised. The criterion applies to `mesh smoothing` models
 with the `steepest descent` solver only; setting the keys anywhere else
-aborts. See `examples/ems/awful-cube/awful-cube-lbfgs.yaml`.
+aborts. See `examples/ems/awful-cube/awful-cube-lbfgs.yaml`, and for the
+exit inside the adaptivity loop `examples/ems/awful-cube/awful-cube-adaptive.yaml`.
 
 ## Steps
 

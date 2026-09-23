@@ -103,12 +103,21 @@ side-set component.
 An inclined-support (roller) condition: the constrained nodes are held on the
 level surface `g(x, y, z) = 0` given by `function`, free to slide within it. The
 constraint direction is the surface gradient ∇g, computed automatically; a
-constant `function` (no gradient) is rejected.
+constant `function` (no gradient) is rejected. A node in the side sets of two
+`Surface` conditions slides along their intersection, and a node in three is
+fixed at their common point; surfaces that meet tangentially at a node are
+rejected. Under `exact` enforcement the descent direction is projected onto
+the tangent space and every node is returned to its surfaces by a
+closest-point projection, which requires the `steepest descent` solver;
+`penalty` enforcement adds the force of the penalty ½ κ g² and works with
+every solver. This is the condition that keeps the boundary nodes of
+[mesh smoothing](model.md) on curved surfaces, and the adaptivity loop places
+the nodes that its splits add on the boundary on the same surfaces.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `side set` | yes | — | surface whose nodes are constrained |
-| `function` | yes | — | level-set expression g in `x, y, z` |
+| `function` | yes | — | level-set expression g in `t, x, y, z` |
 | `enforcement` | no | `exact` | `exact` or `penalty` |
 | `penalty` | no | `1.0e6` | penalty coefficient (positive; used when `enforcement: penalty`) |
 
@@ -118,3 +127,5 @@ constant `function` (no gradient) is rejected.
   `examples/single/implicit-dynamic-solid`
 - Neumann traction: single-domain examples under `examples/single/`
 - Neumann pressure: pressurized cases under `examples/ahead/`
+- Sliding on analytic surfaces: `examples/ems/cube/cube-surface.yaml` (planes)
+  and `examples/ems/tube/tube.yaml` (cylinders and caps)

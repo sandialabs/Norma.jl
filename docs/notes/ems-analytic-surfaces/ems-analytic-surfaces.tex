@@ -24,6 +24,7 @@
 \title{Design: Energetic Mesh Smoothing on General Geometries\\
 via Analytic Surface Constraints}
 \author{Alejandro Mota}
+\date{September 2026, revised September 23, 2026}
 
 \begin{document}
 \maketitle
@@ -32,8 +33,8 @@ via Analytic Surface Constraints}
 Energetic mesh smoothing (EMS) drives each element toward an ideal reference
 shape by solving a quasi-static problem in which nodes relax to minimize a
 stored-energy functional. Interior nodes move freely; boundary nodes must
-remain on the domain boundary, sliding within it. Today this boundary
-restriction is imposed with axis-aligned Dirichlet conditions on the faces of a
+remain on the domain boundary, sliding within it. Before this work the boundary
+restriction was imposed with axis-aligned Dirichlet conditions on the faces of a
 cube, which works only because a cube face's outward normal coincides with a
 Cartesian basis vector. This note generalizes the boundary restriction to any
 boundary that can be described analytically as a level set $g(~x)=0$, using the
@@ -469,11 +470,36 @@ and geometry-agnostic.
   vertices. This is the path for imported meshes with no closed form, and it is
   what the Genesis representation makes the natural default; validate on the
   sphere against its analytic counterpart.
-  \item[Phase 4 (optional).] Edges and vertices ($m>1$) end-to-end for the
-  analytic route, plus refinements: a symmetric smoothstep or harmonic weighting
-  if a $C^1$ ramp is ever wanted, and caching of the compiled $g,\grad g$ per
-  node set alongside the existing size-field closure.
+  \item[Phase 4 \emph{(edges and vertices implemented)}.] Edges and vertices
+  ($m>1$) end to end for the analytic route: a node in the side sets of two
+  \code{Surface} conditions collects both constraints and slides along their
+  intersection, a node in three is fixed at their common point, and gradients
+  that are nearly linearly dependent at a node abort
+  (Section~\ref{sec:robustness}). The reduce-to-cube regression exercises the
+  edges and corners of six planes, and the tube examples
+  (\code{examples/\allowbreak ems/\allowbreak tube/}) the circular edges
+  where the cylinders meet the caps. What remains of this phase are the
+  refinements: a symmetric smoothstep or harmonic weighting if a $C^1$ ramp is
+  ever wanted, and caching of the compiled $g,\grad g$ per node set alongside
+  the existing size-field closure.
+  \item[Use by the adaptivity loop \emph{(implemented)}.] The topological
+  operations of \code{docs/\allowbreak notes/\allowbreak ems-adaptivity} keep the boundary on the same
+  surfaces: a node that a split adds on a boundary edge is returned to the
+  surfaces of the boundary faces of the edge by the closest-point projection
+  of Phase~2, under either enforcement; a collapse removes a boundary node
+  only onto a node of the same surfaces, along a boundary edge; and a boundary
+  swap acts only within one side set, so within one surface. The
+  \code{Surface} conditions must therefore be given on side sets, which the
+  operations keep up to date, rather than on node sets.
 \end{description}
+
+The two regressions are the test sets \code{surface\_\allowbreak constraint\_\allowbreak cylinder}
+(penalty against exact on the perturbed cylinder) and
+\code{surface\_\allowbreak constraint\_\allowbreak reduces\_\allowbreak to\_\allowbreak cube} of \code{test/smoothing.jl}
+(test 51). The adaptivity tests 131 and 133 check that every boundary node
+of a tube refined by splits lies on its cylinder to $10^{-8}$, and test 130
+that a boundary node collapses only along a boundary edge onto a node of the
+same surfaces.
 
 The construction reuses machinery already in the tree---the symbolic-expression
 compiler, \code{Symbolics.gradient}, the \code{free\_dofs} reduced solve, and

@@ -79,7 +79,7 @@ accepted and cause an error; use the `nodal recovery` block above.
 |---|---|---|---|
 | `mesh smoothing` | no | `false` | enable mesh smoothing (set automatically when `type: mesh smoothing`); a top-level key |
 | `smooth reference` | no | `""` | rule for the ideal element of TETRA4 smoothing: `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted`, which prescribe the target; `equal volume`, `average edge length`, and `max`, which take the target from the original element, are legacy rules kept for older inputs |
-| `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size |
+| `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size (edge length of the ideal regular tetrahedron); under `size field` the target is at least the edge of the regular tetrahedron with the volume of the original element, so the ideal never asks an element to shrink, and under `size field unrestricted` it is the field as given |
 | `metric field` | required if `smooth reference: metric field`/`metric field unrestricted` | `nothing` | block giving the metric in one of four forms: `sizes` (three expressions in `t, x, y, z`: the principal sizes h₁, h₂, h₃) with optional `rotation vector` (three expressions: the rotation vector whose exponential carries the global axes onto the principal directions); `tensor` (six expressions: M_xx, M_yy, M_zz, M_xy, M_yz, M_zx); `nodal sizes` (three nodal variables of the input mesh) with optional `nodal rotation vector` (three nodal variables); or `nodal tensor` (six nodal variables), read at `time index` (default: the last step) and interpolated by `interpolation: principal` (default) or `log-Euclidean`; see below |
 
 ### Anisotropic smoothing with a metric field
@@ -93,13 +93,16 @@ along the global axes and rotated by `R`, and the smoothing energy is evaluated
 on the deformation gradient measured in the metric, `F_U = F_M F F_M⁻¹` with
 `F_M = diag(1/h_i) Rᵀ`, so the orientation of an elongated element is part of
 the objective, which an isotropic energy on `F` alone cannot see. With equal
-sizes the rule reduces exactly to `size field`. The field is evaluated at the
-centroid of each element in the original mesh and held fixed during a solve,
-as for `size field`. `metric field` scales the three sizes uniformly so the
+sizes the rule reduces exactly to `size field`. As for `size field`, the
+target is evaluated at the centroid of each element in the original mesh, so
+it does not follow the nodes as they move, and at the current time, so an
+expression in `t` changes the target from one step to the next. `metric field` scales the three sizes uniformly so the
 ideal volume is never below the volume of the original element (the
 anisotropic form of the `size field` floor); `metric field unrestricted` does
 not. The output carries the metric at every node in three forms: the
-principal sizes and the rotation vector as `size_1..3` and `rotation_1..3`;
+principal sizes and the rotation vector as `size_1..3` and `rotation_1..3`
+(the rotation omitted when the target is given by `sizes` without a
+`rotation vector`);
 the metric tensor `M = R diag(1/h²) Rᵀ` as `metric_xx`, `metric_yy`,
 `metric_zz`, `metric_xy`, `metric_yz`, `metric_zx`, whose quadratic form
 gives the squared length of a vector in the target; and the target tensor
