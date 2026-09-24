@@ -84,7 +84,7 @@ function build_topology(model::SolidMechanics)
     # The model's handle may already be closed when the topology is built
     # after a smoothing run, so the sets are read from a fresh read-only
     # handle on the same file.
-    mesh = Exodus.ExodusDatabase(model.mesh.file_name, "r")
+    mesh = open_exodus_database(model.mesh.file_name, "r")
     positions = model.reference + model.displacement
     num_nodes = size(positions, 2)
     connectivity = zeros(Int, 4, 0)
@@ -96,7 +96,7 @@ function build_topology(model::SolidMechanics)
         connectivity = hcat(connectivity, Int.(block_data.connectivity))
         append!(block, fill(block_index, block_data.num_elements))
         push!(block_ids, Int(block_data.id))
-        push!(block_names, Exodus.read_name(mesh, Block, block_data.id))
+        push!(block_names, read_exodus_name(mesh, Block, block_data.id))
     end
     num_elements = size(connectivity, 2)
     node_sets = Dict{Int,BitVector}()
@@ -105,7 +105,7 @@ function build_topology(model::SolidMechanics)
         flags = falses(num_nodes)
         flags[Int.(Exodus.read_node_set_nodes(mesh, id))] .= true
         node_sets[Int(id)] = flags
-        node_set_names[Int(id)] = Exodus.read_name(mesh, NodeSet, id)
+        node_set_names[Int(id)] = read_exodus_name(mesh, NodeSet, id)
     end
     side_sets = Dict{Int,Set{NTuple{3,Int}}}()
     side_set_names = Dict{Int,String}()
@@ -119,7 +119,7 @@ function build_topology(model::SolidMechanics)
             offset += count
         end
         side_sets[Int(id)] = faces
-        side_set_names[Int(id)] = Exodus.read_name(mesh, SideSet, id)
+        side_set_names[Int(id)] = read_exodus_name(mesh, SideSet, id)
     end
     Exodus.close(mesh)
     topology = MeshTopology(

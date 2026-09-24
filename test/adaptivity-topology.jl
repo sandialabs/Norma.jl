@@ -108,6 +108,30 @@ end
     end
 end
 
+@testset "exodus_name_buffers" begin
+    # Exodus.jl reads names into 32 bytes where the library writes 33, which
+    # corrupted the heap on macOS; Norma reads them with the library's full
+    # read length.  Here the library writes into a buffer with room to spare,
+    # filled with a marker, and the bytes it wrote must fit Norma's buffer.
+    exo = Norma.open_exodus_database("../examples/ems/tube/tube.g", "r")
+    exoid = Exodus.get_file_id(exo)
+    capacity = length(Norma.exodus_name_buffer(exoid))
+    for S in (Block, SideSet)
+        for id in Exodus.read_ids(exo, S)
+            buffer = fill(0x7f, 4 * capacity)
+            @ccall Exodus.libexodus.ex_get_name(
+                exoid::Cint, Exodus.entity_type(S)::Exodus.ex_entity_type, Int64(id)::Int64, buffer::Ptr{UInt8}
+            )::Cint
+            @test findlast(!=(0x7f), buffer) <= capacity
+            @test Norma.read_exodus_name(exo, S, id) == Norma.name_from_buffer(buffer[1:capacity])
+        end
+    end
+    # The dictionaries of the open database name what the file names.
+    @test Set(keys(exo.block_name_dict)) == Set(Norma.read_exodus_names(exo, Block))
+    @test Set(keys(exo.sset_name_dict)) == Set(Norma.read_exodus_names(exo, SideSet))
+    Exodus.close(exo)
+end
+
 @testset "scaled_jacobian" begin
     c = 0.5 / sqrt(2.0)
     regular = c * [1 -1 -1 1; 1 -1 1 -1; 1 1 -1 -1]
@@ -184,7 +208,7 @@ end
     # and side sets round-trip, which also checks the side numbering.
     file = "topology-written.g"
     Norma.write_topology(topology, file)
-    exo = ExodusDatabase(file, "r")
+    exo = Norma.open_exodus_database(file, "r")
     # The title is the one given, not stale memory: Exodus.jl reads the title
     # into 80 bytes where the library writes up to 81, so a title of 80
     # characters or more corrupts the heap on every open.  Read here into a
@@ -202,10 +226,10 @@ end
     @test length(ids) == 1
     _, ne, nnpe, _, _, _ = Exodus.read_block_parameters(exo, ids[1])
     @test ne == ne0 && nnpe == 4
-    @test Exodus.read_name(exo, Block, ids[1]) == "tube"
+    @test Norma.read_exodus_name(exo, Block, ids[1]) == "tube"
     for id in Exodus.read_ids(exo, NodeSet)
         @test sort(Int.(Exodus.read_node_set_nodes(exo, id))) == findall(topology.node_sets[Int(id)])
-        @test Exodus.read_name(exo, NodeSet, id) == topology.node_set_names[Int(id)]
+        @test Norma.read_exodus_name(exo, NodeSet, id) == topology.node_set_names[Int(id)]
     end
     for id in Exodus.read_ids(exo, SideSet)
         counts, nodes = Exodus.read_side_set_node_list(exo, id)
@@ -216,7 +240,7 @@ end
             offset += count
         end
         @test faces == topology.side_sets[Int(id)]
-        @test Exodus.read_name(exo, SideSet, id) == topology.side_set_names[Int(id)]
+        @test Norma.read_exodus_name(exo, SideSet, id) == topology.side_set_names[Int(id)]
     end
     close(exo)
     # The written mesh builds a topology identical in its counts.

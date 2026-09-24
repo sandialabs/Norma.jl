@@ -2203,7 +2203,7 @@ function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondit
 end
 
 function set_id_from_name(name::String, mesh::ExodusDatabase, ::Type{T}) where {T}
-    names = Exodus.read_names(mesh, T)
+    names = read_exodus_names(mesh, T)
     idx = findfirst(==(name), names)
     if idx === nothing
         type_str = T === NodeSet ? "node set" : T === SideSet ? "side set" : "block"

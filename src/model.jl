@@ -53,7 +53,7 @@ function SolidMechanics(params::Parameters)
             num_blocks_params,
         )
     end
-    element_block_names = Exodus.read_names(input_mesh, Block)
+    element_block_names = read_exodus_names(input_mesh, Block)
     materials = Vector{Solid}(undef, 0)
     kinematics = Undefined
     for element_block_name in element_block_names

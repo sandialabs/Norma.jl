@@ -1063,9 +1063,9 @@ end
 
         Norma.run(params)
 
-        db = ExodusDatabase(out, "r")
+        db = Norma.open_exodus_database(out, "r")
         try
-            names = Exodus.read_names(db, NodalVariable)
+            names = Norma.read_exodus_names(db, NodalVariable)
             @test "size" in names                       # the field is written
             last_step = Exodus.read_number_of_time_steps(db)
             # "size" must equal 0.3 + 0.1*x at each node's current x (= refe_x)

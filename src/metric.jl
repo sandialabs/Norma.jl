@@ -199,7 +199,7 @@ function principal_of_nodal_tensors(tensors::AbstractVector{SMatrix{3,3,Float64,
 end
 
 function read_metric_variables(mesh::ExodusDatabase, names::Vector{String}, time_index::Int)
-    available = Exodus.read_names(mesh, NodalVariable)
+    available = read_exodus_names(mesh, NodalVariable)
     values = Vector{Vector{Float64}}(undef, length(names))
     for (i, name) in enumerate(names)
         name in available || norma_abort(

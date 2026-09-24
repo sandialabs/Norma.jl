@@ -12,8 +12,8 @@
 using Exodus
 
 function _block_name_of(path::String)::String
-    exo = ExodusDatabase(path, "r")
-    name = Exodus.read_names(exo, Block)[1]
+    exo = Norma.open_exodus_database(path, "r")
+    name = Norma.read_exodus_names(exo, Block)[1]
     Exodus.close(exo)
     return name
 end

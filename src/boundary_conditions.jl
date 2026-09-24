@@ -501,7 +501,7 @@ function side_set_block_index(model::SolidMechanics, side_set_id::Integer, side_
 end
 
 function block_index_from_name(model::SolidMechanics, block_name::String)
-    names = Exodus.read_names(model.mesh, Block)
+    names = read_exodus_names(model.mesh, Block)
     index = findfirst(==(block_name), names)
     index === nothing && norma_abort("Element block \"$block_name\" not found in the mesh.")
     return index

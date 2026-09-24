@@ -197,7 +197,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # `initial conditions:` have set one, since it is rejected above whenever
     # `restart:` is present).
     velocity = Matrix{Float64}(undef, 3, num_nodes)
-    available_node_vars = Exodus.read_names(input_mesh, NodalVariable)
+    available_node_vars = read_exodus_names(input_mesh, NodalVariable)
     has_velocity = all(v -> v in available_node_vars, ("velo_x", "velo_y", "velo_z"))
     if has_velocity
         velo_x = Exodus.read_values(input_mesh, NodalVariable, restart_index, "velo_x")
@@ -335,7 +335,7 @@ function process_multidomain_restart!(params::Parameters)
         haskey(subparams, "input mesh file") ||
             norma_abort("Subdomain '$domain_path' has no `input mesh file`.")
         input_mesh_file = subparams["input mesh file"]
-        input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
+        input_mesh = open_exodus_database(input_mesh_file, "r")
         domain_time = try
             num_steps = Exodus.read_number_of_time_steps(input_mesh)
             if num_steps < 1
@@ -560,11 +560,11 @@ function SingleDomainSimulation(params::Parameters)
     norma_log(0, :setup, "Input:  $input_mesh_file")
     norma_log(0, :setup, "Output: $output_mesh_file")
     rm(output_mesh_file; force=true)
-    input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
+    input_mesh = open_exodus_database(input_mesh_file, "r")
     local output_mesh
     try
         Exodus.copy(input_mesh, output_mesh_file)
-        output_mesh = Exodus.ExodusDatabase(output_mesh_file, "rw")
+        output_mesh = open_exodus_database(output_mesh_file, "rw")
     catch
         # Close the input handle so a subsequent simulation can re-open the
         # mesh files cleanly even if this construction failed mid-flight.
@@ -654,7 +654,7 @@ function _format_material_field(name::Symbol, value)
 end
 
 function _log_materials(model::SolidMechanics, input_mesh)
-    block_names = Exodus.read_names(input_mesh, Block)
+    block_names = read_exodus_names(input_mesh, Block)
     for (block_name, material) in zip(block_names, model.materials)
         props = join((_format_material_field(f, getfield(material, f))
                       for f in fieldnames(typeof(material))), ", ")

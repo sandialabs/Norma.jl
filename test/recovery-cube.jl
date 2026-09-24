@@ -12,7 +12,7 @@ using Exodus
 # string (default) for single-type recovery (names like sigma_xx_n).  The
 # returned dictionary is always keyed by the bare "sigma_*_n" component name.
 function _read_recovered_stress(exo_path::String, qualifier::String = "")
-    exo = ExodusDatabase(exo_path, "r")
+    exo = Norma.open_exodus_database(exo_path, "r")
     last_step = Exodus.read_number_of_time_steps(exo)
     components = Dict{String,Vector{Float64}}()
     for axes in ("xx", "yy", "zz", "yz", "xz", "xy")
@@ -271,9 +271,9 @@ solver:
 """)
     end
     Norma.run("cube.yaml")
-    exo = ExodusDatabase("cube.e", "r")
+    exo = Norma.open_exodus_database("cube.e", "r")
     last_step = Exodus.read_number_of_time_steps(exo)
-    nodal_names = Exodus.read_names(exo, NodalVariable)
+    nodal_names = Norma.read_exodus_names(exo, NodalVariable)
     @test "eqps_n" in nodal_names
     eqps_n = Vector{Float64}(Exodus.read_values(exo, NodalVariable, last_step, "eqps_n"))
     Exodus.close(exo)
@@ -341,9 +341,9 @@ solver:
 """)
     end
     Norma.run("cube.yaml")
-    exo = ExodusDatabase("cube.e", "r")
+    exo = Norma.open_exodus_database("cube.e", "r")
     last_step = Exodus.read_number_of_time_steps(exo)
-    nodal_names = Exodus.read_names(exo, NodalVariable)
+    nodal_names = Norma.read_exodus_names(exo, NodalVariable)
     @test "von_mises_stress_n" in nodal_names
     @test "F_xx_n" in nodal_names
     @test "F_yy_n" in nodal_names
@@ -382,9 +382,9 @@ end
     Norma.run("cube.yaml")
     # Per-IP von Mises is written unconditionally as an ElementVariable,
     # mirroring the existing per-IP Cauchy stress output — no YAML opt-in.
-    exo = ExodusDatabase("cube.e", "r")
+    exo = Norma.open_exodus_database("cube.e", "r")
     last_step = Exodus.read_number_of_time_steps(exo)
-    elem_names = Exodus.read_names(exo, ElementVariable)
+    elem_names = Norma.read_exodus_names(exo, ElementVariable)
     num_int_pts = 8   # hex8
     block_ids = [block.id for block in Exodus.read_sets(exo, Block)]
     vm_ip = Vector{Vector{Float64}}()
