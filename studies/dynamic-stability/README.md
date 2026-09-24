@@ -2,17 +2,16 @@
 
 This directory holds the plan and the tools for a systematic study of the
 energy behavior of Schwarz coupling in dynamics, on two problems, the bent
-cantilever beam and the nested cylinders. The aim is twofold: to map trends
-(which combinations of decomposition, transmission condition, time
-integrators, and refinement conserve energy, which dissipate it, and which
-grow it until the run fails), and to give a first, complete experience of
-running and interpreting a computational study.
+cantilever beam and the nested cylinders. The aim is to map trends: which
+combinations of decomposition, transmission condition, time integrators,
+and refinement conserve energy, which dissipate it, and which grow it until
+the run fails.
 
 Everything needed is here: `matrix.jl` defines the cases, `generate.jl`
 writes their inputs and meshes, `run.jl` runs them, `collect.jl` summarizes
 them in a table, and `plot.py` draws their energy histories. The runs and
 their results stay out of the repository (see `.gitignore`); the findings
-go in a short report at the end.
+are compiled in a slide deck for the team (see Presenting the results).
 
 ## Background
 
@@ -221,7 +220,7 @@ is right.
    each coupling and explain every key to yourself.
 2. Run the two beam references of tier A and confirm they conserve. Run one
    coupled case by hand and follow it in `run.log`.
-3. Run the rest of tier A, collect, plot, and write a first half page:
+3. Run the rest of tier A, collect, plot, and draft the first slides:
    what conserves, what grows, what dissipates, and how fast.
 4. Tier B, then compare the two levels (question 2 and 3 above).
 5. Tier C, then compare the cylinders with the beam (question 4).
@@ -231,6 +230,29 @@ Keep a log of every run set: the date, the Norma commit (`git log -1
 --oneline`), the machine, the command, and anything unexpected. When a run
 fails in a way that the outcome classes do not explain, keep its directory
 and its log and ask.
+
+## Presenting the results
+
+Compile the results in a slide deck to present to the team, and add to it
+as each tier is completed rather than at the end. A suggested outline:
+
+1. The question and the two problems, with a picture of each mesh and
+   interface.
+2. The matrix: the factors, the tiers that were run, and the fixed settings.
+3. For each problem and level, the figure from `plot.py` (linear and, where
+   there is growth, logarithmic) and a summary table of the outcomes: one
+   row per coupling, one column per integrator pair, each cell the outcome
+   and the energy ratio at the horizon or the time of failure.
+4. The trends: the effect of the coupling, of the integrators, of the mesh
+   ratio, and of refinement, each stated in one sentence with the figure
+   that shows it.
+5. Agreement and disagreement with the tables of the coupling note, and
+   between the two problems.
+6. The cost of each coupling (Schwarz iterations per stop and wall time).
+7. Open questions and proposed next experiments.
+
+Every number on a slide should trace back to a row of `summary.csv`; note on
+the slide the Norma commit the runs used.
 
 ## Beyond the matrix
 
