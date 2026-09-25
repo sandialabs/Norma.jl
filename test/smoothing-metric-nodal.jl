@@ -269,9 +269,9 @@ end
         variables["m_$suffix"] = fill(Norma.components_from_symmetric(M)[i], num_nodes)
     end
     mesh_file = mesh_with_variables(model0, "metric-nodal-cube.g", variables)
-    exo = Norma.open_exodus_database(mesh_file, "r")
+    exo = ExodusDatabase(mesh_file, "r")
     @test Exodus.read_number_of_time_steps(exo) == 1
-    @test Set(Norma.read_exodus_names(exo, NodalVariable)) == Set(keys(variables))
+    @test Set(Exodus.read_names(exo, NodalVariable)) == Set(keys(variables))
     Exodus.close(exo)
     nodal_sizes = Dict{String,Any}(
         "nodal sizes" => ["h1", "h2", "h3"], "nodal rotation vector" => ["r1", "r2", "r3"], "time index" => 1
@@ -409,8 +409,8 @@ end
     @test isfile("metric-nodal-adapt-adapted-1.g")
     adapted = "metric-nodal-adapt-adapted-2.g"
     @test isfile(adapted)
-    exo = Norma.open_exodus_database(adapted, "r")
-    names = Norma.read_exodus_names(exo, NodalVariable)
+    exo = ExodusDatabase(adapted, "r")
+    names = Exodus.read_names(exo, NodalVariable)
     @test Set(names) == Set(["h1", "h2", "h3"])
     n_adapted = Exodus.num_nodes(exo.init)
     h1 = Exodus.read_values(exo, NodalVariable, 1, "h1")

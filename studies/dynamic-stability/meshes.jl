@@ -44,7 +44,8 @@ function write_brick(file::AbstractString, x0::Real, len::Real, h::Real, block_n
         ]
     end
     init = Exodus.Initialization{Int32}(Int32(3), Int32(num_nodes), Int32(num_elements), Int32(1), Int32(2), Int32(2))
-    exo = Norma.create_exodus_database(file, init; title="dynamic stability study beam")
+    rm(file; force=true)
+    exo = Exodus.ExodusDatabase{Int32,Int32,Int32,Float64}(file, "w", init)
     Exodus.write_coordinates(exo, coordinates)
     Exodus.write_block(exo, 1, "HEX8", connectivity)
     Exodus.write_name(exo, Block, 1, block_name)

@@ -170,7 +170,7 @@ end
     # The adapted mesh is written and read back with its node sets.
     file = "swap-mesh-adapted.g"
     Norma.write_topology(topology, file)
-    exo = Norma.open_exodus_database(file, "r")
+    exo = ExodusDatabase(file, "r")
     @test length(Exodus.read_ids(exo, NodeSet)) == length(Exodus.read_ids(model.mesh, NodeSet))
     close(exo)
     rm(file; force=true)
@@ -244,7 +244,7 @@ end
     @test !isfile("adaptive-adapted-1.e")
     times = Float64[]
     for file in ("adaptive.e", "adaptive.e-s_0002")
-        exo = Norma.open_exodus_database(file, "r")
+        exo = ExodusDatabase(file, "r")
         append!(times, Exodus.read_times(exo))
         Exodus.close(exo)
     end

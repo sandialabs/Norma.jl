@@ -42,7 +42,7 @@ test = ["PyCall"]
 [compat]
 DelimitedFiles = "1"
 Einsum = "0.4"
-Exodus = "0.14"
+Exodus = "0.15.1"
 Format = "1"
 ForwardDiff = "1"
 IterativeSolvers = "0.9"

@@ -67,7 +67,7 @@ function pu_energy(models::Vector, mesh_files::Vector{String}, ρ::Float64)
     hi = minimum(maximum(m.reference[1, :]) for m in models)
     total = 0.0
     for (model, mesh_file) in zip(models, mesh_files)
-        mesh = Norma.open_exodus_database(mesh_file, "r")
+        mesh = ExodusDatabase(mesh_file, "r")
         blocks = Exodus.read_sets(mesh, Block)
         try
             for (b, block) in enumerate(blocks)

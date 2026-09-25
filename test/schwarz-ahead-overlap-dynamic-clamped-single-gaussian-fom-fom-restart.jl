@@ -128,8 +128,8 @@ using Exodus
     # full regression back to the pre-fix, order-unity relative error at the
     # Schwarz-coupled boundary, not a tight accuracy bound.
     for domain in 1:2
-        true_mesh = Norma.open_exodus_database("clamped-$domain-in.e", "r")
-        restart_mesh = Norma.open_exodus_database("clamped-$domain-out.e", "r")
+        true_mesh = ExodusDatabase("clamped-$domain-in.e", "r")
+        restart_mesh = ExodusDatabase("clamped-$domain-out.e", "r")
         local true_acce, fresh_acce
         try
             true_acce_x = Vector{Float64}(Exodus.read_values(true_mesh, NodalVariable, 30, "acce_x"))

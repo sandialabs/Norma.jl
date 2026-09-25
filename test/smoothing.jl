@@ -240,7 +240,7 @@ output_mesh_file = "tet_smoothing.e"
             rm(output_mesh_file; force=true)
         end
 
-        tet_exo = Norma.create_exodus_database(input_mesh_file, tet_init)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
         write_coordinates(tet_exo, tet_coords)
         write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
         write_name(tet_exo, Block, 1, "block")
@@ -321,7 +321,7 @@ output_mesh_file = "tet_smoothing.e"
             rm(output_mesh_file; force=true)
         end
 
-        tet_exo = Norma.create_exodus_database(input_mesh_file, tet_init)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
         write_coordinates(tet_exo, tet_coords)
         write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
         write_name(tet_exo, Block, 1, "block")
@@ -411,7 +411,7 @@ output_mesh_file = "tet_smoothing.e"
             rm(output_mesh_file; force=true)
         end
 
-        tet_exo = Norma.create_exodus_database(input_mesh_file, tet_init)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
         write_coordinates(tet_exo, tet_coords)
         write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
         write_name(tet_exo, Block, 1, "block")
@@ -477,7 +477,7 @@ end
         )
         rm(input_mesh_file; force=true)
         rm(output_mesh_file; force=true)
-        tet_exo = Norma.create_exodus_database(input_mesh_file, tet_init)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
         write_coordinates(tet_exo, tet_coords)
         write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
         write_name(tet_exo, Block, 1, "block")
@@ -892,7 +892,7 @@ end
             Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
         )
         rm(mesh; force=true)
-        exo = Norma.create_exodus_database(mesh, init)
+        exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
         write_coordinates(exo, coords)
         write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
         write_name(exo, Block, 1, "block")
@@ -974,7 +974,7 @@ end
                 Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
             )
             rm(mesh; force=true)
-            exo = Norma.create_exodus_database(mesh, init)
+            exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
             write_coordinates(exo, coords)
             write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
             write_name(exo, Block, 1, "block")
@@ -1053,7 +1053,7 @@ end
             Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
         )
         rm(mesh; force=true); rm(out; force=true)
-        exo = Norma.create_exodus_database(mesh, init)
+        exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
         write_coordinates(exo, coords)
         write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
         write_name(exo, Block, 1, "block")
@@ -1063,9 +1063,9 @@ end
 
         Norma.run(params)
 
-        db = Norma.open_exodus_database(out, "r")
+        db = ExodusDatabase(out, "r")
         try
-            names = Norma.read_exodus_names(db, NodalVariable)
+            names = Exodus.read_names(db, NodalVariable)
             @test "size" in names                       # the field is written
             last_step = Exodus.read_number_of_time_steps(db)
             # "size" must equal 0.3 + 0.1*x at each node's current x (= refe_x)
@@ -1124,7 +1124,7 @@ end
         )
         rm(input_mesh_file; force=true)
         rm(output_mesh_file; force=true)
-        tet_exo = Norma.create_exodus_database(input_mesh_file, tet_init)
+        tet_exo = ExodusDatabase{Int32,Int32,Int32,Float64}(input_mesh_file, "w", tet_init)
         write_coordinates(tet_exo, tet_coords)
         write_block(tet_exo, 1, "TETRA4", Matrix{Int32}(tet_conn))
         write_name(tet_exo, Block, 1, "block")
