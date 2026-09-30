@@ -22,7 +22,7 @@
 \title{Schwarz Coupling for Solid Dynamics in Norma:\\
 Transmission Conditions and Interface Energy}
 \author{Alejandro Mota}
-\date{July--September 2026}
+\date{July--September 2026, revised September 30, 2026}
 
 \begin{document}
 \maketitle
@@ -52,7 +52,12 @@ represent in common. The note records the explicit--explicit and
 different-time-step variants of that coupling, the behavior of the
 relaxation and Aitken acceleration of the Schwarz iteration, and the open
 questions, chiefly the stalled interface jump on the cylinders and the
-dependence of the converged solution on the Robin parameter.
+dependence of the converged solution on the Robin parameter. A closing
+section states the constrained formulation of the coupled problem that
+conserves energy by construction, from Gravouil and Combescure and from
+Prakash and Hjelmstad, locates the five points at which the nonoverlap
+Dirichlet--Neumann path departs from it, and gives the changes and the
+reference experiments by which Norma is to be brought into it.
 \end{abstract}
 
 \medskip
@@ -1281,6 +1286,216 @@ $1$ to $2$ iterations per stop. As on the beam, the stiffer spring fails
 sooner, and the softer nonoverlap spring lasts longest, $3.6$\,ms, still
 growing to $11\,E(0)$.
 
+\section{The constrained formulation of the coupled problem}
+\label{sec:constrained}
+
+The measurements of Secs.~\ref{sec:beam}--\ref{sec:cylinders} were made
+with transmission conditions chosen for the Schwarz iteration. This
+section states, from the literature, the coupled discrete problem that
+conserves energy by construction, locates where the nonoverlap
+Dirichlet--Neumann path of Norma departs from it, and lists the changes
+and the experiments that follow. It was written on September 30, 2026,
+after reading the four papers it rests on.
+
+\subsection{What the multiplier formulations prove}
+\label{sec:constrained-theory}
+
+\paragraph{Gravouil and Combescure~\cite{GravouilCombescure2001}.} The
+subdomains are coupled in a dual Schur formulation: the equation of
+motion of subdomain $k$ carries the interface force $~C_k^T \Lambda$,
+with $~C_k$ the Boolean restriction to the interface (matching meshes)
+and $\Lambda$ one vector of Lagrange multipliers, and the constraint is
+the continuity of the \emph{velocity}, $\sum_k ~C_k \dot{~u}_k = 0$
+(Eq.~(10) there). With a coarse step $\Delta T = m\,\Delta t$ on one
+side, the coarse velocity and the multiplier are interpolated linearly to
+the fine steps (Eqs.~(12) and (13)). Theorem~1: if $\gamma_k \ge 1/2$ in
+every subdomain, the coupling does not change the stability limit of any
+subdomain, for any pair of Newmark parameters, central difference with a
+lumped mass included. The interface work of Eq.~\eqref{eq:eint} is a sum
+of $m(m-1)/2$ negative squares (Eq.~(49)): it is exactly zero at equal
+steps ($m = 1$), for every combination of Newmark schemes, and
+nonpositive otherwise, zero only when the coarse velocity is linear over
+the coarse step. The energy of the identity is the Newmark discrete
+energy of each subdomain, $\tfrac12 \dot{~u}^T ~A \dot{~u} + \tfrac12
+~u^T ~K ~u$ with $~A = ~M + \tfrac12 \Delta t^2 (2\beta - \gamma) ~K$,
+which is $~M$ for average acceleration and the staggered form $~M -
+\tfrac14 \Delta t^2 ~K$ for central difference; the staggered metric of
+Sec.~\ref{sec:energy} is that quantity. The interface operator (Eq.~(25))
+is
+\begin{equation}
+  ~H = \sum_k \frac{1}{\gamma_k \Delta t_k}\, ~C_k \tilde{~M}_k^{-1} ~C_k^T,
+  \qquad \tilde{~M}_k = ~M_k + \beta_k \Delta t_k^2 ~K_k,
+  \label{eq:gc-h}
+\end{equation}
+diagonal for an explicit subdomain with a lumped mass; the multiplier at
+each fine step solves $~H \Lambda_j = -\sum_k ~C_k \dot{~u}_{k,j}^{\text{free}}$
+from the velocities of the subdomains advanced without interface forces
+(Eq.~(24)). The nonlinear extension (Sec.~3 there) iterates the implicit
+subdomain with the interface, the multiplier increment following the
+free implicit velocity increment (Eq.~(78)). Measured dissipation with
+subcycling: $1.3\%$ at a ratio of $10\,000$ on a linear beam, $0.4\%$ at
+$1\,000$ with plasticity, $1.9\%$ at $100$ on a stiffened pipe.
+
+\paragraph{Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}.} The
+velocity constraint is imposed only at the end of the coarse step
+(Eq.~(25) there); the fine side receives the multiplier interpolated
+linearly plus the unbalanced reaction $~S_j$ of the coarse subdomain's
+free solution at the intermediate steps (Eq.~(40)). The interface
+problem is solved once per coarse step, $~H \Lambda_m = ~C_A
+\dot{~V}_m^A + ~C_B \dot{~V}_m^B$ with $~H = ~C_A \dot{~Y}^A_m + ~C_B
+\dot{~Y}^B_m$ (Eq.~(52)), where $~Y$ is the response of each subdomain
+to a unit load at one interface degree of freedom, one coarse step from
+rest for the coarse side and a load ramped over the $m$ fine steps for
+the fine side (their Sec.~4.1.2), computed once when the problem is
+linear and the steps constant. The energy change is exactly zero for
+every integer ratio and every pair of Newmark schemes (Eq.~(70)); the
+proof uses linear elasticity. The initial acceleration must be computed
+on the undecomposed system (Eq.~(54)).
+
+\paragraph{Mahjoubi, Gravouil, and
+Combescure~\cite{MahjoubiGravouilCombescure2009}.} The velocity
+constraint and the free/link decomposition extended to the Simo and
+Krenk schemes, with $~H$ factorized once. Remark~2 there: only the
+velocity is continuous; the displacement and the acceleration are not
+imposed, and the displacement gap grows in time (drift). Sec.~3.5.2: with
+different time scales the interpolated coupling is first-order accurate
+in time, the Prakash--Hjelmstad coupling second-order. Sec.~4.3 is an
+explicit--explicit case with incompatible meshes and a time step ratio of
+$10$: the fine interface nodes are constrained to follow the coarse
+interpolation, the velocity jump is $10^{-14}$, the displacement drift
+below $1\%$, and the dissipation below $1\%$ of the external work over
+$10\,000$ steps. The nonconforming treatment of this line of work is
+Herry, Di Valentin, and Combescure~\cite{HerryDiValentinCombescure2002};
+the nonconforming asynchronous conserving method is Subber and
+Matou\v{s}~\cite{SubberMatous2016}. The review of the family is Gravouil,
+Combescure, and Brun~\cite{GravouilCombescureBrun2015}.
+
+\paragraph{Dvo\v{r}\'ak et al.~\cite{DvorakEtAl2023}.} Localized Lagrange
+multipliers~\cite{ParkFelippaRebel2002} with a frame between the
+subdomains, continuity of the \emph{acceleration} (Eq.~(19) there), and
+an a posteriori mapping of the frame displacement and velocity onto the
+interface nodes (Eqs.~(36) and (37)), so that all three fields are
+continuous and the interface work is exactly zero. Arbitrary,
+non-integer, time-varying steps; explicit in structure; any number of
+subdomains. The total energy is not exactly conserved: the error appears
+in the subdomain energies when a discontinuity crosses the interface and
+vanishes as the steps decrease (their Sec.~7.1). Each subdomain must
+expose an interface region, a layer around the interface integrated at
+the partner's time levels (their Sec.~5), and the formulation is given
+for linear elasticity.
+
+\subsection{Where the Dirichlet--Neumann path departs from it}
+\label{sec:constrained-norma}
+
+From \code{src/schwarz.jl} and \code{src/simulation.jl} at commit
+\code{3e4f3b7c}:
+\begin{enumerate}[itemsep=2pt]
+\item The force transmitted to the Neumann side is the static reaction
+  $-~f_{\text{int}}$ of the partner (\code{get\_dst\_force}); the
+  d'Alembert reaction $~M ~a + ~f_{\text{int}} - ~f_{\text{body}}$ is
+  added only for the impedance condition with adjoint pairing. In the
+  multiplier formulations $\Lambda$ is the full dynamic reaction of
+  either side. This is the omission that Sec.~\ref{sec:beam-nonoverlap}
+  measured on the impedance path as a drain of $9.6\%$ per millisecond on
+  conforming meshes, and it is present on every Dirichlet--Neumann run,
+  including the explicit ones that conserve within $1$ to $3\%$.
+\item The two transfer operators are built separately, in
+  \code{compute\_dirichlet\_projector} and
+  \code{compute\_neumann\_projector}: $\Pi_D = ~W_{\text{dst}}^{-1} ~L$
+  on the Dirichlet side and $\Pi_N = ~L\, ~H_{\text{src}}^{-1}$ on the
+  Neumann side, each with its own choice of the side on which $~L$ is
+  integrated. They satisfy \eqref{eq:adjoint} only
+  when the same cross matrix is chosen on both sides; the impedance path
+  builds both from one matrix (the function
+  \code{compute\_paired\_\allowbreak impedance\_\allowbreak schwarz\_\allowbreak projectors!})
+  and the Dirichlet--Neumann path does not.
+\item The Dirichlet side imposes the displacement, the velocity, and the
+  acceleration together (\code{coupling\_weak\_dbc}). At equal steps and
+  at convergence this contains the velocity constraint; under subcycling
+  the three interpolated fields are not consistent with the Newmark
+  relations of the receiving side, and the velocity alone is what the
+  theorem constrains.
+\item The convergence criterion
+  (\code{update\_schwarz\_convergence\_criterion}) is the change of
+  $~u + \Delta t\, \dot{~u}$ over all degrees of freedom of all
+  subdomains. It measures neither the velocity jump on the interface nor
+  the balance of the interface forces, which is why a converged iteration
+  leaves a jump of $0.10$ to $0.14$ on the cylinders
+  (Sec.~\ref{sec:cylinders}) and why the converged solution depends on
+  the relaxation factor (Sec.~\ref{sec:open}, item~(ii)).
+\item The initial acceleration is computed subdomain by subdomain with
+  the Schwarz degrees of freedom excluded (\code{initialize} in
+  \code{src/time\_integrator.jl}), against Eq.~(54) of Prakash and
+  Hjelmstad.
+\end{enumerate}
+The Dirichlet--Neumann fixed point is therefore not the constrained
+problem, and the theorems of Sec.~\ref{sec:constrained-theory} do not
+apply to it; its conservation with explicit subdomains and its failure
+with implicit ones (Sec.~\ref{sec:conclusion}, finding~8) are properties
+of a different scheme.
+
+\subsection{Changes and reference experiments}
+\label{sec:constrained-plan}
+
+The framework to adopt is the constrained problem of Gravouil and
+Combescure, with the Schwarz iteration as one of its solvers. In order:
+\begin{enumerate}[itemsep=2pt]
+\item On the nonoverlap path, transmit the d'Alembert reaction, build
+  both transfer operators from one cross matrix so that $\Pi_N =
+  \Pi_D^T$, and impose the velocity constraint; the displacement and the
+  acceleration then follow from the receiving side's Newmark relations,
+  or are imposed only at equal steps.
+\item Stop the iteration on the projected velocity jump and on the
+  interface force residual.
+\item Compute the initial acceleration on the coupled system, by a
+  Schwarz iteration on the acceleration at $t = 0$ or by a monolithic
+  solve.
+\item For explicit subdomains, replace the iteration by the direct
+  interface solve: $~H$ of \eqref{eq:gc-h} is the lumped mass on the
+  interface divided by $\gamma \Delta t$, one division per interface
+  degree of freedom per step.
+\item For implicit subdomains, keep the Dirichlet--Neumann iteration
+  with Aitken relaxation, converged on the constraint, or solve the
+  interface problem by conjugate gradients with one solve of
+  $\tilde{~M}$ per subdomain per iteration, the operation of the
+  transient FETI method~\cite{FarhatRoux1991,FarhatCrivelliRoux1994}.
+\item For different time steps, the interpolated exchange gives bounded
+  dissipation and first-order accuracy; exact conservation requires the
+  once-per-coarse-step interface solve of Prakash and Hjelmstad with the
+  unbalanced free reactions, the direct solve that
+  Sec.~\ref{sec:subcycle} found necessary. Table~1 of Dvo\v{r}\'ak et
+  al.\ lists its price: integer ratios and a formulation over the whole
+  coarse step.
+\end{enumerate}
+
+The reference experiments, with the outcome the theorems require:
+\begin{itemize}[itemsep=2pt]
+\item Beam, matching meshes, equal steps, each of II, IE, EI, and EE,
+  after changes 1 to 3, converged to $10^{-12}$ on the constraint: the
+  total discrete energy is constant to roundoff over $10$\,ms. Any
+  residual measures what remains of the departure.
+\item The same at ratio $1{:}0.75$: the identity holds with the projected
+  velocities, so the residual is the quadrature error of the cross
+  matrix, zero for nested facets and small otherwise; it must not grow in
+  time.
+\item The same with a $4{:}1$ step ratio: dissipation, nonpositive, of
+  the order of one percent, and zero for explicit--explicit subdomains
+  when the coarse step is the critical step (Sec.~4.4 of Gravouil and
+  Combescure).
+\end{itemize}
+
+\paragraph{Against the requirements of a coupling framework.} The
+constrained problem gives the guarantees, the nonconforming meshes
+through the projected constraint, the heterogeneous integrators, and the
+different steps. Integration into an existing code needs, beyond the
+boundary conditions the Schwarz iteration already uses, one operation
+per subdomain: a solve with the effective dynamic matrix $\tilde{~M}$
+for a given interface load, which an implicit code has as a Newton
+iteration at fixed tangent and an explicit code has as a division by the
+lumped mass. The overlap decomposition has no place in this framework
+(Sec.~\ref{sec:theory}), and every measured overlapping case failed; it
+should be retired for dynamics.
+
 \section{Conclusions}
 \label{sec:conclusion}
 
@@ -1369,6 +1584,10 @@ growing to $11\,E(0)$.
   nonconforming meshes its effect on the converged solution is
   unmeasured for the paired coupling, and the runs in this note use
   $\alpha = 0$ or $2\times 10^{9}$\,N/m$^3$.
+\item \textbf{Path to conservation}: reformulate the nonoverlap path as
+  the constrained problem of Sec.~\ref{sec:constrained}, in the order
+  given there, and run its reference experiments before any further
+  parameter study.
 \item \textbf{Diagnostics}: use the blended energy output with the
   staggered metric for explicit members, and the channel-resolved
   interface-work instrumentation as the acceptance metric for any change
@@ -1391,12 +1610,16 @@ growing to $11\,E(0)$.
   the displacement criterion does not measure; an $\alpha$ sweep of the
   paired coupling on nonconforming meshes has not been run.
 \item Why the Dirichlet--Neumann exchange is stable between explicit
-  subdomains and unstable between implicit ones.
+  subdomains and unstable between implicit ones; the departures of
+  Sec.~\ref{sec:constrained-norma} are the candidates, and the first
+  reference experiment of Sec.~\ref{sec:constrained-plan} decides.
 \item The non-nested mesh-ratio failure window of the paired transfer at
   long horizons.
 \item Exact subcycled interface-work cancellation through a direct
-  interface solve, with the localized Lagrange multiplier frame
-  construction~\cite{ParkFelippaRebel2002,DvorakEtAl2023}.
+  interface solve, by the once-per-coarse-step solve of Prakash and
+  Hjelmstad or by the localized Lagrange multiplier frame
+  construction~\cite{ParkFelippaRebel2002,DvorakEtAl2023}
+  (Sec.~\ref{sec:constrained-plan}, change~6).
 \item Mesh-ratio and overlap-width families on the cylinders, and
   implicit versions of its subdomains, to test whether the beam
   conclusions transfer.
@@ -1450,6 +1673,46 @@ A FETI-based multi-time-step coupling method for Newmark schemes in
 structural dynamics,
 \emph{International Journal for Numerical Methods in Engineering}
 61:2183--2204, 2004.
+
+\bibitem{MahjoubiGravouilCombescure2009}
+N.~Mahjoubi, A.~Gravouil, A.~Combescure,
+Coupling subdomains with heterogeneous time integrators and incompatible
+time steps,
+\emph{Computational Mechanics} 44:825--843, 2009.
+
+\bibitem{GravouilCombescureBrun2015}
+A.~Gravouil, A.~Combescure, M.~Brun,
+Heterogeneous asynchronous time integrators for computational structural
+dynamics,
+\emph{International Journal for Numerical Methods in Engineering}
+102:202--232, 2015.
+
+\bibitem{HerryDiValentinCombescure2002}
+B.~Herry, L.~Di~Valentin, A.~Combescure,
+An approach to the connection between subdomains with non-matching meshes
+for transient mechanical analysis,
+\emph{International Journal for Numerical Methods in Engineering}
+55:973--1003, 2002.
+
+\bibitem{SubberMatous2016}
+W.~Subber, K.~Matou\v{s},
+Asynchronous space--time algorithm based on a domain decomposition method
+for structural dynamics problems on non-matching meshes,
+\emph{Computational Mechanics} 57:211--235, 2016.
+
+\bibitem{FarhatRoux1991}
+C.~Farhat, F.-X.~Roux,
+A method of finite element tearing and interconnecting and its parallel
+solution algorithm,
+\emph{International Journal for Numerical Methods in Engineering}
+32:1205--1227, 1991.
+
+\bibitem{FarhatCrivelliRoux1994}
+C.~Farhat, L.~Crivelli, F.-X.~Roux,
+Transient FETI methodology for large-scale parallel implicit computations
+in structural mechanics,
+\emph{International Journal for Numerical Methods in Engineering}
+37:1945--1975, 1994.
 
 \bibitem{KarimiNakshatrala2014}
 S.~Karimi, K.B.~Nakshatrala,
