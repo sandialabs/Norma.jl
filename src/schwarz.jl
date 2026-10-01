@@ -2536,6 +2536,14 @@ function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_ma
     return reshape(full_3xN, num_dofs)
 end
 
+# Projected interface trace Π_D q_N of a partner field q (all degrees of
+# freedom of the Neumann side, interleaved components), as a vector.
+function constrained_partner_trace(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, field::AbstractVector{Float64})
+    n_bc = coupled_subsim_of(bc).model.boundary_conditions[bc.coupled_bc_index]
+    q_N = reshape(field, 3, :)[:, n_bc.global_from_local_map]
+    return vec(transpose(bc.dirichlet_projector * transpose(q_N)))
+end
+
 function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     # A direct pair leaves its interface rows free and unloaded during the step;
     # direct_interface_stop! applies the interface force afterwards.
@@ -2660,10 +2668,19 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             interp_c = relax_velocity ? interp_velo : interp_disp
             c_slots = relax_velocity ? velo_slots : disp_slots
             λ_c_prev = relax_velocity ? λ_v_prev : λ_u_prev
+            # The Aitken factor is formed from the datum the Dirichlet side
+            # receives, the projected interface trace Π_D q_N, not from the
+            # partner's whole field. The interior values of the partner field do
+            # not enter the exchange and follow a map of zero gain in the relaxed
+            # field, so on the whole field the factor tends to 1 as soon as they
+            # dominate the residual, which leaves the interface iteration, of gain
+            # near -1, without contraction (measured on the conforming beam).
+            trace_c = constrained_partner_trace(bc, interp_c)
+            trace_prev = constrained_partner_trace(bc, λ_c_prev)
             θ = if controller.relaxation_method === :aitken_secant
-                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, interp_c, λ_c_prev)
+                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
             else
-                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, interp_c, λ_c_prev)
+                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
             end
             frozen_relaxation_update!(controller, θ)
             c_slots[slot_k] = θ * interp_c + (1 - θ) * λ_c_prev

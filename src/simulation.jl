@@ -1204,6 +1204,15 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     θ = controller.relaxation_parameter
     rtol = controller.relative_tolerance
     previous = Dict{Int,Matrix{Float64}}()
+    # Under Aitken relaxation the factor of each pair is the secant estimate
+    # from the last two iterates of the imposed interface acceleration, as in
+    # relaxation_aitken_secant_theta!; the input factor serves until two
+    # residuals exist. The gain of this iteration is that of the stops with the
+    # step taken to zero (a ratio of lumped or consistent masses), which for an
+    # explicit coarse-mesh Dirichlet side lies outside the range of θ = 0.5.
+    aitken = controller.relaxation_method !== :fixed
+    previous_residual = Dict{Int,Matrix{Float64}}()
+    previous_iterate = Dict{Int,Matrix{Float64}}()
     norma_log(0, :acceleration, "Coupled initial acceleration of constrained DN pairs (θ = $(θ))")
     for iteration in 1:controller.maximum_iterations
         for (subsim_index, subsim) in enumerate(sim.subsims)
@@ -1217,8 +1226,23 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
                 model = subsim.model
                 imposed = model.acceleration[:, bc.global_from_local_map]
                 if haskey(previous, k)
-                    imposed = θ .* imposed .+ (1.0 - θ) .* previous[k]
+                    θ_k = θ
+                    residual = imposed .- previous[k]
+                    if aitken && haskey(previous_residual, k)
+                        δ = residual .- previous_residual[k]
+                        d = previous[k] .- previous_iterate[k]
+                        δ_sq = sum(abs2, δ)
+                        if δ_sq > AITKEN_DELTA_SQ_FLOOR && sum(abs2, d) > AITKEN_DELTA_SQ_FLOOR
+                            θ_k = -sum(d .* δ) / δ_sq
+                        end
+                    end
+                    previous_residual[k] = residual
+                    previous_iterate[k] = copy(previous[k])
+                    imposed = θ_k .* imposed .+ (1.0 - θ_k) .* previous[k]
                     model.acceleration[:, bc.global_from_local_map] = imposed
+                    if aitken
+                        norma_logf(0, :acceleration, "Initial iteration [%d] Aitken secant θ = %.4e", iteration, θ_k)
+                    end
                 end
                 previous[k] = copy(imposed)
             end
@@ -1422,7 +1446,7 @@ function schwarz(sim::MultiDomainSimulation)
     # the Schwarz iteration cap without improving the answer, so a stalled jump is
     # accepted with a warning instead.
     prev_jump_rel = -1.0
-    prev_constrained_jump = -1.0
+    constrained_stall = (Inf, 0)
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
@@ -1431,8 +1455,7 @@ function schwarz(sim::MultiDomainSimulation)
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
-        constrained_converged, prev_constrained_jump =
-            apply_constrained_dn_criterion!(sim, prev_constrained_jump)
+        constrained_converged, constrained_stall = apply_constrained_dn_criterion!(sim, constrained_stall)
         if sim.controller.converged && sim.controller.relaxation_frozen
             # A relaxation factor of essentially zero left an interface iterate
             # unchanged, so every subdomain re-solved against the data it
@@ -1877,6 +1900,10 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     return controller.absolute_error, controller.relative_error
 end
 
+# Consecutive iterations without a 5% decrease of the constrained residual
+# below its smallest value that make a stall.
+const STALL_ITERATIONS = 3
+
 # Interface residuals of the Dirichlet-Neumann pairs (dn_interface_residuals in
 # schwarz.jl), logged at every Schwarz iteration. For constrained pairs they are
 # also the stopping rule: such a pair has converged when the one-sided jump of
@@ -1887,14 +1914,15 @@ end
 # displacement criterion; otherwise both must hold. The larger of the constrained
 # jump and the force residual, maximized over the constrained pairs, is stalled
 # when it stays above the tolerance while the displacement update has converged
-# and decreased by less than 5% since the previous such iteration; a stall is
-# handled as `stalled interface jump action` directs. Returns whether every
-# constrained pair has converged, and the residual to compare against at the
-# next iteration.
-function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::Float64)
+# and has not fallen 5% below its smallest value for STALL_ITERATIONS
+# consecutive such iterations; a stall is handled as `stalled interface jump
+# action` directs. Returns whether every constrained pair has converged, and the
+# stall state (smallest value, iterations without decrease) for the next
+# iteration.
+function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tuple{Float64,Int})
     controller = sim.controller
     residuals = dn_interface_residuals(sim)
-    isempty(residuals) && return true, prev_jump
+    isempty(residuals) && return true, stall
     rtol = controller.relative_tolerance
     # The controller's absolute tolerance is a displacement; it is not used here.
     # The constrained criterion is relative unless `constraint absolute
@@ -1932,15 +1960,26 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::
         all_constrained_converged &= jump_ok && force_ok
         max_measure = max(max_measure, jump, isnan(r.force_residual) ? Inf : r.force_residual)
     end
-    has_constrained || return true, prev_jump
+    has_constrained || return true, stall
     displacement_converged = controller.converged
     if all_constrained_converged
         controller.converged = only_constrained_couplings(sim) ? true : displacement_converged
-        return true, prev_jump
+        return true, stall
     end
     controller.converged = false
-    displacement_converged || return false, prev_jump
-    if prev_jump ≥ 0.0 && max_measure > 0.95 * prev_jump
+    displacement_converged || return false, stall
+    # A residual is stalled when, over STALL_ITERATIONS consecutive iterations
+    # with the displacement update converged, it has not fallen 5% below the
+    # smallest value seen. Aitken factors make the residual non-monotone from
+    # one iteration to the next, so a single iteration without decrease is not
+    # a stall.
+    best, count = stall
+    if max_measure < 0.95 * best
+        best, count = max_measure, 0
+    else
+        count += 1
+    end
+    if count >= STALL_ITERATIONS
         stall_action = get(sim.params, "stalled interface jump action", "warn")
         if stall_action == "abort"
             norma_abort(
@@ -1958,9 +1997,9 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::
             max_measure, rtol,
         )
         controller.converged = true
-        return true, max_measure
+        return true, (best, count)
     end
-    return false, max_measure
+    return false, (best, count)
 end
 
 # True when every Schwarz coupling condition of the simulation belongs to a

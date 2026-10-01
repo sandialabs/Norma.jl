@@ -68,6 +68,7 @@ function run_constrained_dn(
     interface_solve="iterative",
     mesh_dir=constrained_dn_example,
     initialize_only=false,
+    relaxation=nothing,
 )
     for f in ["cantilever-clamped.g", "cantilever-free.g"]
         cp("$mesh_dir/$f", f; force=true)
@@ -94,6 +95,10 @@ function run_constrained_dn(
         "relaxation parameter" => theta,
         "blended energy output" => true,
     )
+    if relaxation !== nothing
+        params["relaxation"] = relaxation
+        params["aitken N0 parameter"] = 1
+    end
     files = ["cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
              "cantilever-clamped.yaml", "cantilever-free.yaml", "constrained-dn-energy.csv"]
     if initialize_only
@@ -318,5 +323,25 @@ for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconfo
             @test maximum(abs(r[i] / q[i] - 1.0) for (r, q) in zip(dir_data, it_data)) ≤ 1.0e-12
         end
         @test e2_drift(header, dir_data) < 1.0e-12
+    end
+end
+
+# Aitken relaxation of the constrained exchange forms its factor from the
+# projected interface trace Π_D v_N that the Dirichlet side receives. Formed
+# from the partner's whole velocity field, whose interior values follow a map
+# of zero gain, the factor reached 0.9996 and 0.99999 in the third and fourth
+# iterations of every stop of the implicit pair, where the interface gain is
+# near -1, and those iterations did not contract (at a step of 5e-7 s, 8.2
+# iterations per stop and stalls at the solver floor, against 5.8 and none from
+# the trace; at 1e-6 s the recursive form stopped on the stall rule at the
+# first stop). At 1e-6 s the trace gives 8 iterations per stop, against 7 for
+# the fixed factor 0.5, which is near the optimum for this pair.
+for relaxation in ("aitken secant", "aitken recursive")
+    @testset "Constrained DN: $relaxation on the interface trace (II)" begin
+        sim, header, data = run_constrained_dn(false; num_steps=10, relaxation)
+        @test sim.failed == false
+        iterations = sim.controller.schwarz_iters[1:10]
+        @test maximum(iterations) ≤ 8
+        @test e2_drift(header, data) < 1.0e-10
     end
 end
