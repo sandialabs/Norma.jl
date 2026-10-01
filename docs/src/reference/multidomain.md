@@ -211,7 +211,17 @@ v_pre = v_n + (1 − γ) Δt a_n (β = 0 for central difference) and imposes, wi
 `constraint: velocity`, v = Π_D v_N, a = (v − v_pre)/(γ Δt),
 u = u_pre + β Δt² a, and with `constraint: displacement`, u = Π_D u_N,
 a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
-constrained quantity only. A pair converges when the jump of its constrained
+constrained quantity only, and Aitken factors are formed from its projected
+interface trace Π_D q_N, not from the partner's whole field. Aitken relaxation
+(`relaxation: aitken recursive` or `aitken secant`, with `relaxation
+parameter: 0.5` as the starting factor) is the recommended setting for
+constrained pairs: on the cantilever it found factors near the optimum of the
+gain spectrum in every case measured, converged where every fixed factor from
+0.25 to 1 diverged (an explicit Dirichlet side, and an explicit coarse-mesh
+Dirichlet side under subcycling), and reduced the iterations per stop by a
+factor of 2.5 to 5 where 0.5 is far from the optimum; where 0.5 is near the
+optimum, as for identical integrators on conforming meshes, the fixed factor
+is equivalent. A pair converges when the jump of its constrained
 quantity and the force residual are both at or below `relative tolerance`, or
 when the root mean square jump over the interface is at or below
 `constraint absolute tolerance` (a top-level key in the units of the
@@ -219,8 +229,10 @@ constrained quantity, m/s for the velocity and m for the displacement
 constraint; default 0, which leaves the relative test alone); when every
 Schwarz coupling is constrained this replaces the displacement criterion,
 otherwise both must hold. A residual that stays above the tolerance while the
-displacement update has converged and decreased by less than 5% since the
-previous such iteration is handled by `stalled interface jump action`.
+displacement update has converged and has not fallen 5% below its smallest
+value for three consecutive such iterations is handled by `stalled interface
+jump action`; a single iteration without decrease, which Aitken factors
+produce, is not a stall.
 
 The velocity constraint admits different time steps on the two sides, as in
 Gravouil and Combescure (2001): the side with the finer step receives the
@@ -271,8 +283,9 @@ The initial acceleration of a constrained pair is found by a Schwarz
 iteration at t = 0: the Dirichlet side imposes the projected partner
 acceleration, the Neumann side receives the d'Alembert reaction, and each side
 recomputes its initial acceleration with the interface rows included. The
-Dirichlet datum is relaxed with the fixed factor `relaxation parameter`, also
-when `relaxation` names an Aitken method, and the iteration stops when the
+Dirichlet datum is relaxed with `relaxation parameter`, or under Aitken
+relaxation with the secant factor of the iteration's own iterates, and the
+iteration stops when the
 acceleration jump and the force residual are at or below `relative
 tolerance`. Without it the first step changes the conserved energy by up to 1%
 on the cantilever, and between two central difference subdomains the

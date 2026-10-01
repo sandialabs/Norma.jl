@@ -1698,15 +1698,9 @@ the first stop for EE, where the iterate alternates between two states).
 With the fine side as the Dirichlet side the eigenvalues fill $[g, 0]$,
 and the zero eigenvalues belong to the components of the fine trace that
 the coarse trace cannot represent; they contract by $1 - \theta$. The
-recursive Aitken factor does not settle where the eigenvalues cluster at $-1$:
-on the implicit pair it alternates between $0.5$ and $0.998$, the
-iteration stalls for one iteration at a relative velocity jump of
-$5.9\times 10^{-10}$, and the stall rule (a decrease below $5\%$ in one
-iteration once the displacement update has converged, with
-\code{stalled interface jump action: abort}) ended the run at the first
-stop. It also ended the IE run with the implicit Dirichlet side at
-$7.7$\,ms ($2.7\times 10^{-11}$). The Aitken residual is formed on the
-whole velocity field of the Neumann side, not on its interface trace.
+first measurements with Aitken relaxation, in which the factor did not
+settle and the stall rule ended runs, had two causes, both corrected
+(Sec.~\ref{sec:aitken}).
 
 \paragraph{The first step and the coupled initial acceleration.} With
 the initial acceleration computed per subdomain and the interface held
@@ -2243,6 +2237,124 @@ it as a solver of the constrained problem, with the impedance as a
 preconditioner of the interface iteration rather than as part of the
 transmission condition, is the form in which it could serve there. No
 code was removed.
+
+
+\subsection{Aitken relaxation of the constrained exchange}
+\label{sec:aitken}
+
+For a real gain spectrum in $[a, b]$ the best fixed factor is $\theta^* =
+2/((1 - a) + (1 - b))$ with contraction $(b - a)/((1 - a) + (1 - b))$
+per iteration: $0.50$ and $0.004$ for the conforming explicit pair, $0.48$
+and $0.039$ for the implicit pair, $0.33$ and $0.023$ for assignment (A) of
+the subcycled $1{:}0.5$ implicit pair, $0.17$ and $0.50$ for (A) explicit,
+$0.78$ to $0.80$ and about $0.2$ for (B), and $0.12$ and $0.69$ for an
+explicit Dirichlet side at equal steps. Aitken relaxation should find
+these factors without the spectrum.
+
+\paragraph{Diagnosis.} Relaxation acts on the constrained datum of the
+Dirichlet side only. On the conforming implicit pair at $\Delta t = 5\times
+10^{-7}$\,s both Aitken forms took $8.2$ iterations per stop and stopped on
+the stall rule at four stops in $200$. Every stop showed the same factor
+sequence, $0.5$, $0.5$, $0.597$, $0.9996$, $0.99999$, $0.4998$, $0.499$, and
+so on, with the velocity jump unchanged ($2.4\times 10^{-3}$) through the
+two iterations at a factor near $1$. The factor was formed from the
+partner's whole velocity field. Its interior values do not enter the
+exchange and follow a map of zero gain in the relaxed field, whose optimal
+factor is $1$; once they dominate the residual the factor tends to $1$,
+where the interface map, of gain near $-1$, does not contract. The factor
+is now formed from the projected trace $\Pi_D ~v_N$ that the Dirichlet side
+receives. The Aitken forms themselves are unchanged: the recursive (Irons
+and Tuck) and the secant forms produce the same sequence when
+$\lambda^n - \lambda^{n-1} = \theta^{n-1} ~r^{n-1}$, which holds after
+\code{N0}, and the measured sequences agree to four digits. The stall
+rule fired on one iteration without a $5\%$ decrease once the displacement
+update had converged; Aitken factors make the residual non-monotone (on
+the subcycled explicit pair (A) the jump went from $3.68\times 10^{-7}$ to
+$3.94\times 10^{-7}$ and then to $1.2\times 10^{-8}$), so a stall now requires
+three consecutive such iterations below the smallest residual seen. The
+remaining stalls are at the floor of the force residual over the substeps,
+about $10^{-12}$ to $10^{-11}$ relative. The force residual does not lag:
+with the Dirichlet side solved first it is formed from the same iteration.
+\code{N0} and the frozen-factor guard were not involved (no factor below
+$0.07$). The coupled initial acceleration used the fixed factor; under
+Aitken relaxation it now uses the secant factor of its own iterates,
+because on (A) explicit the fixed factor $0.5$ diverged there before the
+first stop.
+
+\paragraph{Measurements.} All runs are $10$\,ms, relative tolerance
+$10^{-12}$, no absolute tolerance, \code{stalled interface jump action:
+warn}; Aitken forms start from $\theta = 0.5$ with \code{aitken N0
+parameter: 1}. The stops of the equal-step conforming runs are
+$5\times 10^{-7}$\,s; the others $10^{-6}$\,s with the subcycled side at
+$2.5\times 10^{-7}$\,s; the explicit-Dirichlet runs are the equal-step
+conforming EI (clamped explicit side as Dirichlet) and IE (free explicit
+side as Dirichlet).
+\begin{center}
+\scriptsize\setlength{\tabcolsep}{2pt}
+\begin{tabular}{lllcccccrrl}
+\toprule
+case & relax. & $\theta$ at 5\,ms & 1 & 5 & 10 & $\lvert\delta E_2\rvert$ & impulse &
+  it. & wall & stalls \\
+\midrule
+eq.\ II & fixed $0.5$ & -- & 1.0000 & 1.0000 & 1.0000 & $1.3\mathrm{e}{-12}$ & $6.3\mathrm{e}{-16}$ & 5.9/6 & 325 & 0 \\
+ & rec. & $0.50, 0.499, 0.499, 0.500, 0.501$ & 1.0000 & 1.0000 & 1.0000 & $1.4\mathrm{e}{-12}$ &
+  $6.3\mathrm{e}{-16}$ & 5.8/6 & 326 & 0 \\
+ & sec. & same & 1.0000 & 1.0000 & 1.0000 & $1.2\mathrm{e}{-12}$ & $6.6\mathrm{e}{-16}$ & 5.8/6 & 256 & 0 \\
+eq.\ EE & all three & $0.5$ & 1.0000 & 1.0000 & 1.0000 & $3.1\mathrm{e}{-14}$ & $7.2\mathrm{e}{-16}$ &
+  1.0/1 & 67 & 0 \\
+(A) II & fixed $0.5$ & -- & 0.9989 & 0.9984 &
+  0.9993 & $4.7\mathrm{e}{-13}$ & $3.9\mathrm{e}{-12}$ & 44.5/54 & 2555 & -- \\
+ & rec. & $0.327, 0.326, 0.333, 0.337, 0.325$ & 0.9989 & 0.9984 & 0.9993 & $1.2\mathrm{e}{-12}$ &
+  $8.3\mathrm{e}{-13}$ & 8.8/15 & 745 & 5 \\
+ & sec. & same & 0.9989 & 0.9984 & 0.9993 & $5.5\mathrm{e}{-13}$ & $3.3\mathrm{e}{-12}$ & 8.8/16 & 741 & 86 \\
+(A) EE & fixed $0.5$, $0.25$ & -- & \multicolumn{8}{l}{diverged in the coupled initial acceleration} \\
+ & rec. & $0.248, 0.203, 0.161, 0.268, 0.333$ & 1.0008 & 1.0006 & 1.0006 & $3.3\mathrm{e}{-13}$ &
+  $7.8\mathrm{e}{-11}$ & 20.9/87 & 456 & 667 \\
+ & sec. & same & 1.0008 & 1.0006 & 1.0006 & $9.3\mathrm{e}{-13}$ & $3.4\mathrm{e}{-10}$ & 22.7/31 & 488 & 7747 \\
+(B) II & fixed $0.5$ & -- & 1.0008 & 1.0008 &
+  1.0008 & $1.6\mathrm{e}{-12}$ & $6.2\mathrm{e}{-16}$ & 18.8/21 & 829 & -- \\
+ & rec. & $0.652, 0.653, 0.647, 0.644, 0.660$ & 1.0008 & 1.0008 & 1.0008 & $1.7\mathrm{e}{-13}$ &
+  $6.4\mathrm{e}{-16}$ & 7.0/9 & 372 & 0 \\
+ & sec. & same & 1.0008 & 1.0008 & 1.0008 & $2.6\mathrm{e}{-13}$ & $6.8\mathrm{e}{-16}$ & 7.0/13 & 367 & 1 \\
+(B) EE & fixed $0.5$ & -- & 0.9994 & 0.9993 &
+  0.9993 & $3.7\mathrm{e}{-12}$ & $6.0\mathrm{e}{-16}$ & 26.9/31 & 315 & -- \\
+ & rec. & $0.699, 0.732, 0.818, 0.670, 0.842$ & 0.9994 & 0.9993 & 0.9993 & $3.7\mathrm{e}{-13}$ &
+  $5.6\mathrm{e}{-16}$ & 10.9/13 & 162 & 0 \\
+ & sec. & same & 0.9994 & 0.9993 & 0.9993 & $3.2\mathrm{e}{-13}$ & $5.8\mathrm{e}{-16}$ & 10.9/13 & 166 & 0 \\
+EI, D expl. & fixed $0.5$, $0.75$, $1$ & -- & \multicolumn{8}{l}{diverged; element inversion at the first stop} \\
+ & rec. & $0.094, 0.077, 0.111, 0.170, 0.085$ & 1.0033 & 1.0024 & 1.0034 & $6.8\mathrm{e}{-11}$ &
+  $1.1\mathrm{e}{-8}$ & 34.6/45 & 534 & 938 \\
+ & sec. & same & 1.0033 & 1.0024 & 1.0034 & $6.7\mathrm{e}{-11}$ & $1.1\mathrm{e}{-8}$ & 35.9/48 & 560 & 6548 \\
+IE, D expl. & fixed $0.5$, $0.75$, $1$ & -- & \multicolumn{8}{l}{diverged; element inversion at the first stop} \\
+ & rec. & $0.088, 0.079, 0.133, 0.187, 0.070$ & 0.9990 & 0.9999 & 0.9996 & $1.9\mathrm{e}{-12}$ &
+  $5.5\mathrm{e}{-16}$ & 33.9/46 & 524 & 0 \\
+ & sec. & same & 0.9990 & 0.9999 & 0.9996 & $7.5\mathrm{e}{-13}$ & $5.7\mathrm{e}{-16}$ & 34.0/44 & 506 & 98 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The columns $1$, $5$, $10$ are $E_1(t)/E_1(0)$ at those milliseconds;
+$\theta$ lists the factors of the first three relaxed iterations of the stop
+at $5$\,ms (rec.: recursive, sec.: secant); impulse is the largest relative
+impulse residual of the run; it.\ is the mean and maximum number of Schwarz iterations per stop; wall
+time in seconds on four threads; stalls counts the stops accepted by the
+stall rule. The fixed-factor rows are those of Tables~\ref{tab:constrained}
+and \ref{tab:subcycled}, except the equal-step conforming ones, rerun at
+$5\times 10^{-7}$\,s; their stall counts were not recorded under the former
+rule. Aitken converges in every case, including the two where every fixed
+factor tried diverged, and finds factors near $\theta^*$: $0.33$ on (A)
+implicit, $0.16$ to $0.33$ on (A) explicit, $0.64$ to $0.84$ on (B), and $0.07$
+to $0.21$ with an explicit Dirichlet side. Against the fixed factor $0.5$ it
+reduces the iterations per stop from $44.5$ to $8.8$ on (A) implicit, from
+$26.9$ to $10.9$ on (B) explicit, and from $18.8$ to $7.0$ on (B) implicit,
+and equals it where $0.5$ is near $\theta^*$. The counts are close to
+$\log(10^{-12})/\log$ of the contraction at $\theta^*$ ($8$ on (A) implicit,
+$17$ to $40$ on the spectra with contraction $0.2$ to $0.5$) and below the $74$
+that the contraction $0.69$ predicts with an explicit Dirichlet side. The
+energies match the fixed-factor runs to the digits shown. The secant form
+is accepted by the stall rule more often than the recursive one, at the
+floor of the force residual ($10^{-12}$ to $6\times 10^{-10}$ relative on (A)
+explicit, median $2.4\times 10^{-11}$ against $2.9\times 10^{-12}$ for the
+recursive form), without an effect on the energies beyond $10^{-12}$.
 
 \section{Conclusions}
 \label{sec:conclusion}
