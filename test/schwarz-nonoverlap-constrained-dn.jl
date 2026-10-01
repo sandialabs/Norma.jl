@@ -23,33 +23,47 @@ using LinearAlgebra
 
 const constrained_dn_example = "../examples/nonoverlap/dynamic-same-step/cantilever-dn"
 
-function constrained_dn_subdomain(name::String, explicit::Bool, constraint::String, dt::Float64)
+function constrained_dn_subdomain(
+    name::String, explicit::Bool, constraint::String, dt::Float64, own_dt::Float64=dt; swap_roles::Bool=false
+)
     sub = YAML.load_file("$constrained_dn_example/$name.yaml"; dicttype=Norma.Parameters)
     if explicit
         sub["time integrator"] = Norma.Parameters(
-            "type" => "central difference", "time step" => dt, "CFL" => 1.0, "γ" => 0.5
+            "type" => "central difference", "time step" => own_dt, "CFL" => 1.0, "γ" => 0.5
         )
         sub["solver"] = Norma.Parameters("type" => "explicit solver", "step" => "explicit")
     else
-        sub["time integrator"]["time step"] = dt
+        sub["time integrator"]["time step"] = own_dt
         sub["solver"]["linear solver"] = "direct"
         sub["solver"]["linear solver relative tolerance"] = 1.0e-14
         sub["solver"]["maximum iterations"] = 4
         sub["solver"]["absolute tolerance"] = 1.0e-6
     end
     bc = sub["boundary conditions"]["Schwarz DN nonoverlap"][1]
+    if swap_roles
+        bc["default BC type"] = bc["default BC type"] == "Dirichlet" ? "Neumann" : "Dirichlet"
+    end
     bc["constrained"] = true
     bc["constraint"] = constraint
     YAML.write_file("$name.yaml", sub)
     return nothing
 end
 
-function run_constrained_dn(explicit::Bool; constraint="velocity", num_steps=50, dt=1.0e-6, theta=0.5)
+function run_constrained_dn(
+    explicit::Bool;
+    constraint="velocity",
+    num_steps=50,
+    dt=1.0e-6,
+    theta=0.5,
+    free_substeps=1,
+    clamped_dirichlet=false,
+)
     for f in ["cantilever-clamped.g", "cantilever-free.g"]
         cp("$constrained_dn_example/$f", f; force=true)
     end
-    constrained_dn_subdomain("cantilever-free", explicit, constraint, dt)
-    constrained_dn_subdomain("cantilever-clamped", explicit, constraint, dt)
+    free_dt = dt / free_substeps
+    constrained_dn_subdomain("cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet)
+    constrained_dn_subdomain("cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet)
     params = Norma.Parameters(
         "type" => "multi",
         "name" => "constrained-dn",
@@ -191,4 +205,22 @@ end
     @test energy_drift(header, data, "total_energy") < 1.0e-9
     i_u = findfirst(h -> startswith(h, "displacement_jump"), header)
     @test maximum(row[i_u] for row in data) < 1.0e-12
+end
+
+# Different time steps (GC interpolated exchange): the free side takes four
+# substeps per stop and the clamped side, with the coarse step, is the
+# Dirichlet side. Gravouil and Combescure (2001, Eq. (49)) give a nonpositive
+# interface work, so E2 must not increase beyond the Schwarz tolerance
+# accumulated over the stops. With the fine side as the Dirichlet side E2 was
+# measured to grow at a rate set by the stopping floor (coupling note).
+for explicit in (false, true)
+    @testset "Constrained DN: Subcycled 4:1 ($(explicit ? "EE" : "II"))" begin
+        sim, header, data = run_constrained_dn(explicit; num_steps=20, free_substeps=4, clamped_dirichlet=true)
+        @test sim.failed == false
+        @test length(data) == 21
+        i_e2 = findfirst(==("e2_total"), header)
+        e2 = [row[i_e2] for row in data]
+        @test maximum(e2 ./ e2[1] .- 1.0) < 1.0e-10
+        @test minimum(e2 ./ e2[1] .- 1.0) > -1.0e-6
+    end
 end

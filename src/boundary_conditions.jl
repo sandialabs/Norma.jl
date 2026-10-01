@@ -470,6 +470,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         constrained,
         constraint,
         Float64[],
+        Tuple{Float64,Vector{Float64}}[],
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,

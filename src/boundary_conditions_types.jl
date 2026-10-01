@@ -287,6 +287,9 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     # this side received at its last application as the Neumann side. Read by
     # the interface force residual of the Schwarz loop.
     transferred_force::Vector{Float64}
+    # The same force at every substep of the current stop, with its time, for
+    # the per-substep force residual of a subcycled constrained pair.
+    transferred_force_history::Vector{Tuple{Float64,Vector{Float64}}}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle

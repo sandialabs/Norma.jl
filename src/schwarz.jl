@@ -700,8 +700,11 @@ end
 # The displacement constraint derives the velocity and the acceleration of the
 # Dirichlet side from the Newmark relations a = (u - u_pre)/(βΔt²), which
 # requires β > 0, and it reproduces the coupled problem only when both sides
-# advance with the same relations and step. The phase implemented here is the
-# exchange at equal time steps for either constraint.
+# advance with the same relations and step, so it is restricted to equal steps.
+# The velocity constraint also admits different steps: the side with the finer
+# step receives the partner's velocity or reaction interpolated linearly in
+# time from the partner's substep history (apply_bc), the interpolated
+# exchange of Gravouil and Combescure (2001).
 function check_constrained_integrators(
     sim_1::SingleDomainSimulation, sim_2::SingleDomainSimulation, constraint::Symbol
 )
@@ -717,15 +720,15 @@ function check_constrained_integrators(
             norma_abort("`constrained: true` does not support HHT-α (subdomain '$(sim_k.name)').")
         end
     end
-    Δt_1 = sim_1.integrator.time_step
-    Δt_2 = sim_2.integrator.time_step
-    if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
-        norma_abort(
-            "`constrained: true` is implemented for equal time steps; subdomains " *
-            "'$(sim_1.name)' and '$(sim_2.name)' use $(Δt_1) and $(Δt_2).",
-        )
-    end
     if constraint == :displacement
+        Δt_1 = sim_1.integrator.time_step
+        Δt_2 = sim_2.integrator.time_step
+        if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
+            norma_abort(
+                "`constraint: displacement` is implemented for equal time steps; subdomains " *
+                "'$(sim_1.name)' and '$(sim_2.name)' use $(Δt_1) and $(Δt_2). Use `constraint: velocity`.",
+            )
+        end
         i_1 = sim_1.integrator
         i_2 = sim_2.integrator
         same_newmark =
@@ -1747,16 +1750,79 @@ function dn_interface_residuals(sim::MultiDomainSimulation)
     return residuals
 end
 
-# A constrained pair at equal time steps requires both members to have taken
+# Residuals of a constrained pair at every substep of the stop, from the
+# substep histories of the Schwarz iteration just completed: the one-sided
+# jumps at each substep time of the Dirichlet side, against the Neumann side's
+# history interpolated linearly to that time, and the force residual at each
+# substep time of the Neumann side, against the Dirichlet side's d'Alembert
+# reaction interpolated linearly to that time. Each reported value is the
+# largest over the substeps. At equal steps there is one substep and the values
+# are those of dn_interface_residuals.
+function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    controller = sim.controller
+    d_id = bc.self_handle.id
+    n_id = bc.coupled_handle.id
+    d_model = get_fom_model(self_subsim_of(bc))
+    n_sim = coupled_subsim_of(bc)
+    n_model = get_fom_model(n_sim)
+    n_bc = n_sim.model.boundary_conditions[bc.coupled_bc_index]
+    W_D = bc.square_projector
+    P = bc.dirichlet_projector
+    d_map = bc.global_from_local_map
+    n_map = n_bc.global_from_local_map
+    t_start = controller.prev_time
+    tol_t = 1.0e-12 * max(1.0, abs(controller.time))
+    d_times = controller.time_hist[d_id]
+    n_times = controller.time_hist[n_id]
+    if isempty(d_times) || isempty(n_times)
+        return dn_interface_residuals(d_model, bc)
+    end
+    nodal(v) = reshape(v, 3, :)
+    jv = ju = jv_rms = ju_rms = 0.0
+    for (k, t) in enumerate(d_times)
+        t > t_start + tol_t || continue
+        v_N = interpolate(n_times, controller.velo_hist[n_id], t)
+        u_N = interpolate(n_times, controller.disp_hist[n_id], t)
+        r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], nodal(v_N)[:, n_map])
+        r_u, rms_u = dn_one_sided_jump(W_D, P, nodal(controller.disp_hist[d_id][k])[:, d_map], nodal(u_N)[:, n_map])
+        jv = max(jv, r_v); jv_rms = max(jv_rms, rms_v)
+        ju = max(ju, r_u); ju_rms = max(ju_rms, rms_u)
+    end
+    force_residual = 0.0
+    found = false
+    W_N = n_bc.square_projector
+    for (t, f_N) in n_bc.transferred_force_history
+        t > t_start + tol_t || continue
+        found = true
+        a_D = interpolate(d_times, controller.acce_hist[d_id], t)
+        f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t)
+        r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
+        r_D = nodal(extract_local_vector(bc, r_global, 3))
+        transferred = zeros(3, length(n_map))
+        for comp in 1:3
+            transferred[comp, :] = transpose(P) * r_D[comp, :]
+        end
+        scale = inverse_weighted_norm(W_N, transferred)
+        difference = inverse_weighted_norm(W_N, transferred - nodal(f_N))
+        force_residual = max(force_residual, scale > 0.0 ? difference / scale : difference)
+    end
+    found || (force_residual = NaN)
+    return DNInterfaceResiduals(
+        self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, NaN, NaN
+    )
+end
+
+# A pair under the displacement constraint requires both members to have taken
 # the same step; the explicit stable-step cap can shorten one of them.
 function check_constrained_time_steps(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    bc.constraint == :displacement || return nothing
     d_sim = self_subsim_of(bc)
     n_sim = coupled_subsim_of(bc)
     Δt_D = d_sim.integrator.time_step
     Δt_N = n_sim.integrator.time_step
     if !isapprox(Δt_D, Δt_N; rtol=1.0e-12)
         norma_abort(
-            "`constrained: true` is implemented for equal time steps, but subdomains " *
+            "`constraint: displacement` is implemented for equal time steps, but subdomains " *
             "'$(d_sim.name)' and '$(n_sim.name)' took steps $(Δt_D) and $(Δt_N) " *
             "(the explicit stable step can shorten the requested step; raise CFL or lower the step).",
         )
@@ -2117,6 +2183,13 @@ end
 function coupling_weak_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_force = get_dst_force(bc)
     bc.transferred_force = nodal_force
+    # Keep one entry per substep of the current Schwarz iteration of the current
+    # stop: a new iteration restarts at a time not after the last entry.
+    history = bc.transferred_force_history
+    if !isempty(history) && model.time <= history[end][1]
+        empty!(history)
+    end
+    push!(history, (model.time, nodal_force))
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
@@ -2537,8 +2610,7 @@ end
 # uses: the consistent mass for Newmark, the lumped mass for central difference.
 # Added to the internal force it gives the d'Alembert residual whose interface
 # rows are the reaction of the coupling constraint.
-function dalembert_inertia_minus_loads(model::SolidMechanics)
-    a = vec(model.acceleration)
+function dalembert_inertia_minus_loads(model::SolidMechanics, a::AbstractVector{Float64}=vec(model.acceleration))
     inertial_force = if size(model.mass, 1) == length(a)
         model.mass * a
     elseif length(model.lumped_mass) == length(a)

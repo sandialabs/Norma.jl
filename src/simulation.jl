@@ -1891,16 +1891,20 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::
     has_constrained = false
     all_constrained_converged = true
     max_measure = 0.0
-    for (bc, r) in residuals
+    for (bc, r_end) in residuals
+        # Constrained pairs are measured at every substep of the stop; at equal
+        # steps this is the end of the stop.
+        r = bc.constrained ? dn_substep_residuals(sim, bc) : r_end
         norma_logf(
             0,
             :schwarz,
-            "DN interface %s/%s: velocity jump %.2e, displacement jump %.2e, force residual %.2e",
+            "DN interface %s/%s: velocity jump %.2e, displacement jump %.2e, force residual %.2e%s",
             r.dirichlet_name,
             r.neumann_name,
             r.velocity_jump,
             r.displacement_jump,
             r.force_residual,
+            bc.constrained ? " (largest over substeps)" : "",
         )
         bc.constrained || continue
         has_constrained = true

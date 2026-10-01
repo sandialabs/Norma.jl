@@ -215,11 +215,25 @@ when the root mean square jump over the interface is at or below
 Schwarz coupling is constrained this replaces the displacement criterion,
 otherwise both must hold. A residual that stays above the tolerance while the
 displacement update has converged and decreased by less than 5% since the
-previous such iteration is handled by `stalled interface jump action`. The
-implementation covers equal time steps on both sides: the run aborts when
-the two subdomains take different steps, with `swap BC types`, with HHT-α,
-with reduced order models, and with `constraint: displacement` unless both
-sides are Newmark with the same β > 0, γ, and time step.
+previous such iteration is handled by `stalled interface jump action`.
+
+The velocity constraint admits different time steps on the two sides, as in
+Gravouil and Combescure (2001): the side with the finer step receives the
+partner's velocity (Dirichlet side) or reaction (Neumann side) interpolated
+linearly in time from the partner's substep history, the relaxation state is
+kept per substep time, and the jump and force residual of the stopping rule
+are the largest over the substeps of the stop. With different steps make the
+side with the coarser step the Dirichlet side where the integrators allow it:
+on the cantilever with a 4:1 step ratio this kept E2 within 4e-12 and E1
+within 0.11% over 10 ms (explicit pair, and implicit coarse side with explicit
+fine side), while with the finer side as the Dirichlet side E2 grew by up to
+7e-8 at the 1e-12 tolerance and E1 varied by up to 47%. An explicit coarse
+side with an implicit fine side has no good choice: as the Dirichlet side the
+explicit member diverges, and as the Neumann side E1 varied by up to 17%. The
+run aborts with
+`swap BC types`, with HHT-α, with reduced order models, and with
+`constraint: displacement` unless both sides are Newmark with the same
+β > 0, γ, and time step.
 
 The initial acceleration of a constrained pair is found by a Schwarz
 iteration at t = 0: the Dirichlet side imposes the projected partner
