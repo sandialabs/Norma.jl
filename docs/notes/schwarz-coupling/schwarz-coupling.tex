@@ -1771,6 +1771,225 @@ the paired impedance coupling inverted an element at $2.6$ to $5$\,ms
 (Sec.~\ref{sec:beam-nonoverlap}); the constrained exchange completes
 $10$\,ms.
 
+
+\paragraph{Different time steps.} The velocity constraint admits
+different steps on the two sides: the side with the finer step receives
+the partner's velocity (Dirichlet side) or d'Alembert reaction (Neumann
+side) interpolated linearly in time from the partner's substep history,
+and the stopping rule takes the largest jump and force residual over the
+substeps of the stop. Reference experiment~3 is the conforming beam with
+the free part subcycled $4{:}1$ ($10^{-6}$ and $2.5\times 10^{-7}$\,s),
+$\theta = 0.5$, tolerance $10^{-12}$, $10$\,ms
+(Table~\ref{tab:beam-compare}, last block). With the free (fine) side as
+the Dirichlet side, the arrangement of Gravouil and Combescure in which
+the fine side meets the interpolated coarse velocity at every fine step,
+$E_2$ increases, by $7.1\times 10^{-8}$ (EE), $2.4\times 10^{-8}$ (II),
+and $3.4\times 10^{-8}$ (EI) at the largest, against the nonincreasing
+$E_2$ of their Eq.~(49), while $E_1$ varies by $51\%$, $20\%$, and $17\%$
+with the period of the first bending mode ($10$\,ms). The increase of
+$E_2$ depends on the stopping floor: over the first $0.4$\,ms of the EE
+run it is $2.8\times 10^{-9}$ with the absolute tolerance $10^{-15}$ and
+$1.6\times 10^{-10}$ with $10^{-20}$. Its remaining cause has not been
+found. $E_2$ weights each mode by its squared frequency, so a constant
+$E_2$ does not bound a transfer of $E_1$ between modes, which is what the
+$E_1$ variation at nearly constant $E_2$ shows. With the coarse (clamped)
+side as the Dirichlet side, where the coarse side meets the fine velocity
+at the coarse instants and the fine side receives the coarse reaction
+interpolated in time, $E_2$ stays within $4.5\times 10^{-13}$ (EE),
+$1.3\times 10^{-12}$ (II), and $3.9\times 10^{-12}$ (IE), $E_1$ within
+$0.11\%$, $0.38\%$, and $0.07\%$, and the iteration needs $6$, $10$, and
+$29$ Schwarz iterations per stop (each iteration advances the fine side
+four substeps) instead of $33$. The implicit pair with the coarse side as
+the Dirichlet side reached a force residual floor of $1.4\times 10^{-12}$,
+above the tolerance; it stopped on the stall rule with \code{abort} and
+completed with \code{warn} ($73$ stops accepted at the floor). EI cannot
+take the coarse side as the Dirichlet side: that side is the explicit
+member, and the run inverted an element at the first stop, as the gain
+analysis predicts. The present code, with the paired impedance coupling,
+loses $9.0\%$ (EE) and $21.7\%$ (II) of $E_1$ by $10$\,ms on this case.
+
+\paragraph{The nested cylinders.} The cylinders of Sec.~\ref{sec:cylinders}
+(neohookean materials, central difference on both sides, stops of
+$0.5\,\mu$s, nonconforming at $1{:}0.8$) were run to $2$\,ms with the
+constrained exchange, velocity constraint, the inner (finer) side as the
+Dirichlet side, $\theta = 0.5$, and the tolerances of the example
+(relative $10^{-6}$, absolute $10^{-4}$). The materials are nonlinear, so
+$E_2$ is not defined and the question is whether $E_1$ stays bounded.
+With the inner side as the Dirichlet side only $\Pi_D$ enters the
+exchange, and its partition-of-unity error is $4\times 10^{-15}$; the
+projector onto the outer side, which the exchange does not use, has an
+error of $0.72$ at $2578$ of its $2582$ nodes, the quadrature error of $~B$
+on a curved, non-nested interface. The coupled initial acceleration
+converged in $14$ iterations.
+\begin{center}
+\footnotesize
+\begin{tabular}{lccccl}
+\toprule
+coupling & $0.5$\,ms & $1$\,ms & $2$\,ms & it.\ per stop & note \\
+\midrule
+monolithic & 1.000 & 1.000 & 1.000 & -- & $0.01\%$ to $5$\,ms \\
+present DN, Aitken & 1.00 & 1.00 & 1.01 & 2 & $+3$, $-1.3\%$ to $5$\,ms \\
+paired impedance & 0.79 & 0.54 & 0.24 & 2 & \\
+constrained, abs.\ tol.\ $10^{-4}$ & 1.00095 & 1.00389 & 1.02073 & 1 & $5943$\,s, 8 threads \\
+constrained, abs.\ tol.\ $10^{-12}$ & \multicolumn{3}{l}{0.999976 at $0.1$\,ms} & 8.8 (max 10) & $1218$\,s \\
+\bottomrule
+\end{tabular}
+\end{center}
+With the example's absolute tolerance the constrained iteration stopped
+after one iteration at every stop: the absolute branch of the stopping
+rule accepts a root mean square velocity jump below the absolute
+tolerance divided by the step, here $10^{-4}\,\text{m}/5\times
+10^{-7}\,\text{s} = 200$\,m/s, while the measured jump was $0.27$ to
+$0.46$\,m/s ($0.6$ to $1.4\%$ relative). The run is therefore the
+unconverged staggered exchange, and its $E_1$ grows by $2.1\%$ in $2$\,ms
+at an increasing rate. With the absolute tolerance $10^{-12}$ the
+iteration contracts (no stall), needs $8.8$ iterations per stop, and
+leaves a relative velocity jump of $4.6\times 10^{-7}$; over the
+$0.1$\,ms run $E_1$ stays within $2.4\times 10^{-5}$, against
+$9\times 10^{-5}$ for the one-iteration run at the same time. A converged
+run to $2$\,ms would take about $7$ hours on $8$ threads and was not
+made, so boundedness under convergence is shown only to $0.1$\,ms.
+
+\paragraph{Comparison on the beam.} Table~\ref{tab:beam-compare} sets the
+monolithic reference, the present Dirichlet--Neumann exchange
+(\code{constrained: false}, free side Dirichlet, $\theta = 0.5$, tolerances
+of the examples: relative $10^{-8}$, absolute $2.54\times 10^{-8}$, at most
+$128$ iterations; Newton with conjugate gradients, relative $10^{-10}$,
+absolute $2.54\times 10^{-8}$), the paired impedance coupling (defaults:
+harmonic-mean impedance, Robin parameter $0$; $\theta = 0.5$ with an
+explicit member, recursive Aitken for II; the same tolerances), and the
+constrained exchange (tolerance $10^{-12}$, absolute $10^{-15}$, at most
+$256$ iterations, direct linear solver, coupled initial acceleration,
+$\theta = 0.5$) side by side, all at the stop $10^{-6}$\,s and to
+$10$\,ms. The examples use $5\times 10^{-7}$\,s; the present exchange is
+run here at $10^{-6}$\,s.
+
+\begin{table}[htbp]
+\centering
+\scriptsize\setlength{\tabcolsep}{2pt}
+\caption{Cantilever, $10$\,ms. $E_1(t)/E_1(0)$ at $1$, $2$, $5$, and
+$10$\,ms; $\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$ with the sign of
+$E(10\,\text{ms})/E(0) - 1$ (or of the last value reached); drift is the
+root mean square one-sided interface displacement jump at $10$\,ms in m;
+it.\ is the mean and maximum number of Schwarz iterations per stop; wall
+time in seconds on four threads; the last column gives completion or the
+time and cause of the end of the run. $v$ and $u$: velocity and
+displacement constraint; D: the Dirichlet side.}
+\label{tab:beam-compare}
+\begin{tabular}{lcccccccrrl}
+\toprule
+coupling & 1 & 2 & 5 & 10 & $\delta E_1$ & $\delta E_2$ & drift & it. & wall & completed \\
+\midrule
+\multicolumn{11}{l}{\emph{conforming meshes ($8.47$\,mm), equal steps}} \\
+monolithic I & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-2.4\mathrm{e}{-14}$ & $-7.7\mathrm{e}{-14}$ & - & 1.0/1 & 71 & yes \\
+monolithic E & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-1.5\mathrm{e}{-14}$ & $-2.9\mathrm{e}{-14}$ & - & 1.0/1 & 40 & yes \\
+II present DN & - & - & - & - & $+6.6\mathrm{e}{0}$ & $+2.2\mathrm{e}{2}$ & - & 15.6/21 & - & inverted 0.57\,ms \\
+II impedance & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $+1.0\mathrm{e}{-7}$ & $-1.7\mathrm{e}{-6}$ & $1.3\mathrm{e}{-11}$ & 6.5/8 & 438 & yes \\
+II constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-2.8\mathrm{e}{-11}$ & $-7.0\mathrm{e}{-11}$ & $5.8\mathrm{e}{-15}$ & 7.0/8 & 211 & yes \\
+II constr.\ $u$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-2.2\mathrm{e}{-11}$ & $-5.3\mathrm{e}{-11}$ & $2.4\mathrm{e}{-15}$ & 7.1/8 & 195 & yes \\
+IE present DN & 1.0025 & 1.0018 & 1.0066 & 1.0052 &
+  $+2.9\mathrm{e}{-2}$ & $+2.3\mathrm{e}{-1}$ & $4.8\mathrm{e}{-9}$ & 13.1/14 & 303 & yes \\
+IE impedance & 0.9985 & 0.9990 & 0.9986 & 0.9973 &
+  $-3.5\mathrm{e}{-3}$ & $-7.7\mathrm{e}{-2}$ & $5.1\mathrm{e}{-6}$ & 22.6/27 & 645 & yes \\
+IE constr.\ $v$, D implicit & 0.9990 & 0.9997 & 0.9999 & 0.9996 &
+  $-1.2\mathrm{e}{-3}$ & $-6.3\mathrm{e}{-12}$ & $5.2\mathrm{e}{-6}$ & 29.0/32 & 380 & yes \\
+EI present DN & 1.2185 & 5.2604 & - & - &
+  $+1.3\mathrm{e}{1}$ & $+4.6\mathrm{e}{1}$ & - & 15.3/18 & - & inverted 2.39\,ms \\
+EI impedance & 1.0031 & 1.0011 & 1.0013 & 1.0011 &
+  $+3.3\mathrm{e}{-3}$ & $-5.1\mathrm{e}{-2}$ & $2.8\mathrm{e}{-6}$ & 23.0/27 & 718 & yes \\
+EI constr.\ $v$, D implicit & 1.0033 & 1.0016 & 1.0024 & 1.0034 &
+  $+3.7\mathrm{e}{-3}$ & $+4.2\mathrm{e}{-10}$ & $2.9\mathrm{e}{-6}$ & 27.1/28 & 377 & yes \\
+EE present DN & 1.0037 & 1.0019 & 1.0009 & 1.0238 &
+  $+4.3\mathrm{e}{-2}$ & $+5.4\mathrm{e}{-2}$ & $7.6\mathrm{e}{-9}$ & 13.1/14 & 114 & yes \\
+EE impedance & 0.9997 & 0.9994 & 0.9974 & 0.9945 &
+  $-5.5\mathrm{e}{-3}$ & $-6.6\mathrm{e}{-2}$ & $1.2\mathrm{e}{-5}$ & 31.0/86 & 219 & yes \\
+EE constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-1.2\mathrm{e}{-14}$ & $-3.6\mathrm{e}{-14}$ & $4.8\mathrm{e}{-17}$ & 1.0/1 & 51 & yes \\
+\midrule
+\multicolumn{11}{l}{\emph{free part $6.35$\,mm; $1{:}0.5$ and $1{:}0.75$ coarsen the clamped part; equal steps}} \\
+monolithic I & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-6.1\mathrm{e}{-14}$ & $-1.1\mathrm{e}{-13}$ & - & 1.0/1 & 93 & yes \\
+monolithic E & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $+1.0\mathrm{e}{-14}$ & $-3.5\mathrm{e}{-14}$ & - & 1.0/1 & 45 & yes \\
+$1{:}0.5$ II present DN & - & - & - & - &
+  $+3.0\mathrm{e}{1}$ & $+3.4\mathrm{e}{2}$ & - & 14.8/19 & - & inverted 0.69\,ms \\
+$1{:}0.5$ II impedance & 0.8668 & 0.7793 & 0.6058 & 0.4317 &
+  $-5.7\mathrm{e}{-1}$ & $-7.0\mathrm{e}{-1}$ & $3.8\mathrm{e}{-5}$ & 6.0/7 & 403 & yes \\
+$1{:}0.5$ II constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-1.2\mathrm{e}{-10}$ & $-1.8\mathrm{e}{-11}$ & $3.7\mathrm{e}{-14}$ & 17.2/18 & 448 & yes \\
+$1{:}0.5$ II constr.\ $u$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-1.2\mathrm{e}{-10}$ & $+4.3\mathrm{e}{-11}$ & $7.6\mathrm{e}{-15}$ & 17.3/19 & 463 & yes \\
+$1{:}0.5$ EE present DN & 1.0073 & 1.0017 & 1.0005 & 1.0083 &
+  $+2.8\mathrm{e}{-2}$ & $+1.9\mathrm{e}{-2}$ & $5.7\mathrm{e}{-9}$ & 12.9/15 & 108 & yes \\
+$1{:}0.5$ EE impedance & 0.8953 & 0.7742 & 0.5963 & 0.4157 &
+  $-5.8\mathrm{e}{-1}$ & $-7.7\mathrm{e}{-1}$ & $1.5\mathrm{e}{-5}$ & 21.2/27 & 158 & yes \\
+$1{:}0.5$ EE constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $+3.5\mathrm{e}{-11}$ & $+6.9\mathrm{e}{-11}$ & $1.0\mathrm{e}{-13}$ & 23.7/26 & 173 & yes \\
+$1{:}0.75$ II present DN & - & - & - & - &
+  $+9.8\mathrm{e}{0}$ & $+2.5\mathrm{e}{2}$ & - & 15.0/20 & - & inverted 0.38\,ms \\
+$1{:}0.75$ II impedance & 0.9573 & 0.9321 & 0.8717 & - &
+  $-1.3\mathrm{e}{-1}$ & $+3.0\mathrm{e}{4}$ & - & 6.8/8 & - & inverted 5.02\,ms \\
+$1{:}0.75$ II constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-1.7\mathrm{e}{-11}$ & $-5.2\mathrm{e}{-11}$ & $8.5\mathrm{e}{-15}$ & 13.5/14 & 425 & yes \\
+$1{:}0.75$ II constr.\ $u$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $-4.2\mathrm{e}{-11}$ & $+3.2\mathrm{e}{-10}$ & $3.5\mathrm{e}{-15}$ & 13.1/15 & 391 & yes \\
+$1{:}0.75$ EE present DN & 1.0059 & 1.0056 & 1.0026 & 1.0020 &
+  $+2.6\mathrm{e}{-2}$ & $+2.3\mathrm{e}{-2}$ & $1.0\mathrm{e}{-8}$ & 12.9/14 & 131 & yes \\
+$1{:}0.75$ EE impedance & 0.9489 & -1.3453 & - & - &
+  $-2.4\mathrm{e}{3}$ & $+3.3\mathrm{e}{5}$ & - & 35.6/51 & - & inverted 3.52\,ms \\
+$1{:}0.75$ EE constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
+  $+2.2\mathrm{e}{-11}$ & $+6.1\mathrm{e}{-11}$ & $1.6\mathrm{e}{-14}$ & 16.2/17 & 163 & yes \\
+\midrule
+\multicolumn{11}{l}{\emph{conforming meshes, free part subcycled $4{:}1$ ($2.5\times 10^{-7}$\,s)}} \\
+EE present DN & 1.0017 & 1.0012 & 1.0053 & 1.0089 &
+  $+3.5\mathrm{e}{-2}$ & $+5.4\mathrm{e}{-2}$ & $8.6\mathrm{e}{-9}$ & 13.0/14 & 219 & yes \\
+EE impedance & 0.9907 & 0.9825 & 0.9530 & 0.9100 &
+  $-9.0\mathrm{e}{-2}$ & $-1.6\mathrm{e}{-1}$ & $9.0\mathrm{e}{-6}$ & 32.0/62 & 424 & yes \\
+EE constr.\ $v$, D fine & 1.0432 & 1.1376 & 1.4698 & 0.9938 &
+  $-5.1\mathrm{e}{-1}$ & $+7.1\mathrm{e}{-8}$ & $4.2\mathrm{e}{-6}$ & 32.6/34 & 518 & yes \\
+EE constr.\ $v$, D coarse & 1.0005 & 1.0009 & 1.0003 & 1.0006 &
+  $+1.1\mathrm{e}{-3}$ & $-4.5\mathrm{e}{-13}$ & $3.1\mathrm{e}{-6}$ & 6.0/7 & 131 & yes \\
+II present DN & - & - & - & - & $+6.4\mathrm{e}{0}$ & $+2.0\mathrm{e}{2}$ & - & 15.6/21 & - & inverted 0.36\,ms \\
+II impedance & 0.9717 & 0.9427 & 0.8745 & 0.7830 &
+  $-2.2\mathrm{e}{-1}$ & $-4.7\mathrm{e}{-1}$ & $4.4\mathrm{e}{-6}$ & 6.0/6 & 771 & yes \\
+II constr.\ $v$, D fine & 1.0168 & 1.0682 & 1.1977 & 0.9872 &
+  $-2.0\mathrm{e}{-1}$ & $+2.4\mathrm{e}{-8}$ & $4.2\mathrm{e}{-14}$ & 32.2/34 & 1335 & yes \\
+II constr.\ $v$, D coarse & 0.9968 & 0.9982 & 0.9972 & 0.9971 &
+  $-3.8\mathrm{e}{-3}$ & $+1.3\mathrm{e}{-12}$ & $3.1\mathrm{e}{-6}$ & 10.1/15 & 636 & yes \\
+IE constr.\ $v$, D coarse (I) & 0.9994 & 0.9998 & 0.9999 & 0.9997 &
+  $-7.4\mathrm{e}{-4}$ & $-3.9\mathrm{e}{-12}$ & $1.5\mathrm{e}{-6}$ & 28.9/32 & 643 & yes \\
+EI constr.\ $v$, D fine (I) & 1.0167 & 1.0477 & 1.1465 & 0.9942 &
+  $-1.7\mathrm{e}{-1}$ & $+3.4\mathrm{e}{-8}$ & $5.1\mathrm{e}{-6}$ & 33.4/35 & 1326 & yes \\
+EI constr.\ $v$, D coarse (E) & - & - & - & - & NaN & NaN & - & 1/1 & - & inverted 0.00\,ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Paired impedance or constrained exchange.} On every case of
+Table~\ref{tab:beam-compare} the constrained exchange conserves at least
+as well as the paired impedance coupling and needs comparable iteration
+counts: on conforming meshes the paired coupling is within $3.5\times
+10^{-3}$ for II and the mixed pairs and loses $0.55\%$ for EE, while the
+constrained exchange is within the tolerance; at $1{:}0.5$ the paired
+coupling dissipates $57$ to $58\%$ of $E_1$, which the dashpot takes from
+the jump it cannot close, and at $1{:}0.75$ it ends by element inversion
+at $3.5$ and $5.0$\,ms, while the constrained exchange conserves to
+$10^{-10}$ at both ratios; with subcycling it loses $9$ and $22\%$ against
+$0.11$ and $0.38\%$. The impedance coupling is therefore not the solver
+for any case measured on the beam. It remains of interest only where the
+constrained exchange has no Dirichlet side to offer, a mixed pair with
+subcycling whose coarse member is explicit, and for interfaces whose
+two sides cannot be ordered by the gain \eqref{eq:dn-gain}; reformulating
+it as a solver of the constrained problem, with the impedance as a
+preconditioner of the interface iteration rather than as part of the
+transmission condition, is the form in which it could serve there. No
+code was removed.
+
 \section{Conclusions}
 \label{sec:conclusion}
 
@@ -1851,17 +2070,29 @@ $10$\,ms.
   implicit member they lie in $[-0.61, -0.075]$. For identical integrators
   on conforming meshes the eigenvalues are near $-1$: $\theta = 0.5$ is
   optimal and $\theta = 1$ does not converge.
+\item With a $4{:}1$ step ratio the constrained exchange with the coarse
+  side as the Dirichlet side keeps $E_2$ within $4\times 10^{-12}$ and
+  $E_1$ within $0.4\%$ over $10$\,ms; with the fine side as the Dirichlet
+  side $E_2$ increases by up to $7\times 10^{-8}$ and $E_1$ varies by up to
+  $51\%$. The present paired impedance coupling loses $9$ (EE) and $22\%$
+  (II) on the same case (Sec.~\ref{sec:constrained-results}).
+\item On the beam the constrained exchange conserves at least as well as
+  the paired impedance coupling in every case measured, including the
+  nonconforming ratios where the paired coupling dissipates $58\%$
+  ($1{:}0.5$) or inverts an element ($1{:}0.75$).
 \end{enumerate}
 
 \subsection{Recommendations}
 
 \begin{itemize}[itemsep=2pt]
-\item \textbf{Energy-critical dynamic coupling}: use the adjoint-paired
-  nonoverlap impedance coupling (the default of \code{Schwarz impedance
-  nonoverlap}) with at least one implicit interface member and a
-  conforming or nested mesh ratio; avoid non-nested mild ratios for long
-  runs. Use a fixed relaxation factor with explicit pairs, Aitken with
-  implicit ones.
+\item \textbf{Energy-critical dynamic coupling}: use the constrained
+  Dirichlet--Neumann exchange (\code{constrained: true}, velocity
+  constraint, $\theta = 0.5$), with the implicit member, or with identical
+  integrators the finer side, as the Dirichlet side at equal steps, and
+  the coarse side as the Dirichlet side with different steps. The
+  adjoint-paired impedance coupling is retained in the code; on the beam it
+  conserved no case better than the constrained exchange
+  (Sec.~\ref{sec:constrained-results}).
 \item \textbf{Overlap decompositions}: conforming meshes with
   implicit--implicit integration conserve at any horizon; every other
   overlap configuration is for short transients only.
@@ -1922,6 +2153,19 @@ $10$\,ms.
   Hjelmstad or by the localized Lagrange multiplier frame
   construction~\cite{ParkFelippaRebel2002,DvorakEtAl2023}
   (Sec.~\ref{sec:constrained-plan}, change~6).
+\item Under subcycling with the fine side as the Dirichlet side, the
+  arrangement of Gravouil and Combescure, $E_2$ increases by up to
+  $7\times 10^{-8}$ over $10$\,ms, against their nonincreasing interface
+  work; the increase falls by a factor of $17$ when the absolute tolerance
+  falls from $10^{-15}$ to $10^{-20}$, and its remaining cause is not
+  known. The same arrangement lets $E_1$ vary by up to $51\%$ at the first
+  bending period while $E_2$ is constant, which the coarse-side
+  arrangement does not.
+\item The absolute branch of the constrained stopping rule divides the
+  absolute tolerance by the step to obtain a velocity floor; with the
+  cylinder tolerances that floor is $200$\,m/s and the iteration stops
+  unconverged after one iteration. A floor scaled with the problem's
+  velocity, and a converged cylinder run to $2$\,ms, are open.
 \item Mesh-ratio and overlap-width families on the cylinders, and
   implicit versions of its subdomains, to test whether the beam
   conclusions transfer.

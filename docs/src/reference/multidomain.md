@@ -211,7 +211,10 @@ a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
 constrained quantity only. A pair converges when the jump of its constrained
 quantity and the force residual are both at or below `relative tolerance`, or
 when the root mean square jump over the interface is at or below
-`absolute tolerance` (divided by the time step for the velocity); when every
+`absolute tolerance` (divided by the time step for the velocity; choose the
+absolute tolerance so that this velocity is small against the interface
+velocities, since with `absolute tolerance: 1.0e-4` and a step of 5e-7 s it
+is 200 m/s and accepts the first iteration of every stop); when every
 Schwarz coupling is constrained this replaces the displacement criterion,
 otherwise both must hold. A residual that stays above the tolerance while the
 displacement update has converged and decreased by less than 5% since the
