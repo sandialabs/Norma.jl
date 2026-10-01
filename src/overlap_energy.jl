@@ -505,12 +505,22 @@ end
 function dn_jump_columns(sim::MultiDomainSimulation)
     names = String[]
     values = Float64[]
-    for (_, r) in dn_interface_residuals(sim)
+    for (bc, r) in dn_interface_residuals(sim)
         pair = r.dirichlet_name * "_" * r.neumann_name
         push!(names, "displacement_jump_" * pair, "velocity_jump_" * pair)
         push!(values, r.displacement_jump, r.velocity_jump)
         push!(names, "displacement_jump_rms_" * pair, "velocity_jump_rms_" * pair)
         push!(values, r.displacement_jump_rms, r.velocity_jump_rms)
+        # Interface impulse residual of a constrained pair over the stop.
+        if is_constrained_dn(bc)
+            net, relative = is_direct_dn(bc) ? (fill(NaN, 3), NaN) : dn_impulse_residual(sim, bc)
+            for (comp, label) in enumerate(("x", "y", "z"))
+                push!(names, "impulse_residual_" * label * "_" * pair)
+                push!(values, net[comp])
+            end
+            push!(names, "impulse_residual_relative_" * pair)
+            push!(values, relative)
+        end
     end
     # Adjoint-paired impedance pairs: the same one-sided measures on the side
     # listed first, with its projector and boundary mass matrix.

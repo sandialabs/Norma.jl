@@ -20,6 +20,7 @@
 
 using YAML
 using LinearAlgebra
+using Exodus
 
 const constrained_dn_example = "../examples/nonoverlap/dynamic-same-step/cantilever-dn"
 
@@ -66,6 +67,7 @@ function run_constrained_dn(
     clamped_dirichlet=false,
     interface_solve="iterative",
     mesh_dir=constrained_dn_example,
+    initialize_only=false,
 )
     for f in ["cantilever-clamped.g", "cantilever-free.g"]
         cp("$mesh_dir/$f", f; force=true)
@@ -92,6 +94,20 @@ function run_constrained_dn(
         "relaxation parameter" => theta,
         "blended energy output" => true,
     )
+    files = ["cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
+             "cantilever-clamped.yaml", "cantilever-free.yaml", "constrained-dn-energy.csv"]
+    if initialize_only
+        # The state at t = 0 after the coupled initial acceleration.
+        sim = Norma.create_simulation(params)
+        Norma.sync_control_time(sim)
+        Norma.initialize(sim)
+        for subsim in sim.subsims
+            Exodus.close(subsim.params["input_mesh"])
+            Exodus.close(subsim.params["output_mesh"])
+        end
+        foreach(f -> rm(f; force=true), files)
+        return sim, nothing, nothing
+    end
     sim = Norma.run(params)
     rows = readlines("constrained-dn-energy.csv")
     header = split(rows[1], ",")
@@ -220,12 +236,24 @@ end
     @test maximum(row[i_u] for row in data) < 1.0e-12
 end
 
-# Different time steps (GC interpolated exchange): the free side takes four
-# substeps per stop and the clamped side, with the coarse step, is the
-# Dirichlet side. Gravouil and Combescure (2001, Eq. (49)) give a nonpositive
-# interface work, so E2 must not increase beyond the Schwarz tolerance
-# accumulated over the stops. With the fine side as the Dirichlet side E2 was
-# measured to grow at a rate set by the stopping floor (coupling note).
+# Different time steps: the free side takes four substeps per stop and the
+# clamped side, with the coarse step, is the Dirichlet side. This is the r = 1
+# multirate scheme of Connors, Owen, Kuberry, and Bochev (2024) and the scheme
+# of Prakash and Hjelmstad (2004): the fine side receives the coarse side's
+# reaction interpolated linearly between the two end values of the window, the
+# coarse side imposes the fine side's velocity at the window end, and the
+# interface terms of the pseudo-energy balance cancel (Connors et al. Eq.
+# (103)), so E2 is constant to the Schwarz tolerance accumulated over the
+# stops.
+self_name(bc) = Norma.self_subsim_of(bc).name
+
+function dn_bc_pair(sim)
+    bcs = [dn_bc_of(s) for s in sim.subsims]
+    bc_D = first(filter(b -> b.is_dirichlet, bcs))
+    bc_N = first(filter(b -> !b.is_dirichlet, bcs))
+    return bc_D, bc_N
+end
+
 for explicit in (false, true)
     @testset "Constrained DN: Subcycled 4:1 ($(explicit ? "EE" : "II"))" begin
         sim, header, data = run_constrained_dn(explicit; num_steps=20, free_substeps=4, clamped_dirichlet=true)
@@ -233,8 +261,36 @@ for explicit in (false, true)
         @test length(data) == 21
         i_e2 = findfirst(==("e2_total"), header)
         e2 = [row[i_e2] for row in data]
-        @test maximum(e2 ./ e2[1] .- 1.0) < 1.0e-10
-        @test minimum(e2 ./ e2[1] .- 1.0) > -1.0e-6
+        @test maximum(abs.(e2 ./ e2[1] .- 1.0)) < 1.0e-10
+        bc_D, bc_N = dn_bc_pair(sim)
+        @test self_name(bc_D) == "cantilever-clamped"
+        # The force on the fine (Neumann) side at each substep of the last stop
+        # is the linear interpolation between the window's end values.
+        t_start = sim.controller.prev_time
+        t_end = sim.controller.time
+        entries = filter(e -> e[1] >= t_start - 1.0e-15, bc_N.transferred_force_history)
+        @test length(entries) == 5
+        f_start, f_end = entries[1][2], entries[end][2]
+        for (t, f) in entries
+            s = (t - t_start) / (t_end - t_start)
+            @test norm(f - ((1.0 - s) * f_start + s * f_end)) ≤ 1.0e-10 * norm(f_end)
+        end
+        # The coarse (Dirichlet) side imposes the fine side's velocity at the
+        # window end, and the force residual is below the tolerance at every
+        # fine substep.
+        r_end = Norma.dn_interface_residuals(sim)[1][2]
+        @test r_end.velocity_jump ≤ 1.0e-10
+        r_sub = Norma.dn_substep_residuals(sim, bc_D)
+        @test r_sub.force_residual ≤ 1.0e-10
+        # The interface impulse over the last window matches.
+        net, relative = Norma.dn_impulse_residual(sim, bc_D)
+        @test relative ≤ 1.0e-10
+    end
+    @testset "Constrained DN: Subcycled 4:1 ($(explicit ? "EE" : "II")), t = 0" begin
+        sim, _, _ = run_constrained_dn(explicit; free_substeps=4, clamped_dirichlet=true, initialize_only=true)
+        r = Norma.dn_interface_residuals(sim)[1][2]
+        @test r.force_residual ≤ 1.0e-11
+        @test r.acceleration_jump ≤ 1.0e-11
     end
 end
 

@@ -704,8 +704,10 @@ end
 # advance with the same relations and step, so it is restricted to equal steps.
 # The velocity constraint also admits different steps: the side with the finer
 # step receives the partner's velocity or reaction interpolated linearly in
-# time from the partner's substep history (apply_bc), the interpolated
-# exchange of Gravouil and Combescure (2001).
+# time from the partner's substep history (apply_bc). With the coarse-step side
+# as the Dirichlet side this is the r = 1 multirate scheme of Connors, Owen,
+# Kuberry, and Bochev (2024) and the scheme of Prakash and Hjelmstad (2004),
+# whose interface terms cancel and which conserves E2 (coupling note).
 function check_constrained_integrators(
     sim_1::SingleDomainSimulation, sim_2::SingleDomainSimulation, constraint::Symbol
 )
@@ -2068,6 +2070,59 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
     )
 end
 
+# Interface impulse residual of a constrained pair over the stop just
+# completed: the trapezoid-in-time sum of the force applied on the Neumann side
+# over its substeps, from the start of the stop, minus Π_Dᵀ times the
+# trapezoid-in-time sum of the Dirichlet side's reaction over its own
+# substeps, from its stop-start anchor. Returns the sum of the residual over
+# the interface nodes per component (the net impulse error, N s) and the
+# residual in the W_N⁻¹ norm relative to the transferred impulse. At the fixed
+# point of the exchange the residual vanishes when the force applied on the
+# Neumann side is linear in time between the shared end reactions (Connors et
+# al. 2024, Eq. (80)).
+function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    controller = sim.controller
+    nan = (fill(NaN, 3), NaN)
+    d_id = bc.self_handle.id
+    d_times = controller.time_hist[d_id]
+    n_sim = coupled_subsim_of(bc)
+    n_bc = n_sim.model.boundary_conditions[bc.coupled_bc_index]
+    n_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition || return nan
+    t_start = controller.prev_time
+    tol_t = 1.0e-12 * max(1.0, abs(controller.time))
+    d_model = get_fom_model(self_subsim_of(bc))
+    P = bc.dirichlet_projector
+    W_N = n_bc.square_projector
+    length(d_times) >= 2 || return nan
+    # Dirichlet side: reaction at each of its snapshots, trapezoid in time.
+    function reaction(k)
+        a_k = controller.acce_hist[d_id][k]
+        r_global = -(controller.∂Ω_f_hist[d_id][k] + dalembert_inertia_minus_loads(d_model, a_k))
+        return reshape(extract_local_vector(bc, r_global, 3), 3, :)
+    end
+    impulse_D = zeros(3, size(P, 1))
+    for k in 2:length(d_times)
+        impulse_D .+= 0.5 * (d_times[k] - d_times[k - 1]) .* (reaction(k - 1) .+ reaction(k))
+    end
+    # Neumann side: applied force from the window start, trapezoid in time.
+    entries = filter(e -> e[1] >= t_start - tol_t, n_bc.transferred_force_history)
+    (length(entries) >= 2 && abs(entries[1][1] - t_start) <= tol_t) || return nan
+    impulse_N = zeros(3, size(P, 2))
+    for k in 2:length(entries)
+        impulse_N .+= 0.5 * (entries[k][1] - entries[k - 1][1]) .* (reshape(entries[k - 1][2], 3, :) .+
+                                                                     reshape(entries[k][2], 3, :))
+    end
+    transferred = zeros(3, size(P, 2))
+    for comp in 1:3
+        transferred[comp, :] = transpose(P) * impulse_D[comp, :]
+    end
+    residual = impulse_N .- transferred
+    net = vec(sum(residual; dims=2))
+    scale = inverse_weighted_norm(W_N, transferred)
+    relative = scale > 0.0 ? inverse_weighted_norm(W_N, residual) / scale : NaN
+    return net, relative
+end
+
 # A pair under the displacement constraint requires both members to have taken
 # the same step; the explicit stable-step cap can shorten one of them.
 function check_constrained_time_steps(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
@@ -2440,10 +2495,18 @@ function coupling_weak_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSc
     nodal_force = get_dst_force(bc)
     bc.transferred_force = nodal_force
     # Keep one entry per substep of the current Schwarz iteration of the current
-    # stop: a new iteration restarts at a time not after the last entry.
+    # stop, preceded by the last entry at or before the start of the stop (the
+    # force at the window start, for the impulse residual): a new iteration
+    # restarts at a time not after the last entry and drops the entries of the
+    # previous iteration.
     history = bc.transferred_force_history
+    t_start = bc.parent.controller.prev_time
+    tol_t = 1.0e-12 * max(1.0, abs(model.time))
     if !isempty(history) && model.time <= history[end][1]
-        empty!(history)
+        filter!(entry -> entry[1] <= t_start + tol_t, history)
+    end
+    while length(history) >= 2 && history[2][1] <= t_start + tol_t
+        popfirst!(history)
     end
     push!(history, (model.time, nodal_force))
     global_from_local_map = bc.global_from_local_map
@@ -2515,23 +2578,27 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     controller.iteration_number == 0 &&
     !isempty(controller.predictor_disp[coupled_index])
     if !isempty(time_hist)
-        # Piecewise-linear interpolation of the partner trajectory, in both
-        # directions of a subcycled pair (Gravouil-Combescure interpolated
-        # continuity). This is the measured stable optimum of the temporal
-        # transfer operators tried for the subcycled adjoint pairing on the
-        # cantilever benchmark (docs/notes/schwarz-coupling):
-        # replacements for the coarser side's exchange that are exactly
-        # work-conjugate to the finer side's interpolation -- the trapezoidal
-        # window average, the de-lagged recursion F = 2 avg - F_prev, and the
-        # least-squares endpoint fit (all three Schwarz-compatible forms of
-        # the Prakash-Hjelmstad linear-in-time interface traction) -- either
-        # add half-window-lag dissipation (average) or diverge (recursion:
-        # gain two on the partner-state channel doubles the fixed-point
-        # iteration's contraction factor; endpoint fit: zero-lag filtering is
-        # extrapolatory and pumps energy over long horizons). Exact
-        # interface-work telescoping under subcycling requires solving the
-        # interface problem directly, as Prakash-Hjelmstad do, not a
-        # partitioned exchange.
+        # Piecewise-linear interpolation of the partner trajectory between
+        # the stop-start anchor and the partner's substep snapshots. For a
+        # constrained pair whose coarse-step side is the Dirichlet side, the
+        # fine-step Neumann side receives the coarse side's d'Alembert reaction
+        # interpolated linearly between the two end values of the window, and
+        # the coarse side imposes the fine side's velocity at the window end:
+        # the r = 1 multirate scheme of Connors, Owen, Kuberry, and Bochev
+        # (2024, Eqs. (53)-(55), (89)-(90), (104)-(105)), which is also that of
+        # Prakash and Hjelmstad (2004, Eqs. (25), (40)). Its interface terms
+        # cancel at the fixed point (Connors et al. Eq. (103)), so the
+        # subcycled exchange conserves E2 without a direct interface solve.
+        # The cancellation needs the window-start reaction to be the previous
+        # window's converged one, which holds because restore_stop_state runs
+        # before subcycle pushes the anchor snapshot, and loads on the
+        # Dirichlet interface rows that are constant within the window
+        # (dalembert_inertia_minus_loads reads their current value). For the
+        # paired impedance coupling, three replacements of the coarse side's
+        # exchange that are work-conjugate to the fine side's interpolation
+        # (the trapezoidal window average, the recursion F = 2 avg - F_prev,
+        # and the least-squares endpoint fit) were measured and either add
+        # dissipation (average) or diverge (recursion, endpoint fit).
         interp_disp = interpolate(time_hist, disp_hist, time)
         interp_velo = interpolate(time_hist, velo_hist, time)
         interp_acce = interpolate(time_hist, acce_hist, time)
