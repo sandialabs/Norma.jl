@@ -1315,15 +1315,26 @@ lumped mass included. The interface work of Eq.~\eqref{eq:eint} is a sum
 of $m(m-1)/2$ negative squares (Eq.~(49)): it is exactly zero at equal
 steps ($m = 1$), for every combination of Newmark schemes, and
 nonpositive otherwise, zero only when the coarse velocity is linear over
-the coarse step. The energy of the identity is the Newmark discrete
-energy of each subdomain, $\tfrac12 \dot{~u}^T ~A \dot{~u} + \tfrac12
-~u^T ~K ~u$ with $~A = ~M + \tfrac12 \Delta t^2 (2\beta - \gamma) ~K$,
-which is $~M$ for average acceleration and the staggered form $~M -
-\tfrac14 \Delta t^2 ~K$ for central difference; the staggered metric of
-Sec.~\ref{sec:energy} is that quantity. The interface operator (Eq.~(25))
-is
+the coarse step. The energy that velocity continuity conserves is the
+Newmark discrete energy of the system differentiated in time, $~M
+\dot{~a} + ~K ~v = \dot{~f}$, summed over the subdomains,
 \begin{equation}
-  ~H = \sum_k \frac{1}{\gamma_k \Delta t_k}\, ~C_k \tilde{~M}_k^{-1} ~C_k^T,
+  E_2 = \sum_k \Bigl(\tfrac12\, ~a_k^T ~A_k ~a_k
+        + \tfrac12\, ~v_k^T ~K_k ~v_k\Bigr),
+  \qquad ~A_k = ~M_k + \tfrac12 \Delta t_k^2 (2\beta_k - \gamma_k) ~K_k
+  \label{eq:e2}
+\end{equation}
+(Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}, Eqs.~(56)--(58) and
+(71)), with $~a_k$ and $~v_k$ the acceleration and the velocity of
+subdomain $k$; $~A_k$ is $~M_k$ for average acceleration and $~M_k -
+\tfrac14 \Delta t_k^2 ~K_k$ for central difference. $E_2$ is not the
+physical energy $E_1 = \sum_k (\tfrac12 ~v_k^T ~M_k ~v_k +
+\mathrm{SE}(~u_k))$ that the blended output computes. Continuity of the
+displacement with average acceleration conserves $E_1$ exactly. For
+identical integrators at equal steps both are conserved. The interface
+operator (Eqs.~(19), (22), and (25) there) is
+\begin{equation}
+  ~H = \sum_k \gamma_k \Delta t_k\, ~C_k \tilde{~M}_k^{-1} ~C_k^T,
   \qquad \tilde{~M}_k = ~M_k + \beta_k \Delta t_k^2 ~K_k,
   \label{eq:gc-h}
 \end{equation}
@@ -1451,8 +1462,8 @@ Combescure, with the Schwarz iteration as one of its solvers. In order:
   Schwarz iteration on the acceleration at $t = 0$ or by a monolithic
   solve.
 \item For explicit subdomains, replace the iteration by the direct
-  interface solve: $~H$ of \eqref{eq:gc-h} is the lumped mass on the
-  interface divided by $\gamma \Delta t$, one division per interface
+  interface solve: $~H$ of \eqref{eq:gc-h} is $\gamma \Delta t$ times the
+  inverse of the lumped mass on the interface, one division per interface
   degree of freedom per step.
 \item For implicit subdomains, keep the Dirichlet--Neumann iteration
   with Aitken relaxation, converged on the constraint, or solve the
@@ -1471,8 +1482,10 @@ Combescure, with the Schwarz iteration as one of its solvers. In order:
 The reference experiments, with the outcome the theorems require:
 \begin{itemize}[itemsep=2pt]
 \item Beam, matching meshes, equal steps, each of II, IE, EI, and EE,
-  after changes 1 to 3, converged to $10^{-12}$ on the constraint: the
-  total discrete energy is constant to roundoff over $10$\,ms. Any
+  after changes 1 to 3, converged to $10^{-12}$ on the constraint: $E_2$
+  of \eqref{eq:e2} under the velocity constraint, and $E_1$ under the
+  displacement constraint with average acceleration on both sides, is
+  constant to roundoff over $10$\,ms. Any
   residual measures what remains of the departure.
 \item The same at ratio $1{:}0.75$: the identity holds with the projected
   velocities, so the residual is the quadrature error of the cross
