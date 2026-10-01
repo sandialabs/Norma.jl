@@ -9,21 +9,24 @@
 # single letter.
 struct Case
     problem::String   # "beam" or "cyl"
-    coupling::String  # "mono", "ov-dir", "ov-imp", "no-dn", "no-imp"
+    coupling::String  # "mono", "ov-dir", "ov-imp", "no-dn", "no-imp", "no-cd"
     pair::String      # "II", "IE", "EI", "EE"; "I" or "E" for "mono"
     level::Int        # refinement level: element size and time step divided by it
     ratio::Float64    # beam only: clamped element size = free size / ratio
 end
 
-# The four couplings: the decomposition (overlap or nonoverlap) crossed with
-# the transmission condition (standard or impedance).
+# The five couplings: the decomposition (overlap or nonoverlap) crossed with
+# the transmission condition (standard or impedance), and the constrained
+# Dirichlet-Neumann exchange (velocity constraint, d'Alembert reaction,
+# transfers from one cross matrix; docs/notes/schwarz-coupling).
 const COUPLINGS = Dict(
     "ov-dir" => "overlap, Dirichlet (Schwarz overlap)",
     "ov-imp" => "overlap, impedance (Schwarz impedance overlap)",
     "no-dn" => "nonoverlap, Dirichlet-Neumann (Schwarz DN nonoverlap)",
     "no-imp" => "nonoverlap, paired impedance (Schwarz impedance nonoverlap)",
+    "no-cd" => "nonoverlap, constrained Dirichlet-Neumann (Schwarz DN nonoverlap, constrained: true)",
 )
-const COUPLING_ORDER = ["ov-dir", "ov-imp", "no-dn", "no-imp"]
+const COUPLING_ORDER = ["ov-dir", "ov-imp", "no-dn", "no-imp", "no-cd"]
 const PAIRS = ["II", "IE", "EI", "EE"]
 
 # Physical and numerical parameters of the two problems at refinement level 1.

@@ -19,7 +19,8 @@
 #   t(2)          first time the ratio exceeds 2 (blank if never)
 #   iterations    mean and maximum Schwarz iterations per stop, and the
 #                 number of stops that reached the iteration limit
-#   outcome       conserving, dissipating, growing, or failed (see classify)
+#   outcome       conserving to roundoff, conserving, dissipating, growing,
+#                 or failed (see classify)
 #   wall time     seconds
 
 include(joinpath(@__DIR__, "matrix.jl"))
@@ -29,6 +30,9 @@ using Printf
 # Tolerances of the outcome classes, on the energy ratio.
 const GROWTH_THRESHOLD = 1.05
 const LOSS_THRESHOLD = 0.95
+# A completed run whose ratio stays within this distance of 1 over the whole
+# run conserves to roundoff and Schwarz tolerance.
+const ROUNDOFF_THRESHOLD = 1.0e-8
 
 function read_key_values(file)
     values = Dict{String,String}()
@@ -73,11 +77,13 @@ function ratio_at(time, ratio, t)
 end
 
 # A run that ends early is failed whatever its energy did before; a
-# completed run is growing if its energy ratio ever exceeded the growth
+# completed run conserves to roundoff if its energy ratio stayed within
+# ROUNDOFF_THRESHOLD of 1, is growing if the ratio ever exceeded the growth
 # threshold, dissipating if it ended below the loss threshold, and
 # conserving otherwise.
-function classify(status, maximum_ratio, final_ratio)
+function classify(status, maximum_ratio, minimum_ratio, final_ratio)
     status != "completed" && return status == "not run" ? "not run" : "failed"
+    max(maximum_ratio - 1.0, 1.0 - minimum_ratio) < ROUNDOFF_THRESHOLD && return "conserving to roundoff"
     maximum_ratio > GROWTH_THRESHOLD && return "growing"
     final_ratio < LOSS_THRESHOLD && return "dissipating"
     return "conserving"
@@ -116,7 +122,7 @@ function summarize(dir)
     row["iterations mean"] = format(iterations.mean)
     row["iterations max"] = string(iterations.max)
     row["stops at limit"] = string(iterations.at_limit)
-    row["outcome"] = classify(status, maximum(ratio), ratio[end])
+    row["outcome"] = classify(status, maximum(ratio), minimum(ratio), ratio[end])
     return row
 end
 
@@ -151,7 +157,7 @@ function main(args)
         println("\n$problem: E/E0 at $times")
         for row in subset
             ratios = join((@sprintf("%8s", row["E/E0 $k"]) for k in 1:4), " ")
-            @printf("  %-28s %-11s %s  max %-7s  it %-5s %s\n", row["case"], row["outcome"], ratios, row["E/E0 max"],
+            @printf("  %-28s %-22s %s  max %-7s  it %-5s %s\n", row["case"], row["outcome"], ratios, row["E/E0 max"],
                 row["iterations mean"], row["status"] == "failed" ? "at " * row["reached"] : "")
         end
     end

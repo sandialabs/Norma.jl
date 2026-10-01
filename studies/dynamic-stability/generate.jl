@@ -188,6 +188,18 @@ function support(problem)
         """
 end
 
+# The Dirichlet side of a constrained Dirichlet-Neumann pair: the implicit
+# member of a mixed pair, otherwise the subdomain without the support, which
+# is the finer side (the clamped part of the beam is coarsened by the mesh
+# ratio, and the inner part of the cylinders is the finer one). With the
+# explicit member as the Dirichlet side the iteration diverges for every
+# relaxation factor from 0.5 to 1 (docs/notes/schwarz-coupling).
+function constrained_dirichlet_domain(c::Case)
+    support_kind, other_kind = c.pair[1], c.pair[2]
+    support_kind == 'I' && other_kind == 'E' && return support_domain(c.problem)
+    return other_domain(c.problem)
+end
+
 # The coupling condition of one subdomain toward its partner.
 function coupling_condition(c::Case, domain)
     beam = c.problem == "beam"
@@ -215,6 +227,17 @@ function coupling_condition(c::Case, domain)
               source side set: $partner_side_set
               default BC type: $(domain == support_domain(c.problem) ? "Neumann" : "Dirichlet")
         """
+    if c.coupling == "no-cd"
+        return """
+              Schwarz DN nonoverlap:
+                - side set: $side_set
+                  source: $partner
+                  source side set: $partner_side_set
+                  default BC type: $(domain == constrained_dirichlet_domain(c) ? "Dirichlet" : "Neumann")
+                  constrained: true
+                  constraint: velocity
+            """
+    end
     return """
           Schwarz impedance nonoverlap:
             - side set: $side_set
@@ -240,9 +263,13 @@ end
 # recursive Aitken for Dirichlet-Neumann, and for the paired impedance a
 # fixed factor of 0.5 whenever a subdomain is explicit (Aitken diverges on
 # the explicit cylinders) and recursive Aitken on the implicit beam, where
-# it needs a tenth of the iterations (see docs/notes/schwarz-coupling).
+# it needs a tenth of the iterations (see docs/notes/schwarz-coupling). The
+# constrained Dirichlet-Neumann exchange uses a fixed factor of 0.5: its gain
+# has eigenvalues near -1 for identical integrators, where 0.5 is optimal and
+# recursive Aitken stalls.
 function relaxation(c::Case)
     c.coupling == "no-dn" && return "relaxation: aitken recursive\n"
+    c.coupling == "no-cd" && return "relaxation parameter: 0.5\n"
     c.coupling == "no-imp" && return (c.pair == "II" && c.problem == "beam") ? "relaxation: aitken recursive\n" :
                                      "relaxation parameter: 0.5\n"
     return ""

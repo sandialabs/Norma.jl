@@ -64,14 +64,15 @@ Each run is one combination of:
 | Factor | Levels |
 |---|---|
 | problem | beam, cylinders |
-| coupling | `ov-dir` overlap Dirichlet, `ov-imp` overlap impedance, `no-dn` nonoverlap Dirichlet-Neumann, `no-imp` nonoverlap paired impedance |
+| coupling | `ov-dir` overlap Dirichlet, `ov-imp` overlap impedance, `no-dn` nonoverlap Dirichlet-Neumann, `no-imp` nonoverlap paired impedance, `no-cd` nonoverlap constrained Dirichlet-Neumann |
 | integrator pair | `II`, `IE`, `EI`, `EE`: implicit Newmark (I) or explicit central difference (E) on each subdomain, the subdomain with the support first (clamped part of the beam, outer part of the cylinders) |
 | refinement level | 1, 2, 4 (beam); 1, 2 (cylinders) |
 | mesh ratio | 1.0, 0.75 (beam only) |
 
-Tiers A and B measure the transmission conditions present in the code at
-the time of writing; the constrained Dirichlet-Neumann coupling (`constrained:
-true`) will be added as a fifth coupling after its reference experiments pass.
+The fifth coupling, `no-cd`, is the constrained Dirichlet-Neumann exchange
+(`constrained: true`, velocity constraint), added after its reference
+experiments on the beam conserved the matched energy to between 4e-14 and
+4e-10 over 10 ms at a Schwarz tolerance of 1e-12 (`docs/notes/schwarz-coupling`).
 
 Every set of coupled runs is compared with a monolithic reference, one mesh
 and no coupling, at the same level and with each integrator (`mono`, `I` or
@@ -79,12 +80,12 @@ and no coupling, at the same level and with each integrator (`mono`, `I` or
 
 | Tier | Cases | What it adds | Estimated cost |
 |---|---|---|---|
-| A | 34 | beam, level 1: 4 couplings × 4 pairs × 2 ratios, 2 references | 2 to 20 min per run |
-| B | 34 | beam, level 2: the same, refined | about 16 times tier A per run |
-| C | 5 | cylinders, level 1, explicit on both sides | 20 min to 3 h per run on 4 threads |
-| D | 13 | cylinders, level 1, with implicit subdomains (`II`, `IE`, `EI`) | 10 to 55 h per run on 2 threads |
-| E | 5 | cylinders, level 2, explicit on both sides | about 16 times tier C per run |
-| F | 34 | beam, level 4 | days per run; optional |
+| A | 42 | beam, level 1: 5 couplings × 4 pairs × 2 ratios, 2 references | 2 to 20 min per run |
+| B | 42 | beam, level 2: the same, refined | about 16 times tier A per run |
+| C | 6 | cylinders, level 1, explicit on both sides | 20 min to 3 h per run on 4 threads |
+| D | 16 | cylinders, level 1, with implicit subdomains (`II`, `IE`, `EI`) | 10 to 55 h per run on 2 threads |
+| E | 6 | cylinders, level 2, explicit on both sides | about 16 times tier C per run |
+| F | 42 | beam, level 4 | days per run; optional |
 
 The costs are estimates from short runs, measured with four runs at a time
 on a 16-core workstation; record the actual wall time (it is in the summary)
@@ -119,7 +120,14 @@ used, so the results can be compared with the coupling note:
   recursive Aitken for Dirichlet-Neumann; for the paired impedance a fixed
   factor of 0.5 when either subdomain is explicit (Aitken diverges on the
   explicit cylinders) and recursive Aitken on the implicit beam (a tenth of
-  the iterations of the fixed factor).
+  the iterations of the fixed factor); a fixed factor of 0.5 for the
+  constrained Dirichlet-Neumann exchange, whose iteration gain has
+  eigenvalues near -1 for identical integrators.
+- Dirichlet side of the constrained exchange: the implicit member of a
+  mixed pair, otherwise the subdomain without the support (the free part of
+  the beam, the inner part of the cylinders), which is the finer side. With
+  the explicit member as the Dirichlet side the iteration diverges for every
+  relaxation factor from 0.5 to 1.
 - Robin parameter: 0 for the overlap impedance; 2.0e9 (beam) and 2.8e9
   (cylinders) for the paired impedance, the same on both sides. Whether it
   changes the converged answer is not known: the converged paired solution
@@ -191,6 +199,8 @@ For each run the summary gives the energy ratio E(t)/E(0) at four
 checkpoints, its maximum and minimum, the first times it exceeds 1.1 and 2,
 the Schwarz iterations per stop, and an outcome:
 
+- **conserving to roundoff**: completed, and the ratio stayed within 1e-8 of
+  1 over the whole run;
 - **conserving**: completed, and the ratio stayed within [0.95, 1.05] at the
   end and never exceeded 1.05;
 - **dissipating**: completed, but ended below 0.95;

@@ -6,7 +6,8 @@
 For every problem, refinement level, and (for the beam) mesh ratio found
 under the runs directory, draws one figure with a panel per coupling: the
 blended total energy E(t)/E(0) of each integrator pair, with the monolithic
-reference of the same level in gray. A run that failed ends where its
+reference of the same level in gray; the five couplings fill a 3 by 2 grid
+whose sixth panel holds the legend. A run that failed ends where its
 history ends, marked with a cross. Figures go to the output directory
 (default: figures) as PNG files. --log draws the energy ratio on a
 logarithmic axis, which shows exponential growth as a straight line.
@@ -27,6 +28,7 @@ COUPLINGS = [
     ("ov-imp", "overlap, impedance"),
     ("no-dn", "nonoverlap, Dirichlet-Neumann"),
     ("no-imp", "nonoverlap, paired impedance"),
+    ("no-cd", "nonoverlap, constrained Dirichlet-Neumann"),
 ]
 PAIRS = ["II", "IE", "EI", "EE"]
 COLORS = {"II": "#1f77b4", "IE": "#ff7f0e", "EI": "#2ca02c", "EE": "#d62728"}
@@ -76,7 +78,7 @@ def main():
         members = [c for c in cases if (c["problem"], c["level"], c["ratio"]) == (problem, level, ratio)]
         if not any(len(c["times"]) > 1 for c in members + references):
             continue
-        figure, axes = plt.subplots(2, 2, figsize=(11, 7), sharex=True, sharey=True)
+        figure, axes = plt.subplots(3, 2, figsize=(11, 10), sharex=True, sharey=True)
         for axis, (coupling, title) in zip(axes.flat, COUPLINGS):
             for reference in references:
                 axis.plot(reference["times"], reference["ratios"], color="0.5", lw=1.0,
@@ -108,11 +110,22 @@ def main():
             low, high = low - margin, high + margin
         axes.flat[0].set_xlim(0.0, t_max)
         axes.flat[0].set_ylim(low, high)
-        for axis in axes[1]:
+        for axis in axes[-1]:
             axis.set_xlabel("time (ms)")
+        axes[-2, 1].tick_params(labelbottom=True)
+        axes[-2, 1].set_xlabel("time (ms)")
         for axis in axes[:, 0]:
             axis.set_ylabel("E(t) / E(0)")
-        axes.flat[0].legend(fontsize=8)
+        # The sixth panel holds the legend of the integrator pairs and references.
+        handles, labels = [], []
+        for axis in axes.flat[: len(COUPLINGS)]:
+            for handle, text in zip(*axis.get_legend_handles_labels()):
+                if text not in labels:
+                    handles.append(handle)
+                    labels.append(text)
+        legend_axis = axes.flat[len(COUPLINGS)]
+        legend_axis.axis("off")
+        legend_axis.legend(handles, labels, loc="center", fontsize=10)
         label = ("beam" if problem == "beam" else "nested cylinders") + f", level {level}" + (f", mesh ratio {ratio}" if problem == "beam" else "")
         figure.suptitle(label)
         figure.tight_layout()
