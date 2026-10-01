@@ -69,6 +69,10 @@ Each run is one combination of:
 | refinement level | 1, 2, 4 (beam); 1, 2 (cylinders) |
 | mesh ratio | 1.0, 0.75 (beam only) |
 
+Tiers A and B measure the transmission conditions present in the code at
+the time of writing; the constrained Dirichlet-Neumann coupling (`constrained:
+true`) will be added as a fifth coupling after its reference experiments pass.
+
 Every set of coupled runs is compared with a monolithic reference, one mesh
 and no coupling, at the same level and with each integrator (`mono`, `I` or
 `E`). The runs are grouped in tiers, to be done in order:
@@ -117,8 +121,12 @@ used, so the results can be compared with the coupling note:
   explicit cylinders) and recursive Aitken on the implicit beam (a tenth of
   the iterations of the fixed factor).
 - Robin parameter: 0 for the overlap impedance; 2.0e9 (beam) and 2.8e9
-  (cylinders) for the paired impedance, the same on both sides. It changes
-  the convergence rate of the Schwarz iteration, not the converged answer.
+  (cylinders) for the paired impedance, the same on both sides. Whether it
+  changes the converged answer is not known: the converged paired solution
+  depends on the relaxation factor (about 4e-5 relative displacement between
+  0.5 and 1 on the 1:0.5 beam), and its dependence on the Robin parameter on
+  nonconforming meshes has not been measured (open question (ii) of
+  `docs/notes/schwarz-coupling`).
 - The subdomain without the support is listed first in `run.yaml`, so the
   relaxation acts on the support side, as in the repository examples.
 - Newton on implicit subdomains: relative 1e-10 and absolute 2.54e-8 on the
