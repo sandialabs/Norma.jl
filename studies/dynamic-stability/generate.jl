@@ -264,12 +264,16 @@ end
 # fixed factor of 0.5 whenever a subdomain is explicit (Aitken diverges on
 # the explicit cylinders) and recursive Aitken on the implicit beam, where
 # it needs a tenth of the iterations (see docs/notes/schwarz-coupling). The
-# constrained Dirichlet-Neumann exchange uses a fixed factor of 0.5: its gain
-# has eigenvalues near -1 for identical integrators, where 0.5 is optimal and
-# recursive Aitken stalls.
+# constrained Dirichlet-Neumann exchange uses recursive Aitken: on the
+# cantilever the fixed factor 0.5 diverged with an explicit Dirichlet side and
+# on the subcycled 1:0.5 explicit pair with the coarse mesh as the Dirichlet
+# side, while recursive Aitken converged in every case measured and needed 2.5
+# to 5 times fewer iterations per stop where the best factor is far from 0.5;
+# it was accepted by the stall rule at fewer stops than the secant form
+# (docs/notes/schwarz-coupling, Aitken relaxation of the constrained exchange).
 function relaxation(c::Case)
     c.coupling == "no-dn" && return "relaxation: aitken recursive\n"
-    c.coupling == "no-cd" && return "relaxation parameter: 0.5\n"
+    c.coupling == "no-cd" && return "relaxation: aitken recursive\nrelaxation parameter: 0.5\n"
     c.coupling == "no-imp" && return (c.pair == "II" && c.problem == "beam") ? "relaxation: aitken recursive\n" :
                                      "relaxation parameter: 0.5\n"
     return ""

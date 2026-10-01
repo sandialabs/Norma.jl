@@ -120,9 +120,12 @@ used, so the results can be compared with the coupling note:
   recursive Aitken for Dirichlet-Neumann; for the paired impedance a fixed
   factor of 0.5 when either subdomain is explicit (Aitken diverges on the
   explicit cylinders) and recursive Aitken on the implicit beam (a tenth of
-  the iterations of the fixed factor); a fixed factor of 0.5 for the
-  constrained Dirichlet-Neumann exchange, whose iteration gain has
-  eigenvalues near -1 for identical integrators.
+  the iterations of the fixed factor); recursive Aitken, starting from 0.5,
+  for the constrained Dirichlet-Neumann exchange, where the fixed factor 0.5
+  diverged with an explicit Dirichlet side and on the subcycled 1:0.5 explicit
+  pair with the coarse mesh as the Dirichlet side, and recursive Aitken
+  converged everywhere with 2.5 to 5 times fewer iterations where the best
+  factor is far from 0.5.
 - Dirichlet side of the constrained exchange: the implicit member of a
   mixed pair, otherwise the subdomain without the support (the free part of
   the beam, the inner part of the cylinders), which is the finer side. With
