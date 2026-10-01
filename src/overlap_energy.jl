@@ -498,7 +498,8 @@ function differentiated_subdomain_energy(subsim::SingleDomainSimulation)
     return e2, staggered_interface, staggered_interior
 end
 
-# Interface displacement and velocity jumps of every DN pair at the end of the
+# Interface displacement and velocity jumps of every DN pair and every
+# adjoint-paired impedance pair at the end of the
 # stop (see dn_interface_residuals in schwarz.jl), relative and as root mean
 # square values over the interface, with the column names.
 function dn_jump_columns(sim::MultiDomainSimulation)
@@ -510,6 +511,29 @@ function dn_jump_columns(sim::MultiDomainSimulation)
         push!(values, r.displacement_jump, r.velocity_jump)
         push!(names, "displacement_jump_rms_" * pair, "velocity_jump_rms_" * pair)
         push!(values, r.displacement_jump_rms, r.velocity_jump_rms)
+    end
+    # Adjoint-paired impedance pairs: the same one-sided measures on the side
+    # listed first, with its projector and boundary mass matrix.
+    for subsim in sim.subsims
+        # Conditions from each subdomain's own model, fields from its full
+        # order model (they differ for a reduced order subdomain).
+        model = get_fom_model(subsim)
+        model isa SolidMechanics || continue
+        for bc in subsim.model.boundary_conditions
+            bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
+            bc.adjoint_pairing && bc.self_handle.id < bc.coupled_handle.id || continue
+            partner = get_fom_model(coupled_subsim_of(bc))
+            partner_bc = coupled_subsim_of(bc).model.boundary_conditions[bc.coupled_bc_index]
+            W, P = bc.square_projector, bc.dirichlet_projector
+            own, other = bc.global_from_local_map, partner_bc.global_from_local_map
+            ju, ju_rms = dn_one_sided_jump(W, P, model.displacement[:, own], partner.displacement[:, other])
+            jv, jv_rms = dn_one_sided_jump(W, P, model.velocity[:, own], partner.velocity[:, other])
+            pair = subsim.name * "_" * coupled_subsim_of(bc).name
+            push!(names, "displacement_jump_" * pair, "velocity_jump_" * pair)
+            push!(values, ju, jv)
+            push!(names, "displacement_jump_rms_" * pair, "velocity_jump_rms_" * pair)
+            push!(values, ju_rms, jv_rms)
+        end
     end
     return names, values
 end
