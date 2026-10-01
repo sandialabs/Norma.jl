@@ -120,6 +120,7 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
 | `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`); for an adjoint-paired impedance pair, D is the subdomain listed first |
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in m and m/s |
+| `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (N s), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
 
 E2 is the Newmark discrete energy of the differentiated equation of motion
 M ȧ + K v = ḟ (Prakash and Hjelmstad 2004, Eqs. (56)–(58) and (71)),
@@ -226,14 +227,24 @@ Gravouil and Combescure (2001): the side with the finer step receives the
 partner's velocity (Dirichlet side) or reaction (Neumann side) interpolated
 linearly in time from the partner's substep history, the relaxation state is
 kept per substep time, and the jump and force residual of the stopping rule
-are the largest over the substeps of the stop. With different steps make the
-side with the coarser step the Dirichlet side where the integrators allow it:
-on the cantilever with a 4:1 step ratio this kept E2 within 4e-12 and E1
-within 0.11% over 10 ms (explicit pair, and implicit coarse side with explicit
-fine side), while with the finer side as the Dirichlet side E2 grew by up to
-7e-8 at the 1e-12 tolerance and E1 varied by up to 47%. An explicit coarse
-side with an implicit fine side has no good choice: as the Dirichlet side the
-explicit member diverges, and as the Neumann side E1 varied by up to 17%. The
+are the largest over the substeps of the stop. With different steps the side with the coarser step must be the Dirichlet
+side: it imposes the fine side's velocity at the end of the stop, the fine
+side receives its reaction interpolated linearly in time, and the interface
+terms of the energy balance then cancel (the r = 1 multirate scheme of
+Connors, Owen, Kuberry, and Bochev 2024, and that of Prakash and Hjelmstad
+2004). On the cantilever with a 4:1 step ratio this kept E2 within 4e-12 and
+E1 within 0.4% over 10 ms. With the finer step on the Dirichlet side E2 was
+conserved only to the accumulated stopping error, E1 varied by up to 51%, and
+the interface impulse residual (energy CSV) was of the order of the impulse.
+On nonconforming meshes with identical integrators the finer mesh should also
+be the Dirichlet side: on the 1:0.5 beam, giving the fine mesh the coarse step
+and the Dirichlet role conserved E2 to 4e-12, while the coarse mesh as the
+Dirichlet side diverged for explicit sides (gain radius 3.5 at relaxation
+0.5) and needed 44.5 iterations per stop for implicit ones. Where the
+stability limit of an explicit member does not allow the finer mesh the
+coarser step, compute the gain. An explicit coarse side with an implicit
+fine side has no good choice: as the Dirichlet side the explicit member
+diverges. The
 run aborts with
 `swap BC types`, with HHT-α, with reduced order models, and with
 `constraint: displacement` unless both sides are Newmark with the same

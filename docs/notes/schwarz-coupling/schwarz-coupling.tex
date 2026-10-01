@@ -735,8 +735,10 @@ contraction factor of the Schwarz iteration and diverges within tens of
 stops; and the least-squares endpoint fit is an extrapolation whose gain
 exceeds one outside the linear band and injects energy without bound
 over hundreds of stops. Only causal transfer operators are robust in a
-fixed-point exchange; exact cancellation of the subcycled interface work
-requires a direct interface solve, as Prakash and Hjelmstad use. The
+fixed-point exchange of the impedance coupling. The constrained
+Dirichlet--Neumann exchange cancels the subcycled interface work without a
+direct solve, with the coarse-step side as the Dirichlet side
+(Sec.~\ref{sec:pseudo-energy}). The
 window-average and endpoint-fit utilities remain in
 \code{interpolation.jl} as tested building blocks.
 
@@ -1409,6 +1411,73 @@ expose an interface region, a layer around the interface integrated at
 the partner's time levels (their Sec.~5), and the formulation is given
 for linear elasticity.
 
+\subsection{The pseudo-energy identity of the subcycled exchange}
+\label{sec:pseudo-energy}
+
+Connors, Owen, Kuberry, and Bochev~\cite{ConnorsEtAl2024} state the energy
+balance per side. For side $k$ advanced by Newmark steps $\Delta t_k$ with
+a linear stiffness $~K_k$, an interface force $~f_k$ on its interface rows,
+and no other loads, the pseudo-energy
+\begin{equation}
+  E_{2,k}^n = \tfrac12\, (~a_k^n)^T ~S_k\, ~a_k^n
+            + \tfrac12\, (~v_k^n)^T ~K_k\, ~v_k^n,
+  \qquad ~S_k = ~M_k + \left(\beta_k - \tfrac{\gamma_k}{2}\right)\Delta t_k^2\, ~K_k,
+\end{equation}
+which is $E_2$ of \eqref{eq:e2}, changes over the $m_k$ steps of a window
+by (their Eq.~(102))
+\begin{equation}
+  E_{2,k}^{m_k} - E_{2,k}^{0}
+  + \left(\gamma_k - \tfrac12\right) \sum_{n=1}^{m_k}
+    (\Delta ~a_k^n)^T ~S_k\, \Delta ~a_k^n
+  = \frac{1}{\Delta t_k} \sum_{n=1}^{m_k}
+    (\Delta ~v_k^n)^T ~C_k^T\, \Delta ~f_k^n ,
+  \label{eq:pseudo-energy}
+\end{equation}
+with $\Delta(\cdot)^n = (\cdot)^n - (\cdot)^{n-1}$. With $\gamma_k = 1/2$ the
+second term vanishes, and $E_{2,k}$ is a norm when $~S_k$ is positive
+definite, which for central difference ($\beta = 0$) is its stability
+limit.
+
+Let the Dirichlet side $D$ take one step $\Delta T$ and the Neumann side
+$N$ take $m$ steps $\Delta T/m$, the interface force on $D$ be $\lambda$
+(the negative of its d'Alembert reaction), and the force on $N$ at its
+substep $j$ be $-\Pi_D^T[(1 - j/m)\lambda^0 + (j/m)\lambda^1]$, the linear
+interpolation that the exchange produces (Connors et al.\ Eqs.~(89) and
+(90)). Then $\Delta ~f_N^j = -\Pi_D^T \Delta\lambda/m$ for every substep, and
+the right side of \eqref{eq:pseudo-energy} for $N$ is
+\begin{equation}
+  \frac{m}{\Delta T} \sum_{j=1}^{m} (\Delta ~v_N^j)^T
+  \left(-\Pi_D^T \frac{\Delta\lambda}{m}\right)
+  = -\frac{1}{\Delta T} \left(\Pi_D (~v_N^m - ~v_N^0)\right)^T \Delta\lambda ,
+\end{equation}
+while that of $D$ is $\Delta T^{-1} (~v_D^1 - ~v_D^0)^T \Delta\lambda$. If
+$~v_D = \Pi_D ~v_N$ at both ends of the window, the two cancel and
+$E_{2,D} + E_{2,N}$ is constant; this is Connors et al.\ Eq.~(103) with
+$\Pi_D$ in place of their Boolean interface map, their condition (108)
+at $r = 1$, and Prakash and Hjelmstad's Eq.~(70). The conditions are: a
+linear stiffness on both sides; $\gamma = 1/2$ on both sides (otherwise
+each side dissipates by the second term of \eqref{eq:pseudo-energy});
+$~S_k$ positive definite, for $E_2$ to bound the solution; the force on
+$N$ at the window start equal to the converged reaction of the previous
+window, which holds in Norma because \code{restore\_stop\_state} runs
+before \code{subcycle} pushes the anchor snapshot; and loads on the
+interface rows of $D$ constant within the window, because the reaction is
+formed from their current value. An explicit member keeps its own
+stability limit.
+
+The same sum cancels when the fine side is the Dirichlet side and meets
+the linearly interpolated coarse velocity at every fine step, the
+arrangement of Gravouil and Combescure (their Eqs.~(21)--(24) solve the
+multiplier at every fine step): $\Delta ~v_D^j = \Pi_D \Delta ~v_N/m$ at
+each substep, so the Dirichlet sum is $\Delta T^{-1} (\Pi_D \Delta
+~v_N)^T (\lambda^m - \lambda^0)$, which cancels the coarse side's term.
+What that arrangement does not have is the flux projection property of
+Connors et al.\ (Eq.~(80)): the impulse that the fine side receives over
+the window, the trapezoid sum of its reactions at every substep, is not
+the impulse that the coarse side receives, the trapezoid of the two end
+values. Sec.~\ref{sec:constrained-results} measures that impulse
+residual.
+
 \subsection{Where the Dirichlet--Neumann path departs from it}
 \label{sec:constrained-norma}
 
@@ -1484,13 +1553,16 @@ Combescure, with the Schwarz iteration as one of its solvers. In order:
   interface problem by conjugate gradients with one solve of
   $\tilde{~M}$ per subdomain per iteration, the operation of the
   transient FETI method~\cite{FarhatRoux1991,FarhatCrivelliRoux1994}.
-\item For different time steps, the interpolated exchange gives bounded
-  dissipation and first-order accuracy; exact conservation requires the
-  once-per-coarse-step interface solve of Prakash and Hjelmstad with the
-  unbalanced free reactions, the direct solve that
-  Sec.~\ref{sec:subcycle} found necessary. Table~1 of Dvo\v{r}\'ak et
-  al.\ lists its price: integer ratios and a formulation over the whole
-  coarse step.
+\item For different time steps, make the coarse-step side the Dirichlet
+  side: it imposes the fine side's velocity at the end of the window, and
+  the fine side receives the coarse side's d'Alembert reaction
+  interpolated linearly between the window's end values. This is the
+  $r = 1$ scheme of Connors et al.~\cite{ConnorsEtAl2024} (their
+  Eqs.~(53)--(55), (89)--(90), and (104)--(105) with $k = 1$), whose
+  reaction is their flux $\Sigma^N$, and the scheme of Prakash and
+  Hjelmstad (their Eqs.~(25), (40), and (70)); its interface terms cancel
+  at the fixed point of the iteration (Sec.~\ref{sec:pseudo-energy}), so
+  it conserves $E_2$ without a direct interface solve.
 \end{enumerate}
 
 The Dirichlet side of each pair is the implicit member, and for two
@@ -1791,36 +1863,124 @@ different steps on the two sides: the side with the finer step receives
 the partner's velocity (Dirichlet side) or d'Alembert reaction (Neumann
 side) interpolated linearly in time from the partner's substep history,
 and the stopping rule takes the largest jump and force residual over the
-substeps of the stop. Reference experiment~3 is the conforming beam with
-the free part subcycled $4{:}1$ ($10^{-6}$ and $2.5\times 10^{-7}$\,s),
-$\theta = 0.5$, tolerance $10^{-12}$, $10$\,ms
-(Table~\ref{tab:beam-compare}, last block). With the free (fine) side as
-the Dirichlet side, the arrangement of Gravouil and Combescure in which
-the fine side meets the interpolated coarse velocity at every fine step,
-$E_2$ increases, by $7.1\times 10^{-8}$ (EE), $2.4\times 10^{-8}$ (II),
-and $3.4\times 10^{-8}$ (EI) at the largest, against the nonincreasing
-$E_2$ of their Eq.~(49), while $E_1$ varies by $51\%$, $20\%$, and $17\%$
-with the period of the first bending mode ($10$\,ms). The increase of
-$E_2$ depends on the stopping floor: over the first $0.4$\,ms of the EE
-run it is $2.8\times 10^{-9}$ with the absolute tolerance $10^{-15}$ and
-$1.6\times 10^{-10}$ with $10^{-20}$. Its remaining cause has not been
-found. $E_2$ weights each mode by its squared frequency, so a constant
-$E_2$ does not bound a transfer of $E_1$ between modes, which is what the
-$E_1$ variation at nearly constant $E_2$ shows. With the coarse (clamped)
-side as the Dirichlet side, where the coarse side meets the fine velocity
-at the coarse instants and the fine side receives the coarse reaction
-interpolated in time, $E_2$ stays within $4.5\times 10^{-13}$ (EE),
-$1.3\times 10^{-12}$ (II), and $3.9\times 10^{-12}$ (IE), $E_1$ within
-$0.11\%$, $0.38\%$, and $0.07\%$, and the iteration needs $6$, $10$, and
-$29$ Schwarz iterations per stop (each iteration advances the fine side
-four substeps) instead of $33$. The implicit pair with the coarse side as
-the Dirichlet side reached a force residual floor of $1.4\times 10^{-12}$,
-above the tolerance; it stopped on the stall rule with \code{abort} and
-completed with \code{warn} ($73$ stops accepted at the floor). EI cannot
-take the coarse side as the Dirichlet side: that side is the explicit
-member, and the run inverted an element at the first stop, as the gain
-analysis predicts. The present code, with the paired impedance coupling,
-loses $9.0\%$ (EE) and $21.7\%$ (II) of $E_1$ by $10$\,ms on this case.
+substeps of the stop. Reference experiment~3 is the beam with one side
+subcycled $4{:}1$ (coarse step $10^{-6}$\,s, fine step $2.5\times
+10^{-7}$\,s), $\theta = 0.5$, relative tolerance $10^{-12}$ with no
+absolute tolerance, \code{stalled interface jump action: warn}, $10$\,ms
+(Table~\ref{tab:subcycled}). The energy output carries the interface
+impulse residual of each window: the trapezoid sum over the Neumann
+side's substeps of the force it received, minus $\Pi_D^T$ times the
+trapezoid sum of the Dirichlet side's reaction over its own substeps,
+summed over the interface nodes per component (net, N\,s) and in the
+$~W_N^{-1}$ norm relative to the transferred impulse.
+
+On the conforming beam, with the coarse-step (clamped) side as the
+Dirichlet side, the arrangement of Sec.~\ref{sec:pseudo-energy}, $E_2$
+stays within $4.5\times 10^{-13}$ (EE) and $1.6\times 10^{-12}$ (II), $E_1$
+within $0.11\%$ and $0.38\%$, and the impulse residual is at roundoff (net
+at most $2.6\times 10^{-14}$\,N\,s, relative at most $1.5\times 10^{-12}$).
+With the fine-step (free) side as the Dirichlet side, $E_2$ changes by
+$4.4\times 10^{-9}$ (EE) and $2.0\times 10^{-9}$ (II), $E_1$ varies by $51\%$
+and $20\%$ with the period of the first bending mode ($10$\,ms), and the
+impulse residual is of the order of the impulse itself: the relative
+residual has the median $0.95$ (EE) and $0.67$ (II) and the maximum $3.4$
+and $4.8$; the net residual is in the bending direction $y$, up to
+$4.8\times 10^{-2}$ and $4.9\times 10^{-2}$\,N\,s per window, and sums to
+$-29$ and $-17$\,N\,s over the $10$\,ms, while the $x$ and $z$ components
+stay below $5\times 10^{-12}$\,N\,s. The earlier fine-side runs with the
+former absolute floor changed $E_2$ by $7.1\times 10^{-8}$ and
+$2.4\times 10^{-8}$; with the relative criterion the change is $40$ and
+$12$ times smaller, which identifies it as accumulated stopping error, as
+the derivation of Sec.~\ref{sec:pseudo-energy} predicts. The $E_1$
+variation of the fine-side arrangement coincides with a nonzero impulse
+residual and the coarse-side arrangement has neither; whether the impulse
+residual causes the variation has not been tested separately. The mixed
+pairs of the earlier runs, IE with the coarse implicit side as the
+Dirichlet side ($E_2$ within $3.9\times 10^{-12}$, $E_1$ within $0.07\%$)
+and EI, whose coarse side is explicit and diverges as the Dirichlet side,
+are in Table~\ref{tab:beam-compare}.
+
+\paragraph{Subcycling on nonconforming meshes.} The coarse-step side must
+be the Dirichlet side for the flux structure above, and with identical
+integrators the finer mesh must be the Dirichlet side for the gain
+(Table~\ref{tab:dn-gain}). On the $1{:}0.5$ beam (free part $6.35$\,mm,
+$160$ elements; clamped part $12.7$\,mm, $20$ elements) two assignments
+were run. In (A) the clamped (coarse-mesh) side takes $10^{-6}$\,s and is
+the Dirichlet side, and the free (fine-mesh) side takes $2.5\times
+10^{-7}$\,s; in (B) the free (fine-mesh) side takes $10^{-6}$\,s and is the
+Dirichlet side, and the clamped (coarse-mesh) side takes $2.5\times
+10^{-7}$\,s, so that the fine mesh is also the coarse-step side. The
+projector in use reproduces constants to $10^{-15}$ in both, and $~B
+\mathbf{1}$, $~B^T\mathbf{1}$ match the boundary masses to $10^{-16}$.
+The gain of each assignment, linearized at a stop with the Neumann side's
+end velocity per unit force ramped over its four substeps, is in the lower
+part of Table~\ref{tab:subcycled}. In (A) with explicit sides the
+eigenvalues lie in $[-7.9, -2.0]$ and the iteration diverges for every
+$\theta \ge 0.25$; the run diverged already in the coupled initial
+acceleration at $\theta = 0.5$ and at $\theta = 0.25$ (kinetic energy of
+order $10^{249}$ and $10^{21}$ at $t = 0$) and ended at the first stop.
+Assignment (B) conserves $E_2$ to $3.7\times 10^{-12}$ (EE) and $1.6\times
+10^{-12}$ (II) with the impulse residual at roundoff; assignment (A) with
+implicit sides, whose gain radius at $\theta = 0.5$ is $0.55$, conserves
+$E_2$ to $4.7\times 10^{-13}$ in $44.5$ iterations per stop against $18.8$
+for (B). The rule for subcycled pairs is therefore: the coarse-step side is
+the Dirichlet side; between two members with the same integrator the
+finer mesh should be that side, which may require giving the finer mesh
+the coarser step where the stability limit of an explicit member allows
+it; where it does not, the gain decides.
+
+\begin{table}[htbp]
+\centering
+\scriptsize\setlength{\tabcolsep}{2pt}
+\caption{Beam with one side subcycled $4{:}1$, $10$\,ms, $\theta = 0.5$,
+relative tolerance $10^{-12}$, no absolute tolerance. D: the Dirichlet
+side; ``coarse'' and ``fine'' refer to the step. $E_1(t)/E_1(0)$ at $1$,
+$2$, $5$, and $10$\,ms; $\delta E = \max_t \lvert E/E(0) - 1\rvert$ with the
+sign of the final value; drift: root mean square interface displacement
+jump at $10$\,ms (m); impulse: largest net residual per window in $y$
+(N\,s) and the median relative residual; it.: Schwarz iterations per stop,
+mean/maximum (each iteration advances the fine side four substeps); wall
+time in seconds on four threads. The $1{:}0.5$ (A) run with explicit sides
+ended at the first stop. Lower part: the spectral radius $\rho$ of the
+relaxed iteration from the linearized gain at a stop.}
+\label{tab:subcycled}
+\begin{tabular}{llccccccccrr}
+\toprule
+meshes & pair, D & 1 & 2 & 5 & 10 & $\delta E_1$ & $\delta E_2$ & drift &
+  impulse $y$, rel. & it. & wall \\
+\midrule
+conf. & EE, D coarse & 1.0005 & 1.0009 & 1.0003 & 1.0006 & $+1.1\mathrm{e}{-3}$ & $-4.5\mathrm{e}{-13}$ &
+  $3.1\mathrm{e}{-6}$ & $1.9\mathrm{e}{-15}$, $1.1\mathrm{e}{-13}$ & 6.0/7 & 139 \\
+conf. & EE, D fine & 1.0432 & 1.1376 & 1.4698 & 0.9938 & $-5.1\mathrm{e}{-1}$ & $+4.4\mathrm{e}{-9}$ &
+  $4.2\mathrm{e}{-6}$ & $4.8\mathrm{e}{-2}$, $0.95$ & 36.6/42 & 564 \\
+conf. & II, D coarse & 0.9968 & 0.9982 & 0.9972 & 0.9971 & $-3.8\mathrm{e}{-3}$ & $+1.6\mathrm{e}{-12}$ &
+  $3.1\mathrm{e}{-6}$ & $2.6\mathrm{e}{-14}$, $2.2\mathrm{e}{-13}$ & 10.1/15 & 560 \\
+conf. & II, D fine & 1.0168 & 1.0682 & 1.1977 & 0.9872 & $-2.0\mathrm{e}{-1}$ & $+2.0\mathrm{e}{-9}$ &
+  $5.5\mathrm{e}{-14}$ & $4.9\mathrm{e}{-2}$, $0.67$ & 35.7/40 & 1763 \\
+$1{:}0.5$ & EE, (A) & \multicolumn{10}{l}{diverged in the coupled initial acceleration; ended at the first stop} \\
+$1{:}0.5$ & EE, (B) & 0.9994 & 0.9995 & 0.9993 & 0.9993 & $-8.9\mathrm{e}{-4}$ & $+3.7\mathrm{e}{-12}$ &
+  $1.5\mathrm{e}{-6}$ & $2.8\mathrm{e}{-17}$, $1.9\mathrm{e}{-16}$ & 26.9/31 & 315 \\
+$1{:}0.5$ & II, (A) & 0.9989 & 0.9992 & 0.9984 & 0.9993 & $-1.9\mathrm{e}{-3}$ & $-4.7\mathrm{e}{-13}$ &
+  $2.2\mathrm{e}{-6}$ & $5.9\mathrm{e}{-14}$, $4.2\mathrm{e}{-13}$ & 44.5/54 & 2555 \\
+$1{:}0.5$ & II, (B) & 1.0008 & 1.0009 & 1.0008 & 1.0008 & $+1.7\mathrm{e}{-3}$ & $+1.6\mathrm{e}{-12}$ &
+  $1.6\mathrm{e}{-6}$ & $2.4\mathrm{e}{-17}$, $1.9\mathrm{e}{-16}$ & 18.8/21 & 829 \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\begin{tabular}{lllcccc}
+\toprule
+meshes & pair & Dirichlet side & $\rho(0.25)$ & $\rho(0.5)$ & $\rho(0.75)$ & $\rho(1)$ \\
+\midrule
+conforming & EE & clamped, coarse step & 0.50 & 0.008 & 0.50 & 1.00 \\
+conforming & II & clamped, coarse step & 0.50 & 0.083 & 0.63 & 1.17 \\
+$1{:}0.5$ & EE & (A) clamped, coarse mesh and step & 1.23 & 3.47 & 5.70 & 7.93 \\
+$1{:}0.5$ & II & (A) clamped, coarse mesh and step & 0.26 & 0.55 & 1.32 & 2.09 \\
+$1{:}0.5$ & EE & (B) free, fine mesh, coarse step & 0.75 & 0.50 & 0.25 & 0.50 \\
+$1{:}0.5$ & II & (B) free, fine mesh, coarse step & 0.75 & 0.50 & 0.25 & 0.56 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{The nested cylinders.} The cylinders of Sec.~\ref{sec:cylinders}
 (neohookean materials, central difference on both sides, stops of
@@ -2164,11 +2324,12 @@ code was removed.
   implicit member they lie in $[-0.61, -0.075]$. For identical integrators
   on conforming meshes the eigenvalues are near $-1$: $\theta = 0.5$ is
   optimal and $\theta = 1$ does not converge.
-\item With a $4{:}1$ step ratio the constrained exchange with the coarse
-  side as the Dirichlet side keeps $E_2$ within $4\times 10^{-12}$ and
-  $E_1$ within $0.4\%$ over $10$\,ms; with the fine side as the Dirichlet
-  side $E_2$ increases by up to $7\times 10^{-8}$ and $E_1$ varies by up to
-  $51\%$. The present paired impedance coupling loses $9$ (EE) and $22\%$
+\item With a $4{:}1$ step ratio the constrained exchange with the
+  coarse-step side as the Dirichlet side keeps $E_2$ within $4\times
+  10^{-12}$ and $E_1$ within $0.4\%$ over $10$\,ms, without a direct
+  interface solve (Sec.~\ref{sec:pseudo-energy}); with the fine-step side
+  as the Dirichlet side $E_1$ varies by up to $51\%$ and the interface
+  impulse residual is of the order of the impulse. The present paired impedance coupling loses $9$ (EE) and $22\%$
   (II) on the same case (Sec.~\ref{sec:constrained-results}).
 \item For two explicit subdomains at equal steps the direct interface
   solve \eqref{eq:direct} conserves $E_1$ and $E_2$ to roundoff on the beam
@@ -2247,19 +2408,20 @@ code was removed.
   isolated.
 \item The non-nested mesh-ratio failure window of the paired transfer at
   long horizons.
-\item Exact subcycled interface-work cancellation through a direct
-  interface solve, by the once-per-coarse-step solve of Prakash and
-  Hjelmstad or by the localized Lagrange multiplier frame
-  construction~\cite{ParkFelippaRebel2002,DvorakEtAl2023}
-  (Sec.~\ref{sec:constrained-plan}, change~6).
-\item Under subcycling with the fine side as the Dirichlet side, the
-  arrangement of Gravouil and Combescure, $E_2$ increases by up to
-  $7\times 10^{-8}$ over $10$\,ms, against their nonincreasing interface
-  work; the increase falls by a factor of $17$ when the absolute tolerance
-  falls from $10^{-15}$ to $10^{-20}$, and its remaining cause is not
-  known. The same arrangement lets $E_1$ vary by up to $51\%$ at the first
-  bending period while $E_2$ is constant, which the coarse-side
-  arrangement does not.
+\item Higher-order multirate coupling ($r \ge 2$ in the sense of Connors
+  et al.~\cite{ConnorsEtAl2024}) and a direct interface solve over a
+  subcycled window. Exact cancellation of the subcycled interface work
+  itself is obtained by the iterated exchange with the coarse-step side as
+  the Dirichlet side (Sec.~\ref{sec:pseudo-energy}).
+\item Under subcycling with the fine-step side as the Dirichlet side,
+  $E_2$ is conserved up to accumulated stopping error ($4.4\times 10^{-9}$
+  EE and $2.0\times 10^{-9}$ II over $10$\,ms at the relative tolerance
+  $10^{-12}$), but $E_1$ varies by $51\%$ and $20\%$ at the first bending
+  period, and the interface impulse residual is of the order of the
+  impulse (median relative residual $0.95$ and $0.67$, net $y$ residual
+  summing to $-29$ and $-17$\,N\,s), against roundoff for the coarse-step
+  Dirichlet side. Whether the impulse residual causes the $E_1$ variation
+  has not been tested separately.
 \item The absolute branch of the constrained stopping rule divided the
   absolute tolerance by the step to obtain a velocity floor of $200$\,m/s
   on the cylinders. The floor is removed and the direct solve converges
@@ -2311,6 +2473,14 @@ Multi-time-step explicit--implicit method for non-linear structural
 dynamics,
 \emph{International Journal for Numerical Methods in Engineering}
 50:199--225, 2001.
+
+\bibitem{ConnorsEtAl2024}
+J.M.~Connors, J.~Owen, P.~Kuberry, P.~Bochev,
+A conservative discontinuous-Galerkin-in-time (DGiT) multirate time
+integration framework for interface-coupled problems with applications to
+solid--solid interaction and air--sea models, \emph{Computer Methods in
+Applied Mechanics and Engineering}
+426 (2024) 116975.
 
 \bibitem{PrakashHjelmstad2004}
 A.~Prakash, K.D.~Hjelmstad,
