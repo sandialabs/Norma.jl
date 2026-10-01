@@ -170,6 +170,20 @@ $0.5\,\mu$s stops (Courant number $0.5$) to a horizon of $5$\,ms. One
 Cubit journal with a refinement parameter generates all meshes
 (\code{examples/jmp/concentric-cylinders}).
 
+\paragraph{Linear nested cylinders.} For devising and testing
+conservation schemes the cylinders also exist with linear elastic
+materials (\code{examples/jmp/concentric-cylinders-linear}, the same
+meshes by relative path): core $E = 100$\,GPa, $\nu = 0.33$; shell
+$E = 200$\,GPa, $\nu = 0.28963$; filler $E = 9KG/(3K + G) =
+0.21412$\,GPa and $\nu = (3K - 2G)/(2(3K + G)) = 0.49404$ from its bulk
+and shear moduli; the same densities. With linear materials $E_2$ is
+defined. The assembly moves at $-5$\,m/s rather than $-35$\,m/s, which
+strains the filler beyond the range of a small-strain model; the
+conservation identity does not depend on the amplitude, and the runs
+below repeat the case at $-35$\,m/s. Central difference at Courant number
+$0.5$, $0.5\,\mu$s stops, $1$\,ms. The nonoverlap input uses the
+constrained exchange with the inner (finer) side as the Dirichlet side.
+
 \paragraph{Explicit stability.} Central difference in Norma caps its step
 at $\mathrm{CFL}\times h_{\min}/c_p$, where $h_{\min}$ is the smallest
 element characteristic diameter (twice the mean distance from the element
@@ -1850,6 +1864,86 @@ $9\times 10^{-5}$ for the one-iteration run at the same time. A converged
 run to $2$\,ms would take about $7$ hours on $8$ threads and was not
 made, so boundedness under convergence is shown only to $0.1$\,ms.
 
+\paragraph{The stopping floor.} The constrained criterion first accepted
+a root mean square jump of the constrained velocity below the controller's
+absolute tolerance divided by the step; the absolute tolerance is a
+displacement, and on the cylinders the floor was $200$\,m/s. The
+criterion is now relative only, unless \code{constraint absolute
+tolerance} gives a tolerance in the units of the constrained quantity
+(default $0$). The beam runs below use the relative tolerance
+$10^{-12}$ and no absolute tolerance.
+
+\paragraph{Direct interface solve.} For two central difference subdomains
+at equal steps the iteration can be replaced by one solve. Let $\lambda$
+be the force on the interface rows of the Dirichlet side $D$, so that the
+Neumann side $N$ receives $-\Pi_D^T \lambda$, and let $~m_D$ and $~m_N$ be
+the lumped masses of the interface rows. Central difference computes
+$~u_{n+1}$ before the acceleration, and the internal force at $~u_{n+1}$
+does not depend on $\lambda$. Advancing both sides with free interface
+rows and no interface force gives the velocities $~v^{\text{free}}$; the
+interface force adds $\gamma \Delta t\, ~m_D^{-1}\lambda$ to the velocity
+of $D$ and $-\gamma\Delta t\, ~m_N^{-1}\Pi_D^T\lambda$ to that of $N$, and
+the velocity constraint $~v_D = \Pi_D ~v_N$ at the end of the step gives,
+per Cartesian component,
+\begin{equation}
+  \gamma \Delta t \left(~m_D^{-1} + \Pi_D\, ~m_N^{-1}\, \Pi_D^T\right)
+  \lambda = \Pi_D ~v_N^{\text{free}} - ~v_D^{\text{free}} .
+  \label{eq:direct}
+\end{equation}
+The matrix is symmetric positive definite, of the size of the Dirichlet
+interface, and constant while the lumped masses and $\Pi_D$ are; rows held
+by other Dirichlet conditions take a zero inverse mass. It is $~H$ of
+\eqref{eq:gc-h} for two lumped-mass explicit sides, written on the
+Dirichlet trace. It is factored once (dense Cholesky: $3920$ unknowns per
+component on the cylinders, three factorizations in $0.7$\,s, $3 \times
+123$\,MB). Each stop advances both sides, solves \eqref{eq:direct}, and
+corrects the interface accelerations and velocities. Because the internal
+force is evaluated at the predictor displacement, the solve is exact for
+nonlinear materials as well. The same matrix gives the interface force at
+$t = 0$ from the acceleration constraint $~a_D = \Pi_D ~a_N$
+(\code{interface solve: direct}).
+
+\begin{center}
+\footnotesize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llcccrrl}
+\toprule
+case & exchange & $\delta E_1$ & $\delta E_2$ & drift (m) & it. & wall (s) & tolerance \\
+\midrule
+beam, conforming, EE & direct & $1.5\mathrm{e}{-14}$ & $4.4\mathrm{e}{-14}$ & $1.6\mathrm{e}{-17}$ & -- & 39 & -- \\
+ & iterated & $1.2\mathrm{e}{-14}$ & $3.6\mathrm{e}{-14}$ & $4.8\mathrm{e}{-17}$ & 1.0/1 & 45 & rel.\ $10^{-12}$ \\
+beam, $1{:}0.5$, EE & direct & $7.8\mathrm{e}{-15}$ & $4.5\mathrm{e}{-14}$ & $1.8\mathrm{e}{-17}$ & -- & 39 & -- \\
+ & iterated & $2.2\mathrm{e}{-12}$ & $4.4\mathrm{e}{-12}$ & $4.5\mathrm{e}{-15}$ & 26.8/30 & 176 & rel.\ $10^{-12}$ \\
+beam, $1{:}0.75$, EE & direct & $1.2\mathrm{e}{-14}$ & $6.0\mathrm{e}{-14}$ & $2.7\mathrm{e}{-17}$ & -- & 39 & -- \\
+ & iterated & $1.6\mathrm{e}{-12}$ & $4.6\mathrm{e}{-12}$ & $2.3\mathrm{e}{-15}$ & 18.1/20 & 164 & rel.\ $10^{-12}$ \\
+linear cylinders, $-5$\,m/s & monolithic & $1.3\mathrm{e}{-13}$ & $6.2\mathrm{e}{-12}$ & -- & -- & 371 & -- \\
+ & direct & $9.9\mathrm{e}{-14}$ & $3.2\mathrm{e}{-12}$ & $6.0\mathrm{e}{-19}$ & -- & 735 & -- \\
+linear cylinders, $-35$\,m/s & monolithic & $1.2\mathrm{e}{-14}$ & $4.8\mathrm{e}{-13}$ & -- & -- & 359 & -- \\
+ & direct & $1.1\mathrm{e}{-14}$ & $4.3\mathrm{e}{-13}$ & $4.3\mathrm{e}{-18}$ & -- & 731 & -- \\
+\bottomrule
+\end{tabular}
+\end{center}
+Beam runs: $10$\,ms, $10^{-6}$\,s; cylinders: $1$\,ms, $0.5\,\mu$s, the
+cylinders on $8$ threads. $\delta E$ is the largest $\lvert E/E(0) - 1
+\rvert$, drift the root mean square interface displacement jump at the
+end. The direct solve conserves both energies to roundoff, at a lower cost
+than the iteration on the nonconforming meshes, and on the cylinders the
+relative interface velocity jump at the end of every stop is at most
+$7\times 10^{-16}$. On the linear cylinders the monolithic $E_2$ varies by
+$6.2\times 10^{-12}$ at $-5$\,m/s and $4.8\times 10^{-13}$ at $-35$\,m/s,
+the decomposed one by $3.2\times 10^{-12}$ and $4.3\times 10^{-13}$: the
+level depends on the amplitude because the deformation gradient is formed
+from the current coordinates $~X + ~u$, which loses digits in proportion
+to $\lvert ~X \rvert / \lvert ~u \rvert$. The per-step increments of $E_2$
+have a standard deviation of $1.1\times 10^{-13}$ and a lag-one
+autocorrelation of $-0.31$, without a significant mean: roundoff in the
+evaluation and its accumulation, not a systematic change. On the
+neohookean cylinders ($-35$\,m/s, $2$\,ms) the direct solve completes in
+$1416$\,s with $E_1/E_1(0) = 0.999972$, $0.999963$, and $0.999936$ at
+$0.5$, $1$, and $2$\,ms, within the $0.01\%$ that the monolithic reference
+keeps to $5$\,ms, a relative velocity jump of at most $7\times 10^{-16}$,
+and a drift of $6\times 10^{-18}$\,m; the iterated run with the former
+floor reached $+2.1\%$ at $2$\,ms.
+
 \paragraph{Comparison on the beam.} Table~\ref{tab:beam-compare} sets the
 monolithic reference, the present Dirichlet--Neumann exchange
 (\code{constrained: false}, free side Dirichlet, $\theta = 0.5$, tolerances
@@ -2076,6 +2170,11 @@ code was removed.
   side $E_2$ increases by up to $7\times 10^{-8}$ and $E_1$ varies by up to
   $51\%$. The present paired impedance coupling loses $9$ (EE) and $22\%$
   (II) on the same case (Sec.~\ref{sec:constrained-results}).
+\item For two explicit subdomains at equal steps the direct interface
+  solve \eqref{eq:direct} conserves $E_1$ and $E_2$ to roundoff on the beam
+  at every mesh ratio and on the linear cylinders at $-5$ and $-35$\,m/s,
+  with no iteration, and keeps $E_1$ of the neohookean cylinders within
+  $6.4\times 10^{-5}$ over $2$\,ms.
 \item On the beam the constrained exchange conserves at least as well as
   the paired impedance coupling in every case measured, including the
   nonconforming ratios where the paired coupling dissipates $58\%$
@@ -2161,11 +2260,11 @@ code was removed.
   known. The same arrangement lets $E_1$ vary by up to $51\%$ at the first
   bending period while $E_2$ is constant, which the coarse-side
   arrangement does not.
-\item The absolute branch of the constrained stopping rule divides the
-  absolute tolerance by the step to obtain a velocity floor; with the
-  cylinder tolerances that floor is $200$\,m/s and the iteration stops
-  unconverged after one iteration. A floor scaled with the problem's
-  velocity, and a converged cylinder run to $2$\,ms, are open.
+\item The absolute branch of the constrained stopping rule divided the
+  absolute tolerance by the step to obtain a velocity floor of $200$\,m/s
+  on the cylinders. The floor is removed and the direct solve converges
+  the explicit exchange exactly (Sec.~\ref{sec:constrained-results}); a
+  converged iterated cylinder run to $2$\,ms has not been made.
 \item Mesh-ratio and overlap-width families on the cylinders, and
   implicit versions of its subdomains, to test whether the beam
   conclusions transfer.
