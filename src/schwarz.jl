@@ -1683,11 +1683,16 @@ function dn_one_sided_jump(
     return relative, rms
 end
 
-# Residuals of the DN pair whose Dirichlet side is `bc` on `model`.
+# Residuals of the DN pair whose Dirichlet side is `bc`, with `model` the full
+# order model of the Dirichlet side. The partner's boundary condition belongs to
+# the partner's own model (n_sim.model), as in get_dst_force: for a reduced
+# order partner that is the RomModel, whose full order model carries the
+# kinematic fields but an empty list of boundary conditions. The fields are
+# therefore read from get_fom_model(n_sim) and the condition from n_sim.model.
 function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     n_sim = coupled_subsim_of(bc)
     n_model = get_fom_model(n_sim)
-    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = n_sim.model.boundary_conditions[bc.coupled_bc_index]
     W_D = bc.square_projector
     P = bc.dirichlet_projector
     d_map = bc.global_from_local_map
@@ -1696,8 +1701,15 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
     ju, ju_rms = dn_one_sided_jump(W_D, P, model.displacement[:, d_map], n_model.displacement[:, n_map])
     ja, ja_rms = dn_one_sided_jump(W_D, P, model.acceleration[:, d_map], n_model.acceleration[:, n_map])
     force_residual = NaN
-    f_N = n_bc.transferred_force
-    W_N = n_bc.square_projector
+    # A reduced order partner's coupling condition may be of another type,
+    # without the transferred force and the square projector the residual needs.
+    if n_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+        f_N = n_bc.transferred_force
+        W_N = n_bc.square_projector
+    else
+        f_N = Float64[]
+        W_N = zeros(0, 0)
+    end
     if !isempty(f_N) && size(W_N, 1) == length(n_map) && length(model.internal_force) == length(model.displacement)
         r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
@@ -1720,9 +1732,11 @@ end
 function dn_interface_residuals(sim::MultiDomainSimulation)
     residuals = Tuple{SolidMechanicsNonOverlapSchwarzBoundaryCondition,DNInterfaceResiduals}[]
     for subsim in sim.subsims
+        # The conditions belong to subsim.model (a RomModel for a reduced order
+        # subdomain); the fields to its full order model.
         model = get_fom_model(subsim)
         model isa SolidMechanics || continue
-        for bc in model.boundary_conditions
+        for bc in subsim.model.boundary_conditions
             bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition || continue
             bc.is_dirichlet || continue
             size(bc.dirichlet_projector, 1) > 0 || continue
