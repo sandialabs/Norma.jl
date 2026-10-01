@@ -1988,7 +1988,7 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
         elseif bc.friction_type == 1
             @inbounds model.displacement[:, i_global] = nodal_curr[:, i_local] - model.reference[:, i_global]
             @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
-            @inbounds model.acceleration[:, i_global] = nodal_velo[:, i_local]
+            @inbounds model.acceleration[:, i_global] = nodal_acce[:, i_local]
             model.free_dofs[global_range] .= false
         else
             norma_abort("Unknown or not implemented friction type.")
