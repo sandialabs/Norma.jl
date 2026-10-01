@@ -1872,8 +1872,8 @@ end
 # schwarz.jl), logged at every Schwarz iteration. For constrained pairs they are
 # also the stopping rule: such a pair has converged when the one-sided jump of
 # its constrained quantity and the interface force residual are both at or
-# below the relative tolerance (or the root mean square jump at or below the
-# absolute tolerance, divided by the time step for the velocity). When every
+# below the relative tolerance (or the root mean square jump at or below
+# `constraint absolute tolerance`, when that key is given). When every
 # Schwarz coupling of the simulation is a constrained DN pair this replaces the
 # displacement criterion; otherwise both must hold. The larger of the constrained
 # jump and the force residual, maximized over the constrained pairs, is stalled
@@ -1887,7 +1887,11 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::
     residuals = dn_interface_residuals(sim)
     isempty(residuals) && return true, prev_jump
     rtol = controller.relative_tolerance
-    atol = controller.absolute_tolerance
+    # The controller's absolute tolerance is a displacement; it is not used here.
+    # The constrained criterion is relative unless `constraint absolute
+    # tolerance` is given, in the units of the constrained quantity (m/s for the
+    # velocity constraint, m for the displacement constraint).
+    catol = Float64(get(sim.params, "constraint absolute tolerance", 0.0))
     has_constrained = false
     all_constrained_converged = true
     max_measure = 0.0
@@ -1910,11 +1914,11 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::
         has_constrained = true
         check_constrained_time_steps(bc)
         if bc.constraint == :displacement
-            jump, jump_rms, jump_floor = r.displacement_jump, r.displacement_jump_rms, atol
+            jump, jump_rms = r.displacement_jump, r.displacement_jump_rms
         else
-            jump, jump_rms, jump_floor = r.velocity_jump, r.velocity_jump_rms, atol / controller.time_step
+            jump, jump_rms = r.velocity_jump, r.velocity_jump_rms
         end
-        jump_ok = jump ≤ rtol || jump_rms ≤ jump_floor
+        jump_ok = jump ≤ rtol || (catol > 0.0 && jump_rms ≤ catol)
         force_ok = !isnan(r.force_residual) && r.force_residual ≤ rtol
         all_constrained_converged &= jump_ok && force_ok
         max_measure = max(max_measure, jump, isnan(r.force_residual) ? Inf : r.force_residual)

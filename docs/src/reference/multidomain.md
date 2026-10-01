@@ -48,6 +48,7 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
 | `absolute tolerance` | yes | — | absolute interface convergence tolerance |
 | `relative tolerance` | yes | — | relative interface convergence tolerance |
+| `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (m/s or m); the controller's `absolute tolerance` does not apply to constrained pairs |
 | `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
 | `stalled interface jump action` | no | `warn` | what to do when the interface jump of a paired impedance condition or the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
 
@@ -211,10 +212,9 @@ a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
 constrained quantity only. A pair converges when the jump of its constrained
 quantity and the force residual are both at or below `relative tolerance`, or
 when the root mean square jump over the interface is at or below
-`absolute tolerance` (divided by the time step for the velocity; choose the
-absolute tolerance so that this velocity is small against the interface
-velocities, since with `absolute tolerance: 1.0e-4` and a step of 5e-7 s it
-is 200 m/s and accepts the first iteration of every stop); when every
+`constraint absolute tolerance` (a top-level key in the units of the
+constrained quantity, m/s for the velocity and m for the displacement
+constraint; default 0, which leaves the relative test alone); when every
 Schwarz coupling is constrained this replaces the displacement criterion,
 otherwise both must hold. A residual that stays above the tolerance while the
 displacement update has converged and decreased by less than 5% since the
