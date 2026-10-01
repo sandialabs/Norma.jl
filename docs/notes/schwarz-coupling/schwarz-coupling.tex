@@ -1479,6 +1479,13 @@ Combescure, with the Schwarz iteration as one of its solvers. In order:
   coarse step.
 \end{enumerate}
 
+The Dirichlet side of each pair is the implicit member, and for two
+members with the same integrator on a nonconforming interface the finer
+side. The first runs of the reference experiments assigned it to the subdomain with the
+smaller interface tributary mass, the explicit member of a mixed pair,
+which the gain analysis of Sec.~\ref{sec:constrained-results} shows to be
+divergent. Changes 1 to 3 are implemented and measured there.
+
 The reference experiments, with the outcome the theorems require:
 \begin{itemize}[itemsep=2pt]
 \item Beam, matching meshes, equal steps, each of II, IE, EI, and EE,
@@ -1508,6 +1515,261 @@ iteration at fixed tangent and an explicit code has as a division by the
 lumped mass. The overlap decomposition has no place in this framework
 (Sec.~\ref{sec:theory}), and every measured overlapping case failed; it
 should be retired for dynamics.
+
+\subsection{Measurements of the constrained exchange}
+\label{sec:constrained-results}
+
+Changes 1 to 3 are implemented for equal time steps (\code{constrained:
+true} on both sides of a \code{Schwarz DN nonoverlap} pair, with
+\code{constraint: velocity} or \code{displacement}). The cantilever runs
+below use the time step $10^{-6}$\,s, $10$\,ms, a relative tolerance of
+$10^{-12}$ on the jump of the constrained quantity and on the interface
+force residual, at most $256$ Schwarz iterations per stop, and the direct
+linear solver. Energies are $E_1$, the blended physical energy of
+Sec.~\ref{sec:energy}, and $E_2$ of \eqref{eq:e2}. The jump is the
+one-sided relative jump $\lVert ~u_D - \Pi_D ~u_N \rVert_{~W_D} /
+\lVert ~u_D \rVert_{~W_D}$ on the Dirichlet side $D$, with $N$ the
+Neumann side and $~W_D$ the boundary mass matrix of $D$.
+
+\paragraph{Ground truth.} An undecomposed run of the same beam at
+$\Delta t = 5\times 10^{-7}$\,s keeps $E_1$ and $E_2$ within
+$1.7\times 10^{-13}$ of their initial values over $10$\,ms with average
+acceleration and within $2.7\times 10^{-14}$ with central difference. The
+present Dirichlet--Neumann exchange at the same step, tolerance
+$10^{-8}$, and $\theta = 0.5$ inverts an element at $0.46$\,ms with
+implicit subdomains ($E_1/E_1(0) = 1.91$ and $E_2/E_2(0) = 34$ at
+$0.4$\,ms) and ends at $E_1/E_1(0) = 1.013$ and $E_2/E_2(0) = 1.006$ at
+$10$\,ms with explicit ones.
+
+\paragraph{The force residual of the present exchange.} The relative
+difference between the force applied on the Neumann side and the
+transposed projection of the d'Alembert reaction of the Dirichlet side,
+measured at the end of every stop in the inverse norm of the Neumann
+side's boundary mass matrix, has the median $0.83$ (maximum $4.2$) with
+explicit subdomains and $1.47$ (maximum $4.6$) with implicit ones: the
+static reaction $-~f^{\mathrm{int}}$ that the present exchange transmits
+misses an interface inertia of the size of the reaction itself. This is
+departure~1 of Sec.~\ref{sec:constrained-norma}, measured directly. Under
+the constrained exchange the same residual is below $4\times 10^{-16}$.
+
+\paragraph{The Dirichlet role.} The gain of one Schwarz iteration of the
+constrained exchange, linearized at a stop, is
+\begin{equation}
+  ~G = -\,\Pi_D\, ~H_N\, \Pi_D^T\, ~S_D,
+  \label{eq:dn-gain}
+\end{equation}
+with $~H_N = ~C_N \tilde{~M}_N^{-1} ~C_N^T$ the interface flexibility of
+the Neumann side ($\tilde{~M} = ~M + \beta \Delta t^2 ~K$, the lumped mass
+for central difference) and $~S_D$ the interface dynamic stiffness of the
+Dirichlet side ($~H_D^{-1}$ for Newmark, the lumped interface mass for
+central difference). Fixed relaxation $\theta$ converges if and only if
+the spectral radius of $(1-\theta)~I + \theta ~G$ is below one.
+Table~\ref{tab:dn-gain} lists the computed eigenvalues. On conforming
+meshes the two sides have the same lumped tributary masses, so these do
+not select the Dirichlet side; the consistent-mass flexibility of an
+implicit side is up to $13$ times the inverse lumped mass of an explicit
+side, and with the explicit member as the Dirichlet side every
+$\theta \ge 0.5$ diverges. All four runs of that assignment (IE and EI,
+$\theta \in \{0.5, 0.75, 1\}$) inverted an element at the first stop; with
+recursive Aitken they stopped on a stalled residual of $2\times 10^{-9}$
+and $2\times 10^{-10}$. The rule is: \emph{the implicit member is the
+Dirichlet side}; for two members with the same integrator on a
+nonconforming interface, the finer side.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\caption{Eigenvalues of the gain \eqref{eq:dn-gain} at
+$\Delta t = 10^{-6}$\,s and the spectral radius $\rho$ of the relaxed
+iteration. Conforming: the meshes of the cantilever example; $1{:}0.5$
+and $1{:}0.75$: free part $6.35$\,mm, clamped part $12.7$ and
+$8.47$\,mm. D is the Dirichlet side.}
+\label{tab:dn-gain}
+\begin{tabular}{llcccc}
+\toprule
+meshes & pair, D & eigenvalues & $\rho(0.5)$ & $\rho(0.75)$ & $\rho(1)$ \\
+\midrule
+conforming & II, either & $[-1.09, -0.92]$ & $0.05$ & $0.57$ & $1.09$ \\
+conforming & EE, either & $-1$ & $0$ & $0.50$ & $1.00$ \\
+conforming & IE or EI, D explicit & $[-13.3, -1.63]$ & $6.1$ & $9.7$ & $13.3$ \\
+conforming & IE or EI, D implicit & $[-0.61, -0.075]$ & $0.46$ & $0.21$ & $0.61$ \\
+$1{:}0.5$ & II, D fine & $[-0.55, 0]$ & $0.50$ & $0.25$ & $0.55$ \\
+$1{:}0.5$ & II, D coarse & $[-1.99, -1.83]$ & $0.50$ & $1.24$ & $1.99$ \\
+$1{:}0.5$ & EE, D fine & $[-0.50, 0]$ & $0.50$ & $0.25$ & $0.50$ \\
+$1{:}0.5$ & EE, D coarse & $[-8.0, -2.0]$ & $3.5$ & $5.8$ & $8.0$ \\
+$1{:}0.75$ & II, D fine & $[-0.82, 0]$ & $0.50$ & $0.37$ & $0.82$ \\
+$1{:}0.75$ & EE, D fine & $[-0.75, 0]$ & $0.50$ & $0.31$ & $0.75$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Relaxation.} For two members with the same integrator on
+conforming meshes the eigenvalues cluster at $-1$, so $\theta = 0.5$ is
+optimal ($7$ iterations per stop for II, $1$ for EE), $\theta = 0.75$
+contracts by $0.5$ per iteration ($39$ and $35$ iterations), and
+$\theta = 1$ does not converge (element inversion, or $256$ iterations at
+the first stop for EE, where the iterate alternates between two states).
+With the fine side as the Dirichlet side the eigenvalues fill $[g, 0]$,
+and the zero eigenvalues belong to the components of the fine trace that
+the coarse trace cannot represent; they contract by $1 - \theta$. The
+recursive Aitken factor does not settle where the eigenvalues cluster at $-1$:
+on the implicit pair it alternates between $0.5$ and $0.998$, the
+iteration stalls for one iteration at a relative velocity jump of
+$5.9\times 10^{-10}$, and the stall rule (a decrease below $5\%$ in one
+iteration once the displacement update has converged, with
+\code{stalled interface jump action: abort}) ended the run at the first
+stop. It also ended the IE run with the implicit Dirichlet side at
+$7.7$\,ms ($2.7\times 10^{-11}$). The Aitken residual is formed on the
+whole velocity field of the Neumann side, not on its interface trace.
+
+\paragraph{The first step and the coupled initial acceleration.} With
+the initial acceleration computed per subdomain and the interface held
+fixed (Sec.~\ref{sec:constrained-norma}, departure~5), the first step
+changed $E_2$ by $0.18$ to $0.9\%$ and $E_1$ by $5\times 10^{-5}$ (II) and
+$5\times 10^{-4}$ (EE), and conservation held only from the first step
+on. In the explicit pair the difference of the two interface
+accelerations then alternates in sign at every step: velocity continuity
+fixes the sum of two consecutive accelerations on each side, so an initial
+difference is never removed, the displacement jump alternates between
+$2\times 10^{-3}$ and $10^{-14}$, and $E_1$ alternates by $10^{-3}$. The
+remedy is change~3: a Schwarz iteration at $t = 0$ in which the Dirichlet
+side imposes the projected partner acceleration, the Neumann side receives
+the d'Alembert reaction, and each side recomputes its acceleration with
+the interface rows included. It converges in $2$ iterations on conforming
+meshes with the same integrator, $30$ for the mixed pairs, and $16$ to
+$24$ on the nonconforming meshes, and inverts no element; the inversion
+recorded for the trust-Schwarz re-solve of the present exchange does not
+occur.
+
+\begin{table}[htbp]
+\centering
+\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{Constrained exchange on the conforming cantilever, completed
+runs. $E(10)$ is the ratio to the value at $t = 0$ at $10$\,ms;
+$\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$; $\delta_1 E_2$ is the same
+from the first step on; jump is the largest displacement jump over the
+last $100$ stops; it.\ is the mean and maximum number of Schwarz
+iterations per stop; wall time in seconds on four threads. ``Dir.\ impl.''
+marks the implicit member as the Dirichlet side; the free side is the
+Dirichlet side otherwise.}
+\label{tab:constrained}
+\begin{tabular}{llccccccrr}
+\toprule
+pair, constraint & $\theta$ & $E_1(10)$ & $E_2(10)$ & $\delta E_1$ &
+  $\delta E_2$ & $\delta_1 E_2$ & jump & it. & wall \\
+\midrule
+\multicolumn{10}{l}{\emph{initial acceleration per subdomain}} \\
+II, displacement & 0.5 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
+  $5.2\mathrm{e}{-3}$ & $2.0\mathrm{e}{-7}$ & $5.5\mathrm{e}{-13}$ & 7.1/8 & 172 \\
+II, displacement & 0.75 & 1.000051 & 0.994823 & $5.1\mathrm{e}{-5}$ &
+  $5.2\mathrm{e}{-3}$ & $2.1\mathrm{e}{-6}$ & $1.0\mathrm{e}{-12}$ & 38.9/43 & 784 \\
+II, displacement & Aitken & 1.000051 & 0.994820 & $5.1\mathrm{e}{-5}$ &
+  $5.2\mathrm{e}{-3}$ & $9.2\mathrm{e}{-7}$ & $9.9\mathrm{e}{-13}$ & 10.4/155 & 269 \\
+II, velocity & 0.5 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
+  $5.2\mathrm{e}{-3}$ & $6.8\mathrm{e}{-11}$ & $1.7\mathrm{e}{-12}$ & 7.0/8 & 206 \\
+II, velocity & 0.75 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
+  $5.2\mathrm{e}{-3}$ & $9.9\mathrm{e}{-12}$ & $2.1\mathrm{e}{-11}$ & 38.7/41 & 714 \\
+EE, velocity & 0.5 & 0.999189 & 1.001776 & $1.0\mathrm{e}{-3}$ &
+  $1.8\mathrm{e}{-3}$ & $4.1\mathrm{e}{-14}$ & $2.0\mathrm{e}{-3}$ & 1.0/1 & 46 \\
+EE, velocity & 0.75 & 0.999189 & 1.001776 & $1.0\mathrm{e}{-3}$ &
+  $1.8\mathrm{e}{-3}$ & $1.3\mathrm{e}{-10}$ & $2.0\mathrm{e}{-3}$ & 34.6/36 & 190 \\
+EE, velocity & Aitken & 0.999189 & 1.001776 & $1.0\mathrm{e}{-3}$ &
+  $1.8\mathrm{e}{-3}$ & $4.1\mathrm{e}{-14}$ & $2.0\mathrm{e}{-3}$ & 1.0/1 & 48 \\
+IE, velocity, Dir.\ impl. & 0.5 & 0.999489 & 0.991040 & $1.4\mathrm{e}{-3}$ &
+  $9.0\mathrm{e}{-3}$ & $2.7\mathrm{e}{-11}$ & $1.7\mathrm{e}{-3}$ & 28.9/32 & 305 \\
+IE, velocity, Dir.\ impl. & 0.75 & 0.999489 & 0.991040 & $1.4\mathrm{e}{-3}$ &
+  $9.0\mathrm{e}{-3}$ & $6.2\mathrm{e}{-11}$ & $1.7\mathrm{e}{-3}$ & 18.0/19 & 236 \\
+IE, velocity, Dir.\ impl. & 1 & 0.999489 & 0.991040 & $1.4\mathrm{e}{-3}$ &
+  $9.0\mathrm{e}{-3}$ & $4.3\mathrm{e}{-13}$ & $1.7\mathrm{e}{-3}$ & 53.1/56 & 574 \\
+EI, velocity, Dir.\ impl. & 0.5 & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
+  $4.1\mathrm{e}{-3}$ & $4.1\mathrm{e}{-10}$ & $1.8\mathrm{e}{-3}$ & 27.1/28 & 430 \\
+EI, velocity, Dir.\ impl. & 0.75 & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
+  $4.1\mathrm{e}{-3}$ & $5.0\mathrm{e}{-11}$ & $1.8\mathrm{e}{-3}$ & 14.2/15 & 225 \\
+EI, velocity, Dir.\ impl. & 1 & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
+  $4.1\mathrm{e}{-3}$ & $1.5\mathrm{e}{-10}$ & $1.8\mathrm{e}{-3}$ & 43.1/46 & 491 \\
+EI, velocity, Dir.\ impl. & Aitken & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
+  $4.1\mathrm{e}{-3}$ & $4.2\mathrm{e}{-11}$ & $1.8\mathrm{e}{-3}$ & 12.7/15 & 167 \\
+\midrule
+\multicolumn{10}{l}{\emph{coupled initial acceleration}} \\
+II, displacement & 0.5 & 1.000000 & 1.000000 & $2.2\mathrm{e}{-11}$ &
+  $5.3\mathrm{e}{-11}$ & $5.3\mathrm{e}{-11}$ & $5.4\mathrm{e}{-13}$ & 7.1/8 & 215 \\
+II, velocity & 0.5 & 1.000000 & 1.000000 & $2.8\mathrm{e}{-11}$ &
+  $7.0\mathrm{e}{-11}$ & $7.0\mathrm{e}{-11}$ & $1.7\mathrm{e}{-12}$ & 7.0/8 & 206 \\
+EE, velocity & 0.5 & 1.000000 & 1.000000 & $1.2\mathrm{e}{-14}$ &
+  $3.6\mathrm{e}{-14}$ & $3.8\mathrm{e}{-14}$ & $7.5\mathrm{e}{-15}$ & 1.0/1 & 46 \\
+IE, velocity, Dir.\ impl. & 0.5 & 0.999638 & 1.000000 & $1.2\mathrm{e}{-3}$ &
+  $6.3\mathrm{e}{-12}$ & $6.4\mathrm{e}{-12}$ & $9.6\mathrm{e}{-4}$ & 29.0/32 & 417 \\
+EI, velocity, Dir.\ impl. & 0.5 & 1.003366 & 1.000000 & $3.7\mathrm{e}{-3}$ &
+  $4.2\mathrm{e}{-10}$ & $4.2\mathrm{e}{-10}$ & $9.3\mathrm{e}{-4}$ & 27.1/28 & 419 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{What Table~\ref{tab:constrained} shows.} With the coupled
+initial acceleration, the energy that the constraint matches is constant
+over $10$\,ms to between $4\times 10^{-14}$ and $4\times 10^{-10}$: $E_2$
+under the velocity constraint for every pair, and both $E_1$ and $E_2$
+for the identical integrators. The residual is set by the tolerance
+$10^{-12}$ accumulated over $10^4$ stops, not by roundoff (undecomposed:
+$10^{-13}$); the explicit pair at $\theta = 0.5$ converges in one
+iteration exactly and reaches $4\times 10^{-14}$. The final energies of
+runs that differ only in $\theta$ agree to between $10^{-12}$ and
+$5\times 10^{-10}$, the same tolerance effect. Under the displacement
+constraint with the per-subdomain initial acceleration $E_2$ drifted by
+$2\times 10^{-7}$ to $2\times 10^{-6}$, because the acceleration
+$(~u - ~u^{\text{pre}})/(\beta \Delta t^2)$ multiplies the displacement
+iteration error by $4/\Delta t^2$; with the coupled initial acceleration
+that drift is $5\times 10^{-11}$. For the mixed pairs $E_1$ is not
+conserved ($0.4\%$), which is the expected behavior of the velocity
+constraint between different integrators. The displacement drift of
+Mahjoubi et al.\ appears in the mixed pairs only: its root mean square over
+the interface is between $7\times 10^{-6}$ and $1.1\times 10^{-5}$\,m in
+every millisecond window of the $10$\,ms ($0.1$ to $0.2\%$ of the initial
+interface displacement $6.3\times 10^{-3}$\,m), and it grows by at most
+$10\%$ from the first to the last window. In these runs and in II under
+the velocity constraint the root mean square velocity jump reaches the
+absolute floor $10^{-15}\,\text{m}/10^{-6}\,\text{s} = 10^{-9}$\,m/s, at
+which the stopping rule also accepts the iterate.
+
+\paragraph{Nonconforming meshes.} The one-sided identity
+$~f_N^T \dot{~u}_N = ~r_D^T \Pi_D \dot{~u}_N = ~r_D^T \dot{~u}_D$ holds
+for any cross matrix $~B$, so the matched energy should be conserved for
+any mesh ratio. Free part $6.35$\,mm, clamped part $12.7$\,mm (ratio
+$1{:}0.5$, nested) and $8.47$\,mm ($1{:}0.75$, not nested), fine side as
+the Dirichlet side, $\theta = 0.5$, coupled initial acceleration:
+\begin{center}
+\footnotesize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llccccccrr}
+\toprule
+ratio & pair, constraint & $E_1(10)$ & $E_2(10)$ & $\delta E_1$ & $\delta E_2$ & jump & it. & wall \\
+\midrule
+$1{:}0.5$ & II, displacement & 1.000000 & 1.000000 &
+  $1.2\mathrm{e}{-10}$ & $4.3\mathrm{e}{-11}$ & $9.8\mathrm{e}{-13}$ & 17.3/19 & 437 \\
+$1{:}0.5$ & II, velocity & 1.000000 & 1.000000 &
+  $1.2\mathrm{e}{-10}$ & $1.8\mathrm{e}{-11}$ & $5.6\mathrm{e}{-12}$ & 17.2/18 & 436 \\
+$1{:}0.5$ & EE, velocity & 1.000000 & 1.000000 &
+  $3.5\mathrm{e}{-11}$ & $6.9\mathrm{e}{-11}$ & $1.7\mathrm{e}{-11}$ & 23.7/26 & 169 \\
+$1{:}0.75$ & II, velocity & 1.000000 & 1.000000 &
+  $1.7\mathrm{e}{-11}$ & $5.2\mathrm{e}{-11}$ & $1.5\mathrm{e}{-12}$ & 13.5/14 & 350 \\
+$1{:}0.75$ & EE, velocity & 1.000000 & 1.000000 &
+  $2.2\mathrm{e}{-11}$ & $6.1\mathrm{e}{-11}$ & $6.0\mathrm{e}{-12}$ & 16.2/17 & 157 \\
+\bottomrule
+\end{tabular}
+\end{center}
+All five runs complete and conserve to the same level as the conforming
+ones. The certificates of $~B$ are at roundoff at $1{:}0.5$ (partition of
+unity of both projectors $10^{-15}$, $\lvert ~B \mathbf{1} - ~W_D
+\mathbf{1} \rvert$ and $\lvert ~B^T \mathbf{1} - ~W_N \mathbf{1} \rvert$
+$10^{-16}$ relative). At $1{:}0.75$ the projector onto the coarse side
+reproduces constants only to $1.2\times 10^{-2}$ and $~B^T \mathbf{1}$
+differs from $~W_N \mathbf{1}$ by $3.1\times 10^{-3}$ relative, the
+quadrature error of a coarse basis function that kinks inside a fine
+facet; the energy is still conserved to $6\times 10^{-11}$, because with
+the fine side as the Dirichlet side only $\Pi_D$, whose certificate is
+$7\times 10^{-16}$, and its transpose enter the exchange. At this ratio
+the paired impedance coupling inverted an element at $2.6$ to $5$\,ms
+(Sec.~\ref{sec:beam-nonoverlap}); the constrained exchange completes
+$10$\,ms.
 
 \section{Conclusions}
 \label{sec:conclusion}
@@ -1570,7 +1832,25 @@ should be retired for dynamics.
 \item With explicit subdomains on both sides the plain
   Dirichlet--Neumann exchange conserved on both benchmarks (within $1\%$
   on the beam, $3\%$ on the cylinders), while with implicit subdomains it
-  is the fastest coupling to fail.
+  is the fastest coupling to fail. Its interface force misses the
+  interface inertia: the relative force residual against the d'Alembert
+  reaction has the median $0.83$ (explicit) and $1.47$ (implicit)
+  (Sec.~\ref{sec:constrained-results}).
+\item The constrained Dirichlet--Neumann exchange (d'Alembert reaction,
+  transfers from one cross matrix, one imposed quantity with the other two
+  from the receiver's Newmark relations, stopping on the constraint and the
+  force residual, coupled initial acceleration) conserves the matched
+  energy on the beam over $10$\,ms to between $4\times 10^{-14}$ and
+  $4\times 10^{-10}$ at a tolerance of $10^{-12}$, for II, IE, EI, and EE,
+  on conforming meshes and at the ratios $1{:}0.5$ and $1{:}0.75$; at
+  $1{:}0.75$, where the paired impedance coupling inverted elements, it
+  completes (Sec.~\ref{sec:constrained-results}).
+\item The Dirichlet role decides convergence: with the explicit member as
+  the Dirichlet side the gain of the iteration has eigenvalues down to
+  $-13.3$ and every relaxation factor from $0.5$ to $1$ diverges; with the
+  implicit member they lie in $[-0.61, -0.075]$. For identical integrators
+  on conforming meshes the eigenvalues are near $-1$: $\theta = 0.5$ is
+  optimal and $\theta = 1$ does not converge.
 \end{enumerate}
 
 \subsection{Recommendations}
@@ -1597,10 +1877,13 @@ should be retired for dynamics.
   nonconforming meshes its effect on the converged solution is
   unmeasured for the paired coupling, and the runs in this note use
   $\alpha = 0$ or $2\times 10^{9}$\,N/m$^3$.
-\item \textbf{Path to conservation}: reformulate the nonoverlap path as
-  the constrained problem of Sec.~\ref{sec:constrained}, in the order
-  given there, and run its reference experiments before any further
-  parameter study.
+\item \textbf{Path to conservation}: at equal time steps use the
+  constrained Dirichlet--Neumann exchange (\code{constrained: true}) with
+  the implicit member, or the finer side, as the Dirichlet side and a
+  fixed relaxation factor chosen from the gain \eqref{eq:dn-gain} ($0.5$
+  for identical integrators); the remaining changes of
+  Sec.~\ref{sec:constrained-plan} (direct interface solve, different time
+  steps) come next.
 \item \textbf{Diagnostics}: use the blended energy output with the
   staggered metric for explicit members, and the channel-resolved
   interface-work instrumentation as the acceptance metric for any change
@@ -1623,9 +1906,15 @@ should be retired for dynamics.
   the displacement criterion does not measure; an $\alpha$ sweep of the
   paired coupling on nonconforming meshes has not been run.
 \item Why the Dirichlet--Neumann exchange is stable between explicit
-  subdomains and unstable between implicit ones; the departures of
-  Sec.~\ref{sec:constrained-norma} are the candidates, and the first
-  reference experiment of Sec.~\ref{sec:constrained-plan} decides.
+  subdomains and unstable between implicit ones. Answered by the first
+  reference experiment: with the departures of
+  Sec.~\ref{sec:constrained-norma} removed, the implicit pair conserves
+  $E_1$ and $E_2$ to $7\times 10^{-11}$ over $10$\,ms, where the present
+  exchange inverts an element at $0.46$\,ms; the present exchange misses
+  an interface force of the size of the reaction itself (median relative
+  residual $1.47$ implicit, $0.83$ explicit). Which departure alone
+  accounts for the difference between the two integrators was not
+  isolated.
 \item The non-nested mesh-ratio failure window of the paired transfer at
   long horizons.
 \item Exact subcycled interface-work cancellation through a direct
