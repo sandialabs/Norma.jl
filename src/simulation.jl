@@ -1337,6 +1337,7 @@ function schwarz(sim::MultiDomainSimulation)
     # the Schwarz iteration cap without improving the answer, so a stalled jump is
     # accepted with a warning instead.
     prev_jump_rel = -1.0
+    prev_constrained_jump = -1.0
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
@@ -1345,6 +1346,8 @@ function schwarz(sim::MultiDomainSimulation)
         set_initial_subcycle_time(sim)
         subcycle(sim)
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
+        constrained_converged, prev_constrained_jump =
+            apply_constrained_dn_criterion!(sim, prev_constrained_jump)
         if sim.controller.converged && sim.controller.relaxation_frozen
             # A relaxation factor of essentially zero left an interface iterate
             # unchanged, so every subdomain re-solved against the data it
@@ -1425,7 +1428,8 @@ function schwarz(sim::MultiDomainSimulation)
             # impedance interfaces must also satisfy the jump criterion here, since this
             # path bypasses controller.converged entirely.
             if ΔU ≤ sim.controller.absolute_tolerance &&
-                paired_impedance_jump(sim) ≤ sim.controller.relative_tolerance
+                paired_impedance_jump(sim) ≤ sim.controller.relative_tolerance &&
+                constrained_converged
                 norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
                 sim.controller.schwarz_iters[sim.controller.stop] = 0
                 break
@@ -1788,6 +1792,96 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     return controller.absolute_error, controller.relative_error
 end
 
+# Interface residuals of the Dirichlet-Neumann pairs (dn_interface_residuals in
+# schwarz.jl), logged at every Schwarz iteration. For constrained pairs they are
+# also the stopping rule: such a pair has converged when the one-sided jump of
+# its constrained quantity and the interface force residual are both at or
+# below the relative tolerance (or the root mean square jump at or below the
+# absolute tolerance, divided by the time step for the velocity). When every
+# Schwarz coupling of the simulation is a constrained DN pair this replaces the
+# displacement criterion; otherwise both must hold. The larger of the constrained
+# jump and the force residual, maximized over the constrained pairs, is stalled
+# when it stays above the tolerance while the displacement update has converged
+# and decreased by less than 5% since the previous such iteration; a stall is
+# handled as `stalled interface jump action` directs. Returns whether every
+# constrained pair has converged, and the residual to compare against at the
+# next iteration.
+function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, prev_jump::Float64)
+    controller = sim.controller
+    residuals = dn_interface_residuals(sim)
+    isempty(residuals) && return true, prev_jump
+    rtol = controller.relative_tolerance
+    atol = controller.absolute_tolerance
+    has_constrained = false
+    all_constrained_converged = true
+    max_measure = 0.0
+    for (bc, r) in residuals
+        norma_logf(
+            0,
+            :schwarz,
+            "DN interface %s/%s: velocity jump %.2e, displacement jump %.2e, force residual %.2e",
+            r.dirichlet_name,
+            r.neumann_name,
+            r.velocity_jump,
+            r.displacement_jump,
+            r.force_residual,
+        )
+        bc.constrained || continue
+        has_constrained = true
+        check_constrained_time_steps(bc)
+        if bc.constraint == :displacement
+            jump, jump_rms, jump_floor = r.displacement_jump, r.displacement_jump_rms, atol
+        else
+            jump, jump_rms, jump_floor = r.velocity_jump, r.velocity_jump_rms, atol / controller.time_step
+        end
+        jump_ok = jump ≤ rtol || jump_rms ≤ jump_floor
+        force_ok = !isnan(r.force_residual) && r.force_residual ≤ rtol
+        all_constrained_converged &= jump_ok && force_ok
+        max_measure = max(max_measure, jump, isnan(r.force_residual) ? Inf : r.force_residual)
+    end
+    has_constrained || return true, prev_jump
+    displacement_converged = controller.converged
+    if all_constrained_converged
+        controller.converged = only_constrained_couplings(sim) ? true : displacement_converged
+        return true, prev_jump
+    end
+    controller.converged = false
+    displacement_converged || return false, prev_jump
+    if prev_jump ≥ 0.0 && max_measure > 0.95 * prev_jump
+        stall_action = get(sim.params, "stalled interface jump action", "warn")
+        if stall_action == "abort"
+            norma_abort(
+                "Constrained DN interface residual $(max_measure) stalled above tolerance $(rtol) " *
+                "while the displacement update has converged, and `stalled interface jump action: abort` is set.",
+            )
+        elseif stall_action != "warn"
+            norma_abort(
+                "Unknown `stalled interface jump action: $(stall_action)`. " *
+                "Valid values are `warn` (default) and `abort`.",
+            )
+        end
+        norma_logf(
+            0, :schwarz, "Constrained DN interface residual %.2e stalled above tolerance %.2e; accepting.",
+            max_measure, rtol,
+        )
+        controller.converged = true
+        return true, max_measure
+    end
+    return false, max_measure
+end
+
+# True when every Schwarz coupling condition of the simulation belongs to a
+# constrained DN pair.
+function only_constrained_couplings(sim::MultiDomainSimulation)
+    for subsim in sim.subsims
+        for bc in subsim.model.boundary_conditions
+            bc isa SolidMechanicsSchwarzBoundaryCondition || continue
+            is_constrained_dn(bc) || return false
+        end
+    end
+    return true
+end
+
 # A step that leaves the Schwarz loop without meeting either tolerance has
 # exhausted `maximum iterations`, and until this was reported the run said
 # nothing: the log ended in "Simulation Complete" and the simulation was not
@@ -1797,6 +1891,14 @@ end
 function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::Int64)
     controller = sim.controller
     action = get(sim.params, "unconverged step action", "warn")
+    if any(is_constrained_dn(bc) for subsim in sim.subsims for bc in subsim.model.boundary_conditions)
+        norma_log(
+            0,
+            :warning,
+            "Constrained DN pairs stop on the interface jump and force residual logged above; " *
+            "the displacement update below is reported for reference.",
+        )
+    end
     if action == "abort"
         norma_abortf(
             "Schwarz did not converge at stop %d in %d iterations: |ΔU| = %.2e against " *
@@ -1916,6 +2018,8 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                     fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
                 )
                 bc.dirichlet_projector = (W \ I) * L
+            elseif is_constrained_dn(bc)
+                compute_constrained_dn_projectors!(subsim.model, bc)
             elseif is_swappable_dn_schwarz(bc)
                 cache = RectangularProjectionCache()
                 compute_dirichlet_projector(subsim.model, bc; cache=cache)

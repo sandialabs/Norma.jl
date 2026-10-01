@@ -271,6 +271,22 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     square_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
+    # Constrained exchange (input key `constrained`): the Dirichlet side imposes
+    # one interface quantity, the projected velocity or displacement of the
+    # partner (`constraint`), and derives the other two kinematic fields from
+    # its own Newmark relations; the Neumann side receives the d'Alembert
+    # reaction of the Dirichlet side through the transpose of the Dirichlet
+    # projector, and both transfer operators are built from one cross mass
+    # matrix. The fixed point of the Schwarz iteration is then the constrained
+    # problem of Gravouil and Combescure (2001). `constraint` is :velocity or
+    # :displacement once the pair is resolved, :unset while neither side of the
+    # pair has named it.
+    constrained::Bool
+    constraint::Symbol
+    # Interface force, in interleaved components of the interface nodes, that
+    # this side received at its last application as the Neumann side. Read by
+    # the interface force residual of the Schwarz loop.
+    transferred_force::Vector{Float64}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle

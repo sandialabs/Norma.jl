@@ -247,6 +247,8 @@ const BC_ENTRY_KEYS = Dict(
         "search tolerance",
         "default BC type",
         "swap BC types",
+        "constrained",
+        "constraint",
     ]),
     "Schwarz impedance nonoverlap" => Set([
         "source",

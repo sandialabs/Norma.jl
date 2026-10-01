@@ -444,6 +444,8 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     is_dirichlet::Bool,
     swap_bcs::Bool,
+    constrained::Bool=false,
+    constraint::Symbol=:unset,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -465,6 +467,9 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         square_projector,
         is_dirichlet,
         swap_bcs,
+        constrained,
+        constraint,
+        Float64[],
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,
@@ -544,6 +549,34 @@ function SMCouplingSchwarzBC(
             norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
         end
         swap_bcs = get(bc_params, "swap BC types", false)
+        constrained = Bool(get(bc_params, "constrained", false))
+        constraint = if haskey(bc_params, "constraint")
+            constraint_name = String(bc_params["constraint"])
+            if constraint_name == "velocity"
+                :velocity
+            elseif constraint_name == "displacement"
+                :displacement
+            else
+                norma_abort(
+                    "Invalid `constraint: $(constraint_name)` on side set \"$(side_set_name)\". " *
+                    "Valid values are `velocity` and `displacement`.",
+                )
+            end
+        else
+            :unset
+        end
+        if constraint != :unset && !constrained
+            norma_abort(
+                "`constraint` on side set \"$(side_set_name)\" requires `constrained: true`: the " *
+                "constraint selects the imposed quantity of the constrained exchange.",
+            )
+        end
+        if constrained && swap_bcs
+            norma_abort(
+                "`constrained: true` on side set \"$(side_set_name)\" does not support " *
+                "`swap BC types: true`: the constrained exchange keeps the Dirichlet side fixed.",
+            )
+        end
         SolidMechanicsNonOverlapSchwarzBoundaryCondition(
             input_mesh,
             side_set_name,
@@ -555,6 +588,8 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             is_dirichlet,
             swap_bcs,
+            constrained,
+            constraint,
         )
     elseif bc_type == "Schwarz RR nonoverlap" ||
            bc_type == "Schwarz impedance nonoverlap" ||

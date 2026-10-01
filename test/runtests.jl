@@ -180,6 +180,8 @@ const indexed_test_files = [
     (132, "smoothing-metric-nodal.jl"),
     (133, "adaptivity-length.jl"),
     (134, "adaptivity-quality.jl"),
+    (135, "energy-differentiated-system.jl"),
+    (136, "schwarz-nonoverlap-constrained-dn.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

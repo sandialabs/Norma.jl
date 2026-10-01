@@ -618,6 +618,133 @@ function compute_paired_impedance_schwarz_projectors!(
     return nothing
 end
 
+# Transfer operators of a constrained Dirichlet-Neumann pair, built from one
+# cross mass matrix B_mn = ∫_Γ φ¹_m φ²_n dS as for the adjoint-paired impedance
+# condition: Π₁ = W₁⁻¹ B, Π₂ = W₂⁻¹ Bᵀ, and each side's force transfer is the
+# transpose of the partner's kinematic transfer, N₁ = Π₂ᵀ and N₂ = Π₁ᵀ. When
+# side 1 is the Dirichlet side, the Neumann side receives N₂ = Π_Dᵀ, so the
+# work of the transferred reaction on the Neumann velocity equals the work of
+# the reaction on the projected velocity imposed on the Dirichlet side. W_k is
+# stored as the square projector of side k and is the same matrix in the
+# constraint, in the projector, and in the force transfer. B is integrated over
+# the facets of the side with more interface nodes.
+function compute_constrained_dn_projectors!(
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition
+)
+    # The pair is processed once; the partner's pass finds its operators set.
+    if size(dst_bc.dirichlet_projector, 1) > 0
+        return nothing
+    end
+    dst_sim = self_subsim_of(dst_bc)
+    src_sim = coupled_subsim_of(dst_bc)
+    if !(dst_sim.model isa SolidMechanics) || !(src_sim.model isa SolidMechanics)
+        norma_abort("`constrained: true` requires full order (solid mechanics) models on both sides of the pair.")
+    end
+    src_model = src_sim.model
+    src_bc = src_model.boundary_conditions[dst_bc.coupled_bc_index]
+    if !(src_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition) || !src_bc.constrained
+        norma_abort(
+            "`constrained: true` must be set on BOTH sides of a Schwarz DN nonoverlap pair " *
+            "(missing on the side coupled to '$(dst_bc.name)').",
+        )
+    end
+    constraint = resolve_constraint(dst_bc, src_bc)
+    dst_bc.constraint = src_bc.constraint = constraint
+    check_constrained_integrators(dst_sim, src_sim, constraint)
+    W1 = get_square_projection_matrix(dst_model, dst_bc)
+    W2 = get_square_projection_matrix(src_model, src_bc)
+    n1 = size(W1, 1)
+    n2 = size(W2, 1)
+    B = if n1 >= n2
+        get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    else
+        Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
+    end
+    P1 = W1 \ B
+    P2 = W2 \ Matrix(transpose(B))
+    dst_bc.square_projector = W1
+    dst_bc.dirichlet_projector = P1
+    dst_bc.neumann_projector = Matrix(transpose(P2))
+    src_bc.square_projector = W2
+    src_bc.dirichlet_projector = P2
+    src_bc.neumann_projector = Matrix(transpose(P1))
+    pu_error = max(maximum(abs.(P1 * ones(n2) .- 1.0)), maximum(abs.(P2 * ones(n1) .- 1.0)))
+    norma_logf(
+        0,
+        :info,
+        "Constrained DN interface '%s'/'%s': %s constraint, partition-of-unity error %.2e.",
+        dst_bc.name,
+        src_bc.name,
+        String(constraint),
+        pu_error,
+    )
+    return nothing
+end
+
+# The constraint of a pair: the value named on either side, which must agree
+# when both name it; velocity when neither does.
+function resolve_constraint(
+    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, partner::SolidMechanicsNonOverlapSchwarzBoundaryCondition
+)
+    if bc.constraint != :unset && partner.constraint != :unset && bc.constraint != partner.constraint
+        norma_abort(
+            "The sides '$(bc.name)' and '$(partner.name)' of a constrained DN pair name different " *
+            "constraints ($(bc.constraint) and $(partner.constraint)); a pair has one constraint.",
+        )
+    end
+    bc.constraint != :unset && return bc.constraint
+    partner.constraint != :unset && return partner.constraint
+    return :velocity
+end
+
+# The displacement constraint derives the velocity and the acceleration of the
+# Dirichlet side from the Newmark relations a = (u - u_pre)/(βΔt²), which
+# requires β > 0, and it reproduces the coupled problem only when both sides
+# advance with the same relations and step. The phase implemented here is the
+# exchange at equal time steps for either constraint.
+function check_constrained_integrators(
+    sim_1::SingleDomainSimulation, sim_2::SingleDomainSimulation, constraint::Symbol
+)
+    for sim_k in (sim_1, sim_2)
+        integrator = sim_k.integrator
+        if !(integrator isa Newmark || integrator isa CentralDifference)
+            norma_abort(
+                "`constrained: true` requires Newmark or central difference integrators; " *
+                "subdomain '$(sim_k.name)' uses $(typeof(integrator)).",
+            )
+        end
+        if integrator isa Newmark && integrator.hht_alpha > 0.0
+            norma_abort("`constrained: true` does not support HHT-α (subdomain '$(sim_k.name)').")
+        end
+    end
+    Δt_1 = sim_1.integrator.time_step
+    Δt_2 = sim_2.integrator.time_step
+    if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
+        norma_abort(
+            "`constrained: true` is implemented for equal time steps; subdomains " *
+            "'$(sim_1.name)' and '$(sim_2.name)' use $(Δt_1) and $(Δt_2).",
+        )
+    end
+    if constraint == :displacement
+        i_1 = sim_1.integrator
+        i_2 = sim_2.integrator
+        same_newmark =
+            i_1 isa Newmark && i_2 isa Newmark && i_1.β == i_2.β && i_1.γ == i_2.γ && i_1.β > 0.0
+        if !same_newmark
+            norma_abort(
+                "`constraint: displacement` requires both members of the pair to be Newmark " *
+                "integrators with the same β > 0, γ, and time step; subdomains '$(sim_1.name)' " *
+                "and '$(sim_2.name)' do not satisfy this. Use `constraint: velocity`.",
+            )
+        end
+    end
+    return nothing
+end
+
+# True for the Dirichlet-Neumann condition with the constrained exchange.
+is_constrained_dn(bc::SolidMechanicsBoundaryCondition) =
+    bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.constrained
+
 # ---------------------------------------------------------------------------
 # Impedance overlap Schwarz: absorbing condition on overlap boundaries
 # ---------------------------------------------------------------------------
@@ -1494,6 +1621,132 @@ function paired_impedance_jump(sim::MultiDomainSimulation)
     return max_rel
 end
 
+# --- Dirichlet-Neumann interface residuals ---------------------------------
+#
+# For a DN pair with Dirichlet side D and Neumann side N, Π_D the Dirichlet
+# projector (interface values of N to interface values of D) and W_D, W_N the
+# square projection (boundary mass) matrices of the two interfaces:
+#
+#   jump of q:       ‖q_D - Π_D q_N‖_{W_D} / ‖q_D‖_{W_D},  q = velocity, displacement,
+#   force residual:  ‖Π_Dᵀ r_D - f_N‖_{W_N⁻¹} / ‖Π_Dᵀ r_D‖_{W_N⁻¹},
+#
+# with ‖x‖²_W = Σ_c x_cᵀ W x_c over the three Cartesian components, r_D the
+# interface reaction of D, the restriction to its interface rows of
+# -(M a + f_int - f_body - f_boundary) evaluated on its current state, and f_N
+# the interface force applied on N in the same Schwarz iteration. The jump is
+# one sided: it is measured on the Dirichlet side. Its root mean square value
+# over the interface, ‖q_D - Π_D q_N‖_{W_D} / √|Γ_D|, is also returned, so that
+# a jump of a quantity that is itself near zero can be compared with the
+# absolute tolerance.
+struct DNInterfaceResiduals
+    dirichlet_name::String
+    neumann_name::String
+    velocity_jump::Float64
+    displacement_jump::Float64
+    velocity_jump_rms::Float64
+    displacement_jump_rms::Float64
+    force_residual::Float64
+end
+
+function weighted_norm(W::AbstractMatrix{Float64}, x::Matrix{Float64})
+    total = 0.0
+    for comp in axes(x, 1)
+        xc = x[comp, :]
+        total += dot(xc, W * xc)
+    end
+    return sqrt(max(total, 0.0))
+end
+
+function inverse_weighted_norm(W::AbstractMatrix{Float64}, x::Matrix{Float64})
+    total = 0.0
+    for comp in axes(x, 1)
+        xc = x[comp, :]
+        total += dot(xc, W \ xc)
+    end
+    return sqrt(max(total, 0.0))
+end
+
+function dn_one_sided_jump(
+    W::AbstractMatrix{Float64}, P::AbstractMatrix{Float64}, q_D::Matrix{Float64}, q_N::Matrix{Float64}
+)
+    transferred = similar(q_D)
+    for comp in 1:3
+        transferred[comp, :] = P * q_N[comp, :]
+    end
+    jump = weighted_norm(W, q_D - transferred)
+    scale = weighted_norm(W, q_D)
+    area = sum(W)
+    rms = area > 0.0 ? jump / sqrt(area) : jump
+    relative = scale > 0.0 ? jump / scale : (jump > 0.0 ? Inf : 0.0)
+    return relative, rms
+end
+
+# Residuals of the DN pair whose Dirichlet side is `bc` on `model`.
+function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    n_sim = coupled_subsim_of(bc)
+    n_model = get_fom_model(n_sim)
+    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    W_D = bc.square_projector
+    P = bc.dirichlet_projector
+    d_map = bc.global_from_local_map
+    n_map = n_bc.global_from_local_map
+    jv, jv_rms = dn_one_sided_jump(W_D, P, model.velocity[:, d_map], n_model.velocity[:, n_map])
+    ju, ju_rms = dn_one_sided_jump(W_D, P, model.displacement[:, d_map], n_model.displacement[:, n_map])
+    force_residual = NaN
+    f_N = n_bc.transferred_force
+    W_N = n_bc.square_projector
+    if !isempty(f_N) && size(W_N, 1) == length(n_map) && length(model.internal_force) == length(model.displacement)
+        r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
+        r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
+        transferred = zeros(3, length(n_map))
+        for comp in 1:3
+            transferred[comp, :] = transpose(P) * r_D[comp, :]
+        end
+        applied = reshape(f_N, 3, :)
+        scale = inverse_weighted_norm(W_N, transferred)
+        difference = inverse_weighted_norm(W_N, transferred - applied)
+        force_residual = scale > 0.0 ? difference / scale : difference
+    end
+    return DNInterfaceResiduals(
+        self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual
+    )
+end
+
+# Residuals of every DN pair of a multidomain simulation, one entry per pair,
+# in the order of the subdomains that hold the Dirichlet side.
+function dn_interface_residuals(sim::MultiDomainSimulation)
+    residuals = Tuple{SolidMechanicsNonOverlapSchwarzBoundaryCondition,DNInterfaceResiduals}[]
+    for subsim in sim.subsims
+        model = get_fom_model(subsim)
+        model isa SolidMechanics || continue
+        for bc in model.boundary_conditions
+            bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition || continue
+            bc.is_dirichlet || continue
+            size(bc.dirichlet_projector, 1) > 0 || continue
+            size(bc.square_projector, 1) > 0 || continue
+            push!(residuals, (bc, dn_interface_residuals(model, bc)))
+        end
+    end
+    return residuals
+end
+
+# A constrained pair at equal time steps requires both members to have taken
+# the same step; the explicit stable-step cap can shorten one of them.
+function check_constrained_time_steps(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    d_sim = self_subsim_of(bc)
+    n_sim = coupled_subsim_of(bc)
+    Δt_D = d_sim.integrator.time_step
+    Δt_N = n_sim.integrator.time_step
+    if !isapprox(Δt_D, Δt_N; rtol=1.0e-12)
+        norma_abort(
+            "`constrained: true` is implemented for equal time steps, but subdomains " *
+            "'$(d_sim.name)' and '$(n_sim.name)' took steps $(Δt_D) and $(Δt_N) " *
+            "(the explicit stable step can shorten the requested step; raise CFL or lower the step).",
+        )
+    end
+    return nothing
+end
+
 # --- Interface work instrumentation (diagnosis; enabled via env var) --------
 #
 # When NORMA_IMPEDANCE_WORK_CSV is set, a row is appended per impedance-overlap
@@ -1771,6 +2024,10 @@ function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSc
     # CURRENT surfaces, see contact_weak_dbc.)
     _, nodal_disp, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
+    if bc.constrained && constrained_step_in_progress(bc)
+        impose_constrained_kinematics!(model, bc, nodal_disp, nodal_velo)
+        return nothing
+    end
     for (i_local, i_global) in enumerate(global_from_local_map)
         @inbounds model.displacement[:, i_global] = nodal_disp[:, i_local]
         @inbounds model.velocity[:, i_global] = nodal_velo[:, i_local]
@@ -1780,8 +2037,69 @@ function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSc
     end
 end
 
+# The constrained imposition applies within a time step, where the receiver's
+# fields at the interface hold its state at the start of the step. At
+# initialization, before any step, the partner's projected fields are imposed
+# as in the unconstrained exchange.
+function constrained_step_in_progress(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    integrator = self_subsim_of(bc).integrator
+    return isfinite(integrator.prev_time) && integrator.time > integrator.prev_time
+end
+
+# Newmark parameters (β, γ) of a receiver; central difference is β = 0.
+newmark_parameters(integrator::Newmark) = (integrator.β, integrator.γ)
+newmark_parameters(integrator::CentralDifference) = (0.0, integrator.γ)
+
+# Constrained Dirichlet side: impose the projected constrained quantity of the
+# partner and derive the other two fields from the receiver's own Newmark
+# relations over the current step. apply_bcs runs before the predictor, so the
+# interface fields of the receiver still hold its state (u_n, v_n, a_n) at the
+# start of the step, from which
+#   u_pre = u_n + Δt v_n + (1/2 - β) Δt² a_n,   v_pre = v_n + (1 - γ) Δt a_n.
+# Velocity constraint: v = Π v_N, a = (v - v_pre)/(γ Δt), u = u_pre + β Δt² a
+# (central difference: β = 0, so u is the predictor value).
+# Displacement constraint: u = Π u_N, a = (u - u_pre)/(β Δt²), v = v_pre + γ Δt a.
+# The imposed values are those of the end of the step; the Newmark predictor
+# leaves fixed degrees of freedom unchanged and the corrector updates only the
+# free ones, so the receiver ends the step with these values.
+function impose_constrained_kinematics!(
+    model::SolidMechanics,
+    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition,
+    nodal_disp::Matrix{Float64},
+    nodal_velo::Matrix{Float64},
+)
+    integrator = self_subsim_of(bc).integrator
+    Δt = integrator.time_step
+    β, γ = newmark_parameters(integrator)
+    for (i_local, i_global) in enumerate(bc.global_from_local_map)
+        for comp in 1:3
+            u_n = model.displacement[comp, i_global]
+            v_n = model.velocity[comp, i_global]
+            a_n = model.acceleration[comp, i_global]
+            u_pre = u_n + Δt * v_n + (0.5 - β) * Δt * Δt * a_n
+            v_pre = v_n + (1.0 - γ) * Δt * a_n
+            if bc.constraint == :displacement
+                u = nodal_disp[comp, i_local]
+                a = (u - u_pre) / (β * Δt * Δt)
+                v = v_pre + γ * Δt * a
+            else
+                v = nodal_velo[comp, i_local]
+                a = (v - v_pre) / (γ * Δt)
+                u = u_pre + β * Δt * Δt * a
+            end
+            model.displacement[comp, i_global] = u
+            model.velocity[comp, i_global] = v
+            model.acceleration[comp, i_global] = a
+        end
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+        model.free_dofs[global_range] .= false
+    end
+    return nothing
+end
+
 function coupling_weak_nbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     nodal_force = get_dst_force(bc)
+    bc.transferred_force = nodal_force
     global_from_local_map = bc.global_from_local_map
     for (i_local, i_global) in enumerate(global_from_local_map)
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
@@ -1917,7 +2235,29 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         λ_a_stored = acce_slots[slot_k]
         λ_a_prev = isempty(λ_a_stored) ? interp_acce : λ_a_stored
 
-        if controller.relaxation_method === :aitken_secant
+        if is_constrained_dn(bc)
+            # Constrained exchange: relax the constrained datum only. The other
+            # two fields are derived from it by the receiver's Newmark relations
+            # in coupling_weak_dbc, after relaxation, so they are passed through
+            # unrelaxed here and never read.
+            relax_velocity = bc.constraint == :velocity
+            interp_c = relax_velocity ? interp_velo : interp_disp
+            c_slots = relax_velocity ? velo_slots : disp_slots
+            λ_c_prev = relax_velocity ? λ_v_prev : λ_u_prev
+            θ = if controller.relaxation_method === :aitken_secant
+                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, interp_c, λ_c_prev)
+            else
+                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, interp_c, λ_c_prev)
+            end
+            frozen_relaxation_update!(controller, θ)
+            c_slots[slot_k] = θ * interp_c + (1 - θ) * λ_c_prev
+            if relax_velocity
+                disp_slots[slot_k] = interp_disp
+            else
+                velo_slots[slot_k] = interp_velo
+            end
+            acce_slots[slot_k] = interp_acce
+        elseif controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
             θ = relaxation_aitken_secant_theta!(controller, key, slot_k, iter, interp_disp, λ_u_prev)
@@ -2142,7 +2482,14 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     # point and the transmission channels vanish at Schwarz convergence.
     # (The overlap variant achieves the same through its consistent-traction
     # element patch; here the source's own assembled operators suffice.)
-    if dst_bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && dst_bc.adjoint_pairing
+    if is_constrained_dn(dst_bc)
+        # Constrained DN exchange: the Neumann side receives the d'Alembert
+        # reaction of the Dirichlet side, -(M a + f_int - f_body - f_boundary)
+        # on its interface rows, so that the two interface rows add to the row
+        # of the undecomposed problem. f_boundary is the Dirichlet side's own
+        # applied surface load on the interface nodes, if any.
+        src_global_force = src_global_force + dalembert_inertia_minus_loads(get_fom_model(src_sim))
+    elseif dst_bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && dst_bc.adjoint_pairing
         src_fom = get_fom_model(src_sim)
         a = vec(src_fom.acceleration)
         inertial_force = if size(src_fom.mass, 1) == length(a)
@@ -2167,6 +2514,30 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     dst_force[2:3:end] = neumann_projector * src_force[2:3:end]
     dst_force[3:3:end] = neumann_projector * src_force[3:3:end]
     return dst_force
+end
+
+# M a - f_body - f_boundary of a subdomain, with the mass matrix its integrator
+# uses: the consistent mass for Newmark, the lumped mass for central difference.
+# Added to the internal force it gives the d'Alembert residual whose interface
+# rows are the reaction of the coupling constraint.
+function dalembert_inertia_minus_loads(model::SolidMechanics)
+    a = vec(model.acceleration)
+    inertial_force = if size(model.mass, 1) == length(a)
+        model.mass * a
+    elseif length(model.lumped_mass) == length(a)
+        model.lumped_mass .* a
+    else
+        # Before the first evaluation no mass is assembled and the acceleration
+        # is still zero, so the inertial term vanishes.
+        zeros(length(a))
+    end
+    if length(model.body_force) == length(a)
+        inertial_force = inertial_force - model.body_force
+    end
+    if length(model.boundary_force) == length(a)
+        inertial_force = inertial_force - model.boundary_force
+    end
+    return inertial_force
 end
 
 function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)

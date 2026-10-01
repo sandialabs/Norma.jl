@@ -49,6 +49,7 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `absolute tolerance` | yes | — | absolute interface convergence tolerance |
 | `relative tolerance` | yes | — | relative interface convergence tolerance |
 | `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
+| `stalled interface jump action` | no | `warn` | what to do when the interface jump of a paired impedance condition or the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
 
 A step that reaches `maximum iterations` without converging reports the errors
 it stopped at against both tolerances. Under the default it says so and the run
@@ -107,6 +108,31 @@ computed once, with grid searches over the partner elements and the Schwarz
 side sets, so enabling the energy output costs a few seconds of setup and a
 small fraction of a step per stop.
 
+The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
+
+| Column | Meaning |
+|---|---|
+| `time` | time of the stop |
+| `stored_energy`, `kinetic_energy`, `total_energy` | blended physical energy E1: strain energy, kinetic energy (the staggered form ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for central difference subdomains), and their sum |
+| `e2_total` | E2, the sum over subdomains of the energy of the system differentiated in time |
+| `e2_<subdomain>` | E2 of one subdomain, one column per subdomain in the order of `domains` |
+| `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
+| `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`) |
+
+E2 is the Newmark discrete energy of the differentiated equation of motion
+M ȧ + K v = ḟ (Prakash and Hjelmstad 2004, Eqs. (56)–(58) and (71)),
+E2 = ½ aᵀ A a + ½ vᵀ K v with A = M + (Δt²/2)(2β − γ) K, evaluated as
+½ aᵀ M a + (Δt²/2)(2β − γ) SE(a) + SE(v), where SE(x) is the strain energy
+with the nodal field x in place of the displacement. This is ½ aᵀ M a + SE(v)
+for Newmark with β = 1/4, γ = 1/2 (consistent mass) and
+½ aᵀ M_L a − (Δt²/4) SE(a) + SE(v) for central difference (lumped mass). The
+identity SE(x) = ½ xᵀ K x holds for the small-strain `linear elastic`
+material, so E2 is written only for subdomains whose materials are all linear
+elastic and whose integrator is Newmark without HHT-α or central difference,
+and is `NaN` otherwise. On a linear problem without loads, continuity of the
+interface velocity conserves E2 and continuity of the interface displacement
+with β = 1/4, γ = 1/2 conserves E1; an undecomposed run conserves both.
+
 ## Schwarz coupling boundary conditions (subdomain files)
 
 Inside each subdomain's `boundary conditions` block, coupling to a partner
@@ -157,6 +183,45 @@ every relaxation parameter; use Aitken relaxation
 | `source side set` | yes | — | partner interface surface |
 | `default BC type` | no | `Dirichlet` | this side's role: `Dirichlet` or `Neumann` (the two sides must be opposite) |
 | `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles between Schwarz iterations |
+| `constrained` | no | `false` | constrained exchange: the Dirichlet side imposes one projected quantity and derives the other two kinematic fields from its own Newmark relations; the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides |
+| `constraint` | no | `velocity` | quantity imposed by the constrained exchange: `velocity` or `displacement`; one value per pair, which may be given on either side or on both (then equal) |
+
+**Interface residuals.** At every Schwarz iteration the log reports, for each
+Dirichlet–Neumann pair with Dirichlet side D and Neumann side N, the one-sided
+jumps ‖q_D − Π_D q_N‖_{W_D} / ‖q_D‖_{W_D} of the velocity and of the
+displacement, with Π_D the Dirichlet projector and W_D the boundary mass
+matrix of the Dirichlet interface, ‖x‖²_W = Σ_c x_cᵀ W x_c over the three
+components, and the force residual ‖Π_Dᵀ r_D − f_N‖_{W_N⁻¹} / ‖Π_Dᵀ r_D‖_{W_N⁻¹},
+with r_D = −(M a + f_int − f_body − f_boundary) on the interface rows of D and
+f_N the interface force applied on N in the same iteration. For the
+unconstrained exchange these values are reported only.
+
+**Constrained exchange.** With `constrained: true` both transfer operators are
+built from one cross mass matrix B, integrated over the facets of the side
+with more interface nodes, Π_D = W_D⁻¹ B, and the Neumann side's force transfer
+is Π_Dᵀ. The Neumann side receives Π_Dᵀ r_D, the d'Alembert reaction of the
+Dirichlet side, so the two interface rows add to the row of the undecomposed
+problem. The Dirichlet side computes from its state (u_n, v_n, a_n) at the
+start of the step u_pre = u_n + Δt v_n + (½ − β) Δt² a_n and
+v_pre = v_n + (1 − γ) Δt a_n (β = 0 for central difference) and imposes, with
+`constraint: velocity`, v = Π_D v_N, a = (v − v_pre)/(γ Δt),
+u = u_pre + β Δt² a, and with `constraint: displacement`, u = Π_D u_N,
+a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
+constrained quantity only. A pair converges when the jump of its constrained
+quantity and the force residual are both at or below `relative tolerance`, or
+when the root mean square jump over the interface is at or below
+`absolute tolerance` (divided by the time step for the velocity); when every
+Schwarz coupling is constrained this replaces the displacement criterion,
+otherwise both must hold. A residual that stays above the tolerance while the
+displacement update has converged and decreased by less than 5% since the
+previous such iteration is handled by `stalled interface jump action`. The
+implementation covers equal time steps on both sides: the run aborts when
+the two subdomains take different steps, with `swap BC types`, with HHT-α,
+with reduced order models, and with `constraint: displacement` unless both
+sides are Newmark with the same β > 0, γ, and time step. The initial
+acceleration is computed per subdomain with the interface degrees of freedom
+held fixed, as for the unconstrained exchange, so the first step carries the
+inconsistency of the initial interface acceleration.
 
 ### `Schwarz impedance nonoverlap`
 
