@@ -250,6 +250,7 @@ const BC_ENTRY_KEYS = Dict(
         "swap BC types",
         "constrained",
         "constraint",
+        "interface solve",
     ]),
     "Schwarz impedance nonoverlap" => Set([
         "source",

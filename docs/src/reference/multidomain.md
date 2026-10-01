@@ -187,6 +187,7 @@ every relaxation parameter; use Aitken relaxation
 | `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles between Schwarz iterations |
 | `constrained` | no | `false` | constrained exchange: the Dirichlet side imposes one projected quantity and derives the other two kinematic fields from its own Newmark relations; the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides |
 | `constraint` | no | `velocity` | quantity imposed by the constrained exchange: `velocity` or `displacement`; one value per pair, which may be given on either side or on both (then equal) |
+| `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a constrained pair of two central difference subdomains at equal time steps under the velocity constraint, set on both sides |
 
 **Interface residuals.** At every Schwarz iteration the log reports, for each
 Dirichlet–Neumann pair with Dirichlet side D and Neumann side N, the one-sided
@@ -237,6 +238,23 @@ run aborts with
 `swap BC types`, with HHT-α, with reduced order models, and with
 `constraint: displacement` unless both sides are Newmark with the same
 β > 0, γ, and time step.
+
+**Direct interface solve.** For a constrained pair of two central difference
+subdomains at equal steps, `interface solve: direct` computes the interface
+force without iteration. With m_D and m_N the lumped masses of the interface
+rows and λ the force on the Dirichlet side (−Π_Dᵀ λ on the Neumann side), the
+velocity constraint at the end of the step gives, per component,
+γ Δt (m_D⁻¹ + Π_D m_N⁻¹ Π_Dᵀ) λ = Π_D v_N,free − v_D,free, where v_free are the
+velocities of both sides advanced without interface force. The matrix is
+symmetric positive definite, of the size of the Dirichlet interface, and
+factored once (dense Cholesky). Each stop advances both sides with free
+interface rows, solves for λ, and corrects the interface accelerations and
+velocities; the internal force is evaluated at the predictor displacement, so
+the solve is exact for nonlinear materials as well. The same matrix gives the
+initial interface force at t = 0 from the acceleration constraint. Every
+Schwarz coupling of the simulation must then be a direct pair, and each stop
+must be one step of each subdomain (the explicit stable step must not shorten
+it). Relaxation and the stopping tolerances do not apply.
 
 The initial acceleration of a constrained pair is found by a Schwarz
 iteration at t = 0: the Dirichlet side imposes the projected partner

@@ -446,6 +446,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     swap_bcs::Bool,
     constrained::Bool=false,
     constraint::Symbol=:unset,
+    direct_solve::Bool=false,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -469,6 +470,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         swap_bcs,
         constrained,
         constraint,
+        direct_solve,
         Float64[],
         Tuple{Float64,Vector{Float64}}[],
         subsim.parent,
@@ -572,6 +574,19 @@ function SMCouplingSchwarzBC(
                 "constraint selects the imposed quantity of the constrained exchange.",
             )
         end
+        interface_solve = String(get(bc_params, "interface solve", "iterative"))
+        if interface_solve ∉ ("iterative", "direct")
+            norma_abort(
+                "Invalid `interface solve: $(interface_solve)` on side set \"$(side_set_name)\". " *
+                "Valid values are `iterative` and `direct`.",
+            )
+        end
+        direct_solve = interface_solve == "direct"
+        if direct_solve && !constrained
+            norma_abort(
+                "`interface solve: direct` on side set \"$(side_set_name)\" requires `constrained: true`.",
+            )
+        end
         if constrained && swap_bcs
             norma_abort(
                 "`constrained: true` on side set \"$(side_set_name)\" does not support " *
@@ -591,6 +606,7 @@ function SMCouplingSchwarzBC(
             swap_bcs,
             constrained,
             constraint,
+            direct_solve,
         )
     elseif bc_type == "Schwarz RR nonoverlap" ||
            bc_type == "Schwarz impedance nonoverlap" ||

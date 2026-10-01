@@ -24,7 +24,13 @@ using LinearAlgebra
 const constrained_dn_example = "../examples/nonoverlap/dynamic-same-step/cantilever-dn"
 
 function constrained_dn_subdomain(
-    name::String, explicit::Bool, constraint::String, dt::Float64, own_dt::Float64=dt; swap_roles::Bool=false
+    name::String,
+    explicit::Bool,
+    constraint::String,
+    dt::Float64,
+    own_dt::Float64=dt;
+    swap_roles::Bool=false,
+    interface_solve::String="iterative",
 )
     sub = YAML.load_file("$constrained_dn_example/$name.yaml"; dicttype=Norma.Parameters)
     if explicit
@@ -45,6 +51,7 @@ function constrained_dn_subdomain(
     end
     bc["constrained"] = true
     bc["constraint"] = constraint
+    bc["interface solve"] = interface_solve
     YAML.write_file("$name.yaml", sub)
     return nothing
 end
@@ -57,13 +64,19 @@ function run_constrained_dn(
     theta=0.5,
     free_substeps=1,
     clamped_dirichlet=false,
+    interface_solve="iterative",
+    mesh_dir=constrained_dn_example,
 )
     for f in ["cantilever-clamped.g", "cantilever-free.g"]
-        cp("$constrained_dn_example/$f", f; force=true)
+        cp("$mesh_dir/$f", f; force=true)
     end
     free_dt = dt / free_substeps
-    constrained_dn_subdomain("cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet)
-    constrained_dn_subdomain("cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet)
+    constrained_dn_subdomain(
+        "cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet, interface_solve
+    )
+    constrained_dn_subdomain(
+        "cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet, interface_solve
+    )
     params = Norma.Parameters(
         "type" => "multi",
         "name" => "constrained-dn",
@@ -222,5 +235,32 @@ for explicit in (false, true)
         e2 = [row[i_e2] for row in data]
         @test maximum(e2 ./ e2[1] .- 1.0) < 1.0e-10
         @test minimum(e2 ./ e2[1] .- 1.0) > -1.0e-6
+    end
+end
+
+# Direct interface solve of the explicit pair (`interface solve: direct`): the
+# interface force is solved from the velocity constraint once per stop. It must
+# reproduce the iteration converged to 1e-12 and conserve E2. Conforming meshes
+# and the 2:1 nonconforming meshes of the impedance example.
+const nonconforming_beam = "../examples/nonoverlap/dynamic-same-step/cantilever-impedance-nonconforming"
+for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconforming", nonconforming_beam))
+    @testset "Constrained DN: Direct Interface Solve, EE $label" begin
+        runs = Dict{String,Any}()
+        for solve in ("iterative", "direct")
+            sim, header, data = run_constrained_dn(true; interface_solve=solve, mesh_dir)
+            @test sim.failed == false
+            fields = [vcat(vec(s.model.displacement), vec(s.model.velocity)) for s in sim.subsims]
+            runs[solve] = (header, data, fields)
+        end
+        header, it_data, it_fields = runs["iterative"]
+        _, dir_data, dir_fields = runs["direct"]
+        for (a, b) in zip(it_fields, dir_fields)
+            @test norm(a - b) ≤ 1.0e-12 * norm(a)
+        end
+        for column in ("total_energy", "e2_total")
+            i = findfirst(==(column), header)
+            @test maximum(abs(r[i] / q[i] - 1.0) for (r, q) in zip(dir_data, it_data)) ≤ 1.0e-12
+        end
+        @test e2_drift(header, dir_data) < 1.0e-12
     end
 end

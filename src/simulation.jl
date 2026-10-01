@@ -1192,7 +1192,12 @@ end
 function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     pairs = SolidMechanicsNonOverlapSchwarzBoundaryCondition[]
     for subsim in sim.subsims, bc in subsim.model.boundary_conditions
-        is_constrained_dn(bc) && bc.is_dirichlet && push!(pairs, bc)
+        is_constrained_dn(bc) && bc.is_dirichlet || continue
+        if is_direct_dn(bc)
+            direct_initial_acceleration!(bc)
+        else
+            push!(pairs, bc)
+        end
     end
     isempty(pairs) && return nothing
     controller = sim.controller
@@ -1390,6 +1395,10 @@ function advance_independent(sim::MultiDomainSimulation)
 end
 
 function schwarz(sim::MultiDomainSimulation)
+    if uses_direct_interface_solve(sim)
+        direct_interface_stop!(sim)
+        return nothing
+    end
     iteration_number = 0
     sim.controller.is_schwarz = true
     save_stop_state(sim)

@@ -651,6 +651,7 @@ function compute_constrained_dn_projectors!(
     constraint = resolve_constraint(dst_bc, src_bc)
     dst_bc.constraint = src_bc.constraint = constraint
     check_constrained_integrators(dst_sim, src_sim, constraint)
+    check_direct_interface_solve(dst_bc, src_bc, dst_sim, src_sim)
     W1 = get_square_projection_matrix(dst_model, dst_bc)
     W2 = get_square_projection_matrix(src_model, src_bc)
     n1 = size(W1, 1)
@@ -744,9 +745,264 @@ function check_constrained_integrators(
     return nothing
 end
 
+# The direct interface solve applies to a constrained pair of two central
+# difference subdomains at equal steps under the velocity constraint; both
+# sides must request it.
+function check_direct_interface_solve(
+    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition,
+    partner::SolidMechanicsNonOverlapSchwarzBoundaryCondition,
+    sim_1::SingleDomainSimulation,
+    sim_2::SingleDomainSimulation,
+)
+    bc.direct_solve || partner.direct_solve || return nothing
+    if bc.direct_solve != partner.direct_solve
+        norma_abort(
+            "`interface solve: direct` must be set on both sides of the pair '$(bc.name)'/'$(partner.name)'.",
+        )
+    end
+    explicit = sim_1.integrator isa CentralDifference && sim_2.integrator isa CentralDifference
+    equal = isapprox(sim_1.integrator.time_step, sim_2.integrator.time_step; rtol=1.0e-12)
+    if !explicit || !equal || bc.constraint != :velocity
+        norma_abort(
+            "`interface solve: direct` is implemented for a constrained pair of two central difference " *
+            "subdomains at equal time steps under the velocity constraint; subdomains '$(sim_1.name)' and " *
+            "'$(sim_2.name)' do not satisfy this. Use `interface solve: iterative`.",
+        )
+    end
+    return nothing
+end
+
 # True for the Dirichlet-Neumann condition with the constrained exchange.
 is_constrained_dn(bc::SolidMechanicsBoundaryCondition) =
     bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.constrained
+
+# True for a constrained pair solved by the direct interface solve.
+is_direct_dn(bc::SolidMechanicsBoundaryCondition) = is_constrained_dn(bc) && bc.direct_solve
+
+# ---------------------------------------------------------------------------
+# Direct interface solve for constrained pairs of two central difference
+# subdomains at equal steps.
+#
+# Let D be the Dirichlet side and N the Neumann side, λ the interface force
+# applied on the interface rows of D and -Π_Dᵀ λ the force on the interface
+# rows of N (the force transfer of the constrained exchange), and m_D, m_N the
+# lumped masses of the interface rows. Central difference computes the
+# displacement u_{n+1} before the acceleration, and the internal force at
+# u_{n+1} does not depend on λ. Advancing both sides with no interface force
+# gives the free velocities v_free; the interface force adds
+#   v_D = v_D,free + γΔt m_D⁻¹ λ,   v_N = v_N,free - γΔt m_N⁻¹ Π_Dᵀ λ.
+# The velocity constraint v_D = Π_D v_N at the end of the step then gives
+#   γΔt (m_D⁻¹ + Π_D m_N⁻¹ Π_Dᵀ) λ = Π_D v_N,free - v_D,free,
+# per Cartesian component. The matrix H₀ = m_D⁻¹ + Π_D m_N⁻¹ Π_Dᵀ is symmetric
+# positive definite, of the size of the Dirichlet interface, and constant
+# while the lumped masses and Π_D are, so it is factored once. Interface rows
+# held by other Dirichlet conditions do not move and take a zero inverse mass.
+# The solve is exact for nonlinear materials too, because the internal force
+# is evaluated at the predictor displacement. The same matrix solves the
+# acceleration constraint a_D = Π_D a_N at t = 0:
+#   H₀ λ = Π_D a_N,free - a_D,free.
+# ---------------------------------------------------------------------------
+
+mutable struct DirectInterfaceFactor
+    masks::Vector{BitVector}          # free interface rows of D and of N, per component
+    factors::Vector{Any}              # Cholesky factor of H₀ per component
+end
+
+const DIRECT_INTERFACE_CACHE = IdDict{Any,DirectInterfaceFactor}()
+
+# Inverse lumped masses of the interface rows of one side for one component,
+# zero where another Dirichlet condition holds the degree of freedom.
+function interface_inverse_mass(model::SolidMechanics, map::Vector{Int64}, comp::Int, fixed::BitVector)
+    m = model.lumped_mass
+    return [fixed[3 * (n - 1) + comp] ? 0.0 : 1.0 / m[3 * (n - 1) + comp] for n in map]
+end
+
+# Degrees of freedom held by Dirichlet conditions other than the Schwarz ones.
+function prescribed_dofs(model::SolidMechanics)
+    fixed = falses(length(model.free_dofs))
+    for bc in model.boundary_conditions
+        if bc isa SolidMechanicsDirichletBoundaryCondition
+            for n in bc.node_set_node_indices
+                fixed[3 * (n - 1) + bc.offset] = true
+            end
+        elseif bc isa SolidMechanicsSideSetDirichletBoundaryCondition
+            for n in bc.side_set_node_indices
+                fixed[3 * (n - 1) + bc.offset] = true
+            end
+        end
+    end
+    return fixed
+end
+
+function direct_interface_factor(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    return get!(DIRECT_INTERFACE_CACHE, bc) do
+        d_model = self_subsim_of(bc).model
+        n_model = coupled_subsim_of(bc).model
+        n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+        P = bc.dirichlet_projector
+        d_fixed = prescribed_dofs(d_model)
+        n_fixed = prescribed_dofs(n_model)
+        t0 = time()
+        factors = Any[]
+        masks = BitVector[]
+        for comp in 1:3
+            d_inv = interface_inverse_mass(d_model, bc.global_from_local_map, comp, d_fixed)
+            n_inv = interface_inverse_mass(n_model, n_bc.global_from_local_map, comp, n_fixed)
+            H = P * (n_inv .* transpose(P))
+            for i in eachindex(d_inv)
+                H[i, i] += d_inv[i]
+            end
+            F = cholesky(Symmetric(H); check=false)
+            if !issuccess(F)
+                norma_abort(
+                    "The direct interface matrix of '$(bc.name)' is not positive definite (component $comp): " *
+                    "an interface degree of freedom is held by Dirichlet conditions on both sides.",
+                )
+            end
+            push!(factors, F)
+            push!(masks, BitVector(d_inv .> 0.0))
+        end
+        norma_logf(
+            0, :setup, "Direct interface solve '%s': %d interface nodes, three factorizations in %.2f s.",
+            bc.name, size(P, 1), time() - t0,
+        )
+        DirectInterfaceFactor(masks, factors)
+    end
+end
+
+# Apply the interface force λ (3 × n_D) to the two sides: change of the
+# acceleration on the interface rows by m⁻¹ times the force, and of the
+# velocity by `velocity_factor` times that (γΔt within a step, 0 at t = 0).
+function apply_direct_interface_force!(
+    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, λ::Matrix{Float64}, velocity_factor::Float64
+)
+    d_model = self_subsim_of(bc).model
+    n_model = coupled_subsim_of(bc).model
+    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    P = bc.dirichlet_projector
+    d_fixed = prescribed_dofs(d_model)
+    n_fixed = prescribed_dofs(n_model)
+    f_N = zeros(3, length(n_bc.global_from_local_map))
+    for comp in 1:3
+        d_inv = interface_inverse_mass(d_model, bc.global_from_local_map, comp, d_fixed)
+        n_inv = interface_inverse_mass(n_model, n_bc.global_from_local_map, comp, n_fixed)
+        f_N[comp, :] = -(transpose(P) * λ[comp, :])
+        for (i, node) in enumerate(bc.global_from_local_map)
+            Δa = d_inv[i] * λ[comp, i]
+            d_model.acceleration[comp, node] += Δa
+            d_model.velocity[comp, node] += velocity_factor * Δa
+        end
+        for (i, node) in enumerate(n_bc.global_from_local_map)
+            Δa = n_inv[i] * f_N[comp, i]
+            n_model.acceleration[comp, node] += Δa
+            n_model.velocity[comp, node] += velocity_factor * Δa
+        end
+    end
+    # Record the force on the Neumann side, as the iterated exchange does, so
+    # that its boundary force and the force residual describe the same state.
+    n_bc.transferred_force = vec(f_N)
+    for (i, node) in enumerate(n_bc.global_from_local_map)
+        n_model.boundary_force[(3 * node - 2):(3 * node)] .+= f_N[:, i]
+    end
+    return nothing
+end
+
+# Solve H₀ λ = Π_D q_N - q_D for the interface force, with q the velocity or
+# the acceleration of the free step, divided by `scale` (γΔt within a step,
+# 1 at t = 0).
+function direct_interface_force(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, field::Symbol, scale::Float64)
+    factor = direct_interface_factor(bc)
+    d_model = self_subsim_of(bc).model
+    n_model = coupled_subsim_of(bc).model
+    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    P = bc.dirichlet_projector
+    q_D = getfield(d_model, field)[:, bc.global_from_local_map]
+    q_N = getfield(n_model, field)[:, n_bc.global_from_local_map]
+    λ = zeros(size(q_D))
+    for comp in 1:3
+        rhs = (P * q_N[comp, :] .- q_D[comp, :]) ./ scale
+        λ[comp, :] = factor.factors[comp] \ rhs
+    end
+    return λ
+end
+
+# True when the simulation's Schwarz couplings are direct pairs. A mixture of
+# direct pairs and other couplings aborts.
+function uses_direct_interface_solve(sim::MultiDomainSimulation)
+    direct = 0
+    other = 0
+    for subsim in sim.subsims, bc in subsim.model.boundary_conditions
+        bc isa SolidMechanicsSchwarzBoundaryCondition || continue
+        is_direct_dn(bc) ? (direct += 1) : (other += 1)
+    end
+    direct == 0 && return false
+    other == 0 || norma_abort("`interface solve: direct` requires that every Schwarz coupling be a direct pair.")
+    return true
+end
+
+# One controller stop with the direct interface solve: each subdomain takes its
+# step with the interface rows free and no interface force, the interface force
+# is solved from the velocity constraint, and the acceleration and velocity of
+# the interface rows are corrected. No Schwarz iteration.
+function direct_interface_stop!(sim::MultiDomainSimulation)
+    controller = sim.controller
+    controller.is_schwarz = false
+    save_stop_state(sim)
+    set_initial_subcycle_time(sim)
+    for subsim in sim.subsims
+        integrator = subsim.integrator
+        if integrator.minimum_time_step == integrator.maximum_time_step
+            integrator.time_step = integrator.maximum_time_step
+        end
+        advance_time(subsim)
+        # The step is clipped to land on the stop, so it differs from the nominal
+        # step by the rounding of the accumulated time.
+        if !isapprox(integrator.time_step, controller.time_step; rtol=1.0e-6) ||
+           !stop_subcyle(subsim)
+            norma_abort(
+                "`interface solve: direct` needs one step per stop, but subdomain '$(subsim.name)' took a step of " *
+                "$(integrator.time_step) for the stop of $(controller.time_step) (the explicit stable step can " *
+                "shorten it; raise CFL or lower the step).",
+            )
+        end
+        advance_one_step(subsim)
+    end
+    for subsim in sim.subsims, bc in subsim.model.boundary_conditions
+        is_direct_dn(bc) && bc.is_dirichlet || continue
+        γΔt = subsim.integrator.γ * subsim.integrator.time_step
+        λ = direct_interface_force(bc, :velocity, γΔt)
+        apply_direct_interface_force!(bc, λ, γΔt)
+    end
+    controller.schwarz_iters[controller.stop] = 0
+    controller.is_schwarz = true
+    return nothing
+end
+
+# Coupled initial acceleration of direct pairs: one solve of the acceleration
+# constraint a_D = Π_D a_N with the same matrix, after the interface
+# displacement and velocity of the Dirichlet side are set to the projected
+# initial values of the partner.
+function direct_initial_acceleration!(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+    d_model = self_subsim_of(bc).model
+    n_model = coupled_subsim_of(bc).model
+    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    P = bc.dirichlet_projector
+    for field in (:displacement, :velocity)
+        q_N = getfield(n_model, field)[:, n_bc.global_from_local_map]
+        q_D = getfield(d_model, field)
+        for comp in 1:3
+            q_D[comp, bc.global_from_local_map] = P * q_N[comp, :]
+        end
+    end
+    λ = direct_interface_force(bc, :acceleration, 1.0)
+    apply_direct_interface_force!(bc, λ, 0.0)
+    r = dn_interface_residuals(d_model, bc)
+    norma_logf(
+        0, :acceleration, "Direct initial acceleration %s/%s: acceleration jump %.2e, force residual %.2e",
+        r.dirichlet_name, r.neumann_name, r.acceleration_jump, r.force_residual,
+    )
+    return nothing
+end
 
 # ---------------------------------------------------------------------------
 # Impedance overlap Schwarz: absorbing condition on overlap boundaries
@@ -2218,6 +2474,9 @@ function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_ma
 end
 
 function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
+    # A direct pair leaves its interface rows free and unloaded during the step;
+    # direct_interface_stop! applies the interface force afterwards.
+    is_direct_dn(bc) && return nothing
     parent_sim = bc.parent
     controller = parent_sim.controller
 

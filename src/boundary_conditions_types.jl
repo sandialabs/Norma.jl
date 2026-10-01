@@ -283,6 +283,11 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanic
     # pair has named it.
     constrained::Bool
     constraint::Symbol
+    # Direct interface solve (input key `interface solve: direct`): for a
+    # constrained pair of two central difference subdomains at equal steps the
+    # interface reaction is computed in one solve per stop instead of by the
+    # Schwarz iteration (direct_interface_stop! in schwarz.jl).
+    direct_solve::Bool
     # Interface force, in interleaved components of the interface nodes, that
     # this side received at its last application as the Neumann side. Read by
     # the interface force residual of the Schwarz loop.
