@@ -499,7 +499,8 @@ function differentiated_subdomain_energy(subsim::SingleDomainSimulation)
 end
 
 # Interface displacement and velocity jumps of every DN pair at the end of the
-# stop (see dn_interface_residuals in schwarz.jl), with the column names.
+# stop (see dn_interface_residuals in schwarz.jl), relative and as root mean
+# square values over the interface, with the column names.
 function dn_jump_columns(sim::MultiDomainSimulation)
     names = String[]
     values = Float64[]
@@ -507,6 +508,8 @@ function dn_jump_columns(sim::MultiDomainSimulation)
         pair = r.dirichlet_name * "_" * r.neumann_name
         push!(names, "displacement_jump_" * pair, "velocity_jump_" * pair)
         push!(values, r.displacement_jump, r.velocity_jump)
+        push!(names, "displacement_jump_rms_" * pair, "velocity_jump_rms_" * pair)
+        push!(values, r.displacement_jump_rms, r.velocity_jump_rms)
     end
     return names, values
 end
