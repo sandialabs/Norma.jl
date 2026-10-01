@@ -1646,6 +1646,8 @@ struct DNInterfaceResiduals
     velocity_jump_rms::Float64
     displacement_jump_rms::Float64
     force_residual::Float64
+    acceleration_jump::Float64
+    acceleration_jump_rms::Float64
 end
 
 function weighted_norm(W::AbstractMatrix{Float64}, x::Matrix{Float64})
@@ -1692,6 +1694,7 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
     n_map = n_bc.global_from_local_map
     jv, jv_rms = dn_one_sided_jump(W_D, P, model.velocity[:, d_map], n_model.velocity[:, n_map])
     ju, ju_rms = dn_one_sided_jump(W_D, P, model.displacement[:, d_map], n_model.displacement[:, n_map])
+    ja, ja_rms = dn_one_sided_jump(W_D, P, model.acceleration[:, d_map], n_model.acceleration[:, n_map])
     force_residual = NaN
     f_N = n_bc.transferred_force
     W_N = n_bc.square_projector
@@ -1708,7 +1711,7 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
         force_residual = scale > 0.0 ? difference / scale : difference
     end
     return DNInterfaceResiduals(
-        self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual
+        self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms
     )
 end
 

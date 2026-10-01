@@ -218,10 +218,35 @@ previous such iteration is handled by `stalled interface jump action`. The
 implementation covers equal time steps on both sides: the run aborts when
 the two subdomains take different steps, with `swap BC types`, with HHT-α,
 with reduced order models, and with `constraint: displacement` unless both
-sides are Newmark with the same β > 0, γ, and time step. The initial
-acceleration is computed per subdomain with the interface degrees of freedom
-held fixed, as for the unconstrained exchange, so the first step carries the
-inconsistency of the initial interface acceleration.
+sides are Newmark with the same β > 0, γ, and time step.
+
+The initial acceleration of a constrained pair is found by a Schwarz
+iteration at t = 0: the Dirichlet side imposes the projected partner
+acceleration, the Neumann side receives the d'Alembert reaction, and each side
+recomputes its initial acceleration with the interface rows included. The
+Dirichlet datum is relaxed with the fixed factor `relaxation parameter`, also
+when `relaxation` names an Aitken method, and the iteration stops when the
+acceleration jump and the force residual are at or below `relative
+tolerance`. Without it the first step changes the conserved energy by up to 1%
+on the cantilever, and between two central difference subdomains the
+difference of the two interface accelerations alternates in sign at every
+step.
+
+The choice of the Dirichlet side decides whether the iteration converges. Its
+linearized gain is G = −Π_D H_N Π_Dᵀ S_D, with H_N = C M̃_N⁻¹ Cᵀ the interface
+flexibility of the Neumann side (M̃ = M + β Δt² K, lumped for central
+difference) and S_D the interface dynamic stiffness of the Dirichlet side;
+fixed relaxation θ converges when every eigenvalue g of G satisfies
+|1 − θ + θ g| < 1. On the cantilever with equal steps of 1e-6 s:
+
+- implicit and explicit subdomains: make the implicit subdomain the
+  Dirichlet side. With the explicit side as Dirichlet the eigenvalues lie in
+  [−13.3, −1.6] on conforming meshes and every θ ≥ 0.5 diverges; with the
+  implicit side they lie in [−0.61, −0.08].
+- two subdomains with the same integrator on conforming meshes: the
+  eigenvalues are near −1, so θ = 0.5 converges in one to eight iterations and
+  θ = 1 does not converge.
+- nonconforming meshes: make the finer side the Dirichlet side.
 
 ### `Schwarz impedance nonoverlap`
 

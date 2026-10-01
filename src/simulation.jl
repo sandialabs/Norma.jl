@@ -1166,7 +1166,80 @@ function initialize(sim::MultiDomainSimulation)
             end
         end
     end
+    coupled_initial_acceleration!(sim)
     detect_contact(sim)
+    return nothing
+end
+
+# Coupled initial acceleration of constrained Dirichlet-Neumann pairs. The
+# first pass above computes each subdomain's initial acceleration with its
+# Schwarz degrees of freedom held at placeholder values, so the interface
+# accelerations of the two sides of a pair disagree and the interface force
+# balance at t = 0 does not hold. Under the constrained exchange that
+# disagreement is carried through every later step: the receiver's Newmark
+# relations start from the wrong interface acceleration, the first step changes
+# the conserved energy, and with central difference the difference of the two
+# interface accelerations alternates in sign at every step. Here the
+# acceleration at t = 0 is found by a Schwarz iteration: the Dirichlet side
+# imposes the projected partner acceleration (displacement and velocity are the
+# initial conditions, projected), the Neumann side receives the d'Alembert
+# reaction of the Dirichlet side, and each side recomputes its acceleration with
+# the interface rows trusted (initialize with trust_schwarz=true). The
+# Dirichlet datum is relaxed with the fixed factor `relaxation parameter` (also
+# under Aitken relaxation, which applies to the stops). The iteration stops when
+# the one-sided acceleration jump and the force residual of every constrained
+# pair are at or below `relative tolerance`, or after `maximum iterations`.
+function coupled_initial_acceleration!(sim::MultiDomainSimulation)
+    pairs = SolidMechanicsNonOverlapSchwarzBoundaryCondition[]
+    for subsim in sim.subsims, bc in subsim.model.boundary_conditions
+        is_constrained_dn(bc) && bc.is_dirichlet && push!(pairs, bc)
+    end
+    isempty(pairs) && return nothing
+    controller = sim.controller
+    θ = controller.relaxation_parameter
+    rtol = controller.relative_tolerance
+    previous = Dict{Int,Matrix{Float64}}()
+    norma_log(0, :acceleration, "Coupled initial acceleration of constrained DN pairs (θ = $(θ))")
+    for iteration in 1:controller.maximum_iterations
+        for (subsim_index, subsim) in enumerate(sim.subsims)
+            reset_history(controller, subsim_index)
+            save_history_snapshot(controller, subsim, subsim_index)
+        end
+        for (subsim_index, subsim) in enumerate(sim.subsims)
+            apply_bcs(subsim)
+            for (k, bc) in enumerate(pairs)
+                self_subsim_of(bc) === subsim || continue
+                model = subsim.model
+                imposed = model.acceleration[:, bc.global_from_local_map]
+                if haskey(previous, k)
+                    imposed = θ .* imposed .+ (1.0 - θ) .* previous[k]
+                    model.acceleration[:, bc.global_from_local_map] = imposed
+                end
+                previous[k] = copy(imposed)
+            end
+            initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
+            save_curr_state(subsim)
+            reset_history(controller, subsim_index)
+            save_history_snapshot(controller, subsim, subsim_index)
+        end
+        converged = true
+        for bc in pairs
+            r = dn_interface_residuals(self_subsim_of(bc).model, bc)
+            norma_logf(
+                0,
+                :acceleration,
+                "Initial iteration [%d] %s/%s: acceleration jump %.2e, force residual %.2e",
+                iteration,
+                r.dirichlet_name,
+                r.neumann_name,
+                r.acceleration_jump,
+                r.force_residual,
+            )
+            converged &= r.acceleration_jump ≤ rtol && !isnan(r.force_residual) && r.force_residual ≤ rtol
+        end
+        converged && return nothing
+    end
+    norma_log(0, :warning, "Coupled initial acceleration did not converge in `maximum iterations`; continuing.")
     return nothing
 end
 
@@ -1178,7 +1251,10 @@ end
 # Robin term α W u is what produces the one-step kick the pass removes, and
 # the DN d-form exchange demonstrably does not tolerate a trust-Schwarz
 # re-solve from a moving initial state (element inversion on the DN
-# cantilever with a parabolic initial bend).
+# cantilever with a parabolic initial bend). Constrained DN pairs are excluded
+# here as well: they get their own iteration on the initial acceleration
+# (coupled_initial_acceleration!), which on the same cantilever converges in
+# two iterations and inverts no element.
 function has_initial_interface_motion(subsim::SingleDomainSimulation)
     model = get_fom_model(subsim)
     model isa SolidMechanics || return false

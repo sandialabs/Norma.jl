@@ -12,9 +12,11 @@
 # Dirichlet side's d'Alembert reaction; the Dirichlet side's interface
 # acceleration and displacement satisfy its own Newmark relations over the
 # last step; and E2 of the differentiated system is conserved over 50 steps.
-# The initial acceleration of each subdomain is computed with the Schwarz
-# degrees of freedom held fixed, so the first step carries the inconsistency of
-# the initial interface acceleration; conservation is measured from step 1 on.
+# The initial acceleration of a constrained pair is found by a Schwarz
+# iteration at t = 0 (coupled_initial_acceleration!), so conservation holds
+# from step 0; the last two testsets check the first step and the absence of
+# the alternating interface acceleration difference that the per-subdomain
+# initial acceleration left in the explicit pair.
 
 using YAML
 using LinearAlgebra
@@ -81,11 +83,13 @@ function dn_bc_of(subsim)
     return nothing
 end
 
-function e2_drift_from_first_step(header, data)
-    i_e2 = findfirst(==("e2_total"), header)
-    e2 = [row[i_e2] for row in data]
-    return maximum(abs.(e2[2:end] ./ e2[2] .- 1.0))
+function energy_drift(header, data, column)
+    i = findfirst(==(column), header)
+    e = [row[i] for row in data]
+    return maximum(abs.(e ./ e[1] .- 1.0))
 end
+
+e2_drift(header, data) = energy_drift(header, data, "e2_total")
 
 @testset "Constrained DN: Operators, Reaction, Newmark Relations (II)" begin
     sim, header, data = run_constrained_dn(false; num_steps=5)
@@ -134,14 +138,14 @@ end
     sim, header, data = run_constrained_dn(false)
     @test sim.failed == false
     @test length(data) == 51
-    @test e2_drift_from_first_step(header, data) < 1.0e-10
+    @test e2_drift(header, data) < 1.0e-10
 end
 
 @testset "Constrained DN: E2 Conservation (EE)" begin
     sim, header, data = run_constrained_dn(true)
     @test sim.failed == false
     @test length(data) == 51
-    @test e2_drift_from_first_step(header, data) < 1.0e-10
+    @test e2_drift(header, data) < 1.0e-10
     # Central difference on the Dirichlet side: β = 0, so the imposed interface
     # displacement is the predictor value.
     integrator = sim.subsims[1].integrator
@@ -164,4 +168,27 @@ end
               "cantilever-clamped.yaml", "cantilever-free.yaml", "constrained-dn-energy.csv"]
         rm(f; force=true)
     end
+end
+
+@testset "Constrained DN: Coupled Initial Acceleration, First Step (II)" begin
+    sim, header, data = run_constrained_dn(false; num_steps=2)
+    @test sim.failed == false
+    i_e1 = findfirst(==("total_energy"), header)
+    i_e2 = findfirst(==("e2_total"), header)
+    @test abs(data[2][i_e2] / data[1][i_e2] - 1.0) < 1.0e-9
+    @test abs(data[2][i_e1] / data[1][i_e1] - 1.0) < 1.0e-9
+    r = Norma.dn_interface_residuals(sim)[1][2]
+    @test r.acceleration_jump ≤ 1.0e-10
+end
+
+@testset "Constrained DN: Coupled Initial Acceleration, First Steps (EE)" begin
+    sim, header, data = run_constrained_dn(true; num_steps=10)
+    @test sim.failed == false
+    i_e2 = findfirst(==("e2_total"), header)
+    @test abs(data[2][i_e2] / data[1][i_e2] - 1.0) < 1.0e-9
+    # Without the coupled initial acceleration the staggered energy E1 of the
+    # explicit pair alternated by about 1e-3 from step to step.
+    @test energy_drift(header, data, "total_energy") < 1.0e-9
+    i_u = findfirst(h -> startswith(h, "displacement_jump"), header)
+    @test maximum(row[i_u] for row in data) < 1.0e-12
 end
