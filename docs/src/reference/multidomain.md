@@ -62,7 +62,7 @@ instead, for cases where an unconverged interface must not be carried forward.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation, or `anderson` (Anderson acceleration of the constrained datum of constrained Dirichlet–Neumann pairs); omit for a fixed factor |
-| `anderson depth` | no | `5` | number m of previous iterates combined by Anderson acceleration |
+| `anderson depth` | no | `10` | number m of previous iterates combined by Anderson acceleration |
 | `relaxation parameter` | no | `1.0` | relaxation factor θ; the constant factor under fixed relaxation, and under either Aitken method the factor used wherever an adaptive one is not yet available |
 | `aitken N0 parameter` | no | `1` | Schwarz iteration, counting from zero, at which the adaptive factor takes over from `relaxation parameter` (Aitken methods only) |
 | `interface predictor` | no | `false` | extrapolate the interface state at the start of each step |

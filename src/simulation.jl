@@ -1223,7 +1223,7 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     anderson = controller.relaxation_method === :anderson
     aitken = controller.relaxation_method !== :fixed && !anderson
     anderson_histories = Dict{Int,AndersonHistory}()
-    anderson_depth = Int(get(sim.params, "anderson depth", 5))
+    anderson_depth = Int(get(sim.params, "anderson depth", 10))
     previous_residual = Dict{Int,Matrix{Float64}}()
     previous_iterate = Dict{Int,Matrix{Float64}}()
     norma_log(0, :acceleration, "Coupled initial acceleration of constrained DN pairs (θ = $(θ))")

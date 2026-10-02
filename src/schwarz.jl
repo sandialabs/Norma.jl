@@ -2768,7 +2768,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 c_slots[slot_k] = copy(interp_c)
             elseif controller.relaxation_method === :anderson && aitken_applies(controller, key)
                 history = anderson_history!(controller, key, slot_k)
-                depth = Int(get(bc.parent.params, "anderson depth", 5))
+                depth = Int(get(bc.parent.params, "anderson depth", 10))
                 c_slots[slot_k] = anderson_step!(
                     history, λ_c_prev, interp_c, trace_c .- trace_prev, controller.relaxation_parameter, depth
                 )
