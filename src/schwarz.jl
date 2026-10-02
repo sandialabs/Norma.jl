@@ -48,6 +48,7 @@ end
 # the start-up echo and the per-iteration factor lines, which previously spelled
 # the same method two ways (issue #217).
 function relaxation_method_name(method::Symbol)
+    method === :anderson && return "Anderson"
     method === :aitken_recursive && return "Aitken recursive"
     method === :aitken_secant && return "Aitken secant"
     return "fixed"
@@ -236,6 +237,88 @@ function relaxation_aitken_secant_theta!(
     norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
         relaxation_method_name(controller.relaxation_method), iter, θ)
     return θ
+end
+
+# ---------------------------------------------------------------------------
+# Anderson acceleration (Walker and Ni 2011; the interface quasi-Newton form of
+# Degroote, Bathe, and Vierendeels 2009) of the constrained datum.
+#
+# The fixed-point map takes the datum x_k that the Dirichlet side used to the
+# partner field g_k = G(x_k) that the iteration returns. With the residuals
+# f_j = g_j - x_j, their projected interface traces t_j, and the differences
+# ΔT, ΔX, ΔF of the last m + 1 iterates (m the depth),
+#   γ = argmin ‖t_k - ΔT γ‖,   x_{k+1} = x_k + β f_k - (ΔX + β ΔF) γ,
+# with β the mixing parameter (`relaxation parameter`). The coefficients come
+# from the traces, the quantity the Dirichlet side receives; the update is
+# applied to the whole partner field, as the relaxation is. The least-squares
+# problem is solved by QR of ΔT, dropping the oldest column while the
+# condition number of R exceeds ANDERSON_CONDITION_LIMIT. Without a difference
+# (first iteration) the update is x + β f, the fixed factor β. For a linear map
+# with β = 1 and a depth at least the iteration count, x_{k+1} = G of the k-th
+# GMRES iterate for (I - A) x = b started from x_0 (Walker and Ni, Theorem 2.2).
+# ---------------------------------------------------------------------------
+
+const ANDERSON_CONDITION_LIMIT = 1.0e10
+
+mutable struct AndersonHistory
+    X::Vector{Vector{Float64}}   # iterates x_j
+    F::Vector{Vector{Float64}}   # residuals f_j = g_j - x_j
+    T::Vector{Vector{Float64}}   # residual traces t_j
+end
+
+AndersonHistory() = AndersonHistory(Vector{Float64}[], Vector{Float64}[], Vector{Float64}[])
+
+# Per controller, per interface, and per substep slot; cleared at every stop
+# with the rest of the relaxation state.
+const ANDERSON_STATE = IdDict{Any,Dict{Tuple{RelaxationKey,Int},AndersonHistory}}()
+
+function anderson_history!(controller, key::RelaxationKey, slot_k::Int)
+    state = get!(() -> Dict{Tuple{RelaxationKey,Int},AndersonHistory}(), ANDERSON_STATE, controller)
+    return get!(AndersonHistory, state, (key, slot_k))
+end
+
+function reset_anderson_state!(controller)
+    haskey(ANDERSON_STATE, controller) && empty!(ANDERSON_STATE[controller])
+    return nothing
+end
+
+function anderson_step!(
+    history::AndersonHistory,
+    x::AbstractVector{Float64},
+    g::AbstractVector{Float64},
+    t::AbstractVector{Float64},
+    β::Float64,
+    depth::Int,
+)
+    f = g .- x
+    push!(history.X, copy(x))
+    push!(history.F, f)
+    push!(history.T, copy(t))
+    while length(history.X) > depth + 1
+        popfirst!(history.X)
+        popfirst!(history.F)
+        popfirst!(history.T)
+    end
+    while length(history.X) >= 2
+        n = length(history.X) - 1
+        ΔT = reduce(hcat, [history.T[j + 1] .- history.T[j] for j in 1:n])
+        R = qr(ΔT).R
+        if any(iszero, diag(R)) || cond(UpperTriangular(R)) > ANDERSON_CONDITION_LIMIT
+            popfirst!(history.X)
+            popfirst!(history.F)
+            popfirst!(history.T)
+            continue
+        end
+        γ = ΔT \ t
+        x_new = x .+ β .* f
+        for j in 1:n
+            ΔX = history.X[j + 1] .- history.X[j]
+            ΔF = history.F[j + 1] .- history.F[j]
+            x_new .-= γ[j] .* (ΔX .+ β .* ΔF)
+        end
+        return x_new
+    end
+    return x .+ β .* f
 end
 
 # Recover interface velocity and acceleration consistent with a relaxed interface
@@ -2677,13 +2760,27 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             # near -1, without contraction (measured on the conforming beam).
             trace_c = constrained_partner_trace(bc, interp_c)
             trace_prev = constrained_partner_trace(bc, λ_c_prev)
-            θ = if controller.relaxation_method === :aitken_secant
-                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
+            fresh_slot = isempty(relax_velocity ? λ_v_stored : λ_u_stored)
+            if controller.relaxation_method === :anderson && aitken_applies(controller, key) && fresh_slot
+                # A fresh slot seeds the previous iterate with the incoming datum,
+                # so its residual is exactly zero; entered into the history, that
+                # pair makes the least-squares coefficient cancel the next update.
+                c_slots[slot_k] = copy(interp_c)
+            elseif controller.relaxation_method === :anderson && aitken_applies(controller, key)
+                history = anderson_history!(controller, key, slot_k)
+                depth = Int(get(bc.parent.params, "anderson depth", 5))
+                c_slots[slot_k] = anderson_step!(
+                    history, λ_c_prev, interp_c, trace_c .- trace_prev, controller.relaxation_parameter, depth
+                )
             else
-                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
+                θ = if controller.relaxation_method === :aitken_secant
+                    relaxation_aitken_secant_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
+                else
+                    relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
+                end
+                frozen_relaxation_update!(controller, θ)
+                c_slots[slot_k] = θ * interp_c + (1 - θ) * λ_c_prev
             end
-            frozen_relaxation_update!(controller, θ)
-            c_slots[slot_k] = θ * interp_c + (1 - θ) * λ_c_prev
             if relax_velocity
                 disp_slots[slot_k] = interp_disp
             else

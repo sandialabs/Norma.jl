@@ -778,8 +778,16 @@ function SolidMultiDomainTimeController(params::Parameters)
             if has_aitken_N0_parameter
                 aitken_N0 = Int(params["aitken N0 parameter"])
             end
+        elseif relaxation_string == "anderson"
+            # Anderson acceleration of the constrained datum of constrained
+            # Dirichlet-Neumann pairs (anderson_step! in schwarz.jl); other
+            # couplings use the fixed factor `relaxation parameter`.
+            relaxation_method = :anderson
         else
-            norma_abort("Schwarz controller: unsupported `relaxation: $(relaxation_value)` (only `aitken recursive` and `aitken secant` are recognized).")
+            norma_abort(
+                "Schwarz controller: unsupported `relaxation: $(relaxation_value)` " *
+                "(only `aitken recursive`, `aitken secant`, and `anderson` are recognized).",
+            )
         end
     end
     if has_relaxation_parameter
@@ -1204,13 +1212,18 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     θ = controller.relaxation_parameter
     rtol = controller.relative_tolerance
     previous = Dict{Int,Matrix{Float64}}()
-    # Under Aitken relaxation the factor of each pair is the secant estimate
+    # Under Anderson relaxation the imposed acceleration of each pair is updated
+    # by anderson_step! on its own iterates. Under Aitken relaxation the factor
+    # of each pair is the secant estimate
     # from the last two iterates of the imposed interface acceleration, as in
     # relaxation_aitken_secant_theta!; the input factor serves until two
     # residuals exist. The gain of this iteration is that of the stops with the
     # step taken to zero (a ratio of lumped or consistent masses), which for an
     # explicit coarse-mesh Dirichlet side lies outside the range of θ = 0.5.
-    aitken = controller.relaxation_method !== :fixed
+    anderson = controller.relaxation_method === :anderson
+    aitken = controller.relaxation_method !== :fixed && !anderson
+    anderson_histories = Dict{Int,AndersonHistory}()
+    anderson_depth = Int(get(sim.params, "anderson depth", 5))
     previous_residual = Dict{Int,Matrix{Float64}}()
     previous_iterate = Dict{Int,Matrix{Float64}}()
     norma_log(0, :acceleration, "Coupled initial acceleration of constrained DN pairs (θ = $(θ))")
@@ -1225,7 +1238,15 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
                 self_subsim_of(bc) === subsim || continue
                 model = subsim.model
                 imposed = model.acceleration[:, bc.global_from_local_map]
-                if haskey(previous, k)
+                if haskey(previous, k) && anderson
+                    # Anderson acceleration on the imposed interface
+                    # acceleration, which is already the projected trace.
+                    history = get!(AndersonHistory, anderson_histories, k)
+                    x = vec(previous[k])
+                    g = vec(imposed)
+                    imposed = reshape(anderson_step!(history, x, g, g .- x, θ, anderson_depth), size(imposed))
+                    model.acceleration[:, bc.global_from_local_map] = imposed
+                elseif haskey(previous, k)
                     θ_k = θ
                     residual = imposed .- previous[k]
                     if aitken && haskey(previous_residual, k)
@@ -1845,6 +1866,7 @@ function reset_relaxation_state!(controller::MultiDomainTimeController)
     empty!(controller.aitken_prev_residual_acce)
     empty!(controller.aitken_theta_disp)
     empty!(controller.aitken_prev_lambda_disp)
+    reset_anderson_state!(controller)
     return nothing
 end
 
@@ -1997,6 +2019,7 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
             max_measure, rtol,
         )
         controller.converged = true
+        reset_anderson_state!(controller)
         return true, (best, count)
     end
     return false, (best, count)

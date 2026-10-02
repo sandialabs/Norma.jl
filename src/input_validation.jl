@@ -98,6 +98,7 @@ const TOP_LEVEL_MULTI_KEYS = Set([
     "time step",
     "relaxation",
     "relaxation parameter",
+    "anderson depth",
     "aitken N0 parameter",
     "naive stabilized",
     "interface predictor",

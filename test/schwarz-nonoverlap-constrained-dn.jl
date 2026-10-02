@@ -345,3 +345,89 @@ for relaxation in ("aitken secant", "aitken recursive")
         @test e2_drift(header, data) < 1.0e-10
     end
 end
+
+# Anderson acceleration (`relaxation: anderson`) of the constrained datum.
+@testset "Constrained DN: Anderson acceleration (II)" begin
+    sim, header, data = run_constrained_dn(false; num_steps=10, relaxation="anderson")
+    @test sim.failed == false
+    # The Aitken forms take at most 8 iterations per stop on this case.
+    @test maximum(sim.controller.schwarz_iters[1:10]) ≤ 8
+    @test e2_drift(header, data) < 1.0e-10
+end
+
+# Interface gain of the conforming implicit pair at a stop, G = -Π H_N Πᵀ H_D⁻¹
+# (H = C M̃⁻¹ Cᵀ with M̃ = M + β Δt² K), built by probing with unit interface
+# data, and the equivalence of Anderson acceleration with mixing 1 and full
+# depth to GMRES on the affine interface map x -> A x + b (Walker and Ni 2011,
+# Theorem 2.2): the Anderson iterate x_{k+1} equals A x_k + b with x_k the k-th
+# GMRES iterate for (I - A) x = b from the same start.
+function interface_flexibility(subsim, bc, Δt, β)
+    model = subsim.model
+    Norma.evaluate(model, subsim.integrator, subsim.solver)
+    Mt = model.mass + β * Δt^2 * model.stiffness
+    fixed = Norma.prescribed_dofs(model)
+    free = findall(.!fixed)
+    position = Dict(d => i for (i, d) in enumerate(free))
+    dofs = [3 * (n - 1) + c for n in bc.global_from_local_map for c in 1:3]
+    F = cholesky(Symmetric(Matrix(Mt[free, free])))
+    H = zeros(length(dofs), length(dofs))
+    for (j, d) in enumerate(dofs)
+        e = zeros(length(free))
+        e[position[d]] = 1.0
+        x = F \ e
+        H[:, j] = [x[position[q]] for q in dofs]
+    end
+    return H
+end
+
+function gmres_iterates(A::Matrix{Float64}, b::Vector{Float64}, x0::Vector{Float64}, k_max::Int)
+    n = length(b)
+    L = Matrix(1.0I, n, n) - A
+    r0 = b - L * x0
+    V = zeros(n, k_max + 1)
+    Hh = zeros(k_max + 1, k_max)
+    V[:, 1] = r0 / norm(r0)
+    iterates = Vector{Float64}[]
+    for k in 1:k_max
+        w = L * V[:, k]
+        for i in 1:k
+            Hh[i, k] = dot(V[:, i], w)
+            w -= Hh[i, k] * V[:, i]
+        end
+        Hh[k + 1, k] = norm(w)
+        V[:, k + 1] = w / Hh[k + 1, k]
+        e1 = zeros(k + 1)
+        e1[1] = norm(r0)
+        y = Hh[1:(k + 1), 1:k] \ e1
+        push!(iterates, x0 + V[:, 1:k] * y)
+    end
+    return iterates
+end
+
+@testset "Constrained DN: Anderson acceleration is GMRES on the interface map" begin
+    sim, _, _ = run_constrained_dn(false; initialize_only=true)
+    free, clamped = sim.subsims[1], sim.subsims[2]
+    bc_D, bc_N = dn_bc_of(free), dn_bc_of(clamped)
+    Δt = free.integrator.time_step
+    H_D = interface_flexibility(free, bc_D, Δt, free.integrator.β)
+    H_N = interface_flexibility(clamped, bc_N, Δt, clamped.integrator.β)
+    P = kron(bc_D.dirichlet_projector, Matrix(1.0I, 3, 3))
+    A = -(P * H_N * transpose(P)) / H_D
+    n = size(A, 1)
+    b = [sin(0.37 * i) for i in 1:n]
+    x0 = [cos(0.11 * i) for i in 1:n]
+    G(x) = A * x + b
+    k_max = 6
+    history = Norma.AndersonHistory()
+    x = x0
+    anderson = Vector{Float64}[]
+    for k in 0:k_max
+        g = G(x)
+        x = Norma.anderson_step!(history, x, g, g - x, 1.0, k_max + 1)
+        push!(anderson, x)
+    end
+    gmres = gmres_iterates(A, b, x0, k_max)
+    for k in 1:k_max
+        @test norm(anderson[k + 1] - G(gmres[k])) ≤ 1.0e-8 * norm(G(gmres[k]))
+    end
+end
