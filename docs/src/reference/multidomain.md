@@ -61,7 +61,8 @@ instead, for cases where an unconverged interface must not be carried forward.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
-| `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation; omit for a fixed factor |
+| `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation, or `anderson` (Anderson acceleration of the constrained datum of constrained Dirichlet–Neumann pairs); omit for a fixed factor |
+| `anderson depth` | no | `5` | number m of previous iterates combined by Anderson acceleration |
 | `relaxation parameter` | no | `1.0` | relaxation factor θ; the constant factor under fixed relaxation, and under either Aitken method the factor used wherever an adaptive one is not yet available |
 | `aitken N0 parameter` | no | `1` | Schwarz iteration, counting from zero, at which the adaptive factor takes over from `relaxation parameter` (Aitken methods only) |
 | `interface predictor` | no | `false` | extrapolate the interface state at the start of each step |
@@ -211,17 +212,25 @@ v_pre = v_n + (1 − γ) Δt a_n (β = 0 for central difference) and imposes, wi
 `constraint: velocity`, v = Π_D v_N, a = (v − v_pre)/(γ Δt),
 u = u_pre + β Δt² a, and with `constraint: displacement`, u = Π_D u_N,
 a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
-constrained quantity only, and Aitken factors are formed from its projected
-interface trace Π_D q_N, not from the partner's whole field. Aitken relaxation
-(`relaxation: aitken recursive` or `aitken secant`, with `relaxation
-parameter: 0.5` as the starting factor) is the recommended setting for
-constrained pairs: on the cantilever it found factors near the optimum of the
-gain spectrum in every case measured, converged where every fixed factor from
-0.25 to 1 diverged (an explicit Dirichlet side, and an explicit coarse-mesh
-Dirichlet side under subcycling), and reduced the iterations per stop by a
-factor of 2.5 to 5 where 0.5 is far from the optimum; where 0.5 is near the
-optimum, as for identical integrators on conforming meshes, the fixed factor
-is equivalent. A pair converges when the jump of its constrained
+constrained quantity only, and Aitken factors and Anderson coefficients are
+formed from its projected interface trace Π_D q_N, not from the partner's
+whole field. Anderson acceleration (`relaxation: anderson`, `anderson depth:
+10`, `relaxation parameter: 0.5` as the mixing parameter) is the recommended
+setting for constrained pairs. It combines the last m iterates by the
+least-squares problem of Walker and Ni (2011), solved by QR with the oldest
+column dropped while the condition number exceeds 1e10, keeps its state per
+pair and per substep slot, clears it at every stop and after a stall, and
+applies only to stops with a single substep (windowed stops use the fixed
+factor `relaxation parameter`, as for Aitken). On the cantilever it needed
+5 to 9 iterations per stop where recursive Aitken needed 5.8 to 20.9 and the
+fixed factor 0.5 needed 5.9 to 44.5 or diverged, and 14 to 16 with an
+explicit Dirichlet side, where Aitken needed 34 to 35 and every fixed factor
+diverged. The depth must cover the iterations a stop needs: with an explicit
+Dirichlet side a depth of 5 needed 54 to 69 iterations per stop. Recursive
+Aitken (`relaxation: aitken recursive`) converged in every case measured as
+well and is accepted by the stall rule at fewer stops than the secant form;
+where 0.5 is near the optimum, as for identical integrators on conforming
+meshes, the fixed factor is equivalent. A pair converges when the jump of its constrained
 quantity and the force residual are both at or below `relative tolerance`, or
 when the root mean square jump over the interface is at or below
 `constraint absolute tolerance` (a top-level key in the units of the
@@ -283,8 +292,9 @@ The initial acceleration of a constrained pair is found by a Schwarz
 iteration at t = 0: the Dirichlet side imposes the projected partner
 acceleration, the Neumann side receives the d'Alembert reaction, and each side
 recomputes its initial acceleration with the interface rows included. The
-Dirichlet datum is relaxed with `relaxation parameter`, or under Aitken
-relaxation with the secant factor of the iteration's own iterates, and the
+Dirichlet datum is relaxed with `relaxation parameter`, under Aitken
+relaxation with the secant factor of the iteration's own iterates, or under
+Anderson acceleration by the same scheme on its own iterates, and the
 iteration stops when the
 acceleration jump and the force residual are at or below `relative
 tolerance`. Without it the first step changes the conserved energy by up to 1%

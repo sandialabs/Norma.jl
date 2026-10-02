@@ -2356,6 +2356,75 @@ floor of the force residual ($10^{-12}$ to $6\times 10^{-10}$ relative on (A)
 explicit, median $2.4\times 10^{-11}$ against $2.9\times 10^{-12}$ for the
 recursive form), without an effect on the energies beyond $10^{-12}$.
 
+
+\subsection{Anderson acceleration of the constrained exchange}
+\label{sec:anderson}
+
+Anderson acceleration~\cite{WalkerNi2011}, in the interface quasi-Newton
+form of Degroote, Bathe, and Vierendeels~\cite{DegrooteBatheVierendeels2009},
+replaces the single factor of Aitken relaxation by a combination of the last
+$m$ iterates (\code{relaxation: anderson}, \code{anderson depth: m}, with
+\code{relaxation parameter} as the mixing parameter $\beta$). With $~x_k$ the
+datum the Dirichlet side used, $~g_k = G(~x_k)$ the partner field the
+iteration returns, $~f_j = ~g_j - ~x_j$, $~t_j$ the projected trace of $~f_j$,
+and $\Delta T$, $\Delta X$, $\Delta F$ the differences of the last $m + 1$
+iterates,
+\begin{equation}
+  \gamma = \arg\min \lVert ~t_k - \Delta T \gamma \rVert, \qquad
+  ~x_{k+1} = ~x_k + \beta ~f_k - (\Delta X + \beta\,\Delta F)\,\gamma .
+\end{equation}
+The least-squares problem is solved by QR of $\Delta T$, dropping the oldest
+column while the condition number of $R$ exceeds $10^{10}$. The state is kept
+per pair and per substep slot, cleared at every stop and after a stall, and
+the scheme applies to single-slot stops only, as Aitken relaxation does. The
+coupled initial acceleration uses the same scheme on its own iterates. For a
+linear interface map $~x \mapsto A~x + ~b$, with $\beta = 1$ and a depth at
+least the iteration count, $~x_{k+1} = G$ of the $k$-th GMRES iterate for
+$(I - A)~x = ~b$ (Walker and Ni, Theorem~2.2); test~136 checks this on the
+interface gain of the conforming implicit pair to $10^{-8}$ over six
+iterations. A fresh slot seeds the previous iterate with the incoming datum,
+so its residual is exactly zero; entered into the history it makes the
+coefficient cancel the next update, and it is left out.
+
+The measurements use the settings of Sec.~\ref{sec:aitken}, depths $5$ and
+$10$:
+\begin{center}
+\footnotesize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccccc}
+\toprule
+case & fixed $0.5$ & Aitken recursive & Anderson, $m = 5$ & Anderson, $m = 10$ & initial, Aitken & initial, Anderson \\
+\midrule
+eq.\ II & 5.9/6 & 5.8/6 & 5.0/6 & 5.0/6 & 3 & 2 \\
+(A) II & 44.5/54 & 8.8/15 & 6.0/8 & 6.0/8 & 7 & 4 \\
+(A) EE & diverged & 20.9/87 & 8.9/9 & 8.9/9 & 21 & 7 \\
+(B) II & 18.8/21 & 7.0/9 & 5.0/7 & 5.0/7 & 5 & 3 \\
+(B) EE & 26.9/31 & 10.9/13 & 5.0/5 & 5.0/5 & 15 & 4 \\
+EI, D explicit & diverged & 34.6/45 & 69.2/118 & 16.0/16 & 47 & 9 \\
+IE, D explicit & diverged & 33.9/46 & 53.6/108 & 13.9/14 & 47 & 8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The entries are Schwarz iterations per stop, mean and maximum, and the
+iterations of the coupled initial acceleration. The energies agree with
+the Aitken runs to the digits of Sec.~\ref{sec:aitken}, and the impulse
+residual is at most $5.3\times 10^{-13}$ relative except in the two
+explicit-Dirichlet runs at depth $5$. Anderson needs fewer iterations than
+Aitken in every case: $5.0$ against $5.8$ on the equal-step implicit pair,
+$6.0$ against $8.8$ and $8.9$ against $20.9$ on assignment (A), and $5.0$
+against $7.0$ and $10.9$ on (B), with no stall and identical results at both
+depths, since these stops need fewer iterations than the depth. With an
+explicit Dirichlet side the depth decides: at $m = 10$ the iteration takes
+$16$ (EI) and $14$ (IE) iterations per stop, against $35$ for Aitken, with no
+stall, and $E_2$ stays within $6.5\times 10^{-14}$ and $4.6\times 10^{-14}$, so
+the drift of $6.8\times 10^{-11}$ that Aitken left through stops accepted at
+the force-residual floor disappears; at $m = 5$ the history is shorter than
+the $12$ to $16$ iterations that the $36$ interface unknowns need, the
+iteration takes $69$ and $54$ iterations per stop with $3828$ and $5031$
+stalled stops, and $E_2$ drifts by $9.0\times 10^{-11}$ and $1.0\times
+10^{-10}$. Wall times at $m = 10$: $287$ and $254$\,s for EI and IE (Aitken
+$534$ and $524$\,s), $98$ and $280$\,s for (B) EE and II (Aitken $162$ and
+$372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
+
 \section{Conclusions}
 \label{sec:conclusion}
 
@@ -2593,6 +2662,15 @@ integration framework for interface-coupled problems with applications to
 solid--solid interaction and air--sea models, \emph{Computer Methods in
 Applied Mechanics and Engineering}
 426 (2024) 116975.
+
+\bibitem{WalkerNi2011}
+H.F.~Walker, P.~Ni, Anderson acceleration for fixed-point iterations,
+\emph{SIAM Journal on Numerical Analysis} 49 (2011) 1715--1735.
+
+\bibitem{DegrooteBatheVierendeels2009}
+J.~Degroote, K.-J.~Bathe, J.~Vierendeels, Performance of a new
+partitioned procedure versus a monolithic procedure in fluid--structure
+interaction, \emph{Computers and Structures} 87 (2009) 793--801.
 
 \bibitem{PrakashHjelmstad2004}
 A.~Prakash, K.D.~Hjelmstad,
