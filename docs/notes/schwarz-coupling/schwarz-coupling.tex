@@ -2098,6 +2098,49 @@ keeps to $5$\,ms, a relative velocity jump of at most $7\times 10^{-16}$,
 and a drift of $6\times 10^{-18}$\,m; the iterated run with the former
 floor reached $+2.1\%$ at $2$\,ms.
 
+\paragraph{The neohookean loss is the integrator's.} The conservation
+identities above hold for a linear stiffness. For a neohookean material
+central difference, the St\"ormer--Verlet method, conserves a modified
+energy that differs from $E_1$ by a state-dependent term of order
+$\Delta t^2$ \cite{HairerLubichWanner2006}, so $E_1$ varies at that order
+and does not grow. Table~\ref{tab:neohookean-dt} measures this on the
+neohookean cylinders at $-35$\,m/s over $2$\,ms: the monolithic mesh and
+the decomposed mesh with the direct interface solve, each at the step of
+the example and at half that step. The variation of $E_1$ is of the same
+order on both systems and falls by a factor of $3.9$ and $4.0$ when the
+step is halved; its sign differs because the two discrete systems have
+different modified energies. The interface is closed to roundoff at both
+steps. The loss of the decomposed run is therefore the integrator's
+$\Delta t^2$ term, not interface work. Conservation of $E_1$ to roundoff
+for a nonlinear material needs an energy--momentum integrator
+\cite{SimoTarnow1992,Gonzalez1996}, whose coupled form would need a
+midpoint velocity constraint; that is a separate project.
+
+\begin{table}[htbp]
+\centering
+\caption{Neohookean cylinders, $-35$\,m/s, central difference, $2$\,ms:
+$E_1/E_1(0)$ at $0.25$, $0.5$, $1$, and $2$\,ms and the largest
+$\lvert E_1/E_1(0) - 1 \rvert$, for the monolithic mesh and the decomposed
+mesh with the velocity constraint and the direct interface solve
+\eqref{eq:direct}, at two steps.}
+\label{tab:neohookean-dt}
+\begin{tabular}{llllll}
+\hline
+system & $\Delta t$ (s) & $0.25$\,ms & $0.5$\,ms & $1$\,ms & $2$\,ms
+  \quad max $\lvert \delta E_1 \rvert$ \\
+\hline
+monolithic & $5\times 10^{-7}$ & $0.999963$ & $0.999971$ & $1.000019$
+  & $1.000045$ \quad $5.4\times 10^{-5}$ \\
+monolithic & $2.5\times 10^{-7}$ & $0.999987$ & $0.999991$ & $1.000004$
+  & $1.000011$ \quad $1.4\times 10^{-5}$ \\
+decomposed, direct & $5\times 10^{-7}$ & $0.999978$ & $0.999972$
+  & $0.999963$ & $0.999936$ \quad $6.4\times 10^{-5}$ \\
+decomposed, direct & $2.5\times 10^{-7}$ & $0.999995$ & $0.999993$
+  & $0.999991$ & $0.999984$ \quad $1.6\times 10^{-5}$ \\
+\hline
+\end{tabular}
+\end{table}
+
 \paragraph{Comparison on the beam.} Table~\ref{tab:beam-compare} sets the
 monolithic reference, the present Dirichlet--Neumann exchange
 (\code{constrained: false}, free side Dirichlet, $\theta = 0.5$, tolerances
@@ -2516,7 +2559,10 @@ $372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
   solve \eqref{eq:direct} conserves $E_1$ and $E_2$ to roundoff on the beam
   at every mesh ratio and on the linear cylinders at $-5$ and $-35$\,m/s,
   with no iteration, and keeps $E_1$ of the neohookean cylinders within
-  $6.4\times 10^{-5}$ over $2$\,ms.
+  $6.4\times 10^{-5}$ over $2$\,ms, against $5.4\times 10^{-5}$ for the
+  monolithic mesh at the same step; both fall by a factor of $4$ at half
+  the step (Table~\ref{tab:neohookean-dt}), so that variation is the
+  integrator's $\Delta t^2$ term and not interface work.
 \item On the beam the constrained exchange conserves at least as well as
   the paired impedance coupling in every case measured, including the
   nonconforming ratios where the paired coupling dissipates $58\%$
@@ -2760,6 +2806,24 @@ A simple algorithm for localized construction of non-matching structural
 interfaces,
 \emph{International Journal for Numerical Methods in Engineering}
 53:2117--2142, 2002.
+
+\bibitem{HairerLubichWanner2006}
+E.~Hairer, C.~Lubich, G.~Wanner,
+\emph{Geometric Numerical Integration: Structure-Preserving Algorithms for
+Ordinary Differential Equations}, second edition, Springer, Berlin, 2006,
+Chapter~IX.
+
+\bibitem{SimoTarnow1992}
+J.C.~Simo, N.~Tarnow,
+The discrete energy-momentum method. Conserving algorithms for nonlinear
+elastodynamics,
+\emph{Zeitschrift f\"ur angewandte Mathematik und Physik} 43:757--792,
+1992.
+
+\bibitem{Gonzalez1996}
+O.~Gonzalez,
+Time integration and discrete Hamiltonian systems,
+\emph{Journal of Nonlinear Science} 6:449--467, 1996.
 
 \bibitem{DvorakEtAl2023}
 R.~Dvo\v{r}\'ak, R.~Kolman, M.~Mra\v{c}ko, J.~Kopa\v{c}ka, T.~F\'ila,
