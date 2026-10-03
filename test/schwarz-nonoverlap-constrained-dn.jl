@@ -11,7 +11,7 @@
 # force applied on the Neumann side is the transposed projection of the
 # Dirichlet side's d'Alembert reaction; the Dirichlet side's interface
 # acceleration and displacement satisfy its own Newmark relations over the
-# last step; and E2 of the differentiated system is conserved over 50 steps.
+# last step; and the pseudo-energy Ẽ is conserved over 50 steps.
 # The initial acceleration of a constrained pair is found by a Schwarz
 # iteration at t = 0 (coupled_initial_acceleration!), so conservation holds
 # from step 0; the last two testsets check the first step and the absence of
@@ -137,7 +137,7 @@ function energy_drift(header, data, column)
     return maximum(abs.(e ./ e[1] .- 1.0))
 end
 
-e2_drift(header, data) = energy_drift(header, data, "e2_total")
+pseudo_drift(header, data) = energy_drift(header, data, "pseudo_energy_total")
 
 @testset "Constrained DN: Operators, Reaction, Newmark Relations (II)" begin
     sim, header, data = run_constrained_dn(false; num_steps=5)
@@ -182,18 +182,18 @@ e2_drift(header, data) = energy_drift(header, data, "e2_total")
     end
 end
 
-@testset "Constrained DN: E2 Conservation (II)" begin
+@testset "Constrained DN: Pseudo-Energy Conservation (II)" begin
     sim, header, data = run_constrained_dn(false)
     @test sim.failed == false
     @test length(data) == 51
-    @test e2_drift(header, data) < 1.0e-10
+    @test pseudo_drift(header, data) < 1.0e-10
 end
 
-@testset "Constrained DN: E2 Conservation (EE)" begin
+@testset "Constrained DN: Pseudo-Energy Conservation (EE)" begin
     sim, header, data = run_constrained_dn(true)
     @test sim.failed == false
     @test length(data) == 51
-    @test e2_drift(header, data) < 1.0e-10
+    @test pseudo_drift(header, data) < 1.0e-10
     # Central difference on the Dirichlet side: β = 0, so the imposed interface
     # displacement is the predictor value.
     integrator = sim.subsims[1].integrator
@@ -222,8 +222,8 @@ end
     sim, header, data = run_constrained_dn(false; num_steps=2)
     @test sim.failed == false
     i_e1 = findfirst(==("total_energy"), header)
-    i_e2 = findfirst(==("e2_total"), header)
-    @test abs(data[2][i_e2] / data[1][i_e2] - 1.0) < 1.0e-9
+    i_pseudo = findfirst(==("pseudo_energy_total"), header)
+    @test abs(data[2][i_pseudo] / data[1][i_pseudo] - 1.0) < 1.0e-9
     @test abs(data[2][i_e1] / data[1][i_e1] - 1.0) < 1.0e-9
     r = Norma.dn_interface_residuals(sim)[1][2]
     @test r.acceleration_jump ≤ 1.0e-10
@@ -232,9 +232,9 @@ end
 @testset "Constrained DN: Coupled Initial Acceleration, First Steps (EE)" begin
     sim, header, data = run_constrained_dn(true; num_steps=10)
     @test sim.failed == false
-    i_e2 = findfirst(==("e2_total"), header)
-    @test abs(data[2][i_e2] / data[1][i_e2] - 1.0) < 1.0e-9
-    # Without the coupled initial acceleration the staggered energy E1 of the
+    i_pseudo = findfirst(==("pseudo_energy_total"), header)
+    @test abs(data[2][i_pseudo] / data[1][i_pseudo] - 1.0) < 1.0e-9
+    # Without the coupled initial acceleration the staggered energy E of the
     # explicit pair alternated by about 1e-3 from step to step.
     @test energy_drift(header, data, "total_energy") < 1.0e-9
     i_u = findfirst(h -> startswith(h, "displacement_jump"), header)
@@ -248,7 +248,7 @@ end
 # reaction interpolated linearly between the two end values of the window, the
 # coarse side imposes the fine side's velocity at the window end, and the
 # interface terms of the pseudo-energy balance cancel (Connors et al. Eq.
-# (103)), so E2 is constant to the Schwarz tolerance accumulated over the
+# (103)), so Ẽ is constant to the Schwarz tolerance accumulated over the
 # stops.
 self_name(bc) = Norma.self_subsim_of(bc).name
 
@@ -264,9 +264,9 @@ for explicit in (false, true)
         sim, header, data = run_constrained_dn(explicit; num_steps=20, free_substeps=4, clamped_dirichlet=true)
         @test sim.failed == false
         @test length(data) == 21
-        i_e2 = findfirst(==("e2_total"), header)
-        e2 = [row[i_e2] for row in data]
-        @test maximum(abs.(e2 ./ e2[1] .- 1.0)) < 1.0e-10
+        i_pseudo = findfirst(==("pseudo_energy_total"), header)
+        pseudo = [row[i_pseudo] for row in data]
+        @test maximum(abs.(pseudo ./ pseudo[1] .- 1.0)) < 1.0e-10
         bc_D, bc_N = dn_bc_pair(sim)
         @test self_name(bc_D) == "cantilever-clamped"
         # The force on the fine (Neumann) side at each substep of the last stop
@@ -301,7 +301,7 @@ end
 
 # Direct interface solve of the explicit pair (`interface solve: direct`): the
 # interface force is solved from the velocity constraint once per stop. It must
-# reproduce the iteration converged to 1e-12 and conserve E2. Conforming meshes
+# reproduce the iteration converged to 1e-12 and conserve Ẽ. Conforming meshes
 # and the 2:1 nonconforming meshes of the impedance example.
 const nonconforming_beam = "../examples/nonoverlap/dynamic-same-step/cantilever-impedance-nonconforming"
 for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconforming", nonconforming_beam))
@@ -318,11 +318,11 @@ for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconfo
         for (a, b) in zip(it_fields, dir_fields)
             @test norm(a - b) ≤ 1.0e-12 * norm(a)
         end
-        for column in ("total_energy", "e2_total")
+        for column in ("total_energy", "pseudo_energy_total")
             i = findfirst(==(column), header)
             @test maximum(abs(r[i] / q[i] - 1.0) for (r, q) in zip(dir_data, it_data)) ≤ 1.0e-12
         end
-        @test e2_drift(header, dir_data) < 1.0e-12
+        @test pseudo_drift(header, dir_data) < 1.0e-12
     end
 end
 
@@ -342,7 +342,7 @@ for relaxation in ("aitken secant", "aitken recursive")
         @test sim.failed == false
         iterations = sim.controller.schwarz_iters[1:10]
         @test maximum(iterations) ≤ 8
-        @test e2_drift(header, data) < 1.0e-10
+        @test pseudo_drift(header, data) < 1.0e-10
     end
 end
 
@@ -352,7 +352,7 @@ end
     @test sim.failed == false
     # The Aitken forms take at most 8 iterations per stop on this case.
     @test maximum(sim.controller.schwarz_iters[1:10]) ≤ 8
-    @test e2_drift(header, data) < 1.0e-10
+    @test pseudo_drift(header, data) < 1.0e-10
 end
 
 # Interface gain of the conforming implicit pair at a stop, G = -Π H_N Πᵀ H_D⁻¹

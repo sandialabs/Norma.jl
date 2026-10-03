@@ -790,7 +790,7 @@ end
 # time from the partner's substep history (apply_bc). With the coarse-step side
 # as the Dirichlet side this is the r = 1 multirate scheme of Connors, Owen,
 # Kuberry, and Bochev (2024) and the scheme of Prakash and Hjelmstad (2004),
-# whose interface terms cancel and which conserves E2 (coupling note).
+# whose interface terms cancel and which conserves the pseudo-energy Ẽ (coupling note).
 function check_constrained_integrators(
     sim_1::SingleDomainSimulation, sim_2::SingleDomainSimulation, constraint::Symbol
 )
@@ -2679,7 +2679,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         # (2024, Eqs. (53)-(55), (89)-(90), (104)-(105)), which is also that of
         # Prakash and Hjelmstad (2004, Eqs. (25), (40)). Its interface terms
         # cancel at the fixed point (Connors et al. Eq. (103)), so the
-        # subcycled exchange conserves E2 without a direct interface solve.
+        # subcycled exchange conserves the pseudo-energy Ẽ without a direct interface solve.
         # The cancellation needs the window-start reaction to be the previous
         # window's converged one, which holds because restore_stop_state runs
         # before subcycle pushes the anchor snapshot, and loads on the

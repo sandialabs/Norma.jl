@@ -362,16 +362,16 @@ function total_blended_energy(sim::MultiDomainSimulation)
 end
 
 # ---------------------------------------------------------------------------
-# Energy of the differentiated system.
+# Pseudo-energy: the energy functional applied to the velocity and the acceleration (J/s^2).
 #
 # Differentiating the linear equation of motion M ü + K u = f in time gives
 # M a' + K v = f', whose Newmark discrete energy (Prakash and Hjelmstad 2004,
 # Eqs. (56)-(58), (71)) is
 #
-#     E2 = ½ aᵀ A a + ½ vᵀ K v,   A = M + (Δt²/2)(2β - γ) K.
+#     Ẽ = ½ aᵀ A a + ½ vᵀ K v,   A = M + (Δt²/2)(2β - γ) K.
 #
 # Continuity of the interface velocity (Gravouil and Combescure 2001) conserves
-# the sum of E2 over the subdomains at equal time steps, while continuity of
+# the sum of Ẽ over the subdomains at equal time steps, while continuity of
 # the displacement with trapezoidal Newmark (β = 1/4, γ = 1/2) conserves the
 # physical energy ½ vᵀ M v + SE(u). With SE(x) the strain energy evaluated with
 # the nodal field x in place of the displacement, ½ xᵀ K x = SE(x) for a linear
@@ -379,17 +379,17 @@ end
 # strain of the displacement gradient (strain_energy for Linear_Elastic in
 # constitutive.jl), so
 #
-#     E2 = ½ aᵀ M a + (Δt²/2)(2β - γ) SE(a) + SE(v),
+#     Ẽ = ½ aᵀ M a + (Δt²/2)(2β - γ) SE(a) + SE(v),
 #
 # which is ½ aᵀ M a + SE(v) for trapezoidal Newmark with the consistent mass and
 # ½ aᵀ M_L a - (Δt²/4) SE(a) + SE(v) for central difference (β = 0, γ = 1/2)
-# with the lumped mass M_L. E2 is evaluated only for subdomains whose materials
+# with the lumped mass M_L. Ẽ is evaluated only for subdomains whose materials
 # are all linear elastic and whose integrator is Newmark without HHT-α or
 # central difference; it is NaN otherwise.
 # ---------------------------------------------------------------------------
 
-# True when E2 is defined for the subdomain.
-function differentiated_energy_applies(subsim::SingleDomainSimulation)
+# True when Ẽ is defined for the subdomain.
+function pseudo_energy_applies(subsim::SingleDomainSimulation)
     model = subsim.model
     model isa SolidMechanics || return false
     model.mesh_smoothing && return false
@@ -468,12 +468,12 @@ function schwarz_interface_dofs(model::SolidMechanics)
     return mask
 end
 
-# E2 of one subdomain (NaN where it does not apply) and, for central
+# Ẽ of one subdomain (NaN where it does not apply) and, for central
 # difference, the staggered kinetic energy ½ vᵀ M_L v - (Δt²/8) aᵀ M_L a split
 # into the rows of the Schwarz interface nodes and the remaining rows (NaN for
 # other integrators). The lumped mass is diagonal, so the split is exact.
-function differentiated_subdomain_energy(subsim::SingleDomainSimulation)
-    differentiated_energy_applies(subsim) || return NaN, NaN, NaN
+function subdomain_pseudo_energy(subsim::SingleDomainSimulation)
+    pseudo_energy_applies(subsim) || return NaN, NaN, NaN
     model = subsim.model
     integrator = subsim.integrator
     Δt = integrator.time_step
@@ -494,8 +494,8 @@ function differentiated_subdomain_energy(subsim::SingleDomainSimulation)
     else
         kin_a = kin_a_consistent
     end
-    e2 = kin_a + 0.5 * Δt * Δt * (2.0 * β - γ) * se_a + se_v
-    return e2, staggered_interface, staggered_interior
+    pseudo = kin_a + 0.5 * Δt * Δt * (2.0 * β - γ) * se_a + se_v
+    return pseudo, staggered_interface, staggered_interior
 end
 
 # Interface displacement and velocity jumps of every DN pair and every
@@ -550,19 +550,19 @@ end
 
 # Append the current blended energy to <sim.name>-energy.csv (header written on
 # the first stop). The first four columns are the blended physical energy; the
-# columns after them are E2 of the differentiated system (total and per
+# columns after them are the pseudo-energy Ẽ (total and per
 # subdomain), the staggered kinetic energy of the central difference subdomains
 # on the Schwarz interface rows and on the remaining rows, and the one-sided
 # displacement and velocity jumps of each Dirichlet-Neumann pair.
 function write_blended_energy_csv(sim::MultiDomainSimulation)
     stored, kinetic, total = total_blended_energy(sim)
-    e2 = Float64[]
+    pseudo = Float64[]
     staggered_interface = 0.0
     staggered_interior = 0.0
     any_explicit = false
     for subsim in sim.subsims
-        e2_k, interface_k, interior_k = differentiated_subdomain_energy(subsim)
-        push!(e2, e2_k)
+        pseudo_k, interface_k, interior_k = subdomain_pseudo_energy(subsim)
+        push!(pseudo, pseudo_k)
         if subsim.integrator isa CentralDifference
             any_explicit = true
             staggered_interface += interface_k
@@ -578,14 +578,14 @@ function write_blended_energy_csv(sim::MultiDomainSimulation)
     time = sim.controller.time
     open(filename, stop == 0 ? "w" : "a") do io
         if stop == 0
-            header = ["time", "stored_energy", "kinetic_energy", "total_energy", "e2_total"]
-            append!(header, ["e2_" * subsim.name for subsim in sim.subsims])
+            header = ["time", "stored_energy", "kinetic_energy", "total_energy", "pseudo_energy_total"]
+            append!(header, ["pseudo_energy_" * subsim.name for subsim in sim.subsims])
             append!(header, ["staggered_kinetic_interface", "staggered_kinetic_interior"])
             append!(header, jump_names)
             println(io, join(header, ","))
         end
-        row = Any[time, stored, kinetic, total, sum(e2)]
-        append!(row, e2)
+        row = Any[time, stored, kinetic, total, sum(pseudo)]
+        append!(row, pseudo)
         append!(row, [staggered_interface, staggered_interior])
         append!(row, jump_values)
         println(io, join(row, ","))

@@ -2,7 +2,7 @@
 # examples/jmp/concentric-cylinders, for devising and testing conservation
 # schemes: three nested cylinders (core, filler, shell) of linear elastic
 # materials, fixed in z at the bottom face of the shell and moving at -5 m/s
-# in z. With linear elastic materials the energy E2 of the differentiated
+# in z. With linear elastic materials the pseudo-energy of the differentiated
 # system, which the constrained Dirichlet-Neumann exchange conserves, is
 # defined, so the energy output measures conservation and not only
 # boundedness. The speed is 5 m/s rather than the -35 m/s of the neohookean
@@ -19,7 +19,7 @@
 #           density 1843 kg/m^3
 #
 # One-domain multidomain wrapper of cylinders.yaml, which writes the blended
-# energy output (E1, and E2 of the differentiated system) to
+# energy output (the energy, and the pseudo-energy of the differentiated system) to
 # reference-energy.csv.
 type: multi
 domains: ["cylinders.yaml"]

@@ -115,27 +115,27 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 | Column | Meaning |
 |---|---|
 | `time` | time of the stop |
-| `stored_energy`, `kinetic_energy`, `total_energy` | blended physical energy E1: strain energy, kinetic energy (the staggered form ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for central difference subdomains), and their sum |
-| `e2_total` | E2, the sum over subdomains of the energy of the system differentiated in time |
-| `e2_<subdomain>` | E2 of one subdomain, one column per subdomain in the order of `domains` |
+| `stored_energy`, `kinetic_energy`, `total_energy` | blended energy E: strain energy, kinetic energy (the staggered form ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for central difference subdomains), and their sum |
+| `pseudo_energy_total` | Ẽ, the pseudo-energy: the sum over subdomains of the energy functional applied to the velocity and the acceleration, in J/s² |
+| `pseudo_energy_<subdomain>` | Ẽ of one subdomain, one column per subdomain in the order of `domains` |
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
 | `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`); for an adjoint-paired impedance pair, D is the subdomain listed first |
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in m and m/s |
 | `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (N s), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
 
-E2 is the Newmark discrete energy of the differentiated equation of motion
+Ẽ is the pseudo-energy, the Newmark discrete energy of the differentiated equation of motion
 M ȧ + K v = ḟ (Prakash and Hjelmstad 2004, Eqs. (56)–(58) and (71)),
-E2 = ½ aᵀ A a + ½ vᵀ K v with A = M + (Δt²/2)(2β − γ) K, evaluated as
+Ẽ = ½ aᵀ A a + ½ vᵀ K v with A = M + (Δt²/2)(2β − γ) K, evaluated as
 ½ aᵀ M a + (Δt²/2)(2β − γ) SE(a) + SE(v), where SE(x) is the strain energy
 with the nodal field x in place of the displacement. This is ½ aᵀ M a + SE(v)
 for Newmark with β = 1/4, γ = 1/2 (consistent mass) and
 ½ aᵀ M_L a − (Δt²/4) SE(a) + SE(v) for central difference (lumped mass). The
 identity SE(x) = ½ xᵀ K x holds for the small-strain `linear elastic`
-material, so E2 is written only for subdomains whose materials are all linear
+material, so Ẽ is written only for subdomains whose materials are all linear
 elastic and whose integrator is Newmark without HHT-α or central difference,
 and is `NaN` otherwise. On a linear problem without loads, continuity of the
-interface velocity conserves E2 and continuity of the interface displacement
-with β = 1/4, γ = 1/2 conserves E1; an undecomposed run conserves both.
+interface velocity conserves Ẽ and continuity of the interface displacement
+with β = 1/4, γ = 1/2 conserves E; an undecomposed run conserves both.
 
 ## Schwarz coupling boundary conditions (subdomain files)
 
@@ -253,13 +253,13 @@ side: it imposes the fine side's velocity at the end of the stop, the fine
 side receives its reaction interpolated linearly in time, and the interface
 terms of the energy balance then cancel (the r = 1 multirate scheme of
 Connors, Owen, Kuberry, and Bochev 2024, and that of Prakash and Hjelmstad
-2004). On the cantilever with a 4:1 step ratio this kept E2 within 4e-12 and
-E1 within 0.4% over 10 ms. With the finer step on the Dirichlet side E2 was
-conserved only to the accumulated stopping error, E1 varied by up to 51%, and
+2004). On the cantilever with a 4:1 step ratio this kept Ẽ within 4e-12 and
+E within 0.4% over 10 ms. With the finer step on the Dirichlet side Ẽ was
+conserved only to the accumulated stopping error, E varied by up to 51%, and
 the interface impulse residual (energy CSV) was of the order of the impulse.
 On nonconforming meshes with identical integrators the finer mesh should also
 be the Dirichlet side: on the 1:0.5 beam, giving the fine mesh the coarse step
-and the Dirichlet role conserved E2 to 4e-12, while the coarse mesh as the
+and the Dirichlet role conserved Ẽ to 4e-12, while the coarse mesh as the
 Dirichlet side diverged for explicit sides (gain radius 3.5 at relaxation
 0.5) and needed 44.5 iterations per stop for implicit ones. Where the
 stability limit of an explicit member does not allow the finer mesh the

@@ -176,7 +176,7 @@ materials (\code{examples/jmp/concentric-cylinders-linear}, the same
 meshes by relative path): core $E = 100$\,GPa, $\nu = 0.33$; shell
 $E = 200$\,GPa, $\nu = 0.28963$; filler $E = 9KG/(3K + G) =
 0.21412$\,GPa and $\nu = (3K - 2G)/(2(3K + G)) = 0.49404$ from its bulk
-and shear moduli; the same densities. With linear materials $E_2$ is
+and shear moduli; the same densities. With linear materials $\tilde{E}$ is
 defined. The assembly moves at $-5$\,m/s rather than $-35$\,m/s, which
 strains the filler beyond the range of a small-strain model; the
 conservation identity does not depend on the amplitude, and the runs
@@ -1332,10 +1332,10 @@ of $m(m-1)/2$ negative squares (Eq.~(49)): it is exactly zero at equal
 steps ($m = 1$), for every combination of Newmark schemes, and
 nonpositive otherwise, zero only when the coarse velocity is linear over
 the coarse step. The energy that velocity continuity conserves is the
-Newmark discrete energy of the system differentiated in time, $~M
+pseudo-energy (the energy functional applied to the velocity and the acceleration, in J/s$^2$) of the system differentiated in time, $~M
 \dot{~a} + ~K ~v = \dot{~f}$, summed over the subdomains,
 \begin{equation}
-  E_2 = \sum_k \Bigl(\tfrac12\, ~a_k^T ~A_k ~a_k
+  \tilde{E} = \sum_k \Bigl(\tfrac12\, ~a_k^T ~A_k ~a_k
         + \tfrac12\, ~v_k^T ~K_k ~v_k\Bigr),
   \qquad ~A_k = ~M_k + \tfrac12 \Delta t_k^2 (2\beta_k - \gamma_k) ~K_k
   \label{eq:e2}
@@ -1343,10 +1343,10 @@ Newmark discrete energy of the system differentiated in time, $~M
 (Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}, Eqs.~(56)--(58) and
 (71)), with $~a_k$ and $~v_k$ the acceleration and the velocity of
 subdomain $k$; $~A_k$ is $~M_k$ for average acceleration and $~M_k -
-\tfrac14 \Delta t_k^2 ~K_k$ for central difference. $E_2$ is not the
-physical energy $E_1 = \sum_k (\tfrac12 ~v_k^T ~M_k ~v_k +
+\tfrac14 \Delta t_k^2 ~K_k$ for central difference. $\tilde{E}$ is not the
+physical energy $E = \sum_k (\tfrac12 ~v_k^T ~M_k ~v_k +
 \mathrm{SE}(~u_k))$ that the blended output computes. Continuity of the
-displacement with average acceleration conserves $E_1$ exactly. For
+displacement with average acceleration conserves $E$ exactly. For
 identical integrators at equal steps both are conserved. The interface
 operator (Eqs.~(19), (22), and (25) there) is
 \begin{equation}
@@ -1419,14 +1419,14 @@ balance per side. For side $k$ advanced by Newmark steps $\Delta t_k$ with
 a linear stiffness $~K_k$, an interface force $~f_k$ on its interface rows,
 and no other loads, the pseudo-energy
 \begin{equation}
-  E_{2,k}^n = \tfrac12\, (~a_k^n)^T ~S_k\, ~a_k^n
+  \tilde{E}_{k}^n = \tfrac12\, (~a_k^n)^T ~S_k\, ~a_k^n
             + \tfrac12\, (~v_k^n)^T ~K_k\, ~v_k^n,
   \qquad ~S_k = ~M_k + \left(\beta_k - \tfrac{\gamma_k}{2}\right)\Delta t_k^2\, ~K_k,
 \end{equation}
-which is $E_2$ of \eqref{eq:e2}, changes over the $m_k$ steps of a window
+which is $\tilde{E}$ of \eqref{eq:e2}, changes over the $m_k$ steps of a window
 by (their Eq.~(102))
 \begin{equation}
-  E_{2,k}^{m_k} - E_{2,k}^{0}
+  \tilde{E}_{k}^{m_k} - \tilde{E}_{k}^{0}
   + \left(\gamma_k - \tfrac12\right) \sum_{n=1}^{m_k}
     (\Delta ~a_k^n)^T ~S_k\, \Delta ~a_k^n
   = \frac{1}{\Delta t_k} \sum_{n=1}^{m_k}
@@ -1434,7 +1434,7 @@ by (their Eq.~(102))
   \label{eq:pseudo-energy}
 \end{equation}
 with $\Delta(\cdot)^n = (\cdot)^n - (\cdot)^{n-1}$. With $\gamma_k = 1/2$ the
-second term vanishes, and $E_{2,k}$ is a norm when $~S_k$ is positive
+second term vanishes, and $\tilde{E}_{k}$ is a norm when $~S_k$ is positive
 definite, which for central difference ($\beta = 0$) is its stability
 limit.
 
@@ -1457,7 +1457,7 @@ $\Pi_D$ in place of their Boolean interface map, their condition (108)
 at $r = 1$, and Prakash and Hjelmstad's Eq.~(70). The conditions are: a
 linear stiffness on both sides; $\gamma = 1/2$ on both sides (otherwise
 each side dissipates by the second term of \eqref{eq:pseudo-energy});
-$~S_k$ positive definite, for $E_2$ to bound the solution; the force on
+$~S_k$ positive definite, for $\tilde{E}$ to bound the solution; the force on
 $N$ at the window start equal to the converged reaction of the previous
 window, which holds in Norma because \code{restore\_stop\_state} runs
 before \code{subcycle} pushes the anchor snapshot; and loads on the
@@ -1562,7 +1562,7 @@ Combescure, with the Schwarz iteration as one of its solvers. In order:
   reaction is their flux $\Sigma^N$, and the scheme of Prakash and
   Hjelmstad (their Eqs.~(25), (40), and (70)); its interface terms cancel
   at the fixed point of the iteration (Sec.~\ref{sec:pseudo-energy}), so
-  it conserves $E_2$ without a direct interface solve.
+  it conserves $\tilde{E}$ without a direct interface solve.
 \end{enumerate}
 
 The Dirichlet side of each pair is the implicit member, and for two
@@ -1575,8 +1575,8 @@ divergent. Changes 1 to 3 are implemented and measured there.
 The reference experiments, with the outcome the theorems require:
 \begin{itemize}[itemsep=2pt]
 \item Beam, matching meshes, equal steps, each of II, IE, EI, and EE,
-  after changes 1 to 3, converged to $10^{-12}$ on the constraint: $E_2$
-  of \eqref{eq:e2} under the velocity constraint, and $E_1$ under the
+  after changes 1 to 3, converged to $10^{-12}$ on the constraint: $\tilde{E}$
+  of \eqref{eq:e2} under the velocity constraint, and $E$ under the
   displacement constraint with average acceleration on both sides, is
   constant to roundoff over $10$\,ms. Any
   residual measures what remains of the departure.
@@ -1611,20 +1611,20 @@ true} on both sides of a \code{Schwarz DN nonoverlap} pair, with
 below use the time step $10^{-6}$\,s, $10$\,ms, a relative tolerance of
 $10^{-12}$ on the jump of the constrained quantity and on the interface
 force residual, at most $256$ Schwarz iterations per stop, and the direct
-linear solver. Energies are $E_1$, the blended physical energy of
-Sec.~\ref{sec:energy}, and $E_2$ of \eqref{eq:e2}. The jump is the
+linear solver. Energies are $E$, the blended physical energy of
+Sec.~\ref{sec:energy}, and $\tilde{E}$ of \eqref{eq:e2}. The jump is the
 one-sided relative jump $\lVert ~u_D - \Pi_D ~u_N \rVert_{~W_D} /
 \lVert ~u_D \rVert_{~W_D}$ on the Dirichlet side $D$, with $N$ the
 Neumann side and $~W_D$ the boundary mass matrix of $D$.
 
 \paragraph{Ground truth.} An undecomposed run of the same beam at
-$\Delta t = 5\times 10^{-7}$\,s keeps $E_1$ and $E_2$ within
+$\Delta t = 5\times 10^{-7}$\,s keeps $E$ and $\tilde{E}$ within
 $1.7\times 10^{-13}$ of their initial values over $10$\,ms with average
 acceleration and within $2.7\times 10^{-14}$ with central difference. The
 present Dirichlet--Neumann exchange at the same step, tolerance
 $10^{-8}$, and $\theta = 0.5$ inverts an element at $0.46$\,ms with
-implicit subdomains ($E_1/E_1(0) = 1.91$ and $E_2/E_2(0) = 34$ at
-$0.4$\,ms) and ends at $E_1/E_1(0) = 1.013$ and $E_2/E_2(0) = 1.006$ at
+implicit subdomains ($E/E(0) = 1.91$ and $\tilde{E}/\tilde{E}(0) = 34$ at
+$0.4$\,ms) and ends at $E/E(0) = 1.013$ and $\tilde{E}/\tilde{E}(0) = 1.006$ at
 $10$\,ms with explicit ones.
 
 \paragraph{The force residual of the present exchange.} The relative
@@ -1705,13 +1705,13 @@ settle and the stall rule ended runs, had two causes, both corrected
 \paragraph{The first step and the coupled initial acceleration.} With
 the initial acceleration computed per subdomain and the interface held
 fixed (Sec.~\ref{sec:constrained-norma}, departure~5), the first step
-changed $E_2$ by $0.18$ to $0.9\%$ and $E_1$ by $5\times 10^{-5}$ (II) and
+changed $\tilde{E}$ by $0.18$ to $0.9\%$ and $E$ by $5\times 10^{-5}$ (II) and
 $5\times 10^{-4}$ (EE), and conservation held only from the first step
 on. In the explicit pair the difference of the two interface
 accelerations then alternates in sign at every step: velocity continuity
 fixes the sum of two consecutive accelerations on each side, so an initial
 difference is never removed, the displacement jump alternates between
-$2\times 10^{-3}$ and $10^{-14}$, and $E_1$ alternates by $10^{-3}$. The
+$2\times 10^{-3}$ and $10^{-14}$, and $E$ alternates by $10^{-3}$. The
 remedy is change~3: a Schwarz iteration at $t = 0$ in which the Dirichlet
 side imposes the projected partner acceleration, the Neumann side receives
 the d'Alembert reaction, and each side recomputes its acceleration with
@@ -1726,7 +1726,7 @@ occur.
 \footnotesize\setlength{\tabcolsep}{3pt}
 \caption{Constrained exchange on the conforming cantilever, completed
 runs. $E(10)$ is the ratio to the value at $t = 0$ at $10$\,ms;
-$\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$; $\delta_1 E_2$ is the same
+$\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$; $\delta_1 \tilde{E}$ is the same
 from the first step on; jump is the largest displacement jump over the
 last $100$ stops; it.\ is the mean and maximum number of Schwarz
 iterations per stop; wall time in seconds on four threads. ``Dir.\ impl.''
@@ -1735,8 +1735,8 @@ Dirichlet side otherwise.}
 \label{tab:constrained}
 \begin{tabular}{llccccccrr}
 \toprule
-pair, constraint & $\theta$ & $E_1(10)$ & $E_2(10)$ & $\delta E_1$ &
-  $\delta E_2$ & $\delta_1 E_2$ & jump & it. & wall \\
+pair, constraint & $\theta$ & $E(10)$ & $\tilde{E}(10)$ & $\delta E$ &
+  $\delta \tilde{E}$ & $\delta_1 \tilde{E}$ & jump & it. & wall \\
 \midrule
 \multicolumn{10}{l}{\emph{initial acceleration per subdomain}} \\
 II, displacement & 0.5 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
@@ -1787,19 +1787,19 @@ EI, velocity, Dir.\ impl. & 0.5 & 1.003366 & 1.000000 & $3.7\mathrm{e}{-3}$ &
 
 \paragraph{What Table~\ref{tab:constrained} shows.} With the coupled
 initial acceleration, the energy that the constraint matches is constant
-over $10$\,ms to between $4\times 10^{-14}$ and $4\times 10^{-10}$: $E_2$
-under the velocity constraint for every pair, and both $E_1$ and $E_2$
+over $10$\,ms to between $4\times 10^{-14}$ and $4\times 10^{-10}$: $\tilde{E}$
+under the velocity constraint for every pair, and both $E$ and $\tilde{E}$
 for the identical integrators. The residual is set by the tolerance
 $10^{-12}$ accumulated over $10^4$ stops, not by roundoff (undecomposed:
 $10^{-13}$); the explicit pair at $\theta = 0.5$ converges in one
 iteration exactly and reaches $4\times 10^{-14}$. The final energies of
 runs that differ only in $\theta$ agree to between $10^{-12}$ and
 $5\times 10^{-10}$, the same tolerance effect. Under the displacement
-constraint with the per-subdomain initial acceleration $E_2$ drifted by
+constraint with the per-subdomain initial acceleration $\tilde{E}$ drifted by
 $2\times 10^{-7}$ to $2\times 10^{-6}$, because the acceleration
 $(~u - ~u^{\text{pre}})/(\beta \Delta t^2)$ multiplies the displacement
 iteration error by $4/\Delta t^2$; with the coupled initial acceleration
-that drift is $5\times 10^{-11}$. For the mixed pairs $E_1$ is not
+that drift is $5\times 10^{-11}$. For the mixed pairs $E$ is not
 conserved ($0.4\%$), which is the expected behavior of the velocity
 constraint between different integrators. The displacement drift of
 Mahjoubi et al.\ appears in the mixed pairs only: its root mean square over
@@ -1821,7 +1821,7 @@ the Dirichlet side, $\theta = 0.5$, coupled initial acceleration:
 \footnotesize\setlength{\tabcolsep}{3pt}
 \begin{tabular}{llccccccrr}
 \toprule
-ratio & pair, constraint & $E_1(10)$ & $E_2(10)$ & $\delta E_1$ & $\delta E_2$ & jump & it. & wall \\
+ratio & pair, constraint & $E(10)$ & $\tilde{E}(10)$ & $\delta E$ & $\delta \tilde{E}$ & jump & it. & wall \\
 \midrule
 $1{:}0.5$ & II, displacement & 1.000000 & 1.000000 &
   $1.2\mathrm{e}{-10}$ & $4.3\mathrm{e}{-11}$ & $9.8\mathrm{e}{-13}$ & 17.3/19 & 437 \\
@@ -1869,12 +1869,12 @@ summed over the interface nodes per component (net, N\,s) and in the
 $~W_N^{-1}$ norm relative to the transferred impulse.
 
 On the conforming beam, with the coarse-step (clamped) side as the
-Dirichlet side, the arrangement of Sec.~\ref{sec:pseudo-energy}, $E_2$
-stays within $4.5\times 10^{-13}$ (EE) and $1.6\times 10^{-12}$ (II), $E_1$
+Dirichlet side, the arrangement of Sec.~\ref{sec:pseudo-energy}, $\tilde{E}$
+stays within $4.5\times 10^{-13}$ (EE) and $1.6\times 10^{-12}$ (II), $E$
 within $0.11\%$ and $0.38\%$, and the impulse residual is at roundoff (net
 at most $2.6\times 10^{-14}$\,N\,s, relative at most $1.5\times 10^{-12}$).
-With the fine-step (free) side as the Dirichlet side, $E_2$ changes by
-$4.4\times 10^{-9}$ (EE) and $2.0\times 10^{-9}$ (II), $E_1$ varies by $51\%$
+With the fine-step (free) side as the Dirichlet side, $\tilde{E}$ changes by
+$4.4\times 10^{-9}$ (EE) and $2.0\times 10^{-9}$ (II), $E$ varies by $51\%$
 and $20\%$ with the period of the first bending mode ($10$\,ms), and the
 impulse residual is of the order of the impulse itself: the relative
 residual has the median $0.95$ (EE) and $0.67$ (II) and the maximum $3.4$
@@ -1882,15 +1882,15 @@ and $4.8$; the net residual is in the bending direction $y$, up to
 $4.8\times 10^{-2}$ and $4.9\times 10^{-2}$\,N\,s per window, and sums to
 $-29$ and $-17$\,N\,s over the $10$\,ms, while the $x$ and $z$ components
 stay below $5\times 10^{-12}$\,N\,s. The earlier fine-side runs with the
-former absolute floor changed $E_2$ by $7.1\times 10^{-8}$ and
+former absolute floor changed $\tilde{E}$ by $7.1\times 10^{-8}$ and
 $2.4\times 10^{-8}$; with the relative criterion the change is $40$ and
 $12$ times smaller, which identifies it as accumulated stopping error, as
-the derivation of Sec.~\ref{sec:pseudo-energy} predicts. The $E_1$
+the derivation of Sec.~\ref{sec:pseudo-energy} predicts. The $E$
 variation of the fine-side arrangement coincides with a nonzero impulse
 residual and the coarse-side arrangement has neither; whether the impulse
 residual causes the variation has not been tested separately. The mixed
 pairs of the earlier runs, IE with the coarse implicit side as the
-Dirichlet side ($E_2$ within $3.9\times 10^{-12}$, $E_1$ within $0.07\%$)
+Dirichlet side ($\tilde{E}$ within $3.9\times 10^{-12}$, $E$ within $0.07\%$)
 and EI, whose coarse side is explicit and diverges as the Dirichlet side,
 are in Table~\ref{tab:beam-compare}.
 
@@ -1913,10 +1913,10 @@ eigenvalues lie in $[-7.9, -2.0]$ and the iteration diverges for every
 $\theta \ge 0.25$; the run diverged already in the coupled initial
 acceleration at $\theta = 0.5$ and at $\theta = 0.25$ (kinetic energy of
 order $10^{249}$ and $10^{21}$ at $t = 0$) and ended at the first stop.
-Assignment (B) conserves $E_2$ to $3.7\times 10^{-12}$ (EE) and $1.6\times
+Assignment (B) conserves $\tilde{E}$ to $3.7\times 10^{-12}$ (EE) and $1.6\times
 10^{-12}$ (II) with the impulse residual at roundoff; assignment (A) with
 implicit sides, whose gain radius at $\theta = 0.5$ is $0.55$, conserves
-$E_2$ to $4.7\times 10^{-13}$ in $44.5$ iterations per stop against $18.8$
+$\tilde{E}$ to $4.7\times 10^{-13}$ in $44.5$ iterations per stop against $18.8$
 for (B). The rule for subcycled pairs is therefore: the coarse-step side is
 the Dirichlet side; between two members with the same integrator the
 finer mesh should be that side, which may require giving the finer mesh
@@ -1928,7 +1928,7 @@ it; where it does not, the gain decides.
 \scriptsize\setlength{\tabcolsep}{2pt}
 \caption{Beam with one side subcycled $4{:}1$, $10$\,ms, $\theta = 0.5$,
 relative tolerance $10^{-12}$, no absolute tolerance. D: the Dirichlet
-side; ``coarse'' and ``fine'' refer to the step. $E_1(t)/E_1(0)$ at $1$,
+side; ``coarse'' and ``fine'' refer to the step. $E(t)/E(0)$ at $1$,
 $2$, $5$, and $10$\,ms; $\delta E = \max_t \lvert E/E(0) - 1\rvert$ with the
 sign of the final value; drift: root mean square interface displacement
 jump at $10$\,ms (m); impulse: largest net residual per window in $y$
@@ -1940,7 +1940,7 @@ relaxed iteration from the linearized gain at a stop.}
 \label{tab:subcycled}
 \begin{tabular}{llccccccccrr}
 \toprule
-meshes & pair, D & 1 & 2 & 5 & 10 & $\delta E_1$ & $\delta E_2$ & drift &
+meshes & pair, D & 1 & 2 & 5 & 10 & $\delta E$ & $\delta \tilde{E}$ & drift &
   impulse $y$, rel. & it. & wall \\
 \midrule
 conf. & EE, D coarse & 1.0005 & 1.0009 & 1.0003 & 1.0006 & $+1.1\mathrm{e}{-3}$ & $-4.5\mathrm{e}{-13}$ &
@@ -1982,7 +1982,7 @@ $0.5\,\mu$s, nonconforming at $1{:}0.8$) were run to $2$\,ms with the
 constrained exchange, velocity constraint, the inner (finer) side as the
 Dirichlet side, $\theta = 0.5$, and the tolerances of the example
 (relative $10^{-6}$, absolute $10^{-4}$). The materials are nonlinear, so
-$E_2$ is not defined and the question is whether $E_1$ stays bounded.
+$\tilde{E}$ is not defined and the question is whether $E$ stays bounded.
 With the inner side as the Dirichlet side only $\Pi_D$ enters the
 exchange, and its partition-of-unity error is $4\times 10^{-15}$; the
 projector onto the outer side, which the exchange does not use, has an
@@ -2009,11 +2009,11 @@ rule accepts a root mean square velocity jump below the absolute
 tolerance divided by the step, here $10^{-4}\,\text{m}/5\times
 10^{-7}\,\text{s} = 200$\,m/s, while the measured jump was $0.27$ to
 $0.46$\,m/s ($0.6$ to $1.4\%$ relative). The run is therefore the
-unconverged staggered exchange, and its $E_1$ grows by $2.1\%$ in $2$\,ms
+unconverged staggered exchange, and its $E$ grows by $2.1\%$ in $2$\,ms
 at an increasing rate. With the absolute tolerance $10^{-12}$ the
 iteration contracts (no stall), needs $8.8$ iterations per stop, and
 leaves a relative velocity jump of $4.6\times 10^{-7}$; over the
-$0.1$\,ms run $E_1$ stays within $2.4\times 10^{-5}$, against
+$0.1$\,ms run $E$ stays within $2.4\times 10^{-5}$, against
 $9\times 10^{-5}$ for the one-iteration run at the same time. A converged
 run to $2$\,ms would take about $7$ hours on $8$ threads and was not
 made, so boundedness under convergence is shown only to $0.1$\,ms.
@@ -2061,7 +2061,7 @@ $t = 0$ from the acceleration constraint $~a_D = \Pi_D ~a_N$
 \footnotesize\setlength{\tabcolsep}{3pt}
 \begin{tabular}{llcccrrl}
 \toprule
-case & exchange & $\delta E_1$ & $\delta E_2$ & drift (m) & it. & wall (s) & tolerance \\
+case & exchange & $\delta E$ & $\delta \tilde{E}$ & drift (m) & it. & wall (s) & tolerance \\
 \midrule
 beam, conforming, EE & direct & $1.5\mathrm{e}{-14}$ & $4.4\mathrm{e}{-14}$ & $1.6\mathrm{e}{-17}$ & -- & 39 & -- \\
  & iterated & $1.2\mathrm{e}{-14}$ & $3.6\mathrm{e}{-14}$ & $4.8\mathrm{e}{-17}$ & 1.0/1 & 45 & rel.\ $10^{-12}$ \\
@@ -2082,17 +2082,17 @@ cylinders on $8$ threads. $\delta E$ is the largest $\lvert E/E(0) - 1
 end. The direct solve conserves both energies to roundoff, at a lower cost
 than the iteration on the nonconforming meshes, and on the cylinders the
 relative interface velocity jump at the end of every stop is at most
-$7\times 10^{-16}$. On the linear cylinders the monolithic $E_2$ varies by
+$7\times 10^{-16}$. On the linear cylinders the monolithic $\tilde{E}$ varies by
 $6.2\times 10^{-12}$ at $-5$\,m/s and $4.8\times 10^{-13}$ at $-35$\,m/s,
 the decomposed one by $3.2\times 10^{-12}$ and $4.3\times 10^{-13}$: the
 level depends on the amplitude because the deformation gradient is formed
 from the current coordinates $~X + ~u$, which loses digits in proportion
-to $\lvert ~X \rvert / \lvert ~u \rvert$. The per-step increments of $E_2$
+to $\lvert ~X \rvert / \lvert ~u \rvert$. The per-step increments of $\tilde{E}$
 have a standard deviation of $1.1\times 10^{-13}$ and a lag-one
 autocorrelation of $-0.31$, without a significant mean: roundoff in the
 evaluation and its accumulation, not a systematic change. On the
 neohookean cylinders ($-35$\,m/s, $2$\,ms) the direct solve completes in
-$1416$\,s with $E_1/E_1(0) = 0.999972$, $0.999963$, and $0.999936$ at
+$1416$\,s with $E/E(0) = 0.999972$, $0.999963$, and $0.999936$ at
 $0.5$, $1$, and $2$\,ms, within the $0.01\%$ that the monolithic reference
 keeps to $5$\,ms, a relative velocity jump of at most $7\times 10^{-16}$,
 and a drift of $6\times 10^{-18}$\,m; the iterated run with the former
@@ -2101,17 +2101,17 @@ floor reached $+2.1\%$ at $2$\,ms.
 \paragraph{The neohookean loss is the integrator's.} The conservation
 identities above hold for a linear stiffness. For a neohookean material
 central difference, the St\"ormer--Verlet method, conserves a modified
-energy that differs from $E_1$ by a state-dependent term of order
-$\Delta t^2$ \cite{HairerLubichWanner2006}, so $E_1$ varies at that order
+energy that differs from $E$ by a state-dependent term of order
+$\Delta t^2$ \cite{HairerLubichWanner2006}, so $E$ varies at that order
 and does not grow. Table~\ref{tab:neohookean-dt} measures this on the
 neohookean cylinders at $-35$\,m/s over $2$\,ms: the monolithic mesh and
 the decomposed mesh with the direct interface solve, each at the step of
-the example and at half that step. The variation of $E_1$ is of the same
+the example and at half that step. The variation of $E$ is of the same
 order on both systems and falls by a factor of $3.9$ and $4.0$ when the
 step is halved; its sign differs because the two discrete systems have
 different modified energies. The interface is closed to roundoff at both
 steps. The loss of the decomposed run is therefore the integrator's
-$\Delta t^2$ term, not interface work. Conservation of $E_1$ to roundoff
+$\Delta t^2$ term, not interface work. Conservation of $E$ to roundoff
 for a nonlinear material needs an energy--momentum integrator
 \cite{SimoTarnow1992,Gonzalez1996}, whose coupled form would need a
 midpoint velocity constraint; that is a separate project.
@@ -2119,15 +2119,15 @@ midpoint velocity constraint; that is a separate project.
 \begin{table}[htbp]
 \centering
 \caption{Neohookean cylinders, $-35$\,m/s, central difference, $2$\,ms:
-$E_1/E_1(0)$ at $0.25$, $0.5$, $1$, and $2$\,ms and the largest
-$\lvert E_1/E_1(0) - 1 \rvert$, for the monolithic mesh and the decomposed
+$E/E(0)$ at $0.25$, $0.5$, $1$, and $2$\,ms and the largest
+$\lvert E/E(0) - 1 \rvert$, for the monolithic mesh and the decomposed
 mesh with the velocity constraint and the direct interface solve
 \eqref{eq:direct}, at two steps.}
 \label{tab:neohookean-dt}
 \begin{tabular}{llllll}
 \hline
 system & $\Delta t$ (s) & $0.25$\,ms & $0.5$\,ms & $1$\,ms & $2$\,ms
-  \quad max $\lvert \delta E_1 \rvert$ \\
+  \quad max $\lvert \delta E \rvert$ \\
 \hline
 monolithic & $5\times 10^{-7}$ & $0.999963$ & $0.999971$ & $1.000019$
   & $1.000045$ \quad $5.4\times 10^{-5}$ \\
@@ -2158,7 +2158,7 @@ run here at $10^{-6}$\,s.
 \begin{table}[htbp]
 \centering
 \scriptsize\setlength{\tabcolsep}{2pt}
-\caption{Cantilever, $10$\,ms. $E_1(t)/E_1(0)$ at $1$, $2$, $5$, and
+\caption{Cantilever, $10$\,ms. $E(t)/E(0)$ at $1$, $2$, $5$, and
 $10$\,ms; $\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$ with the sign of
 $E(10\,\text{ms})/E(0) - 1$ (or of the last value reached); drift is the
 root mean square one-sided interface displacement jump at $10$\,ms in m;
@@ -2169,7 +2169,7 @@ displacement constraint; D: the Dirichlet side.}
 \label{tab:beam-compare}
 \begin{tabular}{lcccccccrrl}
 \toprule
-coupling & 1 & 2 & 5 & 10 & $\delta E_1$ & $\delta E_2$ & drift & it. & wall & completed \\
+coupling & 1 & 2 & 5 & 10 & $\delta E$ & $\delta \tilde{E}$ & drift & it. & wall & completed \\
 \midrule
 \multicolumn{11}{l}{\emph{conforming meshes ($8.47$\,mm), equal steps}} \\
 monolithic I & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
@@ -2267,7 +2267,7 @@ as well as the paired impedance coupling and needs comparable iteration
 counts: on conforming meshes the paired coupling is within $3.5\times
 10^{-3}$ for II and the mixed pairs and loses $0.55\%$ for EE, while the
 constrained exchange is within the tolerance; at $1{:}0.5$ the paired
-coupling dissipates $57$ to $58\%$ of $E_1$, which the dashpot takes from
+coupling dissipates $57$ to $58\%$ of $E$, which the dashpot takes from
 the jump it cannot close, and at $1{:}0.75$ it ends by element inversion
 at $3.5$ and $5.0$\,ms, while the constrained exchange conserves to
 $10^{-10}$ at both ratios; with subcycling it loses $9$ and $22\%$ against
@@ -2336,7 +2336,7 @@ side as Dirichlet).
 \scriptsize\setlength{\tabcolsep}{2pt}
 \begin{tabular}{lllcccccrrl}
 \toprule
-case & relax. & $\theta$ at 5\,ms & 1 & 5 & 10 & $\lvert\delta E_2\rvert$ & impulse &
+case & relax. & $\theta$ at 5\,ms & 1 & 5 & 10 & $\lvert\delta \tilde{E}\rvert$ & impulse &
   it. & wall & stalls \\
 \midrule
 eq.\ II & fixed $0.5$ & -- & 1.0000 & 1.0000 & 1.0000 & $1.3\mathrm{e}{-12}$ & $6.3\mathrm{e}{-16}$ & 5.9/6 & 325 & 0 \\
@@ -2375,7 +2375,7 @@ IE, D expl. & fixed $0.5$, $0.75$, $1$ & -- & \multicolumn{8}{l}{diverged; eleme
 \bottomrule
 \end{tabular}
 \end{center}
-The columns $1$, $5$, $10$ are $E_1(t)/E_1(0)$ at those milliseconds;
+The columns $1$, $5$, $10$ are $E(t)/E(0)$ at those milliseconds;
 $\theta$ lists the factors of the first three relaxed iterations of the stop
 at $5$\,ms (rec.: recursive, sec.: secant); impulse is the largest relative
 impulse residual of the run; it.\ is the mean and maximum number of Schwarz iterations per stop; wall
@@ -2458,12 +2458,12 @@ against $7.0$ and $10.9$ on (B), with no stall and identical results at both
 depths, since these stops need fewer iterations than the depth. With an
 explicit Dirichlet side the depth decides: at $m = 10$ the iteration takes
 $16$ (EI) and $14$ (IE) iterations per stop, against $35$ for Aitken, with no
-stall, and $E_2$ stays within $6.5\times 10^{-14}$ and $4.6\times 10^{-14}$, so
+stall, and $\tilde{E}$ stays within $6.5\times 10^{-14}$ and $4.6\times 10^{-14}$, so
 the drift of $6.8\times 10^{-11}$ that Aitken left through stops accepted at
 the force-residual floor disappears; at $m = 5$ the history is shorter than
 the $12$ to $16$ iterations that the $36$ interface unknowns need, the
 iteration takes $69$ and $54$ iterations per stop with $3828$ and $5031$
-stalled stops, and $E_2$ drifts by $9.0\times 10^{-11}$ and $1.0\times
+stalled stops, and $\tilde{E}$ drifts by $9.0\times 10^{-11}$ and $1.0\times
 10^{-10}$. Wall times at $m = 10$: $287$ and $254$\,s for EI and IE (Aitken
 $534$ and $524$\,s), $98$ and $280$\,s for (B) EE and II (Aitken $162$ and
 $372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
@@ -2549,16 +2549,16 @@ $372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
   on conforming meshes the eigenvalues are near $-1$: $\theta = 0.5$ is
   optimal and $\theta = 1$ does not converge.
 \item With a $4{:}1$ step ratio the constrained exchange with the
-  coarse-step side as the Dirichlet side keeps $E_2$ within $4\times
-  10^{-12}$ and $E_1$ within $0.4\%$ over $10$\,ms, without a direct
+  coarse-step side as the Dirichlet side keeps $\tilde{E}$ within $4\times
+  10^{-12}$ and $E$ within $0.4\%$ over $10$\,ms, without a direct
   interface solve (Sec.~\ref{sec:pseudo-energy}); with the fine-step side
-  as the Dirichlet side $E_1$ varies by up to $51\%$ and the interface
+  as the Dirichlet side $E$ varies by up to $51\%$ and the interface
   impulse residual is of the order of the impulse. The present paired impedance coupling loses $9$ (EE) and $22\%$
   (II) on the same case (Sec.~\ref{sec:constrained-results}).
 \item For two explicit subdomains at equal steps the direct interface
-  solve \eqref{eq:direct} conserves $E_1$ and $E_2$ to roundoff on the beam
+  solve \eqref{eq:direct} conserves $E$ and $\tilde{E}$ to roundoff on the beam
   at every mesh ratio and on the linear cylinders at $-5$ and $-35$\,m/s,
-  with no iteration, and keeps $E_1$ of the neohookean cylinders within
+  with no iteration, and keeps $E$ of the neohookean cylinders within
   $6.4\times 10^{-5}$ over $2$\,ms, against $5.4\times 10^{-5}$ for the
   monolithic mesh at the same step; both fall by a factor of $4$ at half
   the step (Table~\ref{tab:neohookean-dt}), so that variation is the
@@ -2627,7 +2627,7 @@ $372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
   subdomains and unstable between implicit ones. Answered by the first
   reference experiment: with the departures of
   Sec.~\ref{sec:constrained-norma} removed, the implicit pair conserves
-  $E_1$ and $E_2$ to $7\times 10^{-11}$ over $10$\,ms, where the present
+  $E$ and $\tilde{E}$ to $7\times 10^{-11}$ over $10$\,ms, where the present
   exchange inverts an element at $0.46$\,ms; the present exchange misses
   an interface force of the size of the reaction itself (median relative
   residual $1.47$ implicit, $0.83$ explicit). Which departure alone
@@ -2641,13 +2641,13 @@ $372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
   itself is obtained by the iterated exchange with the coarse-step side as
   the Dirichlet side (Sec.~\ref{sec:pseudo-energy}).
 \item Under subcycling with the fine-step side as the Dirichlet side,
-  $E_2$ is conserved up to accumulated stopping error ($4.4\times 10^{-9}$
+  $\tilde{E}$ is conserved up to accumulated stopping error ($4.4\times 10^{-9}$
   EE and $2.0\times 10^{-9}$ II over $10$\,ms at the relative tolerance
-  $10^{-12}$), but $E_1$ varies by $51\%$ and $20\%$ at the first bending
+  $10^{-12}$), but $E$ varies by $51\%$ and $20\%$ at the first bending
   period, and the interface impulse residual is of the order of the
   impulse (median relative residual $0.95$ and $0.67$, net $y$ residual
   summing to $-29$ and $-17$\,N\,s), against roundoff for the coarse-step
-  Dirichlet side. Whether the impulse residual causes the $E_1$ variation
+  Dirichlet side. Whether the impulse residual causes the $E$ variation
   has not been tested separately.
 \item The absolute branch of the constrained stopping rule divided the
   absolute tolerance by the step to obtain a velocity floor of $200$\,m/s
