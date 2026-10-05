@@ -17,7 +17,9 @@ adaptivity:
   minimum scaled Jacobian: 0.15
   adjacency layers: 2
   maximum passes: 10
-  outer iterations: 8
+  outer iterations: 1
+  collapses: false
+  splits: false
 model:
   type: mesh smoothing
   # Prescribed target: the edge length of the regular tetrahedron with the
