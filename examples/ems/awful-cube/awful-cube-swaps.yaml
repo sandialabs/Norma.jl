@@ -1,0 +1,78 @@
+type: single
+input mesh file: awful-cube.g
+output mesh file: awful-cube-swaps.e
+# Smoothing alternated with edge and face swaps only, one outer iteration per
+# run, for size-adaptive.jl: the script runs this input in stages and, after
+# each stage, sets the size field to the edge length of the regular
+# tetrahedron that fills the cube with the number of elements the stage left.
+# Splits and collapses are off, so the element count changes only through
+# the swaps; with them on, splits added about 2000 elements, which is not
+# the experiment.  awful-cube-adaptive.yaml is the same input with all the
+# topological operations and eight outer iterations.  The nodes slide on the
+# six faces of the cube through Surface conditions on side sets.
+adaptivity:
+  size criterion: length
+  shape criterion: scaled Jacobian
+  boundary swaps: true
+  size operations first: true
+  desired energy density: 0.05
+  minimum scaled Jacobian: 0.15
+  adjacency layers: 2
+  maximum passes: 10
+  outer iterations: 1
+  collapses: false
+  splits: false
+model:
+  type: mesh smoothing
+  # Prescribed target: the edge length of the regular tetrahedron with the
+  # mean volume of the elements of the input mesh, so the ideal element is
+  # the same for every element and every phase of the loop.
+  smooth reference: size field unrestricted
+  size field: "0.214"
+  material:
+    blocks:
+      awful: elastic
+    elastic:
+      model: seth-hill
+      m: 2
+      n: 2
+      bulk modulus: 1.0
+      shear modulus: 1.0
+      density: 1.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 1.0
+boundary conditions:
+  Surface:
+    - side set: ssx-
+      function: "x + 1.0"
+    - side set: ssx+
+      function: "x - 1.0"
+    - side set: ssy-
+      function: "y + 1.0"
+    - side set: ssy+
+      function: "y - 1.0"
+    - side set: ssz-
+      function: "z + 1.0"
+    - side set: ssz+
+      function: "z - 1.0"
+solver:
+  type: steepest descent
+  step: lbfgs
+  memory: 10
+  minimum iterations: 1
+  maximum iterations: 200
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  step length: 1.0e-3
+  use line search: true
+  line search backtrack factor: 0.5
+  line search decrease factor: 1.0e-04
+  line search maximum iterations: 16
+  # Stop a smoothing phase when the energy stalls, so that the work moves to
+  # the topology phase instead of iterating on a mesh that node motion can no
+  # longer improve.
+  energy stagnation window: 5
+  energy stagnation tolerance: 1.0e-03
