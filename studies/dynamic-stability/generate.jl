@@ -5,12 +5,12 @@
 # Every argument is a tier letter (see matrix.jl) or a case name; each case
 # gets a directory under the runs directory with run.yaml (the top-level
 # multidomain input), one input per subdomain, its meshes, and case.txt
-# (the parameters of the case, which collect.jl reads).  An existing case
-# directory is rewritten.
+# (the parameters of the case, which collect.jl and plot.py read).  An
+# existing case directory is rewritten unless it has completed.
 #
 # Options:
 #   --runs DIR           directory of the case directories (default: runs)
-#   --final-time T       end every case at T instead of its problem's final
+#   --final-time T       end every case at T instead of the beam's final
 #                        time, for a quick check of a setup (for example 1.0e-5)
 #   --exodus-interval T  write Exodus output every T seconds (default 0: none;
 #                        the energy history is written in any case)
@@ -59,11 +59,6 @@ function selected_cases(selections)
     return unique(cases)
 end
 
-# Names of the two subdomains of a problem: the one that holds the support
-# first, as in the integrator pair.
-support_domain(problem) = problem == "beam" ? "clamped" : "outer"
-other_domain(problem) = problem == "beam" ? "free" : "inner"
-
 function time_integrator(kind::Char, time_step)
     kind == 'I' && return """
         time integrator:
@@ -81,208 +76,136 @@ function time_integrator(kind::Char, time_step)
         """
 end
 
-# Newton with a direct linear solver on the cylinders, whose subdomains are
-# large enough for conjugate gradients to dominate the cost.
-function solver(kind::Char, problem)
-    p = problem_parameters(problem)
+function solver(kind::Char)
     kind == 'E' && return """
         solver:
           type: explicit solver
           step: explicit
         """
-    linear = problem == "cyl" ? "  linear solver: direct\n" : ""
     return """
         solver:
           type: Hessian minimizer
           step: full Newton
+          linear solver: direct
           minimum iterations: 1
           maximum iterations: 16
-          relative tolerance: $(num(p.newton_relative_tolerance))
-          absolute tolerance: $(num(p.newton_absolute_tolerance))
-        """ * linear
-end
-
-function materials(problem, domain)
-    if problem == "beam"
-        return """
-            model:
-              type: solid mechanics
-              material:
-                blocks:
-                  $domain: elastic
-                elastic:
-                  model: linear elastic
-                  elastic modulus: $(num(BEAM.elastic_modulus))
-                  Poisson's ratio: $(num(BEAM.poissons_ratio))
-                  density: $(num(BEAM.density))
-            """
-    end
-    blocks = Dict(
-        "cylinders" => ["core", "filler", "shell"], "inner" => ["core", "filler"], "outer" => ["filler", "shell"]
-    )
-    definitions = Dict(
-        "core" => """
-                core:
-                  model: neohookean
-                  elastic modulus: 100.0e+09
-                  Poisson's ratio: 0.33
-                  density: 4915.0
-            """,
-        "filler" => """
-                filler:
-                  model: neohookean
-                  bulk modulus: 5.99e+09
-                  shear modulus: 7.1658e+07
-                  density: 1843.0
-            """,
-        "shell" => """
-                shell:
-                  model: neohookean
-                  elastic modulus: 200.0e+09
-                  Poisson's ratio: 0.28963
-                  density: 7822.8
-            """,
-    )
-    text = "model:\n  type: solid mechanics\n  material:\n    blocks:\n"
-    for b in blocks[domain]
-        text *= "      $b: $b\n"
-    end
-    return text * join(definitions[b] for b in blocks[domain])
-end
-
-function initial_conditions(problem)
-    problem == "beam" && return """
-        initial conditions:
-          displacement:
-            - node set: nsall
-              component: y
-              function: "$(BEAM.release)"
-        """
-    return """
-        initial conditions:
-          velocity:
-            - node set: nsall
-              component: z
-              function: "$(CYLINDERS.launch_velocity)"
+          relative tolerance: $(num(BEAM.newton_relative_tolerance))
+          absolute tolerance: $(num(BEAM.newton_absolute_tolerance))
         """
 end
 
-function support(problem)
-    problem == "beam" && return """
-          Dirichlet:
-            - node set: nsx-
-              component: x
-              function: "0.0"
-            - node set: nsx-
-              component: y
-              function: "0.0"
-            - node set: nsx-
-              component: z
-              function: "0.0"
-        """
-    return """
-          Dirichlet:
-            - node set: nsz-
-              component: z
-              function: "0.0"
-        """
+materials(domain) = """
+    model:
+      type: solid mechanics
+      material:
+        blocks:
+          $domain: elastic
+        elastic:
+          model: linear elastic
+          elastic modulus: $(num(BEAM.elastic_modulus))
+          Poisson's ratio: $(num(BEAM.poissons_ratio))
+          density: $(num(BEAM.density))
+    """
+
+const INITIAL_CONDITIONS = """
+    initial conditions:
+      displacement:
+        - node set: nsall
+          component: y
+          function: "$(BEAM.release)"
+    """
+
+const SUPPORT = """
+      Dirichlet:
+        - node set: nsx-
+          component: x
+          function: "0.0"
+        - node set: nsx-
+          component: y
+          function: "0.0"
+        - node set: nsx-
+          component: z
+          function: "0.0"
+    """
+
+# The Dirichlet side of a pair (the side that receives the velocity).  At
+# equal steps: the implicit member of a mixed pair, otherwise the free part,
+# which is the finer mesh when the clamped part is coarsened.  With
+# different steps the role is the factor under study: "coarse" is the
+# clamped part (coarse step), "fine" the free part (fine step).  With the
+# explicit member as the Dirichlet side the gain of the iteration has
+# eigenvalues down to -13 and only Anderson acceleration converges
+# (docs/notes/schwarz-coupling).
+function dirichlet_domain(c::Case)
+    c.steps > 1 && return c.role == "coarse" ? "clamped" : "free"
+    clamped_kind, free_kind = c.pair[1], c.pair[2]
+    clamped_kind == 'I' && free_kind == 'E' && return "clamped"
+    return "free"
 end
 
-# The Dirichlet side of a constrained Dirichlet-Neumann pair: the implicit
-# member of a mixed pair, otherwise the subdomain without the support, which
-# is the finer side (the clamped part of the beam is coarsened by the mesh
-# ratio, and the inner part of the cylinders is the finer one). With the
-# explicit member as the Dirichlet side the iteration diverges for every
-# relaxation factor from 0.5 to 1 (docs/notes/schwarz-coupling).
-function constrained_dirichlet_domain(c::Case)
-    support_kind, other_kind = c.pair[1], c.pair[2]
-    support_kind == 'I' && other_kind == 'E' && return support_domain(c.problem)
-    return other_domain(c.problem)
-end
-
-# The coupling condition of one subdomain toward its partner.
 function coupling_condition(c::Case, domain)
-    beam = c.problem == "beam"
-    partner = domain == support_domain(c.problem) ? other_domain(c.problem) : support_domain(c.problem)
-    side_set = beam ? (domain == "clamped" ? "ssx+" : "ssx-") : "ssint"
-    partner_side_set = beam ? (partner == "clamped" ? "ssx+" : "ssx-") : "ssint"
-    partner_block = beam ? partner : "filler"
-    c.coupling == "ov-dir" && return """
-          Schwarz overlap:
-            - side set: $side_set
-              source: $partner
-              source block: $partner_block
-        """
-    c.coupling == "ov-imp" && return """
-          Schwarz impedance overlap:
-            - side set: $side_set
-              source: $partner
-              source block: $partner_block
-              robin parameter: 0.0
-        """
-    c.coupling == "no-dn" && return """
+    partner = domain == "clamped" ? "free" : "clamped"
+    side_set = domain == "clamped" ? "ssx+" : "ssx-"
+    partner_side_set = partner == "clamped" ? "ssx+" : "ssx-"
+    bc_type = domain == dirichlet_domain(c) ? "Dirichlet" : "Neumann"
+    text = """
           Schwarz DN nonoverlap:
             - side set: $side_set
               source: $partner
               source side set: $partner_side_set
-              default BC type: $(domain == support_domain(c.problem) ? "Neumann" : "Dirichlet")
+              default BC type: $bc_type
         """
-    if c.coupling == "no-cd"
-        return """
-              Schwarz DN nonoverlap:
-                - side set: $side_set
-                  source: $partner
-                  source side set: $partner_side_set
-                  default BC type: $(domain == constrained_dirichlet_domain(c) ? "Dirichlet" : "Neumann")
-                  constrained: true
-                  constraint: velocity
-            """
-    end
-    return """
-          Schwarz impedance nonoverlap:
-            - side set: $side_set
-              source: $partner
-              source side set: $partner_side_set
-              robin parameter: $(num(problem_parameters(c.problem).robin_parameter))
+    c.coupling == "no-dn" && return text
+    text *= """
+              constrained: true
+              constraint: velocity
         """
+    c.solver == "direct" && (text *= "      interface solve: direct\n")
+    return text
 end
 
-function subdomain_input(c::Case, domain, kind::Char, time_step)
+# The time step of a subdomain: the free part takes the fine step when the
+# case subcycles.
+subdomain_step(c::Case, domain) = BEAM.time_step / c.level / (domain == "free" ? c.steps : 1)
+
+function subdomain_input(c::Case, domain, kind::Char)
     text = "type: single\ninput mesh file: $domain.g\noutput mesh file: $domain.e\n"
-    text *= materials(c.problem, domain)
-    text *= time_integrator(kind, time_step)
-    text *= initial_conditions(c.problem)
+    text *= materials(domain)
+    text *= time_integrator(kind, subdomain_step(c, domain))
+    text *= INITIAL_CONDITIONS
     conditions = ""
-    domain in ("beam", "cylinders", support_domain(c.problem)) && (conditions *= support(c.problem))
+    domain in ("beam", "clamped") && (conditions *= SUPPORT)
     c.coupling != "mono" && (conditions *= coupling_condition(c, domain))
     isempty(conditions) || (text *= "boundary conditions:\n" * conditions)
-    return text * solver(kind, c.problem)
+    return text * solver(kind)
 end
 
-# Relaxation of the Schwarz iteration: none for the overlap couplings,
-# recursive Aitken for Dirichlet-Neumann, and for the paired impedance a
-# fixed factor of 0.5 whenever a subdomain is explicit (Aitken diverges on
-# the explicit cylinders) and recursive Aitken on the implicit beam, where
-# it needs a tenth of the iterations (see docs/notes/schwarz-coupling). The
-# constrained Dirichlet-Neumann exchange uses recursive Aitken: on the
-# cantilever the fixed factor 0.5 diverged with an explicit Dirichlet side and
-# on the subcycled 1:0.5 explicit pair with the coarse mesh as the Dirichlet
-# side, while recursive Aitken converged in every case measured and needed 2.5
-# to 5 times fewer iterations per stop where the best factor is far from 0.5;
-# it was accepted by the stall rule at fewer stops than the secant form
-# (docs/notes/schwarz-coupling, Aitken relaxation of the constrained exchange).
+# Relaxation of the Schwarz iteration.  The baseline keeps recursive Aitken,
+# the setting of the repository examples.  For the constrained exchange the
+# solver is a factor: Anderson acceleration (depth 10, mixing 0.5) is the
+# default and converges in every case measured; recursive Aitken converges
+# everywhere but needs more iterations where the best factor is far from
+# 0.5; the fixed factor 0.5 diverges with an explicit Dirichlet side; the
+# direct solve needs no iteration.
 function relaxation(c::Case)
     c.coupling == "no-dn" && return "relaxation: aitken recursive\n"
-    c.coupling == "no-cd" && return "relaxation: aitken recursive\nrelaxation parameter: 0.5\n"
-    c.coupling == "no-imp" && return (c.pair == "II" && c.problem == "beam") ? "relaxation: aitken recursive\n" :
-                                     "relaxation parameter: 0.5\n"
-    return ""
+    c.solver == "anderson" && return "relaxation: anderson\nanderson depth: 10\nrelaxation parameter: 0.5\n"
+    c.solver == "aitken" && return "relaxation: aitken recursive\nrelaxation parameter: 0.5\n"
+    return "relaxation parameter: 0.5\n"
 end
 
-function run_input(c::Case, domains, time_step, final_time, exodus_interval)
-    p = problem_parameters(c.problem)
+# Schwarz tolerances: the constrained criterion is relative, on the
+# interface velocity jump and the force residual, with no absolute floor;
+# the baseline keeps the displacement criterion of the examples.
+function tolerances(c::Case)
+    c.coupling == "no-dn" && return (BEAM.baseline_relative_tolerance, BEAM.baseline_absolute_tolerance)
+    return (c.tolerance, 1.0e-15)
+end
+
+function run_input(c::Case, domains, final_time, exodus_interval)
+    relative, absolute = tolerances(c)
     list = join(("\"$d.yaml\"" for d in domains), ", ")
-    return """
+    text = """
         type: multi
         domains: [$list]
         blended energy output: true
@@ -290,50 +213,51 @@ function run_input(c::Case, domains, time_step, final_time, exodus_interval)
         CSV output interval: 0
         initial time: 0.0
         final time: $(num(final_time))
-        time step: $(num(time_step))
+        time step: $(num(BEAM.time_step / c.level))
         minimum iterations: 1
-        maximum iterations: $(p.maximum_iterations)
-        relative tolerance: $(num(p.relative_tolerance))
-        absolute tolerance: $(num(p.absolute_tolerance))
-        """ * relaxation(c)
+        maximum iterations: $(BEAM.maximum_iterations)
+        relative tolerance: $(num(relative))
+        absolute tolerance: $(num(absolute))
+        """
+    c.coupling == "mono" && return text
+    return text * relaxation(c) * "stalled interface jump action: warn\n"
 end
 
 function write_case(c::Case, options)
     dir = joinpath(options["runs"], case_name(c))
+    if isfile(joinpath(dir, "status.txt")) && occursin("status: completed", read(joinpath(dir, "status.txt"), String))
+        return dir, false
+    end
     isdir(dir) && rm(dir; recursive=true)
     mkpath(dir)
-    p = problem_parameters(c.problem)
-    time_step = p.time_step / c.level
-    final_time = something(options["final time"], p.final_time)
+    final_time = something(options["final time"], BEAM.final_time)
     if c.coupling == "mono"
-        domains = [c.problem == "beam" ? "beam" : "cylinders"]
-        kinds = [c.pair[1]]
+        domains, kinds = ["beam"], [c.pair[1]]
     else
-        # The subdomain without the support is listed first, so the Schwarz
-        # relaxation acts on the support side, as in the repository examples.
-        domains = [other_domain(c.problem), support_domain(c.problem)]
-        kinds = [c.pair[2], c.pair[1]]
+        # The free part is listed first, so the Schwarz relaxation acts on
+        # the clamped side, as in the repository examples.
+        domains, kinds = ["free", "clamped"], [c.pair[2], c.pair[1]]
     end
     for (domain, kind) in zip(domains, kinds)
-        write(joinpath(dir, "$domain.yaml"), subdomain_input(c, domain, kind, time_step))
+        write(joinpath(dir, "$domain.yaml"), subdomain_input(c, domain, kind))
     end
-    write(joinpath(dir, "run.yaml"), run_input(c, domains, time_step, final_time, options["exodus interval"]))
-    if c.problem == "beam"
-        write_beam_meshes(c, dir)
-    else
-        link_cylinder_meshes(c, dir, joinpath(dirname(options["runs"]), "meshes"))
-    end
+    write(joinpath(dir, "run.yaml"), run_input(c, domains, final_time, options["exodus interval"]))
+    write_beam_meshes(c, dir)
     write(joinpath(dir, "case.txt"), """
         name: $(case_name(c))
-        problem: $(c.problem)
         coupling: $(c.coupling)
         pair: $(c.pair)
         level: $(c.level)
         ratio: $(c.ratio)
-        time step: $(num(time_step))
+        tolerance: $(num(c.tolerance))
+        steps: $(c.steps)
+        role: $(c.role)
+        solver: $(c.solver)
+        dirichlet side: $(c.coupling == "mono" ? "" : dirichlet_domain(c))
+        time step: $(num(BEAM.time_step / c.level))
         final time: $(num(final_time))
         """)
-    return dir
+    return dir, true
 end
 
 function main(args)
@@ -344,10 +268,13 @@ function main(args)
         println("$(length(cases)) cases")
         return
     end
+    written = 0
     for c in cases
-        println("  ", basename(write_case(c, options)))
+        dir, fresh = write_case(c, options)
+        println("  ", basename(dir), fresh ? "" : "  (completed, kept)")
+        written += fresh
     end
-    println("$(length(cases)) cases written under $(options["runs"])")
+    println("$written cases written under $(options["runs"]) ($(length(cases) - written) completed and kept)")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

@@ -15,8 +15,8 @@
 #   --threads T    Julia threads per case (default 4)
 #   --force        rerun cases that already completed
 #
-# Choose jobs times threads at most the number of cores.  The level 2
-# cylinder cases need several gigabytes of memory each.
+# Choose jobs times threads at most the number of cores.  study.sh calls
+# this once per tier.
 
 include(joinpath(@__DIR__, "matrix.jl"))
 

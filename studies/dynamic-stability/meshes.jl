@@ -6,20 +6,9 @@
 # on zero, z across the width from zero.  Each mesh carries the node sets
 # nsx- (the face x = x0) and nsall, and the side sets ssx- and ssx+ (the
 # faces x = x0 and x = x0 + length).
-#
-# The cylinders come from the Cubit journal of
-# examples/jmp/concentric-cylinders.  Level 1 copies the meshes committed
-# there; a higher level plays the journal back with the variable
-# `refinement` set to the level, which needs Cubit (the executable `cubit`
-# on PATH, or its path in the environment variable CUBIT).
 
 using Exodus
 using Norma
-
-const CYLINDER_EXAMPLE = normpath(joinpath(@__DIR__, "..", "..", "examples", "jmp", "concentric-cylinders"))
-const CYLINDER_MESHES = [
-    "monolithic/cylinders.g", "nonoverlap/inner.g", "nonoverlap/outer.g", "overlap/inner.g", "overlap/outer.g"
-]
 
 # Number of elements along a length for a target size, as Cubit rounds it.
 intervals(length, h) = max(1, round(Int, length / h))
@@ -79,62 +68,7 @@ function write_beam_meshes(c::Case, dir::AbstractString)
         write_brick(joinpath(dir, "beam.g"), 0.0, BEAM.length, h, "beam")
         return nothing
     end
-    if startswith(c.coupling, "ov")
-        clamped_end = BEAM.split + BEAM.overlap / 2
-        free_start = BEAM.split - BEAM.overlap / 2
-    else
-        clamped_end = free_start = BEAM.split
-    end
-    write_brick(joinpath(dir, "clamped.g"), 0.0, clamped_end, h / c.ratio, "clamped")
-    write_brick(joinpath(dir, "free.g"), free_start, BEAM.length - free_start, h, "free")
-    return nothing
-end
-
-# The five cylinder meshes at a refinement level, in `root`/cyl-L<level>,
-# made once and reused by every case of that level.
-function cylinder_mesh_dir(root::AbstractString, level::Int)
-    dir = joinpath(root, "cyl-L$level")
-    all(isfile(joinpath(dir, m)) for m in CYLINDER_MESHES) && return dir
-    for sub in ("monolithic", "nonoverlap", "overlap")
-        mkpath(joinpath(dir, sub))
-    end
-    if level == 1
-        for m in CYLINDER_MESHES
-            cp(joinpath(CYLINDER_EXAMPLE, m), joinpath(dir, m); force=true)
-        end
-        return dir
-    end
-    cubit = get(ENV, "CUBIT", "cubit")
-    Sys.which(cubit) === nothing && !isfile(cubit) &&
-        error("Cubit is needed for the cylinder meshes at level $level: put cubit on PATH or set CUBIT")
-    wrapper = joinpath(dir, "refinement.jou")
-    journal = joinpath(CYLINDER_EXAMPLE, "concentric-cylinders.jou")
-    write(wrapper, "\${refinement = $level}\nplayback \"$journal\"\n")
-    println("Meshing the cylinders at level $level with Cubit; this takes a while")
-    cd(dir) do
-        command = `$cubit -batch -nographics -nojournal -noecho refinement.jou`
-        run(pipeline(command; stdout="cubit.log", stderr="cubit.log"))
-    end
-    for m in CYLINDER_MESHES
-        isfile(joinpath(dir, m)) || error("Cubit did not write $m; see $(joinpath(dir, "cubit.log"))")
-    end
-    return dir
-end
-
-# The cylinder meshes of a case, linked into its directory under the names
-# of its subdomains.
-function link_cylinder_meshes(c::Case, dir::AbstractString, mesh_root::AbstractString)
-    source = cylinder_mesh_dir(mesh_root, c.level)
-    files = if c.coupling == "mono"
-        ["monolithic/cylinders.g" => "cylinders.g"]
-    else
-        sub = startswith(c.coupling, "ov") ? "overlap" : "nonoverlap"
-        ["$sub/inner.g" => "inner.g", "$sub/outer.g" => "outer.g"]
-    end
-    for (from, to) in files
-        target = joinpath(dir, to)
-        (islink(target) || isfile(target)) && rm(target)
-        symlink(relpath(joinpath(source, from), dir), target)
-    end
+    write_brick(joinpath(dir, "clamped.g"), 0.0, BEAM.split, h / c.ratio, "clamped")
+    write_brick(joinpath(dir, "free.g"), BEAM.split, BEAM.length - BEAM.split, h, "free")
     return nothing
 end
