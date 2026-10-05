@@ -1,13 +1,15 @@
 type: single
 input mesh file: awful-cube.g
-output mesh file: awful-cube-adaptive.e
-# Smoothing alternated with topological operations (docs/notes/ems-adaptivity):
-# each outer iteration smooths, splits and collapses edges on their length in
-# the target, swaps interior and boundary edges where the swap raises the
-# minimum scaled Jacobian of the elements around the edge, writes the new mesh
-# as awful-cube-adaptive-adapted-<k>.g, and smooths it again.  The nodes
-# slide on the six faces of the cube through Surface conditions on side sets,
-# which the splits, collapses, and boundary swaps maintain.
+output mesh file: awful-cube-swaps.e
+# Smoothing alternated with edge and face swaps only, one outer iteration per
+# run, for size-adaptive.jl: the script runs this input in stages and, after
+# each stage, sets the size field to the edge length of the regular
+# tetrahedron that fills the cube with the number of elements the stage left.
+# Splits and collapses are off, so the element count changes only through
+# the swaps; with them on, splits added about 2000 elements, which is not
+# the experiment.  awful-cube-adaptive.yaml is the same input with all the
+# topological operations and eight outer iterations.  The nodes slide on the
+# six faces of the cube through Surface conditions on side sets.
 adaptivity:
   size criterion: length
   shape criterion: scaled Jacobian
@@ -17,7 +19,9 @@ adaptivity:
   minimum scaled Jacobian: 0.15
   adjacency layers: 2
   maximum passes: 10
-  outer iterations: 8
+  outer iterations: 1
+  collapses: false
+  splits: false
 model:
   type: mesh smoothing
   # Prescribed target: the edge length of the regular tetrahedron with the

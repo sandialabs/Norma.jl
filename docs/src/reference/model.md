@@ -352,6 +352,7 @@ See `examples/ems/` for smoothing cases.
 - Metric given as a tensor: `examples/ems/cube/cube-tensor.yaml`
 - Metric carried by the nodes of the input mesh: `examples/ems/cube/cube-metric-nodal.yaml`
 - Smoothing with topological operations: `examples/ems/awful-cube/awful-cube-adaptive.yaml`
+- Swaps only, in stages with a size field that follows the element count: `examples/ems/awful-cube/awful-cube-swaps.yaml` with `size-adaptive.jl`
 - Refinement toward a prescribed size field in stages: `examples/ems/plate/plate-sinusoid.yaml` with `refine.jl`
 - Refinement and coarsening toward a metric: `examples/ems/tube/tube-metric-adaptive.yaml`
 - A metric that smoothing alone cannot reach: `examples/ems/cube/cube-metric-adaptive.yaml`, and the same target turned by 45 degrees: `examples/ems/cube/cube-metric-rotated-adaptive.yaml`
