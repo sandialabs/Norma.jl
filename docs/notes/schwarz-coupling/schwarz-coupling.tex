@@ -17,1655 +17,651 @@
 \newcommand{\norm}[1]{\lVert #1 \rVert}
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\jump}[1]{[\![#1]\!]}
+\newtheorem{proposition}{Proposition}
 \emergencystretch=3em
 
-\title{Schwarz Coupling for Solid Dynamics in Norma:\\
-Transmission Conditions and Interface Energy}
+\title{The Constrained Dirichlet--Neumann Exchange\\
+for Schwarz Coupling in Solid Dynamics}
 \author{Alejandro Mota}
-\date{July--September 2026, revised September 30, 2026}
+\date{October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This note is the reference for the Schwarz transmission conditions
-implemented in Norma and for the measurements of their energy behavior in
-dynamic solid mechanics. It describes the conditions as they are
-implemented now, states the requirements that an energy-consistent
-coupling must satisfy, and summarizes the measurements on two benchmarks:
-a cantilever beam released from a bent shape, with nonconforming meshes at
-a flat interface, and nested cylinders of three materials launched
-against a rigid surface, with a closed curved interface. The findings are:
-Dirichlet transmission on nonconforming meshes injects energy and ends in
-element inversion on both benchmarks; the classical Robin--Robin condition,
-which has no absorbing term, does the same, usually sooner, at either of
-two Robin parameters; the impedance condition on an overlap boundary is
-exact on conforming meshes but cannot be made energy consistent on
-nonconforming ones, because the two sides exchange data on two different
-surfaces through operators that are not adjoint; and the adjoint-paired
-impedance condition on a shared interface, which transfers a single
-d'Alembert interface reaction through adjoint operators built from one
-cross-mass matrix, never injects energy on either benchmark, is exact at
-mild mesh contrast, and dissipates at strong contrast at a rate set by the
-part of the interface velocity jump that the two trace spaces cannot
-represent in common. The note records the explicit--explicit and
-different-time-step variants of that coupling, the behavior of the
-relaxation and Aitken acceleration of the Schwarz iteration, and the open
-questions, chiefly the stalled interface jump on the cylinders and the
-dependence of the converged solution on the Robin parameter. A closing
-section states the constrained formulation of the coupled problem that
-conserves energy by construction, from Gravouil and Combescure and from
-Prakash and Hjelmstad, locates the five points at which the nonoverlap
-Dirichlet--Neumann path departs from it, and gives the changes and the
-reference experiments by which Norma is to be brought into it.
+This note specifies a Schwarz coupling for dynamic solid mechanics whose
+discrete interface work vanishes at the converged state, so that the
+coupled problem conserves the energy that its time integrators conserve.
+The method is a Dirichlet--Neumann exchange between two nonoverlapping
+subdomains, each advanced by its own Newmark scheme or by central
+difference, on meshes that need not match at the interface and with time
+steps that may differ by an integer ratio. It differs from the classical
+Dirichlet--Neumann exchange in five respects: the Neumann side receives the
+full dynamic (d'Alembert) reaction of its partner; both interface transfers
+are built from one cross-mass matrix, so that the force transfer is the
+transpose of the velocity transfer; the Dirichlet side receives the
+velocity only and derives its displacement and acceleration from its own
+time integrator; the iteration stops on the interface velocity jump and
+the interface force residual; and the initial acceleration is computed on
+the coupled system. At the fixed point the exchange solves the
+velocity-constrained coupled problem of Gravouil and Combescure, of
+Prakash and Hjelmstad, and of Connors, Owen, Kuberry, and Bochev, for which
+the pseudo-energy (the energy functional applied to the velocity and the
+acceleration) is conserved exactly for linear elasticity, for any pair of
+Newmark schemes, for any mesh ratio, and, with the coarse-step side as the
+Dirichlet side, for any integer step ratio. The note states the formulation
+and its proof, the algorithm in the form needed for an implementation in a
+production code (interface operators, the exchange, the stopping
+criterion, the coupled initial acceleration, subcycling, the assignment of
+the Dirichlet role, relaxation by Aitken or Anderson acceleration, and a
+direct interface solve for two explicit subdomains), and its verification
+on a cantilever beam and on nested cylinders: the matched energy is
+constant to the Schwarz tolerance over $10^4$ steps in every configuration
+measured, and to roundoff with the direct solve, while the classical
+exchange inverts an element within $1$\,ms with implicit subdomains.
 \end{abstract}
 
 \medskip
-\noindent\emph{This document supersedes the July--August 2026 version of
-this note and the three earlier notes it consolidated. Measurements that
-motivated design decisions but concern superseded variants are kept only
-in summary.}
+\noindent\emph{This version replaces the July--September 2026 note, which
+recorded the transmission conditions measured before this method (overlap
+Dirichlet and impedance conditions, the paired impedance condition, and the
+Robin--Robin condition) and their failures; that version remains in the
+history of the Norma repository.}
 
 \tableofcontents
 
-\section{Setting}
-\label{sec:setting}
-
-\subsection{Decompositions and notation}
+\section{Problem and requirements}
+\label{sec:problem}
 
 A solid body $\Omega \subset \mathbb{R}^3$ is decomposed into two
-subdomains $\Omega_1$ and $\Omega_2$ that are integrated independently and
-coupled by a Schwarz iteration. The Schwarz framework itself (time
-controller, subdomain solves, convergence criteria) follows Mota, Tezaur,
-and Phlipot~\cite{MotaTezaurPhlipot2022}, and its contact variant
-Mota et al.~\cite{MotaKoliesnikovaTezaurHoy2023}. This note concerns the
-transmission conditions imposed on the coupling boundaries and their
-energy behavior. Norma supports two geometric configurations.
+subdomains $\Omega_D$ and $\Omega_N$ that share an interface
+$\Gamma = \partial\Omega_D \cap \partial\Omega_N$ and are integrated in time
+independently, each with its own mesh, its own time integrator, and its own
+time step. The subdomains are coupled by a Schwarz iteration: within each
+time window the two subdomains are solved in turn, exchanging interface
+data, until the data converge, following Mota, Tezaur, and
+Phlipot~\cite{MotaTezaurPhlipot2022}. The coupling must satisfy the
+following requirements.
+\begin{enumerate}[itemsep=2pt]
+\item \emph{Energy conservation.} At the converged state the coupling does
+  no work on the system: the coupled problem conserves the quantity that
+  the subdomain integrators conserve, to the tolerance of the Schwarz
+  iteration.
+\item \emph{Nonconforming meshes.} The two meshes need not share nodes on
+  $\Gamma$.
+\item \emph{Heterogeneous integrators and time steps.} Each subdomain may use
+  an implicit Newmark scheme or central difference, and the time steps may
+  differ by an integer ratio.
+\item \emph{Partitioned solution.} Each subdomain is advanced by its own
+  solver; the coupling requires of a subdomain only operations that a
+  structural dynamics code already provides (Sec.~\ref{sec:integration}).
+\end{enumerate}
+The classical Dirichlet--Neumann exchange satisfies the last three
+requirements but not the first: with implicit subdomains on the beam of
+Sec.~\ref{sec:verification} it inverts an element within $1$\,ms,
+and with explicit subdomains it conserves the energy only to $2$ to $4\%$
+(Sec.~\ref{sec:baseline}). The constrained exchange of this note satisfies
+all four.
 
-\paragraph{Nonoverlap.} The subdomains partition $\Omega$ and share an
-interface $\Gamma = \partial\Omega_1 \cap \partial\Omega_2$. Let $~n_k$ be
-the outward unit normal to $\Omega_k$ on $\Gamma$ (so $~n_1 = -~n_2$) and
-$~t_k = ~\sigma_k\,~n_k$ the traction on the side of $\Omega_k$. The
-coupled solution must satisfy
-\begin{align}
-  ~u_1 \;&=\; ~u_2 \qquad \text{(kinematic continuity),}
-  \label{eq:continuity} \\
-  ~t_1 + ~t_2 \;&=\; ~0 \qquad \text{(traction balance).}
-  \label{eq:traction}
-\end{align}
-The Dirichlet--Neumann method imposes \eqref{eq:continuity} on one side
-and \eqref{eq:traction} on the other. The Robin and impedance conditions
-of Sec.~\ref{sec:nonoverlap-tc} impose on each side a linear combination
-of displacement, velocity, and traction.
+\section{Setting and notation}
+\label{sec:setting}
 
-\paragraph{Overlap.} The subdomains intersect. Each $\Omega_k$ has a
-portion of its boundary, $\Gamma_k \subset \Omega_j$ with $j \ne k$, in the
-interior of the partner. That boundary is not shared with $\Omega_j$, so
-no mutual traction is directly available there; the partner provides a
-well-defined interior state at every point of $\Gamma_k$, and the
-conditions of Sec.~\ref{sec:overlap-tc} are built from that state.
-
-Throughout, $~W_k = \int_{\Gamma_k} ~N_k\,~N_k^\top\,\dd\Gamma$ is the
-boundary mass matrix of side $k$, $~P$ a kinematic transfer operator that
-maps partner data to the interface nodes of a side, the subscript $j$
-denotes the partner of side $k$, and $\jump{~q} = ~q_k - ~q_j$ is the
-interface jump of a field $~q$, own side minus partner, on the coupling
-surface of side $k$. All interface operators are assembled once at
-initialization on the reference configuration with the facet Gauss rule
-of the receiving side set, and are not updated with the deformation.
-
-\subsection{Vocabulary of the multi-domain controller}
-\label{sec:vocabulary}
-
-The controller advances in \emph{stops}. Within a stop each subdomain
-advances to the stop end in its own \emph{substeps}, and the
-\emph{Schwarz iteration} repeats a \emph{pass} over the subdomains (one
-solve of each, with interface data exchanged between them) until the
-exchanged data converge; the stop is then committed. The exchanged datum
-may be relaxed between Schwarz iterations with a factor
-$\theta \in (0, 1]$, fixed or adapted by Aitken extrapolation
-(Sec.~\ref{sec:relaxation}). A stop that spans several substeps is a
-\emph{window} (Sec.~\ref{sec:windowed}). A mesh pair is \emph{nested} when
-every coarse node coincides with a fine node. Mesh ratios are written
-$1{:}r$ with $r = h_{\mathrm{fine}}/h_{\mathrm{coarse}}$.
-
-\subsection{Benchmarks}
-\label{sec:benchmark}
-
-\paragraph{Cantilever beam.} A linear elastic bar ($E = 6.895$\,GPa,
-$\nu = 0.25$, $\rho = 2768$\,kg/m$^3$; $254$\,mm long, $25.4$\,mm tall,
-$12.7$\,mm wide) is clamped at one end and released at $t = 0$ from the
-parabolic bending displacement $u_y = 0.3937\,x^2$ (tip deflection
-$25.4$\,mm), with initial energy $1506$\,J. The subdomain time step is
-$1\,\mu$s; horizons are $1$ and $10$\,ms. Subdomain integrators are
-trapezoidal Newmark (implicit, I) and central difference (explicit, E),
-in the pairings II, IE, EI, and EE (first letter: clamped subdomain).
-Overlap decompositions split the bar lengthwise with overlap widths of
-$50.8$, $25.4$, and $12.7$\,mm; the nonoverlap decomposition splits it at
-$x = 127$\,mm. The free subdomain keeps $h = 6.35$\,mm and the clamped
-subdomain is coarsened to $6.35/r$\,mm; the families used are
-$r = 1.0, 0.9, \dots, 0.2$ (the mesh-ratio sweep of 2026-07) and
-$r \in \{0.9, 0.75, 0.5\}$ (the 2026-09 rerun with the current code and
-the Robin--Robin study). The Schwarz iteration is converged to a relative
-tolerance of $10^{-8}$ at every stop.
-
-\paragraph{Nested cylinders.} A shell (outer radius $88.9$\,mm, height
-$330$\,mm, wall $12.7$\,mm; $E = 200$\,GPa, $\rho = 7823$\,kg/m$^3$)
-contains a soft filler (radius $76.2$\,mm, height $305$\,mm; bulk modulus
-$5.99$\,GPa, shear modulus $71.7$\,MPa, $\rho = 1843$\,kg/m$^3$) that
-contains an offset core (radius $38.1$\,mm, height $102$\,mm, $19$\,mm
-above center; $E = 100$\,GPa, $\rho = 4915$\,kg/m$^3$). All three are
-neohookean. The P-wave impedance of the filler, $3.35$\,MPa\,s/m, is one
-fiftieth of the shell's. The bottom face is fixed in $z$ and the whole
-assembly is launched at $-35$\,m/s in $z$, so a compressive front runs
-up through the assembly. The decomposition splits the filler at the
-boundary of a cylindrical region around the core (radius $57$\,mm, height
-$229$\,mm): the interface has a lateral surface and two caps and lies in
-one material. The overlap version grows the inner region and shrinks the
-outer cavity by $7.6$\,mm each. The inner mesh is $5.1$\,mm and the outer
-$6.35$\,mm (ratio $1{:}0.8$, nonconforming), $17$ to $26$ thousand
-elements per subdomain; the monolithic reference has $59$ thousand
-elements at $5.1$\,mm. Every subdomain uses central difference with
-$0.5\,\mu$s stops (Courant number $0.5$) to a horizon of $5$\,ms. One
-Cubit journal with a refinement parameter generates all meshes
-(\code{examples/jmp/concentric-cylinders}).
-
-\paragraph{Linear nested cylinders.} For devising and testing
-conservation schemes the cylinders also exist with linear elastic
-materials (\code{examples/jmp/concentric-cylinders-linear}, the same
-meshes by relative path): core $E = 100$\,GPa, $\nu = 0.33$; shell
-$E = 200$\,GPa, $\nu = 0.28963$; filler $E = 9KG/(3K + G) =
-0.21412$\,GPa and $\nu = (3K - 2G)/(2(3K + G)) = 0.49404$ from its bulk
-and shear moduli; the same densities. With linear materials $\tilde{E}$ is
-defined. The assembly moves at $-5$\,m/s rather than $-35$\,m/s, which
-strains the filler beyond the range of a small-strain model; the
-conservation identity does not depend on the amplitude, and the runs
-below repeat the case at $-35$\,m/s. Central difference at Courant number
-$0.5$, $0.5\,\mu$s stops, $1$\,ms. The nonoverlap input uses the
-constrained exchange with the inner (finer) side as the Dirichlet side.
-
-\paragraph{Explicit stability.} Central difference in Norma caps its step
-at $\mathrm{CFL}\times h_{\min}/c_p$, where $h_{\min}$ is the smallest
-element characteristic diameter (twice the mean distance from the element
-centroid to its nodes) over the block and $c_p$ the P-wave speed of the
-block material; a stop longer than the cap is reached by substeps. On the
-cantilever meshes that diameter is about $1.7$ times the edge length, so
-the cap at $\mathrm{CFL} = 1$ exceeds the true stability limit; the
-cantilever explicit runs at $1\,\mu$s operate at $0.27$ of the measured
-limit ($3.6\,\mu$s on the $6.35$\,mm mesh) and are unaffected by it. A
-Courant number of $0.5$ or less makes the cap protective on hexahedral
-meshes, and the cylinders use $0.5$.
-
-\subsection{Energy metrics}
-\label{sec:energy}
-
-\paragraph{Blended energy.} Summing the energies of the two subdomains
-counts the overlap region twice, and the double count alone produces
-apparent excursions of $\pm 13\%$ as a pulse crosses the overlap. All
-energies in this note count the overlap once through a partition of
-unity: the production output (\code{blended energy output: true},
-\code{src/overlap\_energy.jl}) weights each subdomain by the ratio of its
-distance to its own Schwarz boundary to the sum of both distances, a
-smooth Arlequin partition, and nonoverlap decompositions receive unit
-weights. Results are reported as $E(t)/E(0)$ or as the drift
-$E(t)/E(0) - 1$ in percent.
-
-\paragraph{Staggered energy for central difference.} Central difference
-conserves, on linear problems, the staggered lumped-mass energy
+\paragraph{Semi-discrete equations.} After finite element discretization
+in space, subdomain $k \in \{D, N\}$ satisfies
 \begin{equation}
-  E_n \;=\; \tfrac12\,\dot{~u}_{n-\frac12}^{T} ~M_L\, \dot{~u}_{n+\frac12}
-        + \mathrm{SE}(~u_n)
-      \;=\; \tfrac12\,\dot{~u}_n^{T} ~M_L\, \dot{~u}_n
-        - \tfrac{\Delta t^2}{8}\, ~a_n^{T} ~M_L\, ~a_n
-        + \mathrm{SE}(~u_n),
-  \label{eq:staggered}
+  ~M_k\, ~a_k + ~f^{\mathrm{int}}_k(~u_k)
+  = ~f^{\mathrm{ext}}_k + ~C_k^T ~\lambda_k ,
+  \label{eq:motion}
 \end{equation}
-with $~M_L$ the lumped mass and $\mathrm{SE}$ the stored energy. The
-consistent-mass kinetic energy at integer steps misrepresents the
-short-wavelength content of a sharp front: a monodomain central-difference
-run of the cantilever reads $-8.2\%$ at $1$\,ms in that metric and
-$\pm 0.000\%$ in \eqref{eq:staggered}. Norma's energy output evaluates
-\eqref{eq:staggered} for central-difference subdomains, and every
-explicit result below uses it. The correction term is negative, so when
-grid-frequency content accumulates at the stability limit
-($\omega\Delta t \to 2$) the metric goes negative while displacements and
-stored energy stay bounded; the note calls that state \emph{bounded and
-noisy}.
+with $~u_k$, $~v_k$, $~a_k$ the nodal displacement, velocity, and
+acceleration, $~M_k$ the mass matrix (lumped for central difference),
+$~f^{\mathrm{int}}_k$ the internal force, $~f^{\mathrm{ext}}_k$ the external
+force, $~C_k$ the Boolean restriction of the nodal vector to the interface
+nodes, and $~\lambda_k$ the interface force acting on subdomain $k$. For
+linear elasticity $~f^{\mathrm{int}}_k = ~K_k ~u_k$.
 
-\section{Transmission conditions on a shared interface}
-\label{sec:nonoverlap-tc}
-
-\subsection{Robin coupling}
-\label{sec:rr}
-
-On each side of the interface a Robin parameter $\alpha > 0$ is
-prescribed and the condition
+\paragraph{Time integrators.} Subdomain $k$ is advanced by the Newmark
+scheme with parameters $(\beta_k, \gamma_k)$ and step $\Delta t_k$:
 \begin{equation}
-  ~t_k + \alpha\, ~u_k \;=\; ~g_k
-    \qquad \text{on } \Gamma, \quad k = 1, 2,
-  \label{eq:rr}
-\end{equation}
-is imposed, with the datum built from the partner's previous Schwarz
-iterate, $~g_k^{(n+1)} = -\,~t_j^{(n)} + \alpha\, ~u_j^{(n)}$. At the
-fixed point $~u_k = ~u_j$ and $~t_k = -~t_j$, so \eqref{eq:rr} reproduces
-\eqref{eq:continuity} and \eqref{eq:traction}. Discretely, the self term
-adds the boundary stiffness $\alpha\,~W$ to the tangent and the partner
-datum enters the boundary force as
-$-~t_j + \alpha\,~W\,~P\,~u_j$. The parameter $\alpha$ has units of
-stiffness per unit area (N/m$^3$) and interpolates between a Dirichlet
-constraint ($\alpha \to \infty$) and a Neumann condition
-($\alpha \to 0$); the classical choice is $\alpha \sim E/h$.
-
-The input keyword is \code{Schwarz RR nonoverlap}. It requires a positive
-\code{robin parameter}, rejects \code{impedance scale}, defaults to
-\code{adjoint pairing: false} (the classical per-side transfer, which
-allows different $\alpha$ on the two sides), and warns when combined with
-a dynamic integrator, because the condition reflects every wave
-(Sec.~\ref{sec:reflection}) and pumps energy at a dynamic interface
-(Secs.~\ref{sec:beam-rr} and \ref{sec:cylinders}). It is intended for
-quasi-statics and for comparison studies. Both nonoverlap keywords are
-implemented by the same boundary-condition type; the Robin condition is
-the $Z = 0$ member of the impedance family, and the two keywords differ
-only in defaults and input guards.
-
-\subsection{Impedance coupling}
-\label{sec:imp}
-
-For a semi-infinite elastic bar with density $\rho$ and P-wave modulus
-$M = \lambda + 2\mu$, an outgoing wave $u(x,t) = f(x - c_p t)$ with
-$c_p = \sqrt{M/\rho}$ satisfies
-\begin{equation}
-  \sigma + Z\,\dot u \;=\; 0,
+  ~u^{n+1} = ~u^{n} + \Delta t\, ~v^{n}
+    + \Delta t^2 \bigl[(\tfrac12 - \beta)\, ~a^{n} + \beta\, ~a^{n+1}\bigr],
   \qquad
-  Z \;=\; \rho\,c_p \;=\; \sqrt{\rho\,(\lambda + 2\mu)},
-  \label{eq:lk}
+  ~v^{n+1} = ~v^{n} + \Delta t \bigl[(1 - \gamma)\, ~a^{n} + \gamma\, ~a^{n+1}\bigr].
+  \label{eq:newmark}
 \end{equation}
-the Lysmer--Kuhlemeyer nonreflecting condition~\cite{LysmerKuhlemeyer1969}.
-The impedance Schwarz condition adds this absorbing term to
-\eqref{eq:rr}:
+The trapezoidal rule ($\beta = 1/4$, $\gamma = 1/2$, implicit, denoted I)
+and central difference ($\beta = 0$, $\gamma = 1/2$, explicit with a lumped
+mass, denoted E) are the two schemes used below. With the predictors
+$~u^{\mathrm{pred}} = ~u^n + \Delta t\, ~v^n + (\tfrac12 - \beta)\Delta t^2 ~a^n$
+and $~v^{\mathrm{pred}} = ~v^n + (1-\gamma)\Delta t\, ~a^n$, the scheme gives
 \begin{equation}
-  ~t_k + Z\, \dot{~u}_k + \alpha\, ~u_k \;=\; ~g_k
-  \qquad \text{on } \Gamma,
+  ~a^{n+1} = \frac{~v^{n+1} - ~v^{\mathrm{pred}}}{\gamma\, \Delta t},
   \qquad
-  ~g_k^{(n+1)} \;=\; -\,~t_j^{(n)} + Z\, \dot{~u}_j^{(n)}
-     + \alpha\, ~u_j^{(n)}.
-  \label{eq:impedance}
+  ~u^{n+1} = ~u^{\mathrm{pred}} + \beta\, \Delta t^2\, ~a^{n+1},
+  \label{eq:newmark-from-v}
 \end{equation}
-At the fixed point the velocity and displacement terms cancel and
-\eqref{eq:impedance} again reproduces continuity and traction balance.
-The impedance is computed from the material of the element block that
-owns the interface side set, $Z_k = \sqrt{\rho_k(\lambda_k + 2\mu_k)}$,
-multiplied by the input \code{impedance scale} (default $1$, required
-positive); $\alpha$ is an optional input (default $0$). The keyword is
-\code{Schwarz impedance nonoverlap}, with \code{adjoint pairing: true} as
-its default (Sec.~\ref{sec:paired}).
+so a prescribed end-of-step velocity determines the acceleration and the
+displacement of the step.
 
-Under Newmark integration the end-of-step velocity is linear in the
-end-of-step displacement with coefficient $c_v = \gamma/(\beta\,\Delta t)$,
-so the self term contributes the tangent $(Z\,c_v + \alpha)\,~W$ and the
-self force $~W(Z\,\dot{~u}_k + \alpha\,~u_k)$. In the quasi-static limit
-$c_v = 0$ and the condition reduces to \eqref{eq:rr}; a quasi-static run
-with $\alpha = 0$ is a pure Neumann condition and does not couple the
-subdomains kinematically.
+\paragraph{Roles.} The \emph{Dirichlet side} $D$ receives a kinematic datum
+on its interface nodes; the \emph{Neumann side} $N$ receives a force. A
+pair of integrators is written with the integrator of one named subdomain
+first (II, IE, EI, EE).
 
-\subsection{Reflection at the interface}
-\label{sec:reflection}
-
-Place the interface at $x = 0$ with $\Omega_k$ in $x < 0$ and consider a
-harmonic incident wave and its reflection. The Robin condition
-$\sigma + \alpha u = 0$ gives the reflection coefficient
+\paragraph{Interface operators.} Let $\varphi^D_m$ and $\varphi^N_n$ be the
+interface traces of the nodal basis functions of the two sides. The
+cross-mass matrix and the boundary mass matrices are
 \begin{equation}
-  R_{\mathrm{RR}}(\omega) \;=\;
-     \frac{\mathrm{i}\,\omega\,Z - \alpha}{\mathrm{i}\,\omega\,Z + \alpha},
+  B_{mn} = \int_\Gamma \varphi^D_m\, \varphi^N_n \,\dd S, \qquad
+  (~W_D)_{ml} = \int_\Gamma \varphi^D_m\, \varphi^D_l \,\dd S, \qquad
+  (~W_N)_{nl} = \int_\Gamma \varphi^N_n\, \varphi^N_l \,\dd S,
+  \label{eq:cross-mass}
+\end{equation}
+assembled once on the reference configuration, per Cartesian component.
+The kinematic transfer to the Dirichlet side and its transpose are
+\begin{equation}
+  \Pi_D = ~W_D^{-1} ~B, \qquad \Pi_D^T = ~B^T ~W_D^{-1} .
+  \label{eq:projector}
+\end{equation}
+$\Pi_D$ maps the interface values of side $N$ to the $L^2$ projection of
+their trace onto the trace space of side $D$; it reproduces constants when
+$~B\,\mathbf{1} = ~W_D \mathbf{1}$, that is, when the quadrature of $~B$ is
+exact on products of the two trace spaces.
+
+\paragraph{Windows.} The Schwarz controller advances in \emph{stops}. Within
+a stop each subdomain advances to the stop end in its own steps; the
+\emph{Schwarz iteration} repeats a solve of each subdomain with interface
+data exchanged between the solves until the data converge, and the stop is
+then committed. A stop that spans $m$ steps of a subdomain is a
+\emph{window} of $m$ substeps for that subdomain.
+
+\paragraph{Energies.} The energy is
+\begin{equation}
+  E = \sum_k \Bigl(\tfrac12\, ~v_k^T ~M_k\, ~v_k + \mathrm{SE}(~u_k)\Bigr),
+  \label{eq:energy}
+\end{equation}
+with $\mathrm{SE}$ the strain energy. For central difference the kinetic
+term is evaluated in the staggered form
+$\tfrac12\, ~v^T ~M ~v - \tfrac{\Delta t^2}{8}\, ~a^T ~M ~a$, which is the
+kinetic part of the quadratic that the scheme conserves exactly on a linear
+problem; the consistent-mass kinetic energy at integer steps misrepresents
+the short-wavelength content of a sharp front by several percent. For
+linear elasticity the pseudo-energy is
+\begin{equation}
+  \tilde{E} = \sum_k \Bigl(\tfrac12\, ~a_k^T ~S_k\, ~a_k
+             + \tfrac12\, ~v_k^T ~K_k\, ~v_k\Bigr),
   \qquad
-  \lvert R_{\mathrm{RR}}(\omega) \rvert \equiv 1,
-  \label{eq:R-rr}
+  ~S_k = ~M_k + \Bigl(\beta_k - \frac{\gamma_k}{2}\Bigr)\Delta t_k^2\, ~K_k ,
+  \label{eq:pseudo-energy}
 \end{equation}
-so for any real $\alpha > 0$ the interface reflects the incoming wave
-completely, with a frequency-dependent phase shift. The impedance
-condition $\sigma + Z\dot u + \alpha u = 0$ gives
-\begin{equation}
-  R_{\mathrm{imp}}(\omega) \;=\;
-     -\,\frac{\alpha}{2\,\mathrm{i}\,\omega\,Z + \alpha},
-  \qquad
-  \lvert R_{\mathrm{imp}}(\omega) \rvert
-   = \frac{\alpha}{\sqrt{\alpha^2 + 4\,\omega^2 Z^2}} \;<\; 1,
-  \label{eq:R-imp}
-\end{equation}
-with $R_{\mathrm{imp}} \equiv 0$ at $\alpha = 0$. The dashpot is the only
-mechanism in either condition that removes energy from an interface mode;
-the Robin spring stores it and returns it.
-
-\section{Transmission conditions on an overlap boundary}
-\label{sec:overlap-tc}
-
-\subsection{Dirichlet coupling}
-\label{sec:overlap-dbc}
-
-The classical overlap condition imposes the partner's kinematic trace on
-$\Gamma_k$,
-\begin{equation}
-  ~u_k = ~u_j, \qquad \dot{~u}_k = \dot{~u}_j, \qquad \ddot{~u}_k = \ddot{~u}_j
-  \qquad \text{on } \Gamma_k,
-  \label{eq:overlap-dbc}
-\end{equation}
-either by pointwise interpolation (locate the partner element that
-contains each node in the reference configuration and evaluate the
-partner shape functions there) or by the $L^2$ projection
-$~P_{kj} = ~W_k^{-1}~L_{kj}$ with
-$~L_{kj} = \int_{\Gamma_k} ~N_k\,(~N_j^{\mathrm{vol}})^\top\,\dd\Gamma$.
-Both are implemented by \code{SolidMechanicsOverlapSchwarzBoundaryCondition}
-(keyword \code{Schwarz overlap}). The constrained degrees of freedom add
-no interface tangent.
-
-\subsection{Impedance coupling}
-\label{sec:overlap-imp}
-
-The impedance overlap condition leaves the overlap degrees of freedom free
-and imposes
-\begin{equation}
-  ~t_k \,-\, ~t_j
-  \;+\; ~Z\,\bigl(\dot{~u}_k - \dot{~u}_j\bigr)
-  \;+\; \alpha\,\bigl(~u_k - ~u_j\bigr)
-  \;=\; ~0
-  \qquad \text{on } \Gamma_k,
-  \label{eq:imp-overlap}
-\end{equation}
-where $~t_j = ~\sigma_j\,~n_k$ is the partner's traction on $\Gamma_k$
-with the outward normal of $\Omega_k$ (the partner has no boundary there,
-so the converged state satisfies $~t_k = ~t_j$). The own traction $~t_k$
-is never computed: it is the natural boundary term of the weak form of
-$\Omega_k$, and the condition is imposed by adding the partner datum
-$~W(~t_j + ~Z\,\dot{~u}_j + \alpha\,~u_j)$ as a Neumann load and the self
-terms $~W(~Z\,\dot{~u}_k + \alpha\,~u_k)$ as an interface force on the
-same residual. The impedance is the P/S-split tensor
-\begin{equation}
-  ~Z \;=\; Z_p\, ~n_k \otimes ~n_k
-       \;+\; Z_s\, \bigl(~I - ~n_k \otimes ~n_k\bigr),
-  \qquad
-  Z_p = \sqrt{\rho(\lambda + 2\mu)}, \quad
-  Z_s = \sqrt{\rho\mu},
-  \label{eq:imp-tensor}
-\end{equation}
-with $\rho$, $\lambda$, $\mu$ from the partner's material in the block
-named by \code{source block} (each side carries the impedance of its
-neighbor, the optimized-Schwarz principle that the transmission operator
-should approximate the neighbor's Dirichlet-to-Neumann map). The keyword
-is \code{Schwarz impedance overlap}.
-
-\paragraph{The partner traction.} The monodomain solution has continuous
-kinematics and a nonzero traction on the artificial surface $\Gamma_k$,
-and satisfies \eqref{eq:imp-overlap} identically. Without the term
-$-~t_j$ the condition becomes a relative dashpot that the monodomain
-solution fails by exactly that traction, and the converged coupled
-solution then carries a spurious velocity jump of about $~t/Z$ whose
-dissipated power $\lvert ~t \rvert^2/Z$ acts as permanent interface
-damping ($59\%$ loss over $1$\,ms on the conforming cantilever;
-Sec.~\ref{sec:conforming}). Because $\Gamma_k$ is an interior surface of
-the partner mesh, the partner's assembled internal force cannot supply
-$~t_j$ there. Norma evaluates it in one of two ways (\code{partner
-traction}, default \code{auto}). On node-aligned interfaces the weak
-traction is the consistent nodal reaction of the single layer of partner
-elements exterior to $\Gamma_k$,
-\begin{equation}
-  \bigl[ ~W\, ~t_j \bigr]_i
-  \;=\; -\sum_{e \,\in\, \mathcal{E}_i^{\mathrm{ext}}}
-     \bigl( ~f^{\mathrm{int}}_e + ~M_e\, \ddot{~u}_e \bigr)_i,
-  \label{eq:consistent-traction}
-\end{equation}
-which the monodomain solution satisfies identically, mesh-scale content
-included (implemented by
-\code{build\_consistent\_traction\_patch!}). Otherwise the
-partner's consistently recovered nodal stress is transferred to
-$\Gamma_k$ and contracted with the outward normal; recovery is enabled
-automatically for models that carry this condition.
-
-\paragraph{Transfer and assembly.} The kinematic fields and the recovered
-stress are transferred by the $L^2$ projection by default
-(\code{transfer: variational}; pointwise interpolation is a legacy
-option, and the two coincide on node-aligned interfaces). On non-aligned
-interfaces the whole partner datum is assembled on the partner's offset
-surface from the partner's own nodal values and transferred with one
-surface-to-surface operator (\code{characteristic\_partner\_terms}). The
-self tangent consists of the nodal blocks
-$W_{ij}\,(c_v\,~Z(~n_j) + \alpha\,~I)$. A scalar or step-dependent
-multiplier on $~Z$ (\code{impedance scale}) remains available; with the
-traction term in place the physical scale $1$ is the conserving one, and
-the historical use of the scale as a per-problem parameter, which
-compensated the missing traction, is obsolete. With
-\code{impedance scale: 0} the condition is the Robin--Robin overlap
-condition $~t_k - ~t_j + \alpha\,(~u_k - ~u_j) = ~0$; no separate keyword
-exists for it.
-
-\subsection{Summary of the four conditions}
-
-\begin{table}[htbp]
-\centering
-\small
-\caption{Transmission conditions on a shared (nonoverlap) interface.}
-\label{tab:nonoverlap-conditions}
-\begin{tabular}{lcc}
-\toprule
-& Robin & Impedance \\
-\midrule
-Boundary condition &
-  $~t_k + \alpha\, ~u_k = ~g_k$ &
-  $~t_k + Z\, \dot{~u}_k + \alpha\, ~u_k = ~g_k$ \\[0.3em]
-Self tangent &
-  $\alpha\, ~W$ &
-  $(Z\, c_v + \alpha)\, ~W$ \\[0.3em]
-Self force &
-  $\alpha\, ~W\, ~u_k$ &
-  $~W\,\bigl(Z\, \dot{~u}_k + \alpha\, ~u_k\bigr)$ \\[0.3em]
-Partner datum &
-  $-~t_j + \alpha\, ~W\, ~P\, ~u_j$ &
-  $-~t_j + Z\, ~W\, ~P\, \dot{~u}_j + \alpha\, ~W\, ~P\, ~u_j$ \\[0.3em]
-$Z$ &
-  (none) &
-  interface block material; harmonic mean per pair \\[0.3em]
-$\alpha$ &
-  input, required, per side &
-  input, optional, one value per interface \\[0.3em]
-Transfer &
-  per side (legacy) &
-  adjoint pair from one cross-mass matrix \\[0.3em]
-Reflection $\lvert R \rvert$ &
-  $\equiv 1$ &
-  $< 1$; $0$ at $\alpha = 0$ \\[0.3em]
-Keyword &
-  \code{Schwarz RR nonoverlap} &
-  \code{Schwarz impedance nonoverlap} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[htbp]
-\centering
-\footnotesize\setlength{\tabcolsep}{4pt}
-\caption{Transmission conditions on an overlap boundary.}
-\label{tab:overlap-conditions}
-\begin{tabular}{lcc}
-\toprule
-& Dirichlet & Impedance \\
-\midrule
-Boundary condition &
-  $~u_k = ~u_j$ (pointwise or $L^2$) &
-  $~t_k - ~t_j + ~Z\,(\dot{~u}_k - \dot{~u}_j) + \alpha\,(~u_k - ~u_j) = ~0$ \\[0.3em]
-Self tangent &
-  (DOFs constrained) &
-  $W_{ij}\,\bigl(c_v\, ~Z(~n_j) + \alpha\, ~I\bigr)$ \\[0.3em]
-Self force &
-  (none) &
-  $~W\,\bigl(~Z\, \dot{~u}_k + \alpha\, ~u_k\bigr)$ \\[0.3em]
-Partner datum &
-  $~u_k \leftarrow ~P\, ~u_j$ &
-  $~W\,\bigl(~t_j + ~Z\, \dot{~u}_j + \alpha\, ~u_j\bigr)$ \\[0.3em]
-Partner traction &
-  (none) &
-  consistent \eqref{eq:consistent-traction} or recovered stress \\[0.3em]
-$~Z$ &
-  (none) &
-  partner material, P/S split \\[0.3em]
-$\alpha$ &
-  (none) &
-  input, optional \\[0.3em]
-Keyword &
-  \code{Schwarz overlap} &
-  \code{Schwarz impedance overlap} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\section{Requirements for energy consistency}
-\label{sec:theory}
-
-Three results from the literature fix the structure of an
-energy-consistent coupling; the measurements of
-Secs.~\ref{sec:beam}--\ref{sec:cylinders} confirm each of them.
-
-\paragraph{The interface work identity.} For Newmark-family subdomains
-coupled by interface tractions, the discrete energy balance over a step
-contains the interface term
-(Gravouil--Combescure~\cite[Eq.~(34)]{GravouilCombescure2001};
-Karimi--Nakshatrala~\cite[Eq.~(84)]{KarimiNakshatrala2014})
-\begin{equation}
-  E_{\mathrm{int}}
-  = \sum_{\text{sides }k} \frac{1}{\Delta t_k}\,
-    \jump{\dot{~u}_k}^{T} ~C_k^{T}\, \jump{\Lambda_k},
-  \label{eq:eint}
-\end{equation}
-the work of the transmitted tractions through the kinematic jump, each
-side on its own grid ($~C_k$ is the interface restriction of side $k$,
-$\Lambda_k$ the traction impulse transmitted to it, and $\jump{\cdot}$
-here the change across the step). The term vanishes if and only if the
-traction is one field acting equal and opposite on the two sides through
-adjoint trace operators, with velocity continuity enforced at instants
-shared by both time grids. When the pairing is broken the term has no
-sign.
-
-\paragraph{Representability on nonconforming grids.} Gander, Halpern,
-and Nataf~\cite{GanderHalpernNataf2003} prove convergence of Schwarz
-waveform relaxation with impedance transmission on nonmatching grids
-under three conditions: Robin-type (not Dirichlet) transmission, a
-consistent boundary discretization of the transmission operator, and an
-intergrid transfer that is an $L^2$ contraction (a projection qualifies;
-pointwise interpolation does not). The choice $Z = \rho c$ is the exact
-transparent operator in one dimension. On nonconforming grids the coupled
-system defines the converged solution; there is no monodomain scheme it
-equals. Continuity holds only through the projection, and the component
-of the fine trace orthogonal to the coarse trace space is never matched:
-the dashpot then absorbs that persistent component as an absorbing
-boundary would, which is sign-definite dissipation, required for
-stability. Achdou, Japhet, Maday, and Nataf~\cite{AchdouJaphetMadayNataf2002}
-locate the remedy in a common trace space for the datum, not in a better
-$Z$.
-
-\paragraph{The adjoint requirement.} Energy-stable discontinuous Galerkin
-couplings~\cite{AppeloWang2019,DuruEtAl2021,LiuEtAl2023} compute one
-interface state on a common description of the interface and use it in
-both weak forms; the interface power then reduces to
-\begin{equation}
-  P \;=\; -\int_\Gamma \jump{\dot{~u}}^T ~Z \jump{\dot{~u}} \,\dd S
-  \;\le\; 0,
-  \label{eq:telescope}
-\end{equation}
-which is confined to the jump and vanishes under refinement and at
-convergence. The discrete requirement is that the two kinematic transfers
-be $L^2$-adjoint through one cross-mass matrix,
-\begin{equation}
-  ~W_1 \Pi_{2\to1} \;=\; \bigl(~W_2\,\Pi_{1\to2}\bigr)^{T} \;=\; ~B,
-  \qquad
-  B_{mn} = \int_\Gamma \varphi^1_m\,\varphi^2_n \,\dd S .
-  \label{eq:adjoint}
-\end{equation}
-Two independent interpolations violate \eqref{eq:adjoint}, the cross
-terms of the interface power do not cancel, and its sign is undetermined.
-Liu et al.~\cite{LiuEtAl2023} add that interface unknowns may need
-implicit treatment even between explicit interiors.
-
-\paragraph{Consequence for the two decompositions.} Condition
-\eqref{eq:adjoint} presumes one shared surface on which the two works
-cancel. The overlap decomposition has none: data are exchanged on two
-distinct surfaces $\Gamma_1$ and $\Gamma_2$, so no pairing of the two
-works exists, and energy consistency could only come from agreement of
-the two discrete solutions in the overlap, which the differing discrete
-dispersion relations of the two grids preclude at fixed $h$
-(Sec.~\ref{sec:overlap-remedies}). The nonoverlap decomposition has a
-shared interface, and the adjoint-paired coupling of
-Sec.~\ref{sec:paired} implements \eqref{eq:adjoint} on it.
-
-\section{The adjoint-paired nonoverlap impedance coupling}
-\label{sec:paired}
-
-This section describes the coupling as implemented (the default of
-\code{Schwarz impedance nonoverlap}; \code{adjoint pairing: false}
-restores the legacy per-side transfer). Its measured behavior is in
-Secs.~\ref{sec:beam-nonoverlap} and \ref{sec:cylinders}.
-
-\subsection{Construction}
-\label{sec:paired-construction}
-
-\paragraph{Transfer operators.} The cross-mass matrix $~B$ of
-\eqref{eq:adjoint} is integrated over the facets of the finer side (the
-side with more interface nodes): each facet quadrature point is mapped to
-the partner surface by closest-point projection in the reference
-configuration and the partner facet shape functions are evaluated there.
-This rule is exact when the coarser trace mesh is nested in the finer
-facets and carries facet-quadrature error where a coarse basis function
-kinks inside a fine facet; the partition-of-unity error
-$\max_i \lvert (\Pi_k \mathbf{1} - \mathbf{1})_i \rvert$ is logged at
-setup as a certificate (zero on conforming and nested interfaces). The
-kinematic transfers are $\Pi_1 = ~W_1^{-1}~B$ and
-$\Pi_2 = ~W_2^{-1}~B^{T}$, the force transfers their partner adjoints
-$N_1 = \Pi_2^{T}$ and $N_2 = \Pi_1^{T}$, all scalar and applied to each
-Cartesian component.
-
-\paragraph{Exchanged traction.} The weak partner reaction of side $j$ is
-the restriction to its interface degrees of freedom of its assembled
-d'Alembert residual,
-\begin{equation}
-  \lambda_j \;=\; -\bigl(~M_j\,\ddot{~u}_j + ~f^{\mathrm{int}}_j
-   - ~f^{\mathrm{body}}_j\bigr)\big|_{\Gamma},
-  \label{eq:dalembert}
-\end{equation}
-with $~M_j$ the mass matrix its integrator uses (consistent for Newmark,
-lumped for central difference). With this reaction the two interface rows
-sum exactly to the monodomain row, so the monodomain trajectory is the
-fixed point. The legacy coupling transferred the static reaction
-$-~f^{\mathrm{int}}$; in dynamics the two sides' static reactions differ
-by the inertia of the interface nodes, each side carrying its own
-tributary mass, and the fixed point then differs from the monodomain
-discretization by a steady, step-independent interface energy loss
-($-9.6\%$ per millisecond on the conforming cantilever, Table~\ref{tab:legacy-paired}).
-
-\paragraph{Pair impedance and Robin parameter.} The pair shares one
-impedance, the harmonic mean $2Z_1 Z_2/(Z_1 + Z_2)$ of the per-side
-material impedances $Z_k = \rho_k c_{p,k}$ of the blocks that own the
-two side sets, each multiplied by its side's \code{impedance scale}; this
-is the Riemann-solver weighting of~\cite{DuruEtAl2021,LiuEtAl2023}. The
-Robin parameter $\alpha$ is one value per interface: the spring stores
-and returns energy conservatively only when both interface forces pair
-through the same coefficient, so mismatched values abort with a message
-naming both side sets. The pair impedance is scalar (P-wave); a tensor
-pair impedance has not been needed on the benchmarks studied.
-
-\paragraph{Partner datum.} Side $k$ receives
-\begin{equation}
-  ~g_k \;=\; N_k\,\lambda_j
-   \;+\; Z\,~B_k\,\dot{~u}_j
-   \;+\; \alpha\,~B_k\,~u_j,
-  \qquad ~B_1 = ~B,\quad ~B_2 = ~B^{T},
-  \label{eq:paired-rhs}
-\end{equation}
-with the partner fields evaluated at side $k$'s current substep time
-(Sec.~\ref{sec:subcycle}). The self terms, the tangent
-$(Z c_v + \alpha)\,~W_k$ and the force
-$~W_k(Z\,\dot{~u}_k + \alpha\,~u_k)$, are assembled with the internal
-force at every residual evaluation.
-
-\paragraph{What the parameters change.} At the fixed point the two
-conditions add to traction balance and subtract to
-$Z\,\dot{~\delta} + \alpha\,~\delta = ~0$ for the interface jump
-$~\delta$. When the jump can close, as it does on conforming and nested
-meshes, the converged solution is independent of $Z > 0$ and
-$\alpha \ge 0$, and both act only on the convergence rate of the
-iteration. On nonconforming meshes the jump closes only in the projected
-sense of \eqref{eq:adjoint} and the accepted iterate has a residual
-jump, so the $\alpha$ term is a spring force on that residual, and its
-influence on the converged coupled solution has not been measured for
-the paired coupling (Sec.~\ref{sec:open}). The classical Robin--Robin
-runs of Sec.~\ref{sec:beam-rr} show that with per-side transfer the
-converged solution does depend on $\alpha$.
-
-\subsection{Explicit subdomains}
-\label{sec:imex}
-
-With a central-difference subdomain on either side, the coupling is
-strongly unstable if the interface terms are evaluated at lagged time
-levels: the exchanged reaction \eqref{eq:dalembert} couples the partner's
-acceleration into the interface force, an algebraic loop that the
-implicit pairs resolve within the Newton iteration. Following Liu et
-al.~\cite{LiuEtAl2023}, the explicit update is closed implicitly on the
-interface rows only,
-\begin{equation}
-  \bigl(~M + \gamma\,\Delta t\,Z\,~W\bigr)\big|_\Gamma\, ~a_{n+1}
-  \;=\; ~M\,~a^{\mathrm{expl}}\big|_\Gamma,
-  \label{eq:imex}
-\end{equation}
-a small symmetric positive definite solve per interface, factored once
-and reused for the three components while the operator is unchanged
-(\code{imex\_interface\_acceleration!}); the interior stays explicit.
-Here $~M\big|_\Gamma$ is the lumped mass on the interface rows, $~W$ the
-side's own boundary mass matrix, $\gamma = \tfrac12$, and
-$~a^{\mathrm{expl}}$ the plain explicit update, whose right-hand side
-contains the dashpot at the predictor velocity and the Robin spring at
-the known end-of-step displacement; the solve replaces the
-predictor-velocity dashpot by the end-of-step one. The Robin spring
-stays explicit, so a large $\alpha$ can violate the central-difference
-stability limit on the interface rows. Interface degrees of freedom held
-by Dirichlet conditions keep their prescribed acceleration and enter the
-free rows as data.
-
-\subsection{Different time steps per subdomain}
-\label{sec:subcycle}
-
-Each subdomain records full-field snapshots (displacement, velocity,
-acceleration, assembled internal force) at every substep of every
-Schwarz iteration, anchored by a snapshot of the stop-start state. When a
-coupling condition is evaluated at time $t$, each field is interpolated
-piecewise linearly to $t$ (queries beyond the history clamp to its
-endpoints), the partner state is temporarily replaced by the
-interpolants, the coupling terms are evaluated, so the reaction
-\eqref{eq:dalembert} is formed from the interpolated acceleration and
-internal force, and the partner state is restored. This is the
-interpolated-continuity structure under which Gravouil and
-Combescure~\cite{GravouilCombescure2001} prove the interface work of the
-subcycled exchange nonpositive and of order $\Delta t$. Two earlier
-defects (an off-by-one in the segment selection and a missing stop-start
-anchor) had reduced the exchange to end-sampled constant data; both are
-fixed and the measurements below use the interpolated exchange.
-
-Three constructions that would make the coarse side's datum exactly
-work-conjugate to the fine side's interpolation, as in Prakash and
-Hjelmstad~\cite{PrakashHjelmstad2004}, were implemented and all fail in
-a partitioned exchange: the trapezoidal window average lags the
-interface motion by half a window and adds dissipation; the recursion
-$\hat\lambda_{n+1} = 2\overline{\lambda} - \hat\lambda_n$ doubles the
-contraction factor of the Schwarz iteration and diverges within tens of
-stops; and the least-squares endpoint fit is an extrapolation whose gain
-exceeds one outside the linear band and injects energy without bound
-over hundreds of stops. Only causal transfer operators are robust in a
-fixed-point exchange of the impedance coupling. The constrained
-Dirichlet--Neumann exchange cancels the subcycled interface work without a
-direct solve, with the coarse-step side as the Dirichlet side
-(Sec.~\ref{sec:pseudo-energy}). The
-window-average and endpoint-fit utilities remain in
-\code{interpolation.jl} as tested building blocks.
-
-\subsection{Relaxation and Aitken acceleration}
-\label{sec:relaxation}
-
-The relaxed datum is the assembled $~g_k$ of \eqref{eq:paired-rhs} on
-one side of each pair (the later-listed subdomain); a fresh relaxation
-slot starts from zero rather than from the incoming datum. Two Aitken
-forms are available (\code{relaxation: aitken recursive} and
-\code{aitken secant}), with \code{relaxation parameter} the fixed or
-initial factor and \code{aitken N0 parameter} the number of initial
-Schwarz iterations at the input factor.
-
-\paragraph{State keyed by substep slot.} The relaxation state (the
-stored datum and the Aitken residuals) is keyed per pair and per substep
-time slot within the stop, and cleared at every stop
-(\code{relaxation\_slot!}). Before this, one vector per pair was updated
-at every application of the condition, so a stop spanning several
-substeps blended iterates across time, a causal low-pass filter on the
-exchanged traction that shifted the fixed point (measured on the
-conforming cantilever at $10$\,ms: $+11\%$ to $-84\%$ with Aitken and
-$-7\%$ to $-88\%$ with fixed $\theta = 0.5$ as the window grew from $2$
-to $10$ substeps). With the slot-keyed state, windowed stops
-reproduce the same-step trajectory to Schwarz truncation
-(Sec.~\ref{sec:windowed}).
-
-\paragraph{Guards.} On the Dirichlet-transfer paths (overlap and
-Dirichlet--Neumann) a fresh slot seeds the stored iterate with the
-incoming datum, so the first residual is exactly zero and the secant
-factor evaluates to $-0.0$; a zero factor freezes the interface, and in a
-chain of three or more subdomains the whole Schwarz iteration then
-reports convergence after one iteration with an answer wrong by $100\%$.
-The secant update is now taken only when the residual difference exceeds
-a floor, a factor of magnitude below $10^{-12}$ is recorded on the
-controller, and the convergence criterion refuses to accept that
-iteration. The recursive form no longer runs the first \code{N0}
-iterations unrelaxed regardless of the input factor.
-
-\paragraph{Where Aitken applies.} Aitken acceleration is applied only to
-single-slot stops (\code{aitken\_applies}); in windowed stops the
-residuals of different slots belong to different times and the
-extrapolated factor overshoots. On the implicit cantilever pairs it
-reduces the Schwarz iterations by about a factor of ten against a fixed
-factor of $0.5$ ($599$ against $56$ recursive or $58$ secant over ten
-stops). On the explicit cylinders pair (Sec.~\ref{sec:cylinders}) every
-Aitken form diverges: the displacement residual between successive
-iterations collapses while the interface velocity jump stalls at a finite
-value, the extrapolated factor exceeds $2$ by the second or third
-iteration, oscillates between $-10$ and $+3$, and the iteration reaches
-the cap of $256$ within the first $25$ stops, after which an element
-inverts; the recursive form with \code{N0} $= 2$ and the secant form fail
-the same way, six stops later. A fixed factor of $0.5$ converges there in
-$2$ to $3$ iterations per stop, and $\theta = 1$ (no relaxation) diverges
-after $0.3$\,ms.
-
-\section{Measurements on the cantilever beam}
-\label{sec:beam}
-
-\subsection{Overlap, conforming meshes: the partner traction}
-\label{sec:conforming}
-
-On the conforming node-aligned overlap pair (II, $\alpha = 0$, physical
-impedance) the energy error of the impedance overlap coupling over
-$1$\,ms decreases through four corrections, none with a parameter:
-\[
-  \underbrace{59\%}_{\text{no partner traction}}
-  \;\longrightarrow\;
-  \underbrace{14\%}_{\text{traction from lumped recovery}}
-  \;\longrightarrow\;
-  \underbrace{1.5\%}_{\text{consistent recovery}}
-  \;\longrightarrow\;
-  \underbrace{0.08\%}_{\text{consistent traction \eqref{eq:consistent-traction}}}
-\]
-against the $0.1\%$ of converged conforming Dirichlet coupling. The
-residual of the recovered-stress step was diagnosed with an
-interface-work instrumentation that separates the partner-traction,
-dashpot, and Robin channels (\code{report\_impedance\_interface\_work},
-environment-gated, CSV through \code{NORMA\_IMPEDANCE\_WORK\_CSV}): it is
-unchanged under a Schwarz tolerance of $10^{-11}$ and under halving the
-time step, and it halves when $h$ is halved. The recovery error on
-mesh-scale content is converted by the transmission condition into a
-velocity jump of about $\delta t/Z$ that the dashpot dissipates at rate
-$\lvert \delta t \rvert^2/Z$ over the whole run; the consistent traction
-removes it (integrated dashpot work $-42.6$\,J $\to$ $+0.1$\,J). The
-P/S tensor impedance \eqref{eq:imp-tensor}, which appeared worse than a
-scalar one with recovered stress ($4.1\%$ against $1.5\%$), is exact with
-the consistent traction ($0.076\%$): its smaller shear impedance
-amplified the tangential recovery error. Historical per-problem tuning
-of the impedance scale, whose best value on the nonconforming pair was
-$1.12$, compensated the missing traction against transfer injection and
-is obsolete.
-
-\subsection{Overlap, nonconforming meshes: sign-indefinite interface work}
-\label{sec:overlap-nonconforming}
-
-Table~\ref{tab:ratio-sweep} gives the drift at $1$\,ms of the impedance
-overlap coupling with variational transfer across nine mesh ratios,
-three overlap widths, and four integrator pairings ($108$ runs).
-
-\begin{table}[htbp]
-\centering
-\small\setlength{\tabcolsep}{3.6pt}
-\caption{Energy drift at 1\,ms of the impedance overlap coupling
-(variational transfer, blended energy), in percent.}
-\label{tab:ratio-sweep}
-\begin{tabular}{l rrrr rrrr rrrr}
-\toprule
-& \multicolumn{4}{c}{overlap 50.8\,mm} & \multicolumn{4}{c}{overlap 25.4\,mm}
-& \multicolumn{4}{c}{overlap 12.7\,mm} \\
-\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
-ratio & II & IE & EI & EE & II & IE & EI & EE & II & IE & EI & EE \\
-\midrule
-1:1.0 & $-0.1$ & $-8.9$ & $-0.2$ & $+8.7$ & $-0.1$ & $+5.0$ & $-0.4$ & $+10.2$ & $-0.0$ & $-15.7$ & $-6.1$ & $+3.6$ \\
-1:0.9 & $+7.6$ & $-11.7$ & $-5.5$ & $+8.5$ & $-4.4$ & $-8.1$ & $+4.4$ & $+9.1$ & $+0.1$ & $-14.8$ & $-1.0$ & $+4.3$ \\
-1:0.8 & $\mathbf{+29.8}$ & $-15.3$ & $+5.5$ & $-9.5$ & $+20.4$ & $\mathbf{+45.1}$ & $-2.4$ & $-1.9$ & $-3.1$ & $-20.3$ & $-5.4$ & $+4.7$ \\
-1:0.7 & $+19.2$ & $-12.8$ & $+2.7$ & $-11.6$ & $+11.8$ & $-18.6$ & $+0.7$ & $-5.4$ & $+11.1$ & $+7.3$ & $-9.8$ & $-17.9$ \\
-1:0.6 & $-61.1$ & $-54.0$ & $-57.7$ & $-40.4$ & $+2.1$ & $-18.6$ & $-63.9$ & $-53.4$ & $-4.5$ & $-34.2$ & $-57.1$ & $-52.7$ \\
-1:0.5 & $-50.6$ & $-32.3$ & $-36.4$ & $-56.8$ & $-11.0$ & $-17.6$ & $-55.7$ & $-54.3$ & $-29.2$ & $-54.0$ & $-56.8$ & $-52.0$ \\
-1:0.4 & $-12.4$ & $+3.9$ & $-43.1$ & $-53.1$ & $-52.7$ & $-50.2$ & $-57.0$ & $-63.8$ & $-36.6$ & $-52.4$ & $-78.2$ & $-76.2$ \\
-1:0.3 & $-65.0$ & $-44.5$ & $-78.3$ & $-57.4$ & $\mathbf{+173.7}$ & $\mathbf{+274.7}$ & $-81.2$ & $-78.8$ & $-30.5$ & $-58.6$ & $-79.5$ & $-79.4$ \\
-1:0.2 & $-79.1$ & $-76.8$ & $-80.8$ & $-78.9$ & $-66.5$ & $-66.2$ & $-86.3$ & $-87.4$ & $-22.2$ & $-45.8$ & $-91.2$ & $-90.3$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Conforming implicit runs conserve to $0.1\%$ at every width. Every
-nonconforming configuration either loses tens of percent or gains: the II
-column injects at mild coarsening at nearly every width (up to $+29.8\%$
-at $1{:}0.8$), the $25.4$\,mm IE run at $1{:}0.3$ reaches $+275\%$, and
-the drift is not monotone in the ratio (at $25.4$\,mm the II column moves
-$-52.7 \to +173.7 \to -66.5\%$ across $1{:}0.4$, $1{:}0.3$, $1{:}0.2$). The
-sign of the interface work is decided by the mesh pair and the overlap
-geometry together, and no a priori bound on its sign or magnitude
-exists. The channel instrumentation shows the mechanism: on the
-$50.8$\,mm/$1{:}0.5$ II case with pointwise transfer the dashpot does
-$+554$\,J of positive work over $1$\,ms, which a dissipator cannot do, so
-the discrete dashpot term is not a quadratic form; the two sides
-interpolate partner fields with unrelated operators and their dashpot
-terms do not pair.
-
-\paragraph{Dirichlet control.} The same nine mesh configurations with
-Dirichlet overlap coupling (II) conserve to $\pm 0.05\%$ on conforming
-meshes and are severely unstable on every nonconforming one ($+22\%$ to
-$+7765\%$ at $1$\,ms, most runs ending in Newton divergence before
-$1$\,ms), with pointwise and with weak transfer alike. The dashpot of the
-impedance condition is therefore what stabilizes a coupling that
-kinematic matching destabilizes, and its dissipation is the energy of
-the inter-grid discrepancy it absorbs.
-
-\paragraph{Ten milliseconds.} Of the $108$ overlap runs rerun to $10$\,ms,
-$74$ ended by element inversion after exponential energy growth
-(typically $30$ to $100$ times $E(0)$ at failure, between $2$ and $9$\,ms)
-and most of the remainder decayed toward zero energy. Configurations that
-appeared dissipative at $1$\,ms reversed and grew. Conformity does not
-stabilize the mixed pairings: the conforming $25.4$\,mm IE run grew
-exponentially and failed at $6.25$\,ms. The only overlap configurations
-stable and accurate at $10$\,ms are the conforming II runs ($+0.6$,
-$+0.6$, $+0.2\%$ at the three widths; Fig.~\ref{fig:overlap-10ms}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figs/overlap-II-10ms.pdf}
-\caption{Overlap impedance coupling (variational transfer),
-implicit--implicit, $10$\,ms. Nearly every nonconforming configuration
-grows exponentially until element inversion (curves leaving the top of
-the axes) or decays toward zero energy; only the conforming runs follow
-the monodomain reference.}
-\label{fig:overlap-10ms}
-\end{figure}
-
-\subsection{Overlap: remedies tried on the interface}
-\label{sec:overlap-remedies}
-
-Every remedy applied to the overlap exchange was measured on the
-instrumented $1$\,ms benchmark; none is a structural remedy, and the
-sequence explains why.
-
-\begin{itemize}[itemsep=2pt]
-\item \textbf{Transfer fidelity.} Replacing pointwise interpolation by
-  the variational projection, refining the transfer quadrature, taking
-  the consistent traction across the interface from the partner's offset
-  surface, and transferring the whole partner datum with one operator
-  each \emph{increased} the spurious dashpot work on the $1{:}0.75$ pair
-  ($-607$, $-726$, $-857$, $-1129$, $-1084$\,J) while the net drift moved
-  from $-0.75\%$ to $+9.8\%$: pointwise interpolation and nodal stress
-  recovery had been smoothing the transferred data, and the small net of
-  the original scheme was a cancellation of two large channels. Over the
-  $24$ nonconforming cases of the three-ratio family the variational
-  transfer improved $17$ and reduced the mean absolute drift from
-  $33$ to $25\%$; it is the default because it is the contraction the
-  convergence theory requires, not because it conserves.
-\item \textbf{Content-aware absorption} (\code{content aware
-  absorption}): an additional dissipative term
-  $~W\,~Z\,(~I - \widehat\Pi)\,\dot{~u}_k$, with $\widehat\Pi$ the
-  $~W$-orthogonal projection onto the transferable subspace, is verified
-  (annihilates constants, vanishes on node-aligned interfaces, provably
-  dissipative; test 106) and has no effect: it dissipates $4.6$\,J while
-  every channel stays identical. The recirculating content lies inside
-  the transferable subspace: both grids represent it, and the discrepancy
-  comes from their different discrete dispersion relations, which no
-  transfer construction can remove.
-\item \textbf{Representable dashpot} (\code{representable dashpot}):
-  restricting the dashpot to $~Z\,\widehat\Pi\,\jump{\dot{~u}}$ leaves the
-  dashpot work unchanged where the projection is nontrivial
-  ($-1066 \to -1065$\,J) and worsens the drift where it acts
-  ($+12.5 \to +45.6\%$). Retained as a diagnostic, default off.
-\item \textbf{Numerical damping.} Newmark $\gamma = 0.6$ suppresses the
-  recirculation but removes $87\%$ of the physical energy. HHT-$\alpha$
-  (\code{HHT alpha}, $\bar\alpha \in [0, 1/3]$) at $\bar\alpha = 0.02$ to
-  $0.05$ converts the sign-indefinite drift into monotone decay with a
-  loss proportional to the energy in the grid-frequency band; on this
-  benchmark, whose release has content at every scale, the loss is
-  $5$ to $11\%$ at $1$\,ms.
-\end{itemize}
-
-\subsection{Nonoverlap: legacy and paired coupling}
-\label{sec:beam-nonoverlap}
-
-\begin{table}[htbp]
-\centering
-\caption{Energy drift at 1\,ms of the nonoverlap impedance coupling on
-the cantilever, in percent. Left: legacy per-side transfer against the
-adjoint-paired coupling, implicit--implicit. Right: the paired coupling
-in all four integrator pairings, staggered metric for explicit members.}
-\label{tab:legacy-paired}
-\begin{tabular}{lrr@{\hspace{2.5em}}rrrr}
-\toprule
-ratio & legacy II & paired II & paired II & IE & EI & EE \\
-\midrule
-1:1.0 & $-9.61$ & $\mathbf{-0.03}$ & $-0.03$ & $-0.11$ & $+0.20$ & $-0.27$ \\
-1:0.9 & $-6.84$ & $\mathbf{-0.03}$ & $-0.03$ & $-0.10$ & $+0.29$ & $-0.27$ \\
-1:0.8 & $-7.96$ & $-3.59$ & $-3.6$ & $-4.4$ & $-3.5$ & $-7.3$ \\
-1:0.7 & $-2.06$ & $-6.55$ & $-6.6$ & $-6.2$ & $-5.3$ & $-9.8$ \\
-1:0.6 & $-9.39$ & $-9.71$ & $-9.7$ & $-9.8$ & $-9.8$ & $-11.8$ \\
-1:0.5 & $-13.25$ & $-13.32$ & $-13.3$ & $-13.8$ & $-10.2$ & $-10.5$ \\
-1:0.4 & $-45.78$ & $-15.13$ & $-15.1$ & $-17.8$ & $-11.4$ & $-13.3$ \\
-1:0.3 & $+18.95$ & $-15.08$ & $-15.1$ & $-11.5$ & $-26.4$ & $-20.2$ \\
-1:0.2 & $+77.49$ & $-13.26$ & $-13.3$ & $-20.1$ & $-27.8$ & $-21.4$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figs/legacy-vs-paired.pdf}
-\caption{Nonoverlap impedance coupling, drift at 1\,ms across the
-mesh-ratio family and the four integrator pairings. Left: legacy per-side
-transfer (consistent-mass metric), with injection up to $+363\%$ (EE)
-and $+223\%$ (EI) at $1{:}0.3$. Right: adjoint-paired coupling
-(staggered metric for explicit members), sign-definite dissipation at
-every ratio and conservation to $0.3\%$ on conforming and $1{:}0.9$
-meshes.}
-\label{fig:legacy-paired}
-\end{figure}
-
-The legacy coupling loses $2$ to $18\%$ at mild contrast in every
-pairing, including on conforming meshes ($-9.6\%$ II at $1{:}1$, the
-static-reaction defect of Sec.~\ref{sec:paired-construction}, unchanged
-under $\alpha \to 0$, equal $\alpha$, and $\Delta t/2$), and injects
-strongly at strong contrast. The paired coupling
-(Table~\ref{tab:legacy-paired}, Fig.~\ref{fig:legacy-paired}) never
-injects at any ratio in any pairing, conserves to $0.3\%$ on conforming
-and $1{:}0.9$ meshes in all four pairings, and against the monodomain
-explicit reference the conforming EE trajectory agrees to $0.35\%$
-pointwise over the millisecond. The residual dissipation at strong
-contrast is the interface jump the two trace spaces cannot represent in
-common, absorbed at rate $Z\!\int_\Gamma \jump{\dot{~u}}^2$: at the
-nested ratio $1{:}0.5$, where the legacy transfer is coincidentally
-adjoint and the quadrature exact, paired and legacy agree to $0.1\%$.
-The small positive EI entries are bounded transient storage in the
-interface spring.
-
-\paragraph{Ten milliseconds.} Table~\ref{tab:nonoverlap-10ms} and
-Fig.~\ref{fig:nonoverlap-10ms} give the $10$\,ms behavior. With an
-implicit member the conforming and $1{:}0.9$ columns stay within $0.0$ to
-$-0.9\%$ over ten thousand stops. At strong contrast the dissipation that
-read $10$ to $28\%$ at $1$\,ms reaches $40$ to $85\%$: bounded and
-monotone, but far too large for wave-transit accuracy, since absorption
-of unrepresentable content proceeds at a persistent rate. The non-nested
-mild ratios $1{:}0.7$ and $1{:}0.8$ form a failure window not detectable at
-$1$\,ms: interface-local high-frequency displacement content accumulates
-until an interface element inverts (implicit pairs, about $5$\,ms, with
-the global energy still smooth) or central difference becomes unstable
-(explicit members, $2.6$ to $4$\,ms, at $0.27$ of the stability limit,
-so driven by the accumulated content). Reruns with fixed $\theta = 0.5$
-fail identically, so the accumulation belongs to the transfer operators,
-whose partition-of-unity certificate is worst in this window; the nested
-and the strong ratios do not show it.
-
-\begin{table}[htbp]
-\centering
-\caption{Energy drift at 10\,ms of the adjoint-paired nonoverlap coupling
-on the cantilever, staggered metric, in percent. $\dagger\,t$: element
-inversion at $t$\,ms. $\ast$: bounded and noisy (Sec.~\ref{sec:energy}).}
-\label{tab:nonoverlap-10ms}
-\begin{tabular}{lrrrr}
-\toprule
-ratio & II & IE & EI & EE \\
-\midrule
-1:1.0 & $+0.00$ & $-0.9$ & $-0.2$ & $\ast$ \\
-1:0.9 & $+0.00$ & $-0.5$ & $+0.1$ & $\ast$ \\
-1:0.8 & $\dagger\,5.2$ & $\dagger\,3.9$ & $\dagger\,4.0$ & $\dagger\,2.6$ \\
-1:0.7 & $\dagger\,4.9$ & $\dagger\,3.7$ & $\dagger\,3.9$ & $\dagger\,2.8$ \\
-1:0.6 & $-47.3$ & $-56.4$ & $-42.9$ & $\ast$ \\
-1:0.5 & $-56.8$ & $-72.0$ & $-40.8$ & $\ast$ \\
-1:0.4 & $-54.9$ & $-73.9$ & $-40.4$ & $\ast$ \\
-1:0.3 & $-65.1$ & $-66.0$ & $-81.1$ & $\ast$ \\
-1:0.2 & $-53.3$ & $-73.1$ & $-84.1$ & $\ast$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.495\textwidth]{figs/nonoverlap-II-10ms.pdf}\hfill
-\includegraphics[width=0.495\textwidth]{figs/nonoverlap-EE-10ms.pdf}
-\caption{Adjoint-paired nonoverlap coupling, $10$\,ms, staggered metric.
-Left: implicit--implicit; no injection anywhere, conforming and $1{:}0.9$
-follow the monodomain reference, strong contrast dissipates
-monotonically, and $1{:}0.7$ to $1{:}0.8$ end at about $5$\,ms by element
-inversion. Right: explicit--explicit; the staggered kinetic term goes
-negative at every ratio as undamped grid-frequency content accumulates,
-and $1{:}0.7$ to $1{:}0.8$ fail by central-difference instability at
-$2.6$ to $2.8$\,ms.}
-\label{fig:nonoverlap-10ms}
-\end{figure}
-
-\paragraph{Explicit--explicit pairs.} The EE column ends bounded and
-noisy at every ratio, conforming included: the stored energy stays
-physical (the conforming run keeps $E/E(0) \ge 0.97$ to $5$\,ms) while
-the staggered kinetic term goes negative, because central difference with
-$\gamma = \tfrac12$ removes no grid-frequency content at any stable step
-and the exchange keeps introducing it. Subcycling the explicit member
-(free side at $\Delta t/4$) removes the accumulation: that run ends at
-$-10.8\%$, the dissipation of the interpolated exchange. Subcycling has
-the opposite effect on implicit pairs, where the same-step conforming II
-run conserves to $0.00\%$ and the subcycled one loses $-20.2\%$ over
-$10^4$ stops ($-3.6\%$ at $1$\,ms), the interpolation dissipation of
-Sec.~\ref{sec:subcycle} accumulated over the run.
-
-\subsection{Windowed controller stops}
-\label{sec:windowed}
-
-With the subdomain steps fixed at $1\,\mu$s, controller stops of $1$,
-$2$, $5$, and $10\,\mu$s were compared to $10$\,ms. For the overlap
-family every trajectory is identical across the four windows (its
-exchange has no relaxation state). For the nonoverlap coupling the
-pre-fix per-pair relaxation state shifted the fixed point
-(Sec.~\ref{sec:relaxation}); with the slot-keyed state every windowed
-policy reproduces the same-step trajectory to Schwarz truncation (a
-displacement mismatch of $3.9\times 10^{-6}$ at working tolerances,
-$3.7\times 10^{-8}$ at tightened ones; regression in test 110). Inside a
-window the policies were measured on the conforming II case at the
-$10\,\mu$s window, in mean Schwarz iterations per stop: $\theta = 1$
-needs $19.1$ and completes; per-slot Aitken about $25$ and fails at
-$3.9$\,ms; fixed $\theta = 0.5$ $47.5$; Aitken pooled over the window's
-slots $55.1$ on II and fails on EE. The total number of substep solves
-is proportional to the iterations per stop whatever the window, and all
-windowed counts exceed the same-step Aitken count, so the controller
-step is a convenience for the nonoverlap coupling (for aligning output
-stops) and never reduces work; for the overlap family larger stops
-reduce it slightly. The explicit--explicit pair at large windows is
-impractical under any policy (the windowed iteration is nearly
-non-contractive and reaches the iteration cap).
-
-\subsection{The five couplings with the current code}
-\label{sec:beam-five}
-
-The five couplings (overlap Dirichlet, nonoverlap Dirichlet--Neumann,
-overlap impedance, paired nonoverlap impedance, and the monolithic
-reference) were rerun to $10$\,ms with the code of 2026-09-17 at ratios
-$1{:}0.9$, $1{:}0.75$, and $1{:}0.5$ with overlap $25.4$\,mm
-(Table~\ref{tab:beam-five}, Fig.~\ref{fig:beam-five}). The
-Dirichlet--Neumann exchange, not part of the earlier study, ends by
-element inversion within $3$\,ms with implicit subdomains at every ratio
-and conserves within $1\%$ to $10$\,ms with explicit ones; why the same
-exchange is unstable with implicit subdomains and stable with explicit
-ones has not been explained (Sec.~\ref{sec:open}). Every other entry
-reproduces the corresponding earlier result.
-
-\begin{table}[htbp]
-\centering
-\footnotesize\setlength{\tabcolsep}{3.5pt}
-\caption{Cantilever, overlap 25.4\,mm, code of 2026-09-17:
-$E(10\,\mathrm{ms})/E(0)$, or the time the run ended by element
-inversion. ``Bounded, noisy'' is the explicit state of
-Sec.~\ref{sec:energy}.}
-\label{tab:beam-five}
-\begin{tabular}{lcccccc}
-\toprule
-coupling & 1:0.9 II & 1:0.9 EE & 1:0.75 II & 1:0.75 EE & 1:0.5 II & 1:0.5 EE \\
-\midrule
-monolithic & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
-overlap, Dirichlet & 3.16 & fails 4.9\,ms & fails 1.5\,ms & fails 2.1\,ms & fails 0.9\,ms & fails 1.3\,ms \\
-nonoverlap, Dirichlet--Neumann & fails 2.9\,ms & 1.006 & fails 0.4\,ms & 1.002 & fails 0.7\,ms & 1.008 \\
-overlap, impedance & fails 7.2\,ms & fails 8.4\,ms & fails 6.0\,ms & 12.2 & fails 7.3\,ms & 5.9 \\
-nonoverlap, impedance (paired) & 1.000 & bounded, noisy & fails 5.0\,ms & fails 2.6\,ms & 0.43 & bounded, noisy \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figs/beam-five-couplings.pdf}
-\caption{Cantilever at mesh ratio $1{:}0.9$, overlap $25.4$\,mm, five
-couplings to $10$\,ms, code of 2026-09-17. Left: implicit--implicit.
-Right: explicit--explicit; the paired impedance curve ends in the
-bounded, noisy state.}
-\label{fig:beam-five}
-\end{figure}
-
-\subsection{The classical Robin--Robin condition}
-\label{sec:beam-rr}
-
-The Robin--Robin condition was run on both decompositions on 2026-09-18:
-\code{Schwarz RR nonoverlap} with the classical per-side transfer, and
-\code{Schwarz impedance overlap} with \code{impedance scale: 0}. Since
-the converged solution and the iteration both depend on $\alpha$ on
-nonconforming meshes, two values, one near the Dirichlet limit and one near the
-Neumann limit, were used: $\alpha = E/h = 10^{12}$\,N/m$^3$
-with $h = 6.35$\,mm, and $\alpha = E/L = 2.7\times 10^{10}$\,N/m$^3$ with
-$L = 254$\,mm. Integrators, ratios, relaxation, and tolerances are those
-of Table~\ref{tab:beam-five}. Every run converged in $2$ to $4$ Schwarz
-iterations per stop, so Table~\ref{tab:beam-rr} shows the converged
-coupling.
-
-\begin{table}[htbp]
-\centering
-\footnotesize\setlength{\tabcolsep}{3.5pt}
-\caption{Cantilever, classical Robin--Robin coupling, overlap 25.4\,mm:
-$E(10\,\mathrm{ms})/E(0)$, or the time the run ended by element
-inversion.}
-\label{tab:beam-rr}
-\begin{tabular}{lcccccc}
-\toprule
-coupling & 1:0.9 II & 1:0.9 EE & 1:0.75 II & 1:0.75 EE & 1:0.5 II & 1:0.5 EE \\
-\midrule
-overlap, $\alpha = E/h$ & fails 0.7\,ms & fails 1.4\,ms & fails 0.8\,ms & fails 1.9\,ms & fails 0.4\,ms & fails 0.8\,ms \\
-overlap, $\alpha = E/L$ & fails 0.9\,ms & fails 1.1\,ms & fails 0.9\,ms & fails 1.5\,ms & fails 1.6\,ms & fails 5.4\,ms \\
-nonoverlap, $\alpha = E/h$ & fails 1.2\,ms & fails 2.4\,ms & fails 1.1\,ms & fails 0.2\,ms & fails 0.3\,ms & fails 0.3\,ms \\
-nonoverlap, $\alpha = E/L$ & fails 7.1\,ms & 0.96 (peak 1.05) & fails 7.4\,ms & fails 4.5\,ms & fails 3.4\,ms & fails 0.9\,ms \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figs/beam-robin-robin.pdf}
-\caption{Cantilever at mesh ratio $1{:}0.9$: classical Robin--Robin
-coupling on both decompositions at two Robin parameters, against the
-overlap Dirichlet reference, $10$\,ms.}
-\label{fig:beam-rr}
-\end{figure}
-
-Twenty-three of the $24$ runs end by element inversion after exponential
-growth, between $0.2$ and $7.4$\,ms; the one survivor ($1{:}0.9$, EE,
-$\alpha = E/L$) stays within $5\%$ to $10$\,ms. The growth is faster than
-with overlap Dirichlet transmission in $18$ of the $24$ cases, and the
-stiffer spring fails sooner in $10$ of the $12$ pairs. The converged
-coupled solution depends on $\alpha$ (the two nonoverlap rows differ
-although both are converged to $10^{-8}$): with per-side transfer on
-nonconforming meshes the discrete jump does not close, and the spring
-force on the residual jump scales with $\alpha$. The result is the one
-\eqref{eq:R-rr} predicts: a condition that reflects every wave has no
-term that damps the interface mode fed by the discrete mismatch, and
-the spring stores that mismatch. The dashpot of the impedance condition
-is the term that removes it.
-
-\section{Measurements on the nested cylinders}
-\label{sec:cylinders}
-
-The cylinders (Sec.~\ref{sec:benchmark}) were built as a second case that
-excites the instability independently of the beam: three materials with a
-fiftyfold impedance contrast, a compressive front instead of flexure, and
-a closed curved interface with caps, at a mild mesh ratio ($1{:}0.8$).
-Every subdomain is explicit. The Schwarz iteration uses Aitken
-relaxation for the Dirichlet--Neumann exchange, a fixed factor
-$\theta = 0.5$ for the paired impedance and Robin--Robin couplings
-(Sec.~\ref{sec:relaxation}), and no relaxation for the overlap couplings,
-with a relative tolerance of $10^{-6}$ and an absolute tolerance of
-$10^{-4}$. The monolithic
-reference conserves the blended staggered energy to $0.01\%$ over the
-$10^4$ steps. Table~\ref{tab:cylinders} and
-Figs.~\ref{fig:cylinders}--\ref{fig:cylinders-rr} give the results.
-
-\begin{table}[htbp]
-\centering
-\small
-\caption{Nested cylinders, explicit on both sides, $5$\,ms:
-$E(t)/E(0)$ at the times shown, or the time the run ended by element
-inversion. Robin--Robin at $\alpha = E/h = 3.4\times 10^{10}$ and
-$\alpha = E/L = 2.8\times 10^{9}$\,N/m$^3$, with $E$ the Young's modulus
-of the filler, $h = 6.35$\,mm, and $L = 76$\,mm.}
-\label{tab:cylinders}
-\begin{tabular}{lcccc}
-\toprule
-coupling & 0.5\,ms & 1\,ms & 2\,ms & 5\,ms \\
-\midrule
-overlap, Dirichlet & 1.02 & 1.29 & \multicolumn{2}{l}{fails 1.54\,ms at $7.4\,E(0)$} \\
-overlap, impedance & 1.02 & 1.76 & \multicolumn{2}{l}{fails 1.26\,ms at $13\,E(0)$} \\
-overlap, Robin--Robin, $\alpha = E/h$ & 1.63 & \multicolumn{3}{l}{fails 0.66\,ms at $5.5\,E(0)$} \\
-overlap, Robin--Robin, $\alpha = E/L$ & 1.53 & \multicolumn{3}{l}{fails 0.75\,ms at $11\,E(0)$} \\
-nonoverlap, Dirichlet--Neumann & 1.00 & 1.00 & 1.01 & 1.00 \\
-nonoverlap, Robin--Robin, $\alpha = E/h$ & 1.27 & \multicolumn{3}{l}{fails 0.81\,ms at $3.1\,E(0)$} \\
-nonoverlap, Robin--Robin, $\alpha = E/L$ & 1.08 & 1.26 & 2.45 & fails 3.59\,ms at $11\,E(0)$ \\
-nonoverlap, impedance (paired), 2 iterations per stop & 0.79 & 0.54 & 0.24 & 0.065 \\
-same, 6 iterations per stop (to 1\,ms) & 0.89 & 0.77 & --- & --- \\
-same, $\theta = 1$ & \multicolumn{4}{l}{0.997 to 0.3\,ms, then the iteration diverges} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figs/cylinders-couplings.pdf}
-\caption{Nested cylinders, blended staggered energy to $5$\,ms: the
-Dirichlet and impedance couplings on both decompositions, with the two
-diagnostic variants of the paired coupling.}
-\label{fig:cylinders}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figs/cylinders-robin-robin.pdf}
-\caption{Nested cylinders, classical Robin--Robin coupling on both
-decompositions at two Robin parameters, against the overlap Dirichlet
-and nonoverlap Dirichlet--Neumann references.}
-\label{fig:cylinders-rr}
-\end{figure}
-
-\paragraph{Dirichlet couplings.} Overlap Dirichlet coupling leaves the
-reference after $0.4$\,ms, grows exponentially, and ends by element
-inversion at $1.54$\,ms at $7.4\,E(0)$: the same mechanism and a
-comparable rate as on the beam, although the interface here is closed
-and the meshes only mildly nonconforming. The nonoverlap
-Dirichlet--Neumann exchange (Aitken relaxation, $2$ iterations per stop)
-stays within $+3$ and $-1.3\%$ for the whole $5$\,ms, as on the beam with
-explicit subdomains.
-
-\paragraph{Impedance couplings.} Overlap impedance coupling is unstable
-and faster than Dirichlet: it reaches $13\,E(0)$ at $1.26$\,ms. On the
-beam the same condition survived $6$ to $8$\,ms; here the dashpot faces
-the inter-grid discrepancy of a compressive front resolved with $5$ and
-$6$\,mm elements. The paired nonoverlap coupling never grows but
-dissipates strongly: $0.54\,E(0)$ at $1$\,ms and $0.065$ at $5$\,ms.
-The interface velocity jump stalls at $0.1$ to $0.14$ of its initial size
-at every stop and is accepted by the displacement criterion, so the
-dashpot keeps absorbing it. Six iterations per stop keep $0.77\,E(0)$ at
-$1$\,ms instead of $0.54$, so about half of the loss is iteration lag on
-a jump the criterion does not measure; no relaxation keeps $0.997\,E(0)$ to
-$0.3$\,ms and then fails to converge within $256$ iterations. Every
-Aitken form diverges on this pair (Sec.~\ref{sec:relaxation}).
-
-\paragraph{Robin--Robin.} All four runs end by element inversion after
-exponential growth. The overlap runs fail sooner than overlap Dirichlet
-($1.54$\,ms) and overlap impedance ($1.26$\,ms); the nonoverlap runs fail
-where the paired impedance coupling never grows and the
-Dirichlet--Neumann exchange holds. The Schwarz iteration converged in
-$1$ to $2$ iterations per stop. As on the beam, the stiffer spring fails
-sooner, and the softer nonoverlap spring lasts longest, $3.6$\,ms, still
-growing to $11\,E(0)$.
-
-\section{The constrained formulation of the coupled problem}
+the energy functional applied to the velocity and the acceleration, which
+is the energy of the time-differentiated system
+$~M \dot{~a} + ~K ~v = \dot{~f}$; its unit is J/s$^2$. $~S_k$ is $~M_k$ for
+the trapezoidal rule and $~M_k - \tfrac14 \Delta t_k^2 ~K_k$ for central
+difference, positive definite exactly below the stability limit of central
+difference. Relative to $E$, $\tilde{E}$ weights each vibration mode by the
+square of its frequency.
+
+\section{The constrained coupled problem}
 \label{sec:constrained}
 
-The measurements of Secs.~\ref{sec:beam}--\ref{sec:cylinders} were made
-with transmission conditions chosen for the Schwarz iteration. This
-section states, from the literature, the coupled discrete problem that
-conserves energy by construction, locates where the nonoverlap
-Dirichlet--Neumann path of Norma departs from it, and lists the changes
-and the experiments that follow. It was written on September 30, 2026,
-after reading the four papers it rests on.
+\subsection{Formulation}
 
-\subsection{What the multiplier formulations prove}
-\label{sec:constrained-theory}
-
-\paragraph{Gravouil and Combescure~\cite{GravouilCombescure2001}.} The
-subdomains are coupled in a dual Schur formulation: the equation of
-motion of subdomain $k$ carries the interface force $~C_k^T \Lambda$,
-with $~C_k$ the Boolean restriction to the interface (matching meshes)
-and $\Lambda$ one vector of Lagrange multipliers, and the constraint is
-the continuity of the \emph{velocity}, $\sum_k ~C_k \dot{~u}_k = 0$
-(Eq.~(10) there). With a coarse step $\Delta T = m\,\Delta t$ on one
-side, the coarse velocity and the multiplier are interpolated linearly to
-the fine steps (Eqs.~(12) and (13)). Theorem~1: if $\gamma_k \ge 1/2$ in
-every subdomain, the coupling does not change the stability limit of any
-subdomain, for any pair of Newmark parameters, central difference with a
-lumped mass included. The interface work of Eq.~\eqref{eq:eint} is a sum
-of $m(m-1)/2$ negative squares (Eq.~(49)): it is exactly zero at equal
-steps ($m = 1$), for every combination of Newmark schemes, and
-nonpositive otherwise, zero only when the coarse velocity is linear over
-the coarse step. The energy that velocity continuity conserves is the
-pseudo-energy (the energy functional applied to the velocity and the acceleration, in J/s$^2$) of the system differentiated in time, $~M
-\dot{~a} + ~K ~v = \dot{~f}$, summed over the subdomains,
+The coupled problem consists of \eqref{eq:motion} on both sides with one
+interface force acting in opposite directions,
 \begin{equation}
-  \tilde{E} = \sum_k \Bigl(\tfrac12\, ~a_k^T ~A_k ~a_k
-        + \tfrac12\, ~v_k^T ~K_k ~v_k\Bigr),
-  \qquad ~A_k = ~M_k + \tfrac12 \Delta t_k^2 (2\beta_k - \gamma_k) ~K_k
-  \label{eq:e2}
+  ~\lambda_D = ~\lambda, \qquad ~\lambda_N = -\Pi_D^T ~\lambda ,
+  \label{eq:action-reaction}
 \end{equation}
-(Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}, Eqs.~(56)--(58) and
-(71)), with $~a_k$ and $~v_k$ the acceleration and the velocity of
-subdomain $k$; $~A_k$ is $~M_k$ for average acceleration and $~M_k -
-\tfrac14 \Delta t_k^2 ~K_k$ for central difference. $\tilde{E}$ is not the
-physical energy $E = \sum_k (\tfrac12 ~v_k^T ~M_k ~v_k +
-\mathrm{SE}(~u_k))$ that the blended output computes. Continuity of the
-displacement with average acceleration conserves $E$ exactly. For
-identical integrators at equal steps both are conserved. The interface
-operator (Eqs.~(19), (22), and (25) there) is
+and the velocity constraint at the end of every window,
 \begin{equation}
-  ~H = \sum_k \gamma_k \Delta t_k\, ~C_k \tilde{~M}_k^{-1} ~C_k^T,
-  \qquad \tilde{~M}_k = ~M_k + \beta_k \Delta t_k^2 ~K_k,
-  \label{eq:gc-h}
+  ~v_D = \Pi_D\, ~v_N \quad \text{on } \Gamma .
+  \label{eq:velocity-constraint}
 \end{equation}
-diagonal for an explicit subdomain with a lumped mass; the multiplier at
-each fine step solves $~H \Lambda_j = -\sum_k ~C_k \dot{~u}_{k,j}^{\text{free}}$
-from the velocities of the subdomains advanced without interface forces
-(Eq.~(24)). The nonlinear extension (Sec.~3 there) iterates the implicit
-subdomain with the interface, the multiplier increment following the
-free implicit velocity increment (Eq.~(78)). Measured dissipation with
-subcycling: $1.3\%$ at a ratio of $10\,000$ on a linear beam, $0.4\%$ at
-$1\,000$ with plasticity, $1.9\%$ at $100$ on a stiffened pipe.
+The interface force $~\lambda$ is the Lagrange multiplier of
+\eqref{eq:velocity-constraint}. On matching meshes $\Pi_D$ is the identity
+on the interface nodes and the formulation is that of Gravouil and
+Combescure~\cite{GravouilCombescure2001}, a dual Schur formulation with
+velocity continuity. Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}
+impose the constraint only at the end of a coarse step, with the force on
+the fine side interpolated linearly in time; Connors, Owen, Kuberry, and
+Bochev~\cite{ConnorsEtAl2024} cast the same structure as a
+discontinuous-Galerkin-in-time multirate framework whose lowest flux order
+is this scheme.
 
-\paragraph{Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}.} The
-velocity constraint is imposed only at the end of the coarse step
-(Eq.~(25) there); the fine side receives the multiplier interpolated
-linearly plus the unbalanced reaction $~S_j$ of the coarse subdomain's
-free solution at the intermediate steps (Eq.~(40)). The interface
-problem is solved once per coarse step, $~H \Lambda_m = ~C_A
-\dot{~V}_m^A + ~C_B \dot{~V}_m^B$ with $~H = ~C_A \dot{~Y}^A_m + ~C_B
-\dot{~Y}^B_m$ (Eq.~(52)), where $~Y$ is the response of each subdomain
-to a unit load at one interface degree of freedom, one coarse step from
-rest for the coarse side and a load ramped over the $m$ fine steps for
-the fine side (their Sec.~4.1.2), computed once when the problem is
-linear and the steps constant. The energy change is exactly zero for
-every integer ratio and every pair of Newmark schemes (Eq.~(70)); the
-proof uses linear elasticity. The initial acceleration must be computed
-on the undecomposed system (Eq.~(54)).
-
-\paragraph{Mahjoubi, Gravouil, and
-Combescure~\cite{MahjoubiGravouilCombescure2009}.} The velocity
-constraint and the free/link decomposition extended to the Simo and
-Krenk schemes, with $~H$ factorized once. Remark~2 there: only the
-velocity is continuous; the displacement and the acceleration are not
-imposed, and the displacement gap grows in time (drift). Sec.~3.5.2: with
-different time scales the interpolated coupling is first-order accurate
-in time, the Prakash--Hjelmstad coupling second-order. Sec.~4.3 is an
-explicit--explicit case with incompatible meshes and a time step ratio of
-$10$: the fine interface nodes are constrained to follow the coarse
-interpolation, the velocity jump is $10^{-14}$, the displacement drift
-below $1\%$, and the dissipation below $1\%$ of the external work over
-$10\,000$ steps. The nonconforming treatment of this line of work is
-Herry, Di Valentin, and Combescure~\cite{HerryDiValentinCombescure2002};
-the nonconforming asynchronous conserving method is Subber and
-Matou\v{s}~\cite{SubberMatous2016}. The review of the family is Gravouil,
-Combescure, and Brun~\cite{GravouilCombescureBrun2015}.
-
-\paragraph{Dvo\v{r}\'ak et al.~\cite{DvorakEtAl2023}.} Localized Lagrange
-multipliers~\cite{ParkFelippaRebel2002} with a frame between the
-subdomains, continuity of the \emph{acceleration} (Eq.~(19) there), and
-an a posteriori mapping of the frame displacement and velocity onto the
-interface nodes (Eqs.~(36) and (37)), so that all three fields are
-continuous and the interface work is exactly zero. Arbitrary,
-non-integer, time-varying steps; explicit in structure; any number of
-subdomains. The total energy is not exactly conserved: the error appears
-in the subdomain energies when a discontinuity crosses the interface and
-vanishes as the steps decrease (their Sec.~7.1). Each subdomain must
-expose an interface region, a layer around the interface integrated at
-the partner's time levels (their Sec.~5), and the formulation is given
-for linear elasticity.
-
-\subsection{The pseudo-energy identity of the subcycled exchange}
-\label{sec:pseudo-energy}
-
-Connors, Owen, Kuberry, and Bochev~\cite{ConnorsEtAl2024} state the energy
-balance per side. For side $k$ advanced by Newmark steps $\Delta t_k$ with
-a linear stiffness $~K_k$, an interface force $~f_k$ on its interface rows,
-and no other loads, the pseudo-energy
+The force on the interface rows of side $D$ is, by \eqref{eq:motion}, its
+d'Alembert reaction
 \begin{equation}
-  \tilde{E}_{k}^n = \tfrac12\, (~a_k^n)^T ~S_k\, ~a_k^n
-            + \tfrac12\, (~v_k^n)^T ~K_k\, ~v_k^n,
-  \qquad ~S_k = ~M_k + \left(\beta_k - \tfrac{\gamma_k}{2}\right)\Delta t_k^2\, ~K_k,
+  ~r_D = ~C_D \bigl( ~M_D\, ~a_D + ~f^{\mathrm{int}}_D - ~f^{\mathrm{body}}_D
+        - ~f^{\mathrm{bdry}}_D \bigr) = ~\lambda ,
+  \label{eq:reaction}
 \end{equation}
-which is $\tilde{E}$ of \eqref{eq:e2}, changes over the $m_k$ steps of a window
-by (their Eq.~(102))
+with $~f^{\mathrm{body}}_D$ the body force and $~f^{\mathrm{bdry}}_D$ the
+other boundary loads acting on the interface rows. The reaction includes
+the inertia of the interface nodes; the static reaction
+$-~f^{\mathrm{int}}$ omits a term of the size of the reaction itself
+(Sec.~\ref{sec:baseline}).
+
+\subsection{The energy identity}
+\label{sec:identity}
+
+Connors et al.\ (their Eq.~(102)) give the energy balance of one side. For
+side $k$ advanced by $m_k$ Newmark steps with a linear stiffness, an
+interface force $~f_k$ on its interface rows, and no other loads,
 \begin{equation}
   \tilde{E}_{k}^{m_k} - \tilde{E}_{k}^{0}
-  + \left(\gamma_k - \tfrac12\right) \sum_{n=1}^{m_k}
+  + \Bigl(\gamma_k - \tfrac12\Bigr) \sum_{n=1}^{m_k}
     (\Delta ~a_k^n)^T ~S_k\, \Delta ~a_k^n
   = \frac{1}{\Delta t_k} \sum_{n=1}^{m_k}
     (\Delta ~v_k^n)^T ~C_k^T\, \Delta ~f_k^n ,
-  \label{eq:pseudo-energy}
+  \label{eq:per-side}
 \end{equation}
-with $\Delta(\cdot)^n = (\cdot)^n - (\cdot)^{n-1}$. With $\gamma_k = 1/2$ the
-second term vanishes, and $\tilde{E}_{k}$ is a norm when $~S_k$ is positive
-definite, which for central difference ($\beta = 0$) is its stability
-limit.
+with $\Delta(\cdot)^n = (\cdot)^n - (\cdot)^{n-1}$ and $\tilde{E}_k$ the
+term of side $k$ in \eqref{eq:pseudo-energy}. With $\gamma_k = 1/2$ the
+second term vanishes.
 
-Let the Dirichlet side $D$ take one step $\Delta T$ and the Neumann side
-$N$ take $m$ steps $\Delta T/m$, the interface force on $D$ be $\lambda$
-(the negative of its d'Alembert reaction), and the force on $N$ at its
-substep $j$ be $-\Pi_D^T[(1 - j/m)\lambda^0 + (j/m)\lambda^1]$, the linear
-interpolation that the exchange produces (Connors et al.\ Eqs.~(89) and
-(90)). Then $\Delta ~f_N^j = -\Pi_D^T \Delta\lambda/m$ for every substep, and
-the right side of \eqref{eq:pseudo-energy} for $N$ is
+\begin{proposition}[Equal steps]
+\label{prop:equal}
+Let both sides take one step $\Delta t$ per window, with $\gamma = 1/2$ on
+both, a linear stiffness, no loads on the interface rows other than the
+interface force, $~f_D = ~\lambda$ and $~f_N = -\Pi_D^T ~\lambda$, and
+$~v_D = \Pi_D ~v_N$ at every step. Then $\tilde{E}_D + \tilde{E}_N$ is
+constant.
+\end{proposition}
+\begin{proof}
+By \eqref{eq:per-side} the change over one step is
+$\Delta t^{-1}\bigl[(\Delta ~v_D)^T \Delta~\lambda
+- (\Delta ~v_N)^T \Pi_D^T \Delta~\lambda\bigr]
+= \Delta t^{-1} (\Delta ~v_D - \Pi_D \Delta ~v_N)^T \Delta~\lambda = 0$.
+\end{proof}
+
+The cancellation needs only the transposed force transfer and the
+one-sided constraint; it holds for any cross-mass matrix $~B$, so for any
+mesh ratio, and for any pair of Newmark schemes with $\gamma = 1/2$. It is
+the interface work identity of Gravouil and Combescure (their Eq.~(49))
+written with $\Pi_D$ in place of the Boolean interface map. Identical
+integrators at equal steps conserve $E$ as well: the constraint and the
+common Newmark relations then give $~u_D = \Pi_D ~u_N$ up to the initial
+data, and the interface power $~\lambda^T (~v_D - \Pi_D ~v_N)$ vanishes at
+the end of every step.
+
+\begin{proposition}[Different steps]
+\label{prop:subcycled}
+Let side $D$ take one step $\Delta T$ per window and side $N$ take $m$
+steps $\Delta T/m$, under the conditions of Proposition~\ref{prop:equal}
+except that $~v_D = \Pi_D ~v_N$ holds only at the two ends of the window,
+and let the force on $N$ at its substep $j$ be the linear interpolation
 \begin{equation}
-  \frac{m}{\Delta T} \sum_{j=1}^{m} (\Delta ~v_N^j)^T
-  \left(-\Pi_D^T \frac{\Delta\lambda}{m}\right)
-  = -\frac{1}{\Delta T} \left(\Pi_D (~v_N^m - ~v_N^0)\right)^T \Delta\lambda ,
+  ~f_N^{\,j} = -\Pi_D^T \Bigl[\bigl(1 - \tfrac{j}{m}\bigr)~\lambda^0
+             + \tfrac{j}{m}\, ~\lambda^1\Bigr], \qquad j = 0, \dots, m,
+  \label{eq:interpolated-force}
 \end{equation}
-while that of $D$ is $\Delta T^{-1} (~v_D^1 - ~v_D^0)^T \Delta\lambda$. If
-$~v_D = \Pi_D ~v_N$ at both ends of the window, the two cancel and
-$E_{2,D} + E_{2,N}$ is constant; this is Connors et al.\ Eq.~(103) with
-$\Pi_D$ in place of their Boolean interface map, their condition (108)
-at $r = 1$, and Prakash and Hjelmstad's Eq.~(70). The conditions are: a
-linear stiffness on both sides; $\gamma = 1/2$ on both sides (otherwise
-each side dissipates by the second term of \eqref{eq:pseudo-energy});
-$~S_k$ positive definite, for $\tilde{E}$ to bound the solution; the force on
-$N$ at the window start equal to the converged reaction of the previous
-window, which holds in Norma because \code{restore\_stop\_state} runs
-before \code{subcycle} pushes the anchor snapshot; and loads on the
-interface rows of $D$ constant within the window, because the reaction is
-formed from their current value. An explicit member keeps its own
-stability limit.
+of the forces $~\lambda^0$ and $~\lambda^1$ on $D$ at the window ends. Then
+$\tilde{E}_D + \tilde{E}_N$ is constant over the window.
+\end{proposition}
+\begin{proof}
+$\Delta ~f_N^j = -\Pi_D^T \Delta~\lambda / m$ for every substep, with
+$\Delta~\lambda = ~\lambda^1 - ~\lambda^0$, so the right side of
+\eqref{eq:per-side} for $N$ is
+$\frac{m}{\Delta T}\sum_{j=1}^{m} (\Delta ~v_N^j)^T(-\Pi_D^T \Delta~\lambda/m)
+= -\Delta T^{-1}\bigl(\Pi_D(~v_N^m - ~v_N^0)\bigr)^T \Delta~\lambda$, and
+that of $D$ is $\Delta T^{-1}(~v_D^1 - ~v_D^0)^T \Delta~\lambda$. The two
+cancel when $~v_D = \Pi_D ~v_N$ at both window ends.
+\end{proof}
 
-The same sum cancels when the fine side is the Dirichlet side and meets
-the linearly interpolated coarse velocity at every fine step, the
-arrangement of Gravouil and Combescure (their Eqs.~(21)--(24) solve the
-multiplier at every fine step): $\Delta ~v_D^j = \Pi_D \Delta ~v_N/m$ at
-each substep, so the Dirichlet sum is $\Delta T^{-1} (\Pi_D \Delta
-~v_N)^T (\lambda^m - \lambda^0)$, which cancels the coarse side's term.
-What that arrangement does not have is the flux projection property of
-Connors et al.\ (Eq.~(80)): the impulse that the fine side receives over
-the window, the trapezoid sum of its reactions at every substep, is not
-the impulse that the coarse side receives, the trapezoid of the two end
-values. Sec.~\ref{sec:constrained-results} measures that impulse
-residual.
+This is Eq.~(103) of Connors et al.\ with $\Pi_D$ in place of their Boolean
+map, their condition (108) at flux order $r = 1$, and Eq.~(70) of Prakash
+and Hjelmstad. The force on $N$ at the window start must be the converged
+force of the previous window, and the loads on the interface rows of $D$
+must be constant within the window, because the reaction
+\eqref{eq:reaction} is formed from their current value.
 
-\subsection{Where the Dirichlet--Neumann path departs from it}
-\label{sec:constrained-norma}
+\paragraph{The coarse step must be the Dirichlet side.} The same sums
+cancel when the fine-step side is the Dirichlet side and meets the
+linearly interpolated coarse velocity at every substep, the arrangement of
+Gravouil and Combescure. That arrangement conserves $\tilde{E}$ but lacks
+the flux projection property of Connors et al.\ (their Eq.~(80)): the
+impulse that the fine side receives over the window, the trapezoidal sum of
+its reactions at every substep, differs from the impulse that the coarse
+side receives, the trapezoid of the two end values. The interface impulse
+residual of a window,
+\begin{equation}
+  ~\rho = \sum_{j=1}^{m} \frac{\Delta T}{2m}\bigl(~f_N^{\,j-1} + ~f_N^{\,j}\bigr)
+        + \Pi_D^T\, \frac{\Delta T}{2}\bigl(~\lambda^0 + ~\lambda^1\bigr),
+  \label{eq:impulse}
+\end{equation}
+vanishes identically in the coarse-step arrangement. In the fine-step
+arrangement it is of the order of the impulse itself, and the energy $E$
+varies by $12$ to $51\%$ over the period of the first bending mode of the
+beam while $\tilde{E}$ is conserved (Sec.~\ref{sec:verify-subcycled}).
+$\tilde{E}$ weights the lowest mode least, so it does not detect the
+variation.
 
-From \code{src/schwarz.jl} and \code{src/simulation.jl} at commit
-\code{3e4f3b7c}:
+\paragraph{Scope.} Propositions~\ref{prop:equal} and~\ref{prop:subcycled}
+hold for a linear stiffness. For a nonlinear material the exchange still
+closes the interface exactly and does no interface work at the fixed point;
+the energy then varies by the time-step error of the subdomain integrators
+themselves. For central difference that error is of order $\Delta t^2$ and
+does not grow: the scheme conserves a modified energy that differs from $E$
+by a state-dependent term of order $\Delta t^2$
+\cite{HairerLubichWanner2006}. Conservation of $E$ to roundoff for a
+nonlinear material requires an energy-momentum
+integrator~\cite{SimoTarnow1992,Gonzalez1996} in each subdomain and a
+midpoint velocity constraint in the exchange, which this note does not
+treat.
+
+\section{Algorithm}
+\label{sec:algorithm}
+
+\subsection{Setup}
+
 \begin{enumerate}[itemsep=2pt]
-\item The force transmitted to the Neumann side is the static reaction
-  $-~f_{\text{int}}$ of the partner (\code{get\_dst\_force}); the
-  d'Alembert reaction $~M ~a + ~f_{\text{int}} - ~f_{\text{body}}$ is
-  added only for the impedance condition with adjoint pairing. In the
-  multiplier formulations $\Lambda$ is the full dynamic reaction of
-  either side. This is the omission that Sec.~\ref{sec:beam-nonoverlap}
-  measured on the impedance path as a drain of $9.6\%$ per millisecond on
-  conforming meshes, and it is present on every Dirichlet--Neumann run,
-  including the explicit ones that conserve within $1$ to $3\%$.
-\item The two transfer operators are built separately, in
-  \code{compute\_dirichlet\_projector} and
-  \code{compute\_neumann\_projector}: $\Pi_D = ~W_{\text{dst}}^{-1} ~L$
-  on the Dirichlet side and $\Pi_N = ~L\, ~H_{\text{src}}^{-1}$ on the
-  Neumann side, each with its own choice of the side on which $~L$ is
-  integrated. They satisfy \eqref{eq:adjoint} only
-  when the same cross matrix is chosen on both sides; the impedance path
-  builds both from one matrix (the function
-  \code{compute\_paired\_\allowbreak impedance\_\allowbreak schwarz\_\allowbreak projectors!})
-  and the Dirichlet--Neumann path does not.
-\item The Dirichlet side imposes the displacement, the velocity, and the
-  acceleration together (\code{coupling\_weak\_dbc}). At equal steps and
-  at convergence this contains the velocity constraint; under subcycling
-  the three interpolated fields are not consistent with the Newmark
-  relations of the receiving side, and the velocity alone is what the
-  theorem constrains.
-\item The convergence criterion
-  (\code{update\_schwarz\_convergence\_criterion}) is the change of
-  $~u + \Delta t\, \dot{~u}$ over all degrees of freedom of all
-  subdomains. It measures neither the velocity jump on the interface nor
-  the balance of the interface forces, which is why a converged iteration
-  leaves a jump of $0.10$ to $0.14$ on the cylinders
-  (Sec.~\ref{sec:cylinders}) and why the converged solution depends on
-  the relaxation factor (Sec.~\ref{sec:open}, item~(ii)).
-\item The initial acceleration is computed subdomain by subdomain with
-  the Schwarz degrees of freedom excluded (\code{initialize} in
-  \code{src/time\_integrator.jl}), against Eq.~(54) of Prakash and
-  Hjelmstad.
-\end{enumerate}
-The Dirichlet--Neumann fixed point is therefore not the constrained
-problem, and the theorems of Sec.~\ref{sec:constrained-theory} do not
-apply to it; its conservation with explicit subdomains and its failure
-with implicit ones (Sec.~\ref{sec:conclusion}, finding~8) are properties
-of a different scheme.
-
-\subsection{Changes and reference experiments}
-\label{sec:constrained-plan}
-
-The framework to adopt is the constrained problem of Gravouil and
-Combescure, with the Schwarz iteration as one of its solvers. In order:
-\begin{enumerate}[itemsep=2pt]
-\item On the nonoverlap path, transmit the d'Alembert reaction, build
-  both transfer operators from one cross matrix so that $\Pi_N =
-  \Pi_D^T$, and impose the velocity constraint; the displacement and the
-  acceleration then follow from the receiving side's Newmark relations,
-  or are imposed only at equal steps.
-\item Stop the iteration on the projected velocity jump and on the
-  interface force residual.
-\item Compute the initial acceleration on the coupled system, by a
-  Schwarz iteration on the acceleration at $t = 0$ or by a monolithic
-  solve.
-\item For explicit subdomains, replace the iteration by the direct
-  interface solve: $~H$ of \eqref{eq:gc-h} is $\gamma \Delta t$ times the
-  inverse of the lumped mass on the interface, one division per interface
-  degree of freedom per step.
-\item For implicit subdomains, keep the Dirichlet--Neumann iteration
-  with Aitken relaxation, converged on the constraint, or solve the
-  interface problem by conjugate gradients with one solve of
-  $\tilde{~M}$ per subdomain per iteration, the operation of the
-  transient FETI method~\cite{FarhatRoux1991,FarhatCrivelliRoux1994}.
-\item For different time steps, make the coarse-step side the Dirichlet
-  side: it imposes the fine side's velocity at the end of the window, and
-  the fine side receives the coarse side's d'Alembert reaction
-  interpolated linearly between the window's end values. This is the
-  $r = 1$ scheme of Connors et al.~\cite{ConnorsEtAl2024} (their
-  Eqs.~(53)--(55), (89)--(90), and (104)--(105) with $k = 1$), whose
-  reaction is their flux $\Sigma^N$, and the scheme of Prakash and
-  Hjelmstad (their Eqs.~(25), (40), and (70)); its interface terms cancel
-  at the fixed point of the iteration (Sec.~\ref{sec:pseudo-energy}), so
-  it conserves $\tilde{E}$ without a direct interface solve.
+\item Assign the Dirichlet role (Sec.~\ref{sec:roles}).
+\item Assemble $~B$, $~W_D$, and $~W_N$ of \eqref{eq:cross-mass} on the
+  reference configuration with the facet quadrature of the finer side, and
+  form $\Pi_D$ of \eqref{eq:projector}. Check that $\Pi_D$ reproduces
+  constants (the partition-of-unity error $\max |\Pi_D \mathbf{1} - \mathbf{1}|$
+  is at roundoff when the quadrature is exact). Only $\Pi_D$ and its
+  transpose enter the exchange; the projection in the other direction is
+  never formed, which matters on curved or non-nested interfaces where it
+  is inaccurate.
+\item Compute the initial acceleration on the coupled system
+  (Sec.~\ref{sec:initial}).
 \end{enumerate}
 
-The Dirichlet side of each pair is the implicit member, and for two
-members with the same integrator on a nonconforming interface the finer
-side. The first runs of the reference experiments assigned it to the subdomain with the
-smaller interface tributary mass, the explicit member of a mixed pair,
-which the gain analysis of Sec.~\ref{sec:constrained-results} shows to be
-divergent. Changes 1 to 3 are implemented and measured there.
+\subsection{One window}
+\label{sec:window}
 
-The reference experiments, with the outcome the theorems require:
-\begin{itemize}[itemsep=2pt]
-\item Beam, matching meshes, equal steps, each of II, IE, EI, and EE,
-  after changes 1 to 3, converged to $10^{-12}$ on the constraint: $\tilde{E}$
-  of \eqref{eq:e2} under the velocity constraint, and $E$ under the
-  displacement constraint with average acceleration on both sides, is
-  constant to roundoff over $10$\,ms. Any
-  residual measures what remains of the departure.
-\item The same at ratio $1{:}0.75$: the identity holds with the projected
-  velocities, so the residual is the quadrature error of the cross
-  matrix, zero for nested facets and small otherwise; it must not grow in
-  time.
-\item The same with a $4{:}1$ step ratio: dissipation, nonpositive, of
-  the order of one percent, and zero for explicit--explicit subdomains
-  when the coarse step is the critical step (Sec.~4.4 of Gravouil and
-  Combescure).
-\end{itemize}
+Given the converged state at the window start and the force $~\lambda^0$ of
+the previous window:
+\begin{enumerate}[itemsep=2pt]
+\item Initialize the datum $~v_D^\ast$ of the Dirichlet side, for example
+  with the projected partner velocity of the previous window.
+\item Repeat until the stopping criterion of Sec.~\ref{sec:stopping} holds:
+  \begin{enumerate}[itemsep=1pt]
+  \item Advance side $D$ over the window with $~v_D = ~v_D^\ast$ imposed on
+    its interface nodes at the window end, the interface acceleration and
+    displacement from \eqref{eq:newmark-from-v}, and form its reaction
+    $~\lambda^1 = ~r_D$ by \eqref{eq:reaction}.
+  \item Advance side $N$ over its substeps with the force
+    \eqref{eq:interpolated-force} on its interface nodes (at equal steps,
+    $~f_N = -\Pi_D^T ~\lambda^1$).
+  \item Form the new datum $\Pi_D ~v_N$ at the window end and relax it
+    (Sec.~\ref{sec:relaxation}) into $~v_D^\ast$.
+  \end{enumerate}
+\item Commit the window and keep $~\lambda^1$ as the next $~\lambda^0$.
+\end{enumerate}
+Each Schwarz iteration restores both sides to the state at the window
+start before it advances them. With the displacement constraint instead of
+the velocity constraint (trapezoidal pairs only) the datum is
+$\Pi_D ~u_N$ and the velocity and acceleration follow from the Newmark
+relations; the velocity constraint is the general choice.
 
-\paragraph{Against the requirements of a coupling framework.} The
-constrained problem gives the guarantees, the nonconforming meshes
-through the projected constraint, the heterogeneous integrators, and the
-different steps. Integration into an existing code needs, beyond the
-boundary conditions the Schwarz iteration already uses, one operation
-per subdomain: a solve with the effective dynamic matrix $\tilde{~M}$
-for a given interface load, which an implicit code has as a Newton
-iteration at fixed tangent and an explicit code has as a division by the
-lumped mass. The overlap decomposition has no place in this framework
-(Sec.~\ref{sec:theory}), and every measured overlapping case failed; it
-should be retired for dynamics.
+\subsection{Stopping criterion}
+\label{sec:stopping}
 
-\subsection{Measurements of the constrained exchange}
-\label{sec:constrained-results}
-
-Changes 1 to 3 are implemented for equal time steps (\code{constrained:
-true} on both sides of a \code{Schwarz DN nonoverlap} pair, with
-\code{constraint: velocity} or \code{displacement}). The cantilever runs
-below use the time step $10^{-6}$\,s, $10$\,ms, a relative tolerance of
-$10^{-12}$ on the jump of the constrained quantity and on the interface
-force residual, at most $256$ Schwarz iterations per stop, and the direct
-linear solver. Energies are $E$, the blended physical energy of
-Sec.~\ref{sec:energy}, and $\tilde{E}$ of \eqref{eq:e2}. The jump is the
-one-sided relative jump $\lVert ~u_D - \Pi_D ~u_N \rVert_{~W_D} /
-\lVert ~u_D \rVert_{~W_D}$ on the Dirichlet side $D$, with $N$ the
-Neumann side and $~W_D$ the boundary mass matrix of $D$.
-
-\paragraph{Ground truth.} An undecomposed run of the same beam at
-$\Delta t = 5\times 10^{-7}$\,s keeps $E$ and $\tilde{E}$ within
-$1.7\times 10^{-13}$ of their initial values over $10$\,ms with average
-acceleration and within $2.7\times 10^{-14}$ with central difference. The
-present Dirichlet--Neumann exchange at the same step, tolerance
-$10^{-8}$, and $\theta = 0.5$ inverts an element at $0.46$\,ms with
-implicit subdomains ($E/E(0) = 1.91$ and $\tilde{E}/\tilde{E}(0) = 34$ at
-$0.4$\,ms) and ends at $E/E(0) = 1.013$ and $\tilde{E}/\tilde{E}(0) = 1.006$ at
-$10$\,ms with explicit ones.
-
-\paragraph{The force residual of the present exchange.} The relative
-difference between the force applied on the Neumann side and the
-transposed projection of the d'Alembert reaction of the Dirichlet side,
-measured at the end of every stop in the inverse norm of the Neumann
-side's boundary mass matrix, has the median $0.83$ (maximum $4.2$) with
-explicit subdomains and $1.47$ (maximum $4.6$) with implicit ones: the
-static reaction $-~f^{\mathrm{int}}$ that the present exchange transmits
-misses an interface inertia of the size of the reaction itself. This is
-departure~1 of Sec.~\ref{sec:constrained-norma}, measured directly. Under
-the constrained exchange the same residual is below $4\times 10^{-16}$.
-
-\paragraph{The Dirichlet role.} The gain of one Schwarz iteration of the
-constrained exchange, linearized at a stop, is
+The iteration stops when both the one-sided relative velocity jump and the
+relative force residual fall below a tolerance $\epsilon$:
 \begin{equation}
-  ~G = -\,\Pi_D\, ~H_N\, \Pi_D^T\, ~S_D,
-  \label{eq:dn-gain}
+  \frac{\norm{~v_D - \Pi_D ~v_N}_{~W_D}}{\norm{~v_D}_{~W_D}} < \epsilon,
+  \qquad
+  \frac{\norm{~f_N + \Pi_D^T ~r_D}_{~W_N^{-1}}}{\norm{\Pi_D^T ~r_D}_{~W_N^{-1}}} < \epsilon,
+  \label{eq:stopping}
 \end{equation}
-with $~H_N = ~C_N \tilde{~M}_N^{-1} ~C_N^T$ the interface flexibility of
-the Neumann side ($\tilde{~M} = ~M + \beta \Delta t^2 ~K$, the lumped mass
-for central difference) and $~S_D$ the interface dynamic stiffness of the
-Dirichlet side ($~H_D^{-1}$ for Newmark, the lumped interface mass for
-central difference). Fixed relaxation $\theta$ converges if and only if
-the spectral radius of $(1-\theta)~I + \theta ~G$ is below one.
-Table~\ref{tab:dn-gain} lists the computed eigenvalues. On conforming
-meshes the two sides have the same lumped tributary masses, so these do
-not select the Dirichlet side; the consistent-mass flexibility of an
-implicit side is up to $13$ times the inverse lumped mass of an explicit
-side, and with the explicit member as the Dirichlet side every
-$\theta \ge 0.5$ diverges. All four runs of that assignment (IE and EI,
-$\theta \in \{0.5, 0.75, 1\}$) inverted an element at the first stop; with
-recursive Aitken they stopped on a stalled residual of $2\times 10^{-9}$
-and $2\times 10^{-10}$. The rule is: \emph{the implicit member is the
-Dirichlet side}; for two members with the same integrator on a
-nonconforming interface, the finer side.
+the force residual taken at every substep of the window. The norms are the
+discrete $L^2$ norms of the trace and of its dual. An absolute floor, if
+any, must be given in the units of the constrained quantity; a
+displacement tolerance divided by the step is not a valid velocity floor
+(on the cylinders of Sec.~\ref{sec:verification} it amounts to $200$\,m/s
+and stops the iteration after one pass). A stop at which the residual
+stalls above $\epsilon$ for three consecutive iterations without falling
+$5\%$ below its smallest value may be accepted with a warning; the
+residual is not monotone under Aitken or Anderson acceleration, so a single
+non-decreasing iteration is not a stall. Every stopping tolerance leaves a
+drift of the conserved quantity of the order of $\epsilon$ per window,
+accumulated over the windows of the run (Sec.~\ref{sec:verify-relaxation}).
+
+\subsection{Coupled initial acceleration}
+\label{sec:initial}
+
+The initial accelerations must satisfy the coupled problem at $t = 0$,
+including the acceleration constraint $~a_D = \Pi_D ~a_N$, or the first
+step changes $\tilde{E}$ by $0.2$ to $0.9\%$ and, for an explicit pair, the
+difference of the two interface accelerations alternates in sign at every
+step without decaying. The coupled initial acceleration is a Schwarz
+iteration at $t = 0$ in which $D$ imposes the projected partner
+acceleration, $N$ receives the d'Alembert reaction of $D$, and each side
+solves for its acceleration with the interface rows included; it converges
+in $2$ iterations on conforming meshes with identical integrators, $16$ to
+$24$ on nonconforming meshes, and about $30$ for mixed pairs at a fixed
+relaxation factor of $0.5$, and in $2$ to $9$ with Anderson acceleration.
+For two explicit sides the direct solve of Sec.~\ref{sec:direct} gives it
+in one step.
+
+\subsection{Assignment of the Dirichlet role}
+\label{sec:roles}
+
+The linearized gain of one Schwarz iteration at fixed relaxation is
+\begin{equation}
+  ~G = -\,\Pi_D\, ~H_N\, \Pi_D^T\, ~S_D ,
+  \label{eq:gain}
+\end{equation}
+with $~H_N = ~C_N \tilde{~M}_N^{-1} ~C_N^T$ the interface flexibility of $N$
+($\tilde{~M} = ~M + \beta \Delta t^2 ~K$, the lumped mass for central
+difference) and $~S_D$ the interface dynamic stiffness of $D$. A fixed
+relaxation factor $\theta$ converges if and only if the spectral radius of
+$(1 - \theta)~I + \theta ~G$ is below one; for a real spectrum in $[a, b]$
+the best factor is $\theta^\ast = 2/((1-a) + (1-b))$ with contraction
+$(b - a)/((1-a) + (1-b))$. Table~\ref{tab:dn-gain} lists the computed
+eigenvalues on the beam. The rules that follow, in order of precedence:
+\begin{enumerate}[itemsep=2pt]
+\item With different time steps, the coarse-step side is the Dirichlet side
+  (Proposition~\ref{prop:subcycled} and the impulse residual).
+\item With different integrators, the implicit side is the Dirichlet side:
+  with the explicit side as the Dirichlet side the eigenvalues reach
+  $-13.3$ and every factor $\theta \ge 0.5$ diverges.
+\item With the same integrator on a nonconforming interface, the finer mesh
+  is the Dirichlet side: the eigenvalues then lie in $[g, 0]$ with
+  $|g| \le 1$; with the coarser mesh as the Dirichlet side they reach $-8$
+  for an explicit pair.
+\end{enumerate}
+When rules 1 and 3 conflict (a finer mesh with a finer step), giving the
+finer mesh the coarser step satisfies both where the stability limit of an
+explicit side allows it. With Anderson acceleration every assignment
+measured converges, so the rules then set the cost, not the feasibility.
+
+\subsection{Relaxation and acceleration}
+\label{sec:relaxation}
+
+\paragraph{Aitken.} The Aitken factor must be formed from the projected
+interface trace $\Pi_D ~v_N$ that $D$ receives. Formed from the whole
+partner field it tends to $1$: the interior values do not enter the
+exchange, follow a map of zero gain, and dominate the residual, and at
+$\theta = 1$ the interface map, of gain near $-1$, does not contract.
+
+\paragraph{Anderson.} Anderson acceleration~\cite{WalkerNi2011}, in the
+interface quasi-Newton form of Degroote, Bathe, and
+Vierendeels~\cite{DegrooteBatheVierendeels2009}, combines the last $m$
+iterates. With $~x_k$ the datum $D$ used, $~f_k = G(~x_k) - ~x_k$ the
+residual, $~t_k$ its projected trace, and $\Delta ~T$, $\Delta ~X$,
+$\Delta ~F$ the differences of the last $m + 1$ iterates,
+\begin{equation}
+  ~\gamma = \arg\min \norm{~t_k - \Delta ~T ~\gamma}, \qquad
+  ~x_{k+1} = ~x_k + \beta\, ~f_k - (\Delta ~X + \beta\, \Delta ~F)\, ~\gamma ,
+  \label{eq:anderson}
+\end{equation}
+with mixing parameter $\beta = 0.5$, the least-squares problem solved by QR
+with the oldest column dropped while the condition number exceeds
+$10^{10}$. For a linear interface map with $\beta = 1$ and a depth at least
+the iteration count, the iterate equals the map applied to the GMRES iterate
+of the same index (Walker and Ni, Theorem~2.2). The first iteration of a
+window has no history and is not entered in it. A depth of $10$ covers
+every case measured; a depth of $5$ is too short for an explicit Dirichlet
+side, whose window needs $12$ to $16$ iterations.
+
+\paragraph{State.} The relaxation state is kept per interface pair and per
+substep time, and cleared at every stop. A state shared across substeps
+blends iterates of different times, which acts as a causal filter on the
+exchanged datum and moves the converged solution. Aitken and Anderson
+acceleration apply to stops of one substep; a stop that spans several
+substeps of the relaxed side uses a fixed factor.
+
+\subsection{Direct interface solve for two explicit subdomains}
+\label{sec:direct}
+
+For central difference on both sides at equal steps the iteration can be
+replaced by one solve per step. Central difference computes $~u^{n+1}$
+before the acceleration, and the internal force at $~u^{n+1}$ does not
+depend on the interface force. Advancing both sides with free interface
+rows and no interface force gives the velocities $~v^{\mathrm{free}}$; the
+interface force adds $\gamma \Delta t\, ~m_D^{-1}~\lambda$ to the velocity
+of $D$ and $-\gamma\Delta t\, ~m_N^{-1}\Pi_D^T ~\lambda$ to that of $N$, with
+$~m_D$, $~m_N$ the lumped masses of the interface rows. The velocity
+constraint then gives, per Cartesian component,
+\begin{equation}
+  \gamma \Delta t \bigl(~m_D^{-1} + \Pi_D\, ~m_N^{-1}\, \Pi_D^T\bigr)
+  ~\lambda = \Pi_D ~v_N^{\mathrm{free}} - ~v_D^{\mathrm{free}} .
+  \label{eq:direct}
+\end{equation}
+The matrix is symmetric positive definite, of the size of the Dirichlet
+trace, and constant while the lumped masses and $\Pi_D$ are; rows held by
+other Dirichlet conditions take a zero inverse mass. It is the interface
+operator $~H = \sum_k \gamma_k \Delta t_k ~C_k \tilde{~M}_k^{-1} ~C_k^T$ of
+Gravouil and Combescure for two lumped-mass sides, written on the Dirichlet
+trace. Factor it once (a dense Cholesky factorization of $3920$ unknowns
+per component on the cylinders takes $0.7$\,s), and at every step advance
+both sides, solve \eqref{eq:direct}, and correct the interface
+accelerations and velocities. The solve is exact for nonlinear materials,
+because the internal force is evaluated at the predicted displacement.
+The same matrix gives the coupled initial acceleration from
+$~a_D = \Pi_D ~a_N$.
+
+\subsection{Requirements on a subdomain code}
+\label{sec:integration}
+
+The exchange requires of each subdomain code, beyond a standard step:
+\begin{enumerate}[itemsep=2pt]
+\item a step with a prescribed velocity on a set of boundary nodes, with
+  the displacement and acceleration of those nodes from
+  \eqref{eq:newmark-from-v} (the Dirichlet side);
+\item a step with a prescribed nodal force on a set of boundary nodes,
+  constant or linear in time over the window (the Neumann side);
+\item the nodal d'Alembert reaction \eqref{eq:reaction} on a set of
+  boundary nodes after a step;
+\item saving and restoring the state at the window start;
+\item the boundary mass matrix and the facet quadrature of its interface,
+  to assemble $~B$ (performed once, by either code or by the coupler).
+\end{enumerate}
+An implicit code provides items 1 to 3 as a Newton solve at fixed boundary
+data; an explicit code provides them as a division by the lumped mass. The
+coupler itself holds $\Pi_D$, the relaxation state, and, for two explicit
+sides, the factorization of \eqref{eq:direct}.
+
+\section{Verification}
+\label{sec:verification}
+
+\subsection{Benchmarks}
+
+\paragraph{Cantilever beam.} A linear elastic bar ($E = 6.895$\,GPa,
+$\nu = 0.25$, $\rho = 2768$\,kg/m$^3$; $254 \times 25.4 \times 12.7$\,mm),
+clamped at $x = 0$ and released at rest from the bent shape
+$u_y = 0.3937\,x^2$ (tip deflection $25.4$\,mm), with initial energy
+$1506$\,J and a first bending period of about $10$\,ms. It is split at
+$x = 127$\,mm into a clamped part and a free part. The free part is meshed
+with HEX8 elements of $6.35$\,mm; the clamped part at $6.35$\,mm
+(conforming), $8.47$\,mm (ratio $1{:}0.75$, facets not nested), or
+$12.7$\,mm (ratio $1{:}0.5$, nested). Stops of $1\,\mu$s (or $0.5\,\mu$s
+where stated), $10$\,ms. The first letter of an integrator pair is the
+clamped part.
+
+\paragraph{Nested cylinders.} A steel shell (outer radius $88.9$\,mm,
+height $330$\,mm), a soft filler of one fiftieth of the shell's wave
+impedance, and an offset core, all neohookean, launched at $-35$\,m/s
+against a support that fixes the bottom face in $z$. The interface is a
+closed surface inside the filler around the core (a lateral surface and two
+caps); the inner mesh is $5.1$\,mm and the outer $6.35$\,mm (ratio
+$1{:}0.8$, not nested), $17$ to $26$ thousand elements per subdomain.
+Central difference on both sides at a Courant number of $0.5$, stops of
+$0.5\,\mu$s, $2$\,ms. A linear elastic version with the same meshes
+(filler $E = 0.214$\,GPa, $\nu = 0.494$) moves at $-5$\,m/s for $1$\,ms.
+The inner side is the Dirichlet side.
+
+\paragraph{Ground truth.} The undecomposed beam keeps $E$ and $\tilde{E}$
+within $1.7\times 10^{-13}$ over $10$\,ms with the trapezoidal rule and
+within $2.7\times 10^{-14}$ with central difference; the trapezoidal value
+requires a direct linear solver and a tight tolerance on the
+initial-acceleration solve.
+
+\subsection{Equal steps}
+
+Figure~\ref{fig:beam} shows the energy of the conforming beam for the
+classical and the constrained exchange. Table~\ref{tab:equal} gives the
+largest changes of $E$ and $\tilde{E}$ over $10$\,ms at a Schwarz tolerance
+of $10^{-12}$ with the coupled initial acceleration.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/beam-exchanges.pdf}
+\caption{Energy of the conforming beam, stops of $1\,\mu$s, $10$\,ms: the
+monolithic reference, the classical Dirichlet--Neumann exchange (Schwarz
+tolerance $10^{-8}$ on the displacement update, recursive Aitken), and the
+constrained exchange (tolerance $10^{-12}$, Anderson acceleration). The
+classical exchange inverts an element at $1.0$\,ms with implicit
+subdomains (cross); the constrained exchange coincides with the reference.}
+\label{fig:beam}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{Constrained exchange on the beam at equal steps ($1\,\mu$s,
+$10$\,ms, tolerance $10^{-12}$, fixed relaxation $0.5$, coupled initial
+acceleration, velocity constraint unless marked $u$). $\delta E$ and
+$\delta\tilde{E}$ are the largest $\lvert E(t)/E(0) - 1\rvert$ and
+$\lvert \tilde{E}(t)/\tilde{E}(0) - 1\rvert$; jump is the largest relative
+one-sided interface displacement jump over the last $100$ stops; it.\ is the mean and maximum
+number of Schwarz iterations per stop. D is the Dirichlet side: the free
+part, or the implicit side of a mixed pair.}
+\label{tab:equal}
+\begin{tabular}{llccccr}
+\toprule
+meshes & pair & $\delta E$ & $\delta\tilde{E}$ & jump & it. & wall (s) \\
+\midrule
+conforming & II, $u$ & $2.2\mathrm{e}{-11}$ & $5.3\mathrm{e}{-11}$ & $5.4\mathrm{e}{-13}$ & 7.1/8 & 215 \\
+conforming & II & $2.8\mathrm{e}{-11}$ & $7.0\mathrm{e}{-11}$ & $1.7\mathrm{e}{-12}$ & 7.0/8 & 206 \\
+conforming & EE & $1.2\mathrm{e}{-14}$ & $3.6\mathrm{e}{-14}$ & $7.5\mathrm{e}{-15}$ & 1.0/1 & 46 \\
+conforming & IE & $1.2\mathrm{e}{-3}$ & $6.3\mathrm{e}{-12}$ & $9.6\mathrm{e}{-4}$ & 29.0/32 & 417 \\
+conforming & EI & $3.7\mathrm{e}{-3}$ & $4.2\mathrm{e}{-10}$ & $9.3\mathrm{e}{-4}$ & 27.1/28 & 419 \\
+$1{:}0.5$ & II, $u$ & $1.2\mathrm{e}{-10}$ & $4.3\mathrm{e}{-11}$ & $9.8\mathrm{e}{-13}$ & 17.3/19 & 437 \\
+$1{:}0.5$ & II & $1.2\mathrm{e}{-10}$ & $1.8\mathrm{e}{-11}$ & $5.6\mathrm{e}{-12}$ & 17.2/18 & 436 \\
+$1{:}0.5$ & EE & $3.5\mathrm{e}{-11}$ & $6.9\mathrm{e}{-11}$ & $1.7\mathrm{e}{-11}$ & 23.7/26 & 169 \\
+$1{:}0.75$ & II & $1.7\mathrm{e}{-11}$ & $5.2\mathrm{e}{-11}$ & $1.5\mathrm{e}{-12}$ & 13.5/14 & 350 \\
+$1{:}0.75$ & EE & $2.2\mathrm{e}{-11}$ & $6.1\mathrm{e}{-11}$ & $6.0\mathrm{e}{-12}$ & 16.2/17 & 157 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The matched quantity is constant to between $10^{-14}$ and
+$4\times 10^{-10}$ in every case: $\tilde{E}$ for every pair, and $E$ as
+well for identical integrators. The residual is the tolerance accumulated
+over $10^4$ stops; the explicit pair at $\theta = 0.5$ converges in one
+iteration exactly. For the mixed pairs $E$ varies by $0.1$ to $0.4\%$, which
+is the expected behavior of the velocity constraint between different
+integrators, and the root mean square displacement jump stays near
+$10^{-5}$\,m ($0.1$ to $0.2\%$ of the initial interface displacement),
+growing by at most $10\%$ over the $10$\,ms, the displacement drift that
+velocity continuity permits~\cite{MahjoubiGravouilCombescure2009}. At
+$1{:}0.75$ the projector onto the coarse side reproduces constants only to
+$1.2\times 10^{-2}$; the exchange is unaffected because only $\Pi_D$, whose
+error is $7\times 10^{-16}$, enters it.
+
+Table~\ref{tab:dn-gain} gives the gain \eqref{eq:gain} on which the role
+rules of Sec.~\ref{sec:roles} rest.
 
 \begin{table}[htbp]
 \centering
 \footnotesize
-\caption{Eigenvalues of the gain \eqref{eq:dn-gain} at
+\caption{Eigenvalues of the gain \eqref{eq:gain} at
 $\Delta t = 10^{-6}$\,s and the spectral radius $\rho$ of the relaxed
 iteration. Conforming: the meshes of the cantilever example; $1{:}0.5$
 and $1{:}0.75$: free part $6.35$\,mm, clamped part $12.7$ and
@@ -1689,239 +685,29 @@ $1{:}0.75$ & EE, D fine & $[-0.75, 0]$ & $0.50$ & $0.31$ & $0.75$ \\
 \end{tabular}
 \end{table}
 
-\paragraph{Relaxation.} For two members with the same integrator on
-conforming meshes the eigenvalues cluster at $-1$, so $\theta = 0.5$ is
-optimal ($7$ iterations per stop for II, $1$ for EE), $\theta = 0.75$
-contracts by $0.5$ per iteration ($39$ and $35$ iterations), and
-$\theta = 1$ does not converge (element inversion, or $256$ iterations at
-the first stop for EE, where the iterate alternates between two states).
-With the fine side as the Dirichlet side the eigenvalues fill $[g, 0]$,
-and the zero eigenvalues belong to the components of the fine trace that
-the coarse trace cannot represent; they contract by $1 - \theta$. The
-first measurements with Aitken relaxation, in which the factor did not
-settle and the stall rule ended runs, had two causes, both corrected
-(Sec.~\ref{sec:aitken}).
+\subsection{Different time steps}
+\label{sec:verify-subcycled}
 
-\paragraph{The first step and the coupled initial acceleration.} With
-the initial acceleration computed per subdomain and the interface held
-fixed (Sec.~\ref{sec:constrained-norma}, departure~5), the first step
-changed $\tilde{E}$ by $0.18$ to $0.9\%$ and $E$ by $5\times 10^{-5}$ (II) and
-$5\times 10^{-4}$ (EE), and conservation held only from the first step
-on. In the explicit pair the difference of the two interface
-accelerations then alternates in sign at every step: velocity continuity
-fixes the sum of two consecutive accelerations on each side, so an initial
-difference is never removed, the displacement jump alternates between
-$2\times 10^{-3}$ and $10^{-14}$, and $E$ alternates by $10^{-3}$. The
-remedy is change~3: a Schwarz iteration at $t = 0$ in which the Dirichlet
-side imposes the projected partner acceleration, the Neumann side receives
-the d'Alembert reaction, and each side recomputes its acceleration with
-the interface rows included. It converges in $2$ iterations on conforming
-meshes with the same integrator, $30$ for the mixed pairs, and $16$ to
-$24$ on the nonconforming meshes, and inverts no element; the inversion
-recorded for the trust-Schwarz re-solve of the present exchange does not
-occur.
+The beam with the free part subcycled $4{:}1$ (coarse step $1\,\mu$s on the
+clamped part, fine step $0.25\,\mu$s on the free part) was run with each
+side as the Dirichlet side, and on the $1{:}0.5$ meshes in two
+assignments: (A) the clamped part, coarse in mesh and step, as the
+Dirichlet side; (B) the free part, fine in mesh, given the coarse step and
+the Dirichlet role, with the clamped part subcycled. Table~\ref{tab:subcycled}
+gives the results at a fixed relaxation of $0.5$; Fig.~\ref{fig:subcycled}
+shows the energy of the conforming runs under Anderson acceleration.
 
-\begin{table}[htbp]
+\begin{figure}[htbp]
 \centering
-\footnotesize\setlength{\tabcolsep}{3pt}
-\caption{Constrained exchange on the conforming cantilever, completed
-runs. $E(10)$ is the ratio to the value at $t = 0$ at $10$\,ms;
-$\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$; $\delta_1 \tilde{E}$ is the same
-from the first step on; jump is the largest displacement jump over the
-last $100$ stops; it.\ is the mean and maximum number of Schwarz
-iterations per stop; wall time in seconds on four threads. ``Dir.\ impl.''
-marks the implicit member as the Dirichlet side; the free side is the
-Dirichlet side otherwise.}
-\label{tab:constrained}
-\begin{tabular}{llccccccrr}
-\toprule
-pair, constraint & $\theta$ & $E(10)$ & $\tilde{E}(10)$ & $\delta E$ &
-  $\delta \tilde{E}$ & $\delta_1 \tilde{E}$ & jump & it. & wall \\
-\midrule
-\multicolumn{10}{l}{\emph{initial acceleration per subdomain}} \\
-II, displacement & 0.5 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
-  $5.2\mathrm{e}{-3}$ & $2.0\mathrm{e}{-7}$ & $5.5\mathrm{e}{-13}$ & 7.1/8 & 172 \\
-II, displacement & 0.75 & 1.000051 & 0.994823 & $5.1\mathrm{e}{-5}$ &
-  $5.2\mathrm{e}{-3}$ & $2.1\mathrm{e}{-6}$ & $1.0\mathrm{e}{-12}$ & 38.9/43 & 784 \\
-II, displacement & Aitken & 1.000051 & 0.994820 & $5.1\mathrm{e}{-5}$ &
-  $5.2\mathrm{e}{-3}$ & $9.2\mathrm{e}{-7}$ & $9.9\mathrm{e}{-13}$ & 10.4/155 & 269 \\
-II, velocity & 0.5 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
-  $5.2\mathrm{e}{-3}$ & $6.8\mathrm{e}{-11}$ & $1.7\mathrm{e}{-12}$ & 7.0/8 & 206 \\
-II, velocity & 0.75 & 1.000051 & 0.994821 & $5.1\mathrm{e}{-5}$ &
-  $5.2\mathrm{e}{-3}$ & $9.9\mathrm{e}{-12}$ & $2.1\mathrm{e}{-11}$ & 38.7/41 & 714 \\
-EE, velocity & 0.5 & 0.999189 & 1.001776 & $1.0\mathrm{e}{-3}$ &
-  $1.8\mathrm{e}{-3}$ & $4.1\mathrm{e}{-14}$ & $2.0\mathrm{e}{-3}$ & 1.0/1 & 46 \\
-EE, velocity & 0.75 & 0.999189 & 1.001776 & $1.0\mathrm{e}{-3}$ &
-  $1.8\mathrm{e}{-3}$ & $1.3\mathrm{e}{-10}$ & $2.0\mathrm{e}{-3}$ & 34.6/36 & 190 \\
-EE, velocity & Aitken & 0.999189 & 1.001776 & $1.0\mathrm{e}{-3}$ &
-  $1.8\mathrm{e}{-3}$ & $4.1\mathrm{e}{-14}$ & $2.0\mathrm{e}{-3}$ & 1.0/1 & 48 \\
-IE, velocity, Dir.\ impl. & 0.5 & 0.999489 & 0.991040 & $1.4\mathrm{e}{-3}$ &
-  $9.0\mathrm{e}{-3}$ & $2.7\mathrm{e}{-11}$ & $1.7\mathrm{e}{-3}$ & 28.9/32 & 305 \\
-IE, velocity, Dir.\ impl. & 0.75 & 0.999489 & 0.991040 & $1.4\mathrm{e}{-3}$ &
-  $9.0\mathrm{e}{-3}$ & $6.2\mathrm{e}{-11}$ & $1.7\mathrm{e}{-3}$ & 18.0/19 & 236 \\
-IE, velocity, Dir.\ impl. & 1 & 0.999489 & 0.991040 & $1.4\mathrm{e}{-3}$ &
-  $9.0\mathrm{e}{-3}$ & $4.3\mathrm{e}{-13}$ & $1.7\mathrm{e}{-3}$ & 53.1/56 & 574 \\
-EI, velocity, Dir.\ impl. & 0.5 & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
-  $4.1\mathrm{e}{-3}$ & $4.1\mathrm{e}{-10}$ & $1.8\mathrm{e}{-3}$ & 27.1/28 & 430 \\
-EI, velocity, Dir.\ impl. & 0.75 & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
-  $4.1\mathrm{e}{-3}$ & $5.0\mathrm{e}{-11}$ & $1.8\mathrm{e}{-3}$ & 14.2/15 & 225 \\
-EI, velocity, Dir.\ impl. & 1 & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
-  $4.1\mathrm{e}{-3}$ & $1.5\mathrm{e}{-10}$ & $1.8\mathrm{e}{-3}$ & 43.1/46 & 491 \\
-EI, velocity, Dir.\ impl. & Aitken & 1.003183 & 0.995852 & $3.5\mathrm{e}{-3}$ &
-  $4.1\mathrm{e}{-3}$ & $4.2\mathrm{e}{-11}$ & $1.8\mathrm{e}{-3}$ & 12.7/15 & 167 \\
-\midrule
-\multicolumn{10}{l}{\emph{coupled initial acceleration}} \\
-II, displacement & 0.5 & 1.000000 & 1.000000 & $2.2\mathrm{e}{-11}$ &
-  $5.3\mathrm{e}{-11}$ & $5.3\mathrm{e}{-11}$ & $5.4\mathrm{e}{-13}$ & 7.1/8 & 215 \\
-II, velocity & 0.5 & 1.000000 & 1.000000 & $2.8\mathrm{e}{-11}$ &
-  $7.0\mathrm{e}{-11}$ & $7.0\mathrm{e}{-11}$ & $1.7\mathrm{e}{-12}$ & 7.0/8 & 206 \\
-EE, velocity & 0.5 & 1.000000 & 1.000000 & $1.2\mathrm{e}{-14}$ &
-  $3.6\mathrm{e}{-14}$ & $3.8\mathrm{e}{-14}$ & $7.5\mathrm{e}{-15}$ & 1.0/1 & 46 \\
-IE, velocity, Dir.\ impl. & 0.5 & 0.999638 & 1.000000 & $1.2\mathrm{e}{-3}$ &
-  $6.3\mathrm{e}{-12}$ & $6.4\mathrm{e}{-12}$ & $9.6\mathrm{e}{-4}$ & 29.0/32 & 417 \\
-EI, velocity, Dir.\ impl. & 0.5 & 1.003366 & 1.000000 & $3.7\mathrm{e}{-3}$ &
-  $4.2\mathrm{e}{-10}$ & $4.2\mathrm{e}{-10}$ & $9.3\mathrm{e}{-4}$ & 27.1/28 & 419 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\paragraph{What Table~\ref{tab:constrained} shows.} With the coupled
-initial acceleration, the energy that the constraint matches is constant
-over $10$\,ms to between $4\times 10^{-14}$ and $4\times 10^{-10}$: $\tilde{E}$
-under the velocity constraint for every pair, and both $E$ and $\tilde{E}$
-for the identical integrators. The residual is set by the tolerance
-$10^{-12}$ accumulated over $10^4$ stops, not by roundoff (undecomposed:
-$10^{-13}$); the explicit pair at $\theta = 0.5$ converges in one
-iteration exactly and reaches $4\times 10^{-14}$. The final energies of
-runs that differ only in $\theta$ agree to between $10^{-12}$ and
-$5\times 10^{-10}$, the same tolerance effect. Under the displacement
-constraint with the per-subdomain initial acceleration $\tilde{E}$ drifted by
-$2\times 10^{-7}$ to $2\times 10^{-6}$, because the acceleration
-$(~u - ~u^{\text{pre}})/(\beta \Delta t^2)$ multiplies the displacement
-iteration error by $4/\Delta t^2$; with the coupled initial acceleration
-that drift is $5\times 10^{-11}$. For the mixed pairs $E$ is not
-conserved ($0.4\%$), which is the expected behavior of the velocity
-constraint between different integrators. The displacement drift of
-Mahjoubi et al.\ appears in the mixed pairs only: its root mean square over
-the interface is between $7\times 10^{-6}$ and $1.1\times 10^{-5}$\,m in
-every millisecond window of the $10$\,ms ($0.1$ to $0.2\%$ of the initial
-interface displacement $6.3\times 10^{-3}$\,m), and it grows by at most
-$10\%$ from the first to the last window. In these runs and in II under
-the velocity constraint the root mean square velocity jump reaches the
-absolute floor $10^{-15}\,\text{m}/10^{-6}\,\text{s} = 10^{-9}$\,m/s, at
-which the stopping rule also accepts the iterate.
-
-\paragraph{Nonconforming meshes.} The one-sided identity
-$~f_N^T \dot{~u}_N = ~r_D^T \Pi_D \dot{~u}_N = ~r_D^T \dot{~u}_D$ holds
-for any cross matrix $~B$, so the matched energy should be conserved for
-any mesh ratio. Free part $6.35$\,mm, clamped part $12.7$\,mm (ratio
-$1{:}0.5$, nested) and $8.47$\,mm ($1{:}0.75$, not nested), fine side as
-the Dirichlet side, $\theta = 0.5$, coupled initial acceleration:
-\begin{center}
-\footnotesize\setlength{\tabcolsep}{3pt}
-\begin{tabular}{llccccccrr}
-\toprule
-ratio & pair, constraint & $E(10)$ & $\tilde{E}(10)$ & $\delta E$ & $\delta \tilde{E}$ & jump & it. & wall \\
-\midrule
-$1{:}0.5$ & II, displacement & 1.000000 & 1.000000 &
-  $1.2\mathrm{e}{-10}$ & $4.3\mathrm{e}{-11}$ & $9.8\mathrm{e}{-13}$ & 17.3/19 & 437 \\
-$1{:}0.5$ & II, velocity & 1.000000 & 1.000000 &
-  $1.2\mathrm{e}{-10}$ & $1.8\mathrm{e}{-11}$ & $5.6\mathrm{e}{-12}$ & 17.2/18 & 436 \\
-$1{:}0.5$ & EE, velocity & 1.000000 & 1.000000 &
-  $3.5\mathrm{e}{-11}$ & $6.9\mathrm{e}{-11}$ & $1.7\mathrm{e}{-11}$ & 23.7/26 & 169 \\
-$1{:}0.75$ & II, velocity & 1.000000 & 1.000000 &
-  $1.7\mathrm{e}{-11}$ & $5.2\mathrm{e}{-11}$ & $1.5\mathrm{e}{-12}$ & 13.5/14 & 350 \\
-$1{:}0.75$ & EE, velocity & 1.000000 & 1.000000 &
-  $2.2\mathrm{e}{-11}$ & $6.1\mathrm{e}{-11}$ & $6.0\mathrm{e}{-12}$ & 16.2/17 & 157 \\
-\bottomrule
-\end{tabular}
-\end{center}
-All five runs complete and conserve to the same level as the conforming
-ones. The certificates of $~B$ are at roundoff at $1{:}0.5$ (partition of
-unity of both projectors $10^{-15}$, $\lvert ~B \mathbf{1} - ~W_D
-\mathbf{1} \rvert$ and $\lvert ~B^T \mathbf{1} - ~W_N \mathbf{1} \rvert$
-$10^{-16}$ relative). At $1{:}0.75$ the projector onto the coarse side
-reproduces constants only to $1.2\times 10^{-2}$ and $~B^T \mathbf{1}$
-differs from $~W_N \mathbf{1}$ by $3.1\times 10^{-3}$ relative, the
-quadrature error of a coarse basis function that kinks inside a fine
-facet; the energy is still conserved to $6\times 10^{-11}$, because with
-the fine side as the Dirichlet side only $\Pi_D$, whose certificate is
-$7\times 10^{-16}$, and its transpose enter the exchange. At this ratio
-the paired impedance coupling inverted an element at $2.6$ to $5$\,ms
-(Sec.~\ref{sec:beam-nonoverlap}); the constrained exchange completes
-$10$\,ms.
-
-
-\paragraph{Different time steps.} The velocity constraint admits
-different steps on the two sides: the side with the finer step receives
-the partner's velocity (Dirichlet side) or d'Alembert reaction (Neumann
-side) interpolated linearly in time from the partner's substep history,
-and the stopping rule takes the largest jump and force residual over the
-substeps of the stop. Reference experiment~3 is the beam with one side
-subcycled $4{:}1$ (coarse step $10^{-6}$\,s, fine step $2.5\times
-10^{-7}$\,s), $\theta = 0.5$, relative tolerance $10^{-12}$ with no
-absolute tolerance, \code{stalled interface jump action: warn}, $10$\,ms
-(Table~\ref{tab:subcycled}). The energy output carries the interface
-impulse residual of each window: the trapezoid sum over the Neumann
-side's substeps of the force it received, minus $\Pi_D^T$ times the
-trapezoid sum of the Dirichlet side's reaction over its own substeps,
-summed over the interface nodes per component (net, N\,s) and in the
-$~W_N^{-1}$ norm relative to the transferred impulse.
-
-On the conforming beam, with the coarse-step (clamped) side as the
-Dirichlet side, the arrangement of Sec.~\ref{sec:pseudo-energy}, $\tilde{E}$
-stays within $4.5\times 10^{-13}$ (EE) and $1.6\times 10^{-12}$ (II), $E$
-within $0.11\%$ and $0.38\%$, and the impulse residual is at roundoff (net
-at most $2.6\times 10^{-14}$\,N\,s, relative at most $1.5\times 10^{-12}$).
-With the fine-step (free) side as the Dirichlet side, $\tilde{E}$ changes by
-$4.4\times 10^{-9}$ (EE) and $2.0\times 10^{-9}$ (II), $E$ varies by $51\%$
-and $20\%$ with the period of the first bending mode ($10$\,ms), and the
-impulse residual is of the order of the impulse itself: the relative
-residual has the median $0.95$ (EE) and $0.67$ (II) and the maximum $3.4$
-and $4.8$; the net residual is in the bending direction $y$, up to
-$4.8\times 10^{-2}$ and $4.9\times 10^{-2}$\,N\,s per window, and sums to
-$-29$ and $-17$\,N\,s over the $10$\,ms, while the $x$ and $z$ components
-stay below $5\times 10^{-12}$\,N\,s. The earlier fine-side runs with the
-former absolute floor changed $\tilde{E}$ by $7.1\times 10^{-8}$ and
-$2.4\times 10^{-8}$; with the relative criterion the change is $40$ and
-$12$ times smaller, which identifies it as accumulated stopping error, as
-the derivation of Sec.~\ref{sec:pseudo-energy} predicts. The $E$
-variation of the fine-side arrangement coincides with a nonzero impulse
-residual and the coarse-side arrangement has neither; whether the impulse
-residual causes the variation has not been tested separately. The mixed
-pairs of the earlier runs, IE with the coarse implicit side as the
-Dirichlet side ($\tilde{E}$ within $3.9\times 10^{-12}$, $E$ within $0.07\%$)
-and EI, whose coarse side is explicit and diverges as the Dirichlet side,
-are in Table~\ref{tab:beam-compare}.
-
-\paragraph{Subcycling on nonconforming meshes.} The coarse-step side must
-be the Dirichlet side for the flux structure above, and with identical
-integrators the finer mesh must be the Dirichlet side for the gain
-(Table~\ref{tab:dn-gain}). On the $1{:}0.5$ beam (free part $6.35$\,mm,
-$160$ elements; clamped part $12.7$\,mm, $20$ elements) two assignments
-were run. In (A) the clamped (coarse-mesh) side takes $10^{-6}$\,s and is
-the Dirichlet side, and the free (fine-mesh) side takes $2.5\times
-10^{-7}$\,s; in (B) the free (fine-mesh) side takes $10^{-6}$\,s and is the
-Dirichlet side, and the clamped (coarse-mesh) side takes $2.5\times
-10^{-7}$\,s, so that the fine mesh is also the coarse-step side. The
-projector in use reproduces constants to $10^{-15}$ in both, and $~B
-\mathbf{1}$, $~B^T\mathbf{1}$ match the boundary masses to $10^{-16}$.
-The gain of each assignment, linearized at a stop with the Neumann side's
-end velocity per unit force ramped over its four substeps, is in the lower
-part of Table~\ref{tab:subcycled}. In (A) with explicit sides the
-eigenvalues lie in $[-7.9, -2.0]$ and the iteration diverges for every
-$\theta \ge 0.25$; the run diverged already in the coupled initial
-acceleration at $\theta = 0.5$ and at $\theta = 0.25$ (kinetic energy of
-order $10^{249}$ and $10^{21}$ at $t = 0$) and ended at the first stop.
-Assignment (B) conserves $\tilde{E}$ to $3.7\times 10^{-12}$ (EE) and $1.6\times
-10^{-12}$ (II) with the impulse residual at roundoff; assignment (A) with
-implicit sides, whose gain radius at $\theta = 0.5$ is $0.55$, conserves
-$\tilde{E}$ to $4.7\times 10^{-13}$ in $44.5$ iterations per stop against $18.8$
-for (B). The rule for subcycled pairs is therefore: the coarse-step side is
-the Dirichlet side; between two members with the same integrator the
-finer mesh should be that side, which may require giving the finer mesh
-the coarser step where the stability limit of an explicit member allows
-it; where it does not, the gain decides.
+\includegraphics[width=\textwidth]{figs/beam-subcycled.pdf}
+\caption{Energy of the conforming beam with the free part subcycled $4{:}1$,
+tolerance $10^{-12}$, Anderson acceleration. With the clamped part (coarse
+step) as the Dirichlet side the energy stays within $0.4\%$; with the free
+part (fine step) as the Dirichlet side it rises by $12\%$ (II) and $31\%$
+(EE) and returns over the first bending period, while $\tilde{E}$ stays
+constant to $10^{-9}$ in both arrangements.}
+\label{fig:subcycled}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -1976,88 +762,80 @@ $1{:}0.5$ & II & (B) free, fine mesh, coarse step & 0.75 & 0.50 & 0.25 & 0.56 \\
 \end{tabular}
 \end{table}
 
-\paragraph{The nested cylinders.} The cylinders of Sec.~\ref{sec:cylinders}
-(neohookean materials, central difference on both sides, stops of
-$0.5\,\mu$s, nonconforming at $1{:}0.8$) were run to $2$\,ms with the
-constrained exchange, velocity constraint, the inner (finer) side as the
-Dirichlet side, $\theta = 0.5$, and the tolerances of the example
-(relative $10^{-6}$, absolute $10^{-4}$). The materials are nonlinear, so
-$\tilde{E}$ is not defined and the question is whether $E$ stays bounded.
-With the inner side as the Dirichlet side only $\Pi_D$ enters the
-exchange, and its partition-of-unity error is $4\times 10^{-15}$; the
-projector onto the outer side, which the exchange does not use, has an
-error of $0.72$ at $2578$ of its $2582$ nodes, the quadrature error of $~B$
-on a curved, non-nested interface. The coupled initial acceleration
-converged in $14$ iterations.
-\begin{center}
-\footnotesize
-\begin{tabular}{lccccl}
+With the coarse-step side as the Dirichlet side, $\tilde{E}$ is constant to
+between $4.5\times 10^{-13}$ and $3.7\times 10^{-12}$ and the impulse
+residual \eqref{eq:impulse} is at roundoff. With the fine-step side as the
+Dirichlet side, $\tilde{E}$ changes by $2$ to $4\times 10^{-9}$ (the
+accumulated stopping error, which falls with the tolerance), the relative
+impulse residual has a median of $0.67$ (II) and $0.95$ (EE), its net value
+in the bending direction sums to $-17$ and $-29$\,N\,s over the run while
+the other components stay below $5\times 10^{-12}$\,N\,s, and $E$ swings by
+$20$ and $51\%$. Assignment (A) with explicit sides has gain eigenvalues in
+$[-7.9, -2.0]$; it diverges at every fixed factor from $0.25$ up, already in
+the coupled initial acceleration, and converges with Anderson acceleration
+(Table~\ref{tab:solvers}). Assignment (B) satisfies both role rules and has
+gain eigenvalues in $[-0.56, 0]$.
+
+\subsection{Relaxation and acceleration}
+\label{sec:verify-relaxation}
+
+Table~\ref{tab:solvers} gives the Schwarz iterations per stop under the
+three relaxation schemes at a tolerance of $10^{-12}$. Aitken acceleration
+settles at factors near $\theta^\ast$ of Sec.~\ref{sec:roles}: $0.33$ on
+(A) implicit, $0.16$ to $0.33$ on (A) explicit, $0.64$ to $0.84$ on (B), and
+$0.07$ to $0.21$ with an explicit Dirichlet side. Anderson acceleration at
+depth $10$ needs fewer iterations than Aitken in every case, converges
+where every fixed factor diverged, and with an explicit Dirichlet side
+removes the drift of $\tilde{E}$ that Aitken left through stops accepted at
+the floor of the force residual ($6.8\times 10^{-11}$ against
+$6.5\times 10^{-14}$). The energies agree across the schemes to the digits
+measured.
+
+\begin{table}[htbp]
+\centering
+\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{Schwarz iterations per stop (mean/maximum) and iterations of the
+coupled initial acceleration, beam, $10$\,ms, tolerance $10^{-12}$. Equal
+steps at $0.5\,\mu$s on conforming meshes; (A) and (B) as in
+Sec.~\ref{sec:verify-subcycled} at $1\,\mu$s with $4{:}1$ subcycling; EI
+and IE with the explicit side as the Dirichlet side at equal steps.}
+\label{tab:solvers}
+\begin{tabular}{lcccccc}
 \toprule
-coupling & $0.5$\,ms & $1$\,ms & $2$\,ms & it.\ per stop & note \\
+case & fixed $0.5$ & Aitken & Anderson, $m = 5$ & Anderson, $m = 10$ & initial, Aitken & initial, Anderson \\
 \midrule
-monolithic & 1.000 & 1.000 & 1.000 & -- & $0.01\%$ to $5$\,ms \\
-present DN, Aitken & 1.00 & 1.00 & 1.01 & 2 & $+3$, $-1.3\%$ to $5$\,ms \\
-paired impedance & 0.79 & 0.54 & 0.24 & 2 & \\
-constrained, abs.\ tol.\ $10^{-4}$ & 1.00095 & 1.00389 & 1.02073 & 1 & $5943$\,s, 8 threads \\
-constrained, abs.\ tol.\ $10^{-12}$ & \multicolumn{3}{l}{0.999976 at $0.1$\,ms} & 8.8 (max 10) & $1218$\,s \\
+equal steps, II & 5.9/6 & 5.8/6 & 5.0/6 & 5.0/6 & 3 & 2 \\
+equal steps, EE & 1.0/1 & 1.0/1 & -- & -- & -- & -- \\
+(A) II & 44.5/54 & 8.8/15 & 6.0/8 & 6.0/8 & 7 & 4 \\
+(A) EE & diverged & 20.9/87 & 8.9/9 & 8.9/9 & 21 & 7 \\
+(B) II & 18.8/21 & 7.0/9 & 5.0/7 & 5.0/7 & 5 & 3 \\
+(B) EE & 26.9/31 & 10.9/13 & 5.0/5 & 5.0/5 & 15 & 4 \\
+EI, D explicit & diverged & 34.6/45 & 69.2/118 & 16.0/16 & 47 & 9 \\
+IE, D explicit & diverged & 33.9/46 & 53.6/108 & 13.9/14 & 47 & 8 \\
 \bottomrule
 \end{tabular}
-\end{center}
-With the example's absolute tolerance the constrained iteration stopped
-after one iteration at every stop: the absolute branch of the stopping
-rule accepts a root mean square velocity jump below the absolute
-tolerance divided by the step, here $10^{-4}\,\text{m}/5\times
-10^{-7}\,\text{s} = 200$\,m/s, while the measured jump was $0.27$ to
-$0.46$\,m/s ($0.6$ to $1.4\%$ relative). The run is therefore the
-unconverged staggered exchange, and its $E$ grows by $2.1\%$ in $2$\,ms
-at an increasing rate. With the absolute tolerance $10^{-12}$ the
-iteration contracts (no stall), needs $8.8$ iterations per stop, and
-leaves a relative velocity jump of $4.6\times 10^{-7}$; over the
-$0.1$\,ms run $E$ stays within $2.4\times 10^{-5}$, against
-$9\times 10^{-5}$ for the one-iteration run at the same time. A converged
-run to $2$\,ms would take about $7$ hours on $8$ threads and was not
-made, so boundedness under convergence is shown only to $0.1$\,ms.
+\end{table}
 
-\paragraph{The stopping floor.} The constrained criterion first accepted
-a root mean square jump of the constrained velocity below the controller's
-absolute tolerance divided by the step; the absolute tolerance is a
-displacement, and on the cylinders the floor was $200$\,m/s. The
-criterion is now relative only, unless \code{constraint absolute
-tolerance} gives a tolerance in the units of the constrained quantity
-(default $0$). The beam runs below use the relative tolerance
-$10^{-12}$ and no absolute tolerance.
+\subsection{Direct interface solve}
 
-\paragraph{Direct interface solve.} For two central difference subdomains
-at equal steps the iteration can be replaced by one solve. Let $\lambda$
-be the force on the interface rows of the Dirichlet side $D$, so that the
-Neumann side $N$ receives $-\Pi_D^T \lambda$, and let $~m_D$ and $~m_N$ be
-the lumped masses of the interface rows. Central difference computes
-$~u_{n+1}$ before the acceleration, and the internal force at $~u_{n+1}$
-does not depend on $\lambda$. Advancing both sides with free interface
-rows and no interface force gives the velocities $~v^{\text{free}}$; the
-interface force adds $\gamma \Delta t\, ~m_D^{-1}\lambda$ to the velocity
-of $D$ and $-\gamma\Delta t\, ~m_N^{-1}\Pi_D^T\lambda$ to that of $N$, and
-the velocity constraint $~v_D = \Pi_D ~v_N$ at the end of the step gives,
-per Cartesian component,
-\begin{equation}
-  \gamma \Delta t \left(~m_D^{-1} + \Pi_D\, ~m_N^{-1}\, \Pi_D^T\right)
-  \lambda = \Pi_D ~v_N^{\text{free}} - ~v_D^{\text{free}} .
-  \label{eq:direct}
-\end{equation}
-The matrix is symmetric positive definite, of the size of the Dirichlet
-interface, and constant while the lumped masses and $\Pi_D$ are; rows held
-by other Dirichlet conditions take a zero inverse mass. It is $~H$ of
-\eqref{eq:gc-h} for two lumped-mass explicit sides, written on the
-Dirichlet trace. It is factored once (dense Cholesky: $3920$ unknowns per
-component on the cylinders, three factorizations in $0.7$\,s, $3 \times
-123$\,MB). Each stop advances both sides, solves \eqref{eq:direct}, and
-corrects the interface accelerations and velocities. Because the internal
-force is evaluated at the predictor displacement, the solve is exact for
-nonlinear materials as well. The same matrix gives the interface force at
-$t = 0$ from the acceleration constraint $~a_D = \Pi_D ~a_N$
-(\code{interface solve: direct}).
+Table~\ref{tab:direct} compares the direct solve \eqref{eq:direct} with the
+iteration and with the monolithic runs. It conserves $E$ and $\tilde{E}$ to
+roundoff on the beam at every mesh ratio and on the linear cylinders, at a
+lower cost than the iteration on nonconforming meshes; on the cylinders the
+relative interface velocity jump at the end of every stop is at most
+$7\times 10^{-16}$. On the linear cylinders $\tilde{E}$ varies more than
+$E$ because the deformation gradient is formed from the current
+coordinates $~X + ~u$, which loses digits in proportion to
+$\lvert ~X \rvert / \lvert ~u \rvert$; its per-step increments have a
+standard deviation of $1.1\times 10^{-13}$ and no significant mean.
 
-\begin{center}
+\begin{table}[htbp]
+\centering
+\caption{Direct interface solve, two explicit sides at equal steps. Beam:
+$10$\,ms, $1\,\mu$s; cylinders: $1$\,ms, $0.5\,\mu$s, eight threads.
+$\delta E$ and $\delta\tilde{E}$ as in Table~\ref{tab:equal}; drift is the
+root mean square interface displacement jump at the end.}
+\label{tab:direct}
 \footnotesize\setlength{\tabcolsep}{3pt}
 \begin{tabular}{llcccrrl}
 \toprule
@@ -2075,46 +853,27 @@ linear cylinders, $-35$\,m/s & monolithic & $1.2\mathrm{e}{-14}$ & $4.8\mathrm{e
  & direct & $1.1\mathrm{e}{-14}$ & $4.3\mathrm{e}{-13}$ & $4.3\mathrm{e}{-18}$ & -- & 731 & -- \\
 \bottomrule
 \end{tabular}
-\end{center}
-Beam runs: $10$\,ms, $10^{-6}$\,s; cylinders: $1$\,ms, $0.5\,\mu$s, the
-cylinders on $8$ threads. $\delta E$ is the largest $\lvert E/E(0) - 1
-\rvert$, drift the root mean square interface displacement jump at the
-end. The direct solve conserves both energies to roundoff, at a lower cost
-than the iteration on the nonconforming meshes, and on the cylinders the
-relative interface velocity jump at the end of every stop is at most
-$7\times 10^{-16}$. On the linear cylinders the monolithic $\tilde{E}$ varies by
-$6.2\times 10^{-12}$ at $-5$\,m/s and $4.8\times 10^{-13}$ at $-35$\,m/s,
-the decomposed one by $3.2\times 10^{-12}$ and $4.3\times 10^{-13}$: the
-level depends on the amplitude because the deformation gradient is formed
-from the current coordinates $~X + ~u$, which loses digits in proportion
-to $\lvert ~X \rvert / \lvert ~u \rvert$. The per-step increments of $\tilde{E}$
-have a standard deviation of $1.1\times 10^{-13}$ and a lag-one
-autocorrelation of $-0.31$, without a significant mean: roundoff in the
-evaluation and its accumulation, not a systematic change. On the
-neohookean cylinders ($-35$\,m/s, $2$\,ms) the direct solve completes in
-$1416$\,s with $E/E(0) = 0.999972$, $0.999963$, and $0.999936$ at
-$0.5$, $1$, and $2$\,ms, within the $0.01\%$ that the monolithic reference
-keeps to $5$\,ms, a relative velocity jump of at most $7\times 10^{-16}$,
-and a drift of $6\times 10^{-18}$\,m; the iterated run with the former
-floor reached $+2.1\%$ at $2$\,ms.
+\end{table}
 
-\paragraph{The neohookean loss is the integrator's.} The conservation
-identities above hold for a linear stiffness. For a neohookean material
-central difference, the St\"ormer--Verlet method, conserves a modified
-energy that differs from $E$ by a state-dependent term of order
-$\Delta t^2$ \cite{HairerLubichWanner2006}, so $E$ varies at that order
-and does not grow. Table~\ref{tab:neohookean-dt} measures this on the
-neohookean cylinders at $-35$\,m/s over $2$\,ms: the monolithic mesh and
-the decomposed mesh with the direct interface solve, each at the step of
-the example and at half that step. The variation of $E$ is of the same
-order on both systems and falls by a factor of $3.9$ and $4.0$ when the
-step is halved; its sign differs because the two discrete systems have
-different modified energies. The interface is closed to roundoff at both
-steps. The loss of the decomposed run is therefore the integrator's
-$\Delta t^2$ term, not interface work. Conservation of $E$ to roundoff
-for a nonlinear material needs an energy--momentum integrator
-\cite{SimoTarnow1992,Gonzalez1996}, whose coupled form would need a
-midpoint velocity constraint; that is a separate project.
+\subsection{Nonlinear material}
+
+On the neohookean cylinders the direct solve closes the interface to
+$7\times 10^{-16}$ at every step, and $E$ stays within $6.4\times 10^{-5}$
+over $2$\,ms, against $5.4\times 10^{-5}$ for the monolithic mesh at the
+same step. Halving the step reduces both variations by a factor of $3.9$
+and $4.0$ (Table~\ref{tab:neohookean-dt}, Fig.~\ref{fig:cylinders}): the
+variation is the $\Delta t^2$ error of central difference, not interface
+work. The two signs differ because the two discrete systems have different
+modified energies.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figs/cylinders-time-step.pdf}
+\caption{Energy of the neohookean cylinders, $-35$\,m/s, $2$\,ms: the
+monolithic mesh and the decomposed mesh with the constrained exchange and
+the direct interface solve, each at two time steps.}
+\label{fig:cylinders}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -2141,539 +900,107 @@ decomposed, direct & $2.5\times 10^{-7}$ & $0.999995$ & $0.999993$
 \end{tabular}
 \end{table}
 
-\paragraph{Comparison on the beam.} Table~\ref{tab:beam-compare} sets the
-monolithic reference, the present Dirichlet--Neumann exchange
-(\code{constrained: false}, free side Dirichlet, $\theta = 0.5$, tolerances
-of the examples: relative $10^{-8}$, absolute $2.54\times 10^{-8}$, at most
-$128$ iterations; Newton with conjugate gradients, relative $10^{-10}$,
-absolute $2.54\times 10^{-8}$), the paired impedance coupling (defaults:
-harmonic-mean impedance, Robin parameter $0$; $\theta = 0.5$ with an
-explicit member, recursive Aitken for II; the same tolerances), and the
-constrained exchange (tolerance $10^{-12}$, absolute $10^{-15}$, at most
-$256$ iterations, direct linear solver, coupled initial acceleration,
-$\theta = 0.5$) side by side, all at the stop $10^{-6}$\,s and to
-$10$\,ms. The examples use $5\times 10^{-7}$\,s; the present exchange is
-run here at $10^{-6}$\,s.
+\subsection{The classical exchange}
+\label{sec:baseline}
 
-\begin{table}[htbp]
-\centering
-\scriptsize\setlength{\tabcolsep}{2pt}
-\caption{Cantilever, $10$\,ms. $E(t)/E(0)$ at $1$, $2$, $5$, and
-$10$\,ms; $\delta E = \max_t \lvert E(t)/E(0) - 1 \rvert$ with the sign of
-$E(10\,\text{ms})/E(0) - 1$ (or of the last value reached); drift is the
-root mean square one-sided interface displacement jump at $10$\,ms in m;
-it.\ is the mean and maximum number of Schwarz iterations per stop; wall
-time in seconds on four threads; the last column gives completion or the
-time and cause of the end of the run. $v$ and $u$: velocity and
-displacement constraint; D: the Dirichlet side.}
-\label{tab:beam-compare}
-\begin{tabular}{lcccccccrrl}
-\toprule
-coupling & 1 & 2 & 5 & 10 & $\delta E$ & $\delta \tilde{E}$ & drift & it. & wall & completed \\
-\midrule
-\multicolumn{11}{l}{\emph{conforming meshes ($8.47$\,mm), equal steps}} \\
-monolithic I & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-2.4\mathrm{e}{-14}$ & $-7.7\mathrm{e}{-14}$ & - & 1.0/1 & 71 & yes \\
-monolithic E & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-1.5\mathrm{e}{-14}$ & $-2.9\mathrm{e}{-14}$ & - & 1.0/1 & 40 & yes \\
-II present DN & - & - & - & - & $+6.6\mathrm{e}{0}$ & $+2.2\mathrm{e}{2}$ & - & 15.6/21 & - & inverted 0.57\,ms \\
-II impedance & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $+1.0\mathrm{e}{-7}$ & $-1.7\mathrm{e}{-6}$ & $1.3\mathrm{e}{-11}$ & 6.5/8 & 438 & yes \\
-II constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-2.8\mathrm{e}{-11}$ & $-7.0\mathrm{e}{-11}$ & $5.8\mathrm{e}{-15}$ & 7.0/8 & 211 & yes \\
-II constr.\ $u$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-2.2\mathrm{e}{-11}$ & $-5.3\mathrm{e}{-11}$ & $2.4\mathrm{e}{-15}$ & 7.1/8 & 195 & yes \\
-IE present DN & 1.0025 & 1.0018 & 1.0066 & 1.0052 &
-  $+2.9\mathrm{e}{-2}$ & $+2.3\mathrm{e}{-1}$ & $4.8\mathrm{e}{-9}$ & 13.1/14 & 303 & yes \\
-IE impedance & 0.9985 & 0.9990 & 0.9986 & 0.9973 &
-  $-3.5\mathrm{e}{-3}$ & $-7.7\mathrm{e}{-2}$ & $5.1\mathrm{e}{-6}$ & 22.6/27 & 645 & yes \\
-IE constr.\ $v$, D implicit & 0.9990 & 0.9997 & 0.9999 & 0.9996 &
-  $-1.2\mathrm{e}{-3}$ & $-6.3\mathrm{e}{-12}$ & $5.2\mathrm{e}{-6}$ & 29.0/32 & 380 & yes \\
-EI present DN & 1.2185 & 5.2604 & - & - &
-  $+1.3\mathrm{e}{1}$ & $+4.6\mathrm{e}{1}$ & - & 15.3/18 & - & inverted 2.39\,ms \\
-EI impedance & 1.0031 & 1.0011 & 1.0013 & 1.0011 &
-  $+3.3\mathrm{e}{-3}$ & $-5.1\mathrm{e}{-2}$ & $2.8\mathrm{e}{-6}$ & 23.0/27 & 718 & yes \\
-EI constr.\ $v$, D implicit & 1.0033 & 1.0016 & 1.0024 & 1.0034 &
-  $+3.7\mathrm{e}{-3}$ & $+4.2\mathrm{e}{-10}$ & $2.9\mathrm{e}{-6}$ & 27.1/28 & 377 & yes \\
-EE present DN & 1.0037 & 1.0019 & 1.0009 & 1.0238 &
-  $+4.3\mathrm{e}{-2}$ & $+5.4\mathrm{e}{-2}$ & $7.6\mathrm{e}{-9}$ & 13.1/14 & 114 & yes \\
-EE impedance & 0.9997 & 0.9994 & 0.9974 & 0.9945 &
-  $-5.5\mathrm{e}{-3}$ & $-6.6\mathrm{e}{-2}$ & $1.2\mathrm{e}{-5}$ & 31.0/86 & 219 & yes \\
-EE constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-1.2\mathrm{e}{-14}$ & $-3.6\mathrm{e}{-14}$ & $4.8\mathrm{e}{-17}$ & 1.0/1 & 51 & yes \\
-\midrule
-\multicolumn{11}{l}{\emph{free part $6.35$\,mm; $1{:}0.5$ and $1{:}0.75$ coarsen the clamped part; equal steps}} \\
-monolithic I & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-6.1\mathrm{e}{-14}$ & $-1.1\mathrm{e}{-13}$ & - & 1.0/1 & 93 & yes \\
-monolithic E & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $+1.0\mathrm{e}{-14}$ & $-3.5\mathrm{e}{-14}$ & - & 1.0/1 & 45 & yes \\
-$1{:}0.5$ II present DN & - & - & - & - &
-  $+3.0\mathrm{e}{1}$ & $+3.4\mathrm{e}{2}$ & - & 14.8/19 & - & inverted 0.69\,ms \\
-$1{:}0.5$ II impedance & 0.8668 & 0.7793 & 0.6058 & 0.4317 &
-  $-5.7\mathrm{e}{-1}$ & $-7.0\mathrm{e}{-1}$ & $3.8\mathrm{e}{-5}$ & 6.0/7 & 403 & yes \\
-$1{:}0.5$ II constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-1.2\mathrm{e}{-10}$ & $-1.8\mathrm{e}{-11}$ & $3.7\mathrm{e}{-14}$ & 17.2/18 & 448 & yes \\
-$1{:}0.5$ II constr.\ $u$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-1.2\mathrm{e}{-10}$ & $+4.3\mathrm{e}{-11}$ & $7.6\mathrm{e}{-15}$ & 17.3/19 & 463 & yes \\
-$1{:}0.5$ EE present DN & 1.0073 & 1.0017 & 1.0005 & 1.0083 &
-  $+2.8\mathrm{e}{-2}$ & $+1.9\mathrm{e}{-2}$ & $5.7\mathrm{e}{-9}$ & 12.9/15 & 108 & yes \\
-$1{:}0.5$ EE impedance & 0.8953 & 0.7742 & 0.5963 & 0.4157 &
-  $-5.8\mathrm{e}{-1}$ & $-7.7\mathrm{e}{-1}$ & $1.5\mathrm{e}{-5}$ & 21.2/27 & 158 & yes \\
-$1{:}0.5$ EE constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $+3.5\mathrm{e}{-11}$ & $+6.9\mathrm{e}{-11}$ & $1.0\mathrm{e}{-13}$ & 23.7/26 & 173 & yes \\
-$1{:}0.75$ II present DN & - & - & - & - &
-  $+9.8\mathrm{e}{0}$ & $+2.5\mathrm{e}{2}$ & - & 15.0/20 & - & inverted 0.38\,ms \\
-$1{:}0.75$ II impedance & 0.9573 & 0.9321 & 0.8717 & - &
-  $-1.3\mathrm{e}{-1}$ & $+3.0\mathrm{e}{4}$ & - & 6.8/8 & - & inverted 5.02\,ms \\
-$1{:}0.75$ II constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-1.7\mathrm{e}{-11}$ & $-5.2\mathrm{e}{-11}$ & $8.5\mathrm{e}{-15}$ & 13.5/14 & 425 & yes \\
-$1{:}0.75$ II constr.\ $u$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $-4.2\mathrm{e}{-11}$ & $+3.2\mathrm{e}{-10}$ & $3.5\mathrm{e}{-15}$ & 13.1/15 & 391 & yes \\
-$1{:}0.75$ EE present DN & 1.0059 & 1.0056 & 1.0026 & 1.0020 &
-  $+2.6\mathrm{e}{-2}$ & $+2.3\mathrm{e}{-2}$ & $1.0\mathrm{e}{-8}$ & 12.9/14 & 131 & yes \\
-$1{:}0.75$ EE impedance & 0.9489 & -1.3453 & - & - &
-  $-2.4\mathrm{e}{3}$ & $+3.3\mathrm{e}{5}$ & - & 35.6/51 & - & inverted 3.52\,ms \\
-$1{:}0.75$ EE constr.\ $v$ & 1.0000 & 1.0000 & 1.0000 & 1.0000 &
-  $+2.2\mathrm{e}{-11}$ & $+6.1\mathrm{e}{-11}$ & $1.6\mathrm{e}{-14}$ & 16.2/17 & 163 & yes \\
-\midrule
-\multicolumn{11}{l}{\emph{conforming meshes, free part subcycled $4{:}1$ ($2.5\times 10^{-7}$\,s)}} \\
-EE present DN & 1.0017 & 1.0012 & 1.0053 & 1.0089 &
-  $+3.5\mathrm{e}{-2}$ & $+5.4\mathrm{e}{-2}$ & $8.6\mathrm{e}{-9}$ & 13.0/14 & 219 & yes \\
-EE impedance & 0.9907 & 0.9825 & 0.9530 & 0.9100 &
-  $-9.0\mathrm{e}{-2}$ & $-1.6\mathrm{e}{-1}$ & $9.0\mathrm{e}{-6}$ & 32.0/62 & 424 & yes \\
-EE constr.\ $v$, D fine & 1.0432 & 1.1376 & 1.4698 & 0.9938 &
-  $-5.1\mathrm{e}{-1}$ & $+7.1\mathrm{e}{-8}$ & $4.2\mathrm{e}{-6}$ & 32.6/34 & 518 & yes \\
-EE constr.\ $v$, D coarse & 1.0005 & 1.0009 & 1.0003 & 1.0006 &
-  $+1.1\mathrm{e}{-3}$ & $-4.5\mathrm{e}{-13}$ & $3.1\mathrm{e}{-6}$ & 6.0/7 & 131 & yes \\
-II present DN & - & - & - & - & $+6.4\mathrm{e}{0}$ & $+2.0\mathrm{e}{2}$ & - & 15.6/21 & - & inverted 0.36\,ms \\
-II impedance & 0.9717 & 0.9427 & 0.8745 & 0.7830 &
-  $-2.2\mathrm{e}{-1}$ & $-4.7\mathrm{e}{-1}$ & $4.4\mathrm{e}{-6}$ & 6.0/6 & 771 & yes \\
-II constr.\ $v$, D fine & 1.0168 & 1.0682 & 1.1977 & 0.9872 &
-  $-2.0\mathrm{e}{-1}$ & $+2.4\mathrm{e}{-8}$ & $4.2\mathrm{e}{-14}$ & 32.2/34 & 1335 & yes \\
-II constr.\ $v$, D coarse & 0.9968 & 0.9982 & 0.9972 & 0.9971 &
-  $-3.8\mathrm{e}{-3}$ & $+1.3\mathrm{e}{-12}$ & $3.1\mathrm{e}{-6}$ & 10.1/15 & 636 & yes \\
-IE constr.\ $v$, D coarse (I) & 0.9994 & 0.9998 & 0.9999 & 0.9997 &
-  $-7.4\mathrm{e}{-4}$ & $-3.9\mathrm{e}{-12}$ & $1.5\mathrm{e}{-6}$ & 28.9/32 & 643 & yes \\
-EI constr.\ $v$, D fine (I) & 1.0167 & 1.0477 & 1.1465 & 0.9942 &
-  $-1.7\mathrm{e}{-1}$ & $+3.4\mathrm{e}{-8}$ & $5.1\mathrm{e}{-6}$ & 33.4/35 & 1326 & yes \\
-EI constr.\ $v$, D coarse (E) & - & - & - & - & NaN & NaN & - & 1/1 & - & inverted 0.00\,ms \\
-\bottomrule
-\end{tabular}
-\end{table}
+The classical Dirichlet--Neumann exchange departs from the constrained
+problem in the five respects listed in the abstract: it transmits the
+static reaction $-~f^{\mathrm{int}}$, builds its two transfers
+independently, imposes displacement, velocity, and acceleration together,
+stops on the displacement update of the whole domain, and computes the
+initial acceleration per subdomain with the interface held fixed. The
+relative difference between the force it applies on the Neumann side and
+the transposed d'Alembert reaction of the Dirichlet side, measured in the
+$~W_N^{-1}$ norm at the end of every stop, has the median $0.83$ (maximum
+$4.2$) with explicit subdomains and $1.47$ (maximum $4.6$) with implicit
+ones; under the constrained exchange it is below $4\times 10^{-16}$. On the
+beam the classical exchange inverts an element within $1$\,ms with implicit
+subdomains on every mesh ratio and with $4{:}1$ steps, and with explicit
+subdomains the energy varies by $2.6$ to $4.3\%$ (Fig.~\ref{fig:beam}). On
+the neohookean cylinders it stays within $3\%$ over $2$\,ms with explicit
+subdomains.
 
-\paragraph{Paired impedance or constrained exchange.} On every case of
-Table~\ref{tab:beam-compare} the constrained exchange conserves at least
-as well as the paired impedance coupling and needs comparable iteration
-counts: on conforming meshes the paired coupling is within $3.5\times
-10^{-3}$ for II and the mixed pairs and loses $0.55\%$ for EE, while the
-constrained exchange is within the tolerance; at $1{:}0.5$ the paired
-coupling dissipates $57$ to $58\%$ of $E$, which the dashpot takes from
-the jump it cannot close, and at $1{:}0.75$ it ends by element inversion
-at $3.5$ and $5.0$\,ms, while the constrained exchange conserves to
-$10^{-10}$ at both ratios; with subcycling it loses $9$ and $22\%$ against
-$0.11$ and $0.38\%$. The impedance coupling is therefore not the solver
-for any case measured on the beam. It remains of interest only where the
-constrained exchange has no Dirichlet side to offer, a mixed pair with
-subcycling whose coarse member is explicit, and for interfaces whose
-two sides cannot be ordered by the gain \eqref{eq:dn-gain}; reformulating
-it as a solver of the constrained problem, with the impedance as a
-preconditioner of the interface iteration rather than as part of the
-transmission condition, is the form in which it could serve there. No
-code was removed.
+The overlap decomposition admits no construction of this kind: its two
+sides exchange data on two different surfaces, so there is no shared
+interface on which the two works can cancel. Robin and impedance
+transmission conditions on a shared interface were measured in the
+previous version of this note; none conserved on nonconforming meshes,
+because the transmission condition, not only the Schwarz iteration,
+defines their fixed point. A Robin condition assembled from the same
+reaction and the same one-sided constraint has the fixed point of the
+constrained problem and could serve as a solver of it.
 
-
-\subsection{Aitken relaxation of the constrained exchange}
-\label{sec:aitken}
-
-For a real gain spectrum in $[a, b]$ the best fixed factor is $\theta^* =
-2/((1 - a) + (1 - b))$ with contraction $(b - a)/((1 - a) + (1 - b))$
-per iteration: $0.50$ and $0.004$ for the conforming explicit pair, $0.48$
-and $0.039$ for the implicit pair, $0.33$ and $0.023$ for assignment (A) of
-the subcycled $1{:}0.5$ implicit pair, $0.17$ and $0.50$ for (A) explicit,
-$0.78$ to $0.80$ and about $0.2$ for (B), and $0.12$ and $0.69$ for an
-explicit Dirichlet side at equal steps. Aitken relaxation should find
-these factors without the spectrum.
-
-\paragraph{Diagnosis.} Relaxation acts on the constrained datum of the
-Dirichlet side only. On the conforming implicit pair at $\Delta t = 5\times
-10^{-7}$\,s both Aitken forms took $8.2$ iterations per stop and stopped on
-the stall rule at four stops in $200$. Every stop showed the same factor
-sequence, $0.5$, $0.5$, $0.597$, $0.9996$, $0.99999$, $0.4998$, $0.499$, and
-so on, with the velocity jump unchanged ($2.4\times 10^{-3}$) through the
-two iterations at a factor near $1$. The factor was formed from the
-partner's whole velocity field. Its interior values do not enter the
-exchange and follow a map of zero gain in the relaxed field, whose optimal
-factor is $1$; once they dominate the residual the factor tends to $1$,
-where the interface map, of gain near $-1$, does not contract. The factor
-is now formed from the projected trace $\Pi_D ~v_N$ that the Dirichlet side
-receives. The Aitken forms themselves are unchanged: the recursive (Irons
-and Tuck) and the secant forms produce the same sequence when
-$\lambda^n - \lambda^{n-1} = \theta^{n-1} ~r^{n-1}$, which holds after
-\code{N0}, and the measured sequences agree to four digits. The stall
-rule fired on one iteration without a $5\%$ decrease once the displacement
-update had converged; Aitken factors make the residual non-monotone (on
-the subcycled explicit pair (A) the jump went from $3.68\times 10^{-7}$ to
-$3.94\times 10^{-7}$ and then to $1.2\times 10^{-8}$), so a stall now requires
-three consecutive such iterations below the smallest residual seen. The
-remaining stalls are at the floor of the force residual over the substeps,
-about $10^{-12}$ to $10^{-11}$ relative. The force residual does not lag:
-with the Dirichlet side solved first it is formed from the same iteration.
-\code{N0} and the frozen-factor guard were not involved (no factor below
-$0.07$). The coupled initial acceleration used the fixed factor; under
-Aitken relaxation it now uses the secant factor of its own iterates,
-because on (A) explicit the fixed factor $0.5$ diverged there before the
-first stop.
-
-\paragraph{Measurements.} All runs are $10$\,ms, relative tolerance
-$10^{-12}$, no absolute tolerance, \code{stalled interface jump action:
-warn}; Aitken forms start from $\theta = 0.5$ with \code{aitken N0
-parameter: 1}. The stops of the equal-step conforming runs are
-$5\times 10^{-7}$\,s; the others $10^{-6}$\,s with the subcycled side at
-$2.5\times 10^{-7}$\,s; the explicit-Dirichlet runs are the equal-step
-conforming EI (clamped explicit side as Dirichlet) and IE (free explicit
-side as Dirichlet).
-\begin{center}
-\scriptsize\setlength{\tabcolsep}{2pt}
-\begin{tabular}{lllcccccrrl}
-\toprule
-case & relax. & $\theta$ at 5\,ms & 1 & 5 & 10 & $\lvert\delta \tilde{E}\rvert$ & impulse &
-  it. & wall & stalls \\
-\midrule
-eq.\ II & fixed $0.5$ & -- & 1.0000 & 1.0000 & 1.0000 & $1.3\mathrm{e}{-12}$ & $6.3\mathrm{e}{-16}$ & 5.9/6 & 325 & 0 \\
- & rec. & $0.50, 0.499, 0.499, 0.500, 0.501$ & 1.0000 & 1.0000 & 1.0000 & $1.4\mathrm{e}{-12}$ &
-  $6.3\mathrm{e}{-16}$ & 5.8/6 & 326 & 0 \\
- & sec. & same & 1.0000 & 1.0000 & 1.0000 & $1.2\mathrm{e}{-12}$ & $6.6\mathrm{e}{-16}$ & 5.8/6 & 256 & 0 \\
-eq.\ EE & all three & $0.5$ & 1.0000 & 1.0000 & 1.0000 & $3.1\mathrm{e}{-14}$ & $7.2\mathrm{e}{-16}$ &
-  1.0/1 & 67 & 0 \\
-(A) II & fixed $0.5$ & -- & 0.9989 & 0.9984 &
-  0.9993 & $4.7\mathrm{e}{-13}$ & $3.9\mathrm{e}{-12}$ & 44.5/54 & 2555 & -- \\
- & rec. & $0.327, 0.326, 0.333, 0.337, 0.325$ & 0.9989 & 0.9984 & 0.9993 & $1.2\mathrm{e}{-12}$ &
-  $8.3\mathrm{e}{-13}$ & 8.8/15 & 745 & 5 \\
- & sec. & same & 0.9989 & 0.9984 & 0.9993 & $5.5\mathrm{e}{-13}$ & $3.3\mathrm{e}{-12}$ & 8.8/16 & 741 & 86 \\
-(A) EE & fixed $0.5$, $0.25$ & -- & \multicolumn{8}{l}{diverged in the coupled initial acceleration} \\
- & rec. & $0.248, 0.203, 0.161, 0.268, 0.333$ & 1.0008 & 1.0006 & 1.0006 & $3.3\mathrm{e}{-13}$ &
-  $7.8\mathrm{e}{-11}$ & 20.9/87 & 456 & 667 \\
- & sec. & same & 1.0008 & 1.0006 & 1.0006 & $9.3\mathrm{e}{-13}$ & $3.4\mathrm{e}{-10}$ & 22.7/31 & 488 & 7747 \\
-(B) II & fixed $0.5$ & -- & 1.0008 & 1.0008 &
-  1.0008 & $1.6\mathrm{e}{-12}$ & $6.2\mathrm{e}{-16}$ & 18.8/21 & 829 & -- \\
- & rec. & $0.652, 0.653, 0.647, 0.644, 0.660$ & 1.0008 & 1.0008 & 1.0008 & $1.7\mathrm{e}{-13}$ &
-  $6.4\mathrm{e}{-16}$ & 7.0/9 & 372 & 0 \\
- & sec. & same & 1.0008 & 1.0008 & 1.0008 & $2.6\mathrm{e}{-13}$ & $6.8\mathrm{e}{-16}$ & 7.0/13 & 367 & 1 \\
-(B) EE & fixed $0.5$ & -- & 0.9994 & 0.9993 &
-  0.9993 & $3.7\mathrm{e}{-12}$ & $6.0\mathrm{e}{-16}$ & 26.9/31 & 315 & -- \\
- & rec. & $0.699, 0.732, 0.818, 0.670, 0.842$ & 0.9994 & 0.9993 & 0.9993 & $3.7\mathrm{e}{-13}$ &
-  $5.6\mathrm{e}{-16}$ & 10.9/13 & 162 & 0 \\
- & sec. & same & 0.9994 & 0.9993 & 0.9993 & $3.2\mathrm{e}{-13}$ & $5.8\mathrm{e}{-16}$ & 10.9/13 & 166 & 0 \\
-EI, D expl. & fixed $0.5$, $0.75$, $1$ & -- & \multicolumn{8}{l}{diverged; element inversion at the first stop} \\
- & rec. & $0.094, 0.077, 0.111, 0.170, 0.085$ & 1.0033 & 1.0024 & 1.0034 & $6.8\mathrm{e}{-11}$ &
-  $1.1\mathrm{e}{-8}$ & 34.6/45 & 534 & 938 \\
- & sec. & same & 1.0033 & 1.0024 & 1.0034 & $6.7\mathrm{e}{-11}$ & $1.1\mathrm{e}{-8}$ & 35.9/48 & 560 & 6548 \\
-IE, D expl. & fixed $0.5$, $0.75$, $1$ & -- & \multicolumn{8}{l}{diverged; element inversion at the first stop} \\
- & rec. & $0.088, 0.079, 0.133, 0.187, 0.070$ & 0.9990 & 0.9999 & 0.9996 & $1.9\mathrm{e}{-12}$ &
-  $5.5\mathrm{e}{-16}$ & 33.9/46 & 524 & 0 \\
- & sec. & same & 0.9990 & 0.9999 & 0.9996 & $7.5\mathrm{e}{-13}$ & $5.7\mathrm{e}{-16}$ & 34.0/44 & 506 & 98 \\
-\bottomrule
-\end{tabular}
-\end{center}
-The columns $1$, $5$, $10$ are $E(t)/E(0)$ at those milliseconds;
-$\theta$ lists the factors of the first three relaxed iterations of the stop
-at $5$\,ms (rec.: recursive, sec.: secant); impulse is the largest relative
-impulse residual of the run; it.\ is the mean and maximum number of Schwarz iterations per stop; wall
-time in seconds on four threads; stalls counts the stops accepted by the
-stall rule. The fixed-factor rows are those of Tables~\ref{tab:constrained}
-and \ref{tab:subcycled}, except the equal-step conforming ones, rerun at
-$5\times 10^{-7}$\,s; their stall counts were not recorded under the former
-rule. Aitken converges in every case, including the two where every fixed
-factor tried diverged, and finds factors near $\theta^*$: $0.33$ on (A)
-implicit, $0.16$ to $0.33$ on (A) explicit, $0.64$ to $0.84$ on (B), and $0.07$
-to $0.21$ with an explicit Dirichlet side. Against the fixed factor $0.5$ it
-reduces the iterations per stop from $44.5$ to $8.8$ on (A) implicit, from
-$26.9$ to $10.9$ on (B) explicit, and from $18.8$ to $7.0$ on (B) implicit,
-and equals it where $0.5$ is near $\theta^*$. The counts are close to
-$\log(10^{-12})/\log$ of the contraction at $\theta^*$ ($8$ on (A) implicit,
-$17$ to $40$ on the spectra with contraction $0.2$ to $0.5$) and below the $74$
-that the contraction $0.69$ predicts with an explicit Dirichlet side. The
-energies match the fixed-factor runs to the digits shown. The secant form
-is accepted by the stall rule more often than the recursive one, at the
-floor of the force residual ($10^{-12}$ to $6\times 10^{-10}$ relative on (A)
-explicit, median $2.4\times 10^{-11}$ against $2.9\times 10^{-12}$ for the
-recursive form), without an effect on the energies beyond $10^{-12}$.
-
-
-\subsection{Anderson acceleration of the constrained exchange}
-\label{sec:anderson}
-
-Anderson acceleration~\cite{WalkerNi2011}, in the interface quasi-Newton
-form of Degroote, Bathe, and Vierendeels~\cite{DegrooteBatheVierendeels2009},
-replaces the single factor of Aitken relaxation by a combination of the last
-$m$ iterates (\code{relaxation: anderson}, \code{anderson depth: m}, with
-\code{relaxation parameter} as the mixing parameter $\beta$). With $~x_k$ the
-datum the Dirichlet side used, $~g_k = G(~x_k)$ the partner field the
-iteration returns, $~f_j = ~g_j - ~x_j$, $~t_j$ the projected trace of $~f_j$,
-and $\Delta T$, $\Delta X$, $\Delta F$ the differences of the last $m + 1$
-iterates,
-\begin{equation}
-  \gamma = \arg\min \lVert ~t_k - \Delta T \gamma \rVert, \qquad
-  ~x_{k+1} = ~x_k + \beta ~f_k - (\Delta X + \beta\,\Delta F)\,\gamma .
-\end{equation}
-The least-squares problem is solved by QR of $\Delta T$, dropping the oldest
-column while the condition number of $R$ exceeds $10^{10}$. The state is kept
-per pair and per substep slot, cleared at every stop and after a stall, and
-the scheme applies to single-slot stops only, as Aitken relaxation does. The
-coupled initial acceleration uses the same scheme on its own iterates. For a
-linear interface map $~x \mapsto A~x + ~b$, with $\beta = 1$ and a depth at
-least the iteration count, $~x_{k+1} = G$ of the $k$-th GMRES iterate for
-$(I - A)~x = ~b$ (Walker and Ni, Theorem~2.2); test~136 checks this on the
-interface gain of the conforming implicit pair to $10^{-8}$ over six
-iterations. A fresh slot seeds the previous iterate with the incoming datum,
-so its residual is exactly zero; entered into the history it makes the
-coefficient cancel the next update, and it is left out.
-
-The measurements use the settings of Sec.~\ref{sec:aitken}, depths $5$ and
-$10$:
-\begin{center}
-\footnotesize\setlength{\tabcolsep}{3pt}
-\begin{tabular}{lcccccc}
-\toprule
-case & fixed $0.5$ & Aitken recursive & Anderson, $m = 5$ & Anderson, $m = 10$ & initial, Aitken & initial, Anderson \\
-\midrule
-eq.\ II & 5.9/6 & 5.8/6 & 5.0/6 & 5.0/6 & 3 & 2 \\
-(A) II & 44.5/54 & 8.8/15 & 6.0/8 & 6.0/8 & 7 & 4 \\
-(A) EE & diverged & 20.9/87 & 8.9/9 & 8.9/9 & 21 & 7 \\
-(B) II & 18.8/21 & 7.0/9 & 5.0/7 & 5.0/7 & 5 & 3 \\
-(B) EE & 26.9/31 & 10.9/13 & 5.0/5 & 5.0/5 & 15 & 4 \\
-EI, D explicit & diverged & 34.6/45 & 69.2/118 & 16.0/16 & 47 & 9 \\
-IE, D explicit & diverged & 33.9/46 & 53.6/108 & 13.9/14 & 47 & 8 \\
-\bottomrule
-\end{tabular}
-\end{center}
-The entries are Schwarz iterations per stop, mean and maximum, and the
-iterations of the coupled initial acceleration. The energies agree with
-the Aitken runs to the digits of Sec.~\ref{sec:aitken}, and the impulse
-residual is at most $5.3\times 10^{-13}$ relative except in the two
-explicit-Dirichlet runs at depth $5$. Anderson needs fewer iterations than
-Aitken in every case: $5.0$ against $5.8$ on the equal-step implicit pair,
-$6.0$ against $8.8$ and $8.9$ against $20.9$ on assignment (A), and $5.0$
-against $7.0$ and $10.9$ on (B), with no stall and identical results at both
-depths, since these stops need fewer iterations than the depth. With an
-explicit Dirichlet side the depth decides: at $m = 10$ the iteration takes
-$16$ (EI) and $14$ (IE) iterations per stop, against $35$ for Aitken, with no
-stall, and $\tilde{E}$ stays within $6.5\times 10^{-14}$ and $4.6\times 10^{-14}$, so
-the drift of $6.8\times 10^{-11}$ that Aitken left through stops accepted at
-the force-residual floor disappears; at $m = 5$ the history is shorter than
-the $12$ to $16$ iterations that the $36$ interface unknowns need, the
-iteration takes $69$ and $54$ iterations per stop with $3828$ and $5031$
-stalled stops, and $\tilde{E}$ drifts by $9.0\times 10^{-11}$ and $1.0\times
-10^{-10}$. Wall times at $m = 10$: $287$ and $254$\,s for EI and IE (Aitken
-$534$ and $524$\,s), $98$ and $280$\,s for (B) EE and II (Aitken $162$ and
-$372$\,s), $166$ and $497$\,s for (A) EE and II (Aitken $456$ and $745$\,s).
-
-\section{Conclusions}
-\label{sec:conclusion}
-
-\subsection{Findings}
-
-\begin{enumerate}[itemsep=2pt]
-\item Dirichlet transmission on nonconforming meshes injects energy on
-  both benchmarks, on the overlap decomposition and on the implicit
-  nonoverlap Dirichlet--Neumann exchange: exponential growth ending in
-  element inversion, at comparable rates on a flexural beam and on a
-  shock-loaded nested assembly (Secs.~\ref{sec:overlap-nonconforming},
-  \ref{sec:beam-five}, \ref{sec:cylinders}).
-\item The classical Robin--Robin condition is not a remedy. It reflects
-  every wave ($\lvert R \rvert \equiv 1$), has no term that damps the
-  interface mode, and pumps energy on both benchmarks and both
-  decompositions, usually faster than Dirichlet transmission, at either
-  Robin parameter; with per-side transfer its converged solution depends
-  on $\alpha$ (Secs.~\ref{sec:beam-rr}, \ref{sec:cylinders}).
-\item On an overlap boundary the impedance condition is consistent with
-  the monodomain solution only with the partner traction, and with the
-  consistent traction it is exact on conforming meshes ($0.08\%$ at
-  $1$\,ms, no parameters). On nonconforming meshes its interface work is
-  sign-indefinite in principle (two surfaces, non-adjoint transfers) and
-  in practice (injection up to $+275\%$, sign changes between adjacent
-  ratios, $74$ of $108$ runs failing by $10$\,ms), and no construction at
-  the interface changes that, because the discrepancy is the difference
-  of the two grids' dispersion relations, which both grids represent
-  (Secs.~\ref{sec:conforming}--\ref{sec:overlap-remedies}). On the
-  cylinders it fails sooner than Dirichlet coupling.
-\item Energy consistency requires one interface traction acting through
-  adjoint transfers built from one cross-mass matrix; the interface power
-  is then the sign-definite dissipation \eqref{eq:telescope} on the
-  interface jump. Only the nonoverlap decomposition, with its shared
-  interface, admits this construction (Sec.~\ref{sec:theory}).
-\item The adjoint-paired nonoverlap coupling never injects energy at any
-  ratio, pairing, or benchmark. On the beam it conserves to $0.3\%$ at
-  $1$\,ms and to $0.0\%$ at $10$\,ms on conforming and $1{:}0.9$ meshes
-  with an implicit member; at strong contrast it dissipates the
-  unrepresentable jump at a persistent rate ($40$ to $85\%$ by $10$\,ms);
-  the non-nested ratios $1{:}0.7$ to $1{:}0.8$ accumulate interface-local
-  high-frequency content until an element inverts at $3$ to $5$\,ms; and
-  explicit--explicit pairs end bounded but noisy, which subcycling the
-  explicit member removes (Sec.~\ref{sec:beam-nonoverlap}).
-\item On the cylinders the paired coupling is stable but loses half the
-  energy within $1$\,ms, because the iteration stops on displacement
-  while the interface velocity jump, which the dashpot damps, stalls at a
-  finite value; more iterations halve the loss, and no relaxation nearly
-  removes it before the iteration diverges (Sec.~\ref{sec:cylinders}).
-\item Different time steps per subdomain use piecewise-linear
-  interpolation of the partner trajectory, whose dissipation of order
-  $\Delta t$ is the energy loss intrinsic to subcycling; exact
-  cancellation of the subcycled interface work is incompatible with a
-  partitioned exchange (Sec.~\ref{sec:subcycle}).
-\item The relaxation state must be keyed per pair and per substep slot;
-  Aitken acceleration applies to single-slot stops only, reduces the
-  iteration count tenfold on the implicit beam pairs, and diverges in every form on
-  the explicit cylinders pair, where a fixed factor of $0.5$ converges in
-  $2$ to $3$ iterations (Sec.~\ref{sec:relaxation}).
-\item With explicit subdomains on both sides the plain
-  Dirichlet--Neumann exchange conserved on both benchmarks (within $1\%$
-  on the beam, $3\%$ on the cylinders), while with implicit subdomains it
-  is the fastest coupling to fail. Its interface force misses the
-  interface inertia: the relative force residual against the d'Alembert
-  reaction has the median $0.83$ (explicit) and $1.47$ (implicit)
-  (Sec.~\ref{sec:constrained-results}).
-\item The constrained Dirichlet--Neumann exchange (d'Alembert reaction,
-  transfers from one cross matrix, one imposed quantity with the other two
-  from the receiver's Newmark relations, stopping on the constraint and the
-  force residual, coupled initial acceleration) conserves the matched
-  energy on the beam over $10$\,ms to between $4\times 10^{-14}$ and
-  $4\times 10^{-10}$ at a tolerance of $10^{-12}$, for II, IE, EI, and EE,
-  on conforming meshes and at the ratios $1{:}0.5$ and $1{:}0.75$; at
-  $1{:}0.75$, where the paired impedance coupling inverted elements, it
-  completes (Sec.~\ref{sec:constrained-results}).
-\item The Dirichlet role decides convergence: with the explicit member as
-  the Dirichlet side the gain of the iteration has eigenvalues down to
-  $-13.3$ and every relaxation factor from $0.5$ to $1$ diverges; with the
-  implicit member they lie in $[-0.61, -0.075]$. For identical integrators
-  on conforming meshes the eigenvalues are near $-1$: $\theta = 0.5$ is
-  optimal and $\theta = 1$ does not converge.
-\item With a $4{:}1$ step ratio the constrained exchange with the
-  coarse-step side as the Dirichlet side keeps $\tilde{E}$ within $4\times
-  10^{-12}$ and $E$ within $0.4\%$ over $10$\,ms, without a direct
-  interface solve (Sec.~\ref{sec:pseudo-energy}); with the fine-step side
-  as the Dirichlet side $E$ varies by up to $51\%$ and the interface
-  impulse residual is of the order of the impulse. The present paired impedance coupling loses $9$ (EE) and $22\%$
-  (II) on the same case (Sec.~\ref{sec:constrained-results}).
-\item For two explicit subdomains at equal steps the direct interface
-  solve \eqref{eq:direct} conserves $E$ and $\tilde{E}$ to roundoff on the beam
-  at every mesh ratio and on the linear cylinders at $-5$ and $-35$\,m/s,
-  with no iteration, and keeps $E$ of the neohookean cylinders within
-  $6.4\times 10^{-5}$ over $2$\,ms, against $5.4\times 10^{-5}$ for the
-  monolithic mesh at the same step; both fall by a factor of $4$ at half
-  the step (Table~\ref{tab:neohookean-dt}), so that variation is the
-  integrator's $\Delta t^2$ term and not interface work.
-\item On the beam the constrained exchange conserves at least as well as
-  the paired impedance coupling in every case measured, including the
-  nonconforming ratios where the paired coupling dissipates $58\%$
-  ($1{:}0.5$) or inverts an element ($1{:}0.75$).
-\end{enumerate}
-
-\subsection{Recommendations}
-
-\begin{itemize}[itemsep=2pt]
-\item \textbf{Energy-critical dynamic coupling}: use the constrained
-  Dirichlet--Neumann exchange (\code{constrained: true}, velocity
-  constraint, $\theta = 0.5$), with the implicit member, or with identical
-  integrators the finer side, as the Dirichlet side at equal steps, and
-  the coarse side as the Dirichlet side with different steps. The
-  adjoint-paired impedance coupling is retained in the code; on the beam it
-  conserved no case better than the constrained exchange
-  (Sec.~\ref{sec:constrained-results}).
-\item \textbf{Overlap decompositions}: conforming meshes with
-  implicit--implicit integration conserve at any horizon; every other
-  overlap configuration is for short transients only.
-\item \textbf{Robin--Robin}: for quasi-statics and comparison studies
-  only.
-\item \textbf{All-explicit interfaces}: subcycle the finer side, or
-  accept the bounded, noisy state; central difference removes no
-  grid-frequency content at any stable step.
-\item \textbf{Parameters}: the impedance is material data (harmonic mean
-  per pair for nonoverlap, partner material with P/S split for overlap);
-  no scaling. The Robin parameter must be one value per interface under
-  pairing and affects only the iteration when the jump can close; on
-  nonconforming meshes its effect on the converged solution is
-  unmeasured for the paired coupling, and the runs in this note use
-  $\alpha = 0$ or $2\times 10^{9}$\,N/m$^3$.
-\item \textbf{Path to conservation}: at equal time steps use the
-  constrained Dirichlet--Neumann exchange (\code{constrained: true}) with
-  the implicit member, or the finer side, as the Dirichlet side and a
-  fixed relaxation factor chosen from the gain \eqref{eq:dn-gain} ($0.5$
-  for identical integrators); the remaining changes of
-  Sec.~\ref{sec:constrained-plan} (direct interface solve, different time
-  steps) come next.
-\item \textbf{Diagnostics}: use the blended energy output with the
-  staggered metric for explicit members, and the channel-resolved
-  interface-work instrumentation as the acceptance metric for any change
-  to the transmission machinery; a small net drift can be the difference
-  of two large channels.
-\end{itemize}
-
-\subsection{Open questions}
+\section{Limitations and open questions}
 \label{sec:open}
 
 \begin{enumerate}[label=(\roman*),itemsep=2pt]
-\item The stalled interface jump on the cylinders: a stopping criterion
-  that refuses a stalled velocity jump, relaxation factors between $0.5$
-  and $1$, and subcycling of the explicit side are the candidates for
-  recovering the energy the paired coupling now dissipates.
-\item The dependence of the converged paired solution on $\alpha$ and on
-  $\theta$: the fixed point differs by about $4\times 10^{-5}$ relative
-  displacement between $\theta = 0.5$ and $1$ at a $10^{-13}$ tolerance
-  on the $1{:}0.5$ beam, evidence of a neutral mode of the exchange that
-  the displacement criterion does not measure; an $\alpha$ sweep of the
-  paired coupling on nonconforming meshes has not been run.
-\item Why the Dirichlet--Neumann exchange is stable between explicit
-  subdomains and unstable between implicit ones. Answered by the first
-  reference experiment: with the departures of
-  Sec.~\ref{sec:constrained-norma} removed, the implicit pair conserves
-  $E$ and $\tilde{E}$ to $7\times 10^{-11}$ over $10$\,ms, where the present
-  exchange inverts an element at $0.46$\,ms; the present exchange misses
-  an interface force of the size of the reaction itself (median relative
-  residual $1.47$ implicit, $0.83$ explicit). Which departure alone
-  accounts for the difference between the two integrators was not
-  isolated.
-\item The non-nested mesh-ratio failure window of the paired transfer at
-  long horizons.
-\item Higher-order multirate coupling ($r \ge 2$ in the sense of Connors
-  et al.~\cite{ConnorsEtAl2024}) and a direct interface solve over a
-  subcycled window. Exact cancellation of the subcycled interface work
-  itself is obtained by the iterated exchange with the coarse-step side as
-  the Dirichlet side (Sec.~\ref{sec:pseudo-energy}).
-\item Under subcycling with the fine-step side as the Dirichlet side,
-  $\tilde{E}$ is conserved up to accumulated stopping error ($4.4\times 10^{-9}$
-  EE and $2.0\times 10^{-9}$ II over $10$\,ms at the relative tolerance
-  $10^{-12}$), but $E$ varies by $51\%$ and $20\%$ at the first bending
-  period, and the interface impulse residual is of the order of the
-  impulse (median relative residual $0.95$ and $0.67$, net $y$ residual
-  summing to $-29$ and $-17$\,N\,s), against roundoff for the coarse-step
-  Dirichlet side. Whether the impulse residual causes the $E$ variation
-  has not been tested separately.
-\item The absolute branch of the constrained stopping rule divided the
-  absolute tolerance by the step to obtain a velocity floor of $200$\,m/s
-  on the cylinders. The floor is removed and the direct solve converges
-  the explicit exchange exactly (Sec.~\ref{sec:constrained-results}); a
-  converged iterated cylinder run to $2$\,ms has not been made.
-\item Mesh-ratio and overlap-width families on the cylinders, and
-  implicit versions of its subdomains, to test whether the beam
-  conclusions transfer.
+\item \emph{Inexact Schwarz iteration.} Every iterated run stops at a
+  tolerance, and the stopping error accumulates: the conserved quantity
+  drifts by about $10^{-10}$ over $10^4$ stops at $\epsilon = 10^{-12}$, and
+  by about $10^{-9}$ with the fine-step side as the Dirichlet side. How the
+  drift scales with $\epsilon$ and with the number of windows, and whether
+  the criterion \eqref{eq:stopping} needs refinement, has not been
+  measured.
+\item \emph{Mixed pair with an explicit coarse-step side.} The coarse-step
+  side must be the Dirichlet side and an explicit Dirichlet side has a gain
+  down to $-13$; Anderson acceleration converges at equal steps in this
+  configuration but has not been measured with subcycling.
+\item \emph{Cause of the energy swing with the fine-step side as the
+  Dirichlet side.} The swing coincides with an impulse residual of the
+  order of the impulse; that the residual causes it has not been tested
+  separately.
+\item \emph{Nonlinear materials.} Conservation of $E$ to roundoff needs an
+  energy-momentum integrator and a midpoint velocity constraint.
+\item \emph{Higher flux order and window solves.} Flux order $r \ge 2$ in
+  the sense of Connors et al.\ and a direct interface solve over a
+  subcycled window are not needed for conservation; whether they reduce
+  the cost has not been measured.
+\item \emph{Implicit subdomains on the cylinders} and more than two
+  subdomains have not been run.
 \end{enumerate}
+
+\section{Implementation in Norma}
+\label{sec:norma}
+
+The exchange is a \code{Schwarz DN nonoverlap} condition with
+\code{constrained: true} on both sides of a pair and
+\code{constraint: velocity} (or \code{displacement} for trapezoidal pairs);
+\code{default BC type} assigns the Dirichlet and Neumann roles;
+\code{interface solve: direct} selects the direct solve for two explicit
+sides at equal steps. The top-level input sets the relative tolerance
+$\epsilon$, \code{relaxation: anderson} with \code{anderson depth} and
+\code{relaxation parameter} (the mixing parameter), or
+\code{relaxation: aitken recursive}; \code{constraint absolute tolerance}
+sets an absolute floor in the units of the constrained quantity (default
+$0$), and \code{stalled interface jump action} selects what a stalled stop
+does. \code{blended energy output: true} writes, per stop, the energy $E$
+(\code{total\_energy}), the pseudo-energy $\tilde{E}$
+(\code{pseudo\_energy\_total} and per subdomain; NaN for nonlinear
+materials), the interface displacement and velocity jumps, and, for
+subcycled pairs, the impulse residual \eqref{eq:impulse}. The keys are
+documented in \code{docs/src/reference/multidomain.md}. The implementation
+is in \code{src/schwarz.jl}, \code{src/simulation.jl}, and
+\code{src/overlap\_energy.jl}; tests 135 (pseudo-energy) and 136
+(constrained exchange, including the direct solve, subcycling, Aitken and
+Anderson acceleration, and the equivalence of Anderson acceleration with
+GMRES on a probed interface map), and 137 (windowed stops). Examples:
+\code{examples/nonoverlap/dynamic-same-step/cantilever-dn} (the beam, from
+which test 136 builds its constrained pairs),
+\code{examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming}
+(the beam at mesh ratio $1{:}0.5$), and
+\code{examples/jmp/concentric-cylinders-linear}. The parameter study
+\code{studies/dynamic-stability} measures the effect of each factor
+(exchange, mesh ratio, tolerance, time steps, solver, refinement) on the
+beam.
 
 \subsection*{Data provenance}
 
-Correction-sequence study and instrumentation:
-\path{rigel:~/test/Norma/cantilever-energy}. Mesh-ratio sweep,
-$10$\,ms horizon, controller-step sweep, and run harness:
-\path{sirius:~/cantilever-energy-study/}. The 2026-09 reruns,
-the Robin--Robin runs, and the cylinders runs:
-\path{rigel:~/test/Norma/beam/} (\code{runs}, \code{runs-r090},
-\code{runs-r050}) and \path{rigel:~/test/Norma/cylinders/}. Slides:
-\path{Norma-Energy-Stability-Beam-Cylinders-2026-09.pptx}. Regression
-tests: 104 (overlap impedance energy and consistent-traction patch), 105
-(tensor impedance cross-scaling), 106 (variational transfer projectors
-and content-absorption dissipativity), 110 (adjoint pairing, windowed
-equivalence, keyword guards), 125 (explicit stable step with
-subcycling).
+The equal-step, subcycled, gain, and solver measurements were made on
+sirius between September 30 and October 1, 2026, at the commits that
+introduced each feature (\code{9b09793c} through \code{570557c5}); the
+figures and the neohookean time-step measurements are reruns of October 2,
+2026 at commit \code{08b0d866}.
+
 \begin{thebibliography}{99}
 
 \bibitem{MotaTezaurPhlipot2022}
@@ -2681,18 +1008,6 @@ A.~Mota, I.~Tezaur, G.~Phlipot,
 The Schwarz alternating method for transient solid dynamics,
 \emph{International Journal for Numerical Methods in Engineering}
 123:5036--5071, 2022.
-
-\bibitem{MotaKoliesnikovaTezaurHoy2023}
-A.~Mota, D.~Koliesnikova, I.~Tezaur, J.~Hoy,
-A fundamentally new coupled approach to contact mechanics via the
-Dirichlet--Neumann Schwarz alternating method,
-arXiv:2311.05643, 2023.
-
-\bibitem{LysmerKuhlemeyer1969}
-J.~Lysmer, R.L.~Kuhlemeyer,
-Finite dynamic model for infinite media,
-\emph{Journal of the Engineering Mechanics Division (ASCE)}
-95(EM4):859--877, 1969.
 
 \bibitem{GravouilCombescure2001}
 A.~Gravouil, A.~Combescure,
@@ -2731,82 +1046,6 @@ Coupling subdomains with heterogeneous time integrators and incompatible
 time steps,
 \emph{Computational Mechanics} 44:825--843, 2009.
 
-\bibitem{GravouilCombescureBrun2015}
-A.~Gravouil, A.~Combescure, M.~Brun,
-Heterogeneous asynchronous time integrators for computational structural
-dynamics,
-\emph{International Journal for Numerical Methods in Engineering}
-102:202--232, 2015.
-
-\bibitem{HerryDiValentinCombescure2002}
-B.~Herry, L.~Di~Valentin, A.~Combescure,
-An approach to the connection between subdomains with non-matching meshes
-for transient mechanical analysis,
-\emph{International Journal for Numerical Methods in Engineering}
-55:973--1003, 2002.
-
-\bibitem{SubberMatous2016}
-W.~Subber, K.~Matou\v{s},
-Asynchronous space--time algorithm based on a domain decomposition method
-for structural dynamics problems on non-matching meshes,
-\emph{Computational Mechanics} 57:211--235, 2016.
-
-\bibitem{FarhatRoux1991}
-C.~Farhat, F.-X.~Roux,
-A method of finite element tearing and interconnecting and its parallel
-solution algorithm,
-\emph{International Journal for Numerical Methods in Engineering}
-32:1205--1227, 1991.
-
-\bibitem{FarhatCrivelliRoux1994}
-C.~Farhat, L.~Crivelli, F.-X.~Roux,
-Transient FETI methodology for large-scale parallel implicit computations
-in structural mechanics,
-\emph{International Journal for Numerical Methods in Engineering}
-37:1945--1975, 1994.
-
-\bibitem{KarimiNakshatrala2014}
-S.~Karimi, K.B.~Nakshatrala,
-On multi-time-step monolithic coupling algorithms for elastodynamics,
-\emph{Journal of Computational Physics} 273:671--705, 2014.
-
-\bibitem{GanderHalpernNataf2003}
-M.J.~Gander, L.~Halpern, F.~Nataf,
-Optimal Schwarz waveform relaxation for the one dimensional wave equation,
-\emph{SIAM Journal on Numerical Analysis} 41(5):1643--1681, 2003.
-
-\bibitem{AchdouJaphetMadayNataf2002}
-Y.~Achdou, C.~Japhet, Y.~Maday, F.~Nataf,
-A new cement to glue non-conforming grids with Robin interface conditions:
-the finite volume case,
-\emph{Numerische Mathematik} 92(4):593--620, 2002.
-
-\bibitem{AppeloWang2019}
-D.~Appel\"o, S.~Wang,
-An energy-based discontinuous Galerkin method for coupled elasto-acoustic
-wave equations in second-order form,
-\emph{International Journal for Numerical Methods in Engineering}
-119(7):618--638, 2019.
-
-\bibitem{DuruEtAl2021}
-K.~Duru, L.~Rannabauer, A.-A.~Gabriel, O.K.A.~Ling, H.~Igel, M.~Bader,
-A stable discontinuous Galerkin method for linear elastodynamics in 3D
-geometrically complex elastic solids using physics based numerical fluxes,
-arXiv:1907.02658, 2021.
-
-\bibitem{LiuEtAl2023}
-Q.Q.~Liu, M.~Zhuang, W.~Zhan, L.~Shi, Q.H.~Liu,
-A hybrid implicit--explicit discontinuous Galerkin spectral element time
-domain (DG-SETD) method for computational elastodynamics,
-\emph{Geophysical Journal International} 234:1855--1869, 2023.
-
-\bibitem{ParkFelippaRebel2002}
-K.C.~Park, C.A.~Felippa, G.~Rebel,
-A simple algorithm for localized construction of non-matching structural
-interfaces,
-\emph{International Journal for Numerical Methods in Engineering}
-53:2117--2142, 2002.
-
 \bibitem{HairerLubichWanner2006}
 E.~Hairer, C.~Lubich, G.~Wanner,
 \emph{Geometric Numerical Integration: Structure-Preserving Algorithms for
@@ -2824,15 +1063,6 @@ elastodynamics,
 O.~Gonzalez,
 Time integration and discrete Hamiltonian systems,
 \emph{Journal of Nonlinear Science} 6:449--467, 1996.
-
-\bibitem{DvorakEtAl2023}
-R.~Dvo\v{r}\'ak, R.~Kolman, M.~Mra\v{c}ko, J.~Kopa\v{c}ka, T.~F\'ila,
-O.~Jirou\v{s}ek, J.~Falta, M.~Neuh\"auserov\'a, V.~Rada, V.~Ad\'amek,
-J.A.~Gonz\'alez,
-Energy-conserving interface dynamics with asynchronous direct time
-integration employing arbitrary time steps,
-\emph{Computer Methods in Applied Mechanics and Engineering} 413:116110,
-2023.
 
 \end{thebibliography}
 
