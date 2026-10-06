@@ -20,8 +20,8 @@ boundary conditions:
 
 The block is optional; a model with no `boundary conditions` has none. This page
 covers the single-domain condition types. The Schwarz coupling condition types
-(`Schwarz overlap`, `Schwarz DN nonoverlap`, `Schwarz impedance nonoverlap`,
-`Schwarz impedance overlap`, `Schwarz contact`) are documented under
+(`Schwarz overlap`, `Schwarz DN nonoverlap`, `Schwarz RR nonoverlap`,
+`Schwarz contact`) are documented under
 [Multidomain and Schwarz coupling](multidomain.md).
 
 Conditions are applied in a fixed order that does not depend on the order of

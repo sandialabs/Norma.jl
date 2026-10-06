@@ -50,7 +50,7 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `relative tolerance` | yes | — | relative interface convergence tolerance |
 | `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (m/s or m); the controller's `absolute tolerance` does not apply to constrained pairs |
 | `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
-| `stalled interface jump action` | no | `warn` | what to do when the interface jump of a paired impedance condition or the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
+| `stalled interface jump action` | no | `warn` | what to do when the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
 
 A step that reaches `maximum iterations` without converging reports the errors
 it stopped at against both tolerances. Under the default it says so and the run
@@ -71,12 +71,10 @@ instead, for cases where an unconverged interface must not be carried forward.
 Relaxation is not tied to a particular transmission condition: it applies to
 whatever datum a coupling boundary condition transmits. For `Schwarz overlap`
 and `Schwarz DN nonoverlap` the relaxed quantity is the interface displacement;
-for `Schwarz impedance nonoverlap` and `Schwarz RR nonoverlap` it is the
-interface force right-hand side. Both Aitken forms work
+for `Schwarz RR nonoverlap` it is the interface force right-hand side, the
+Robin datum of the subdomain listed later in `domains`. Both Aitken forms work
 with all of them, and `relaxation parameter` and `aitken N0 parameter` mean the
-same thing in each. On the impedance and Robin conditions the acceleration is
-substantial: on the cantilever benchmark either Aitken form converges in about
-a tenth of the Schwarz iterations that a fixed factor needs.
+same thing in each.
 
 `relaxation parameter` is not ignored when `relaxation` names an Aitken method.
 It is the factor applied for Schwarz iterations below `aitken N0 parameter`,
@@ -119,7 +117,7 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 | `pseudo_energy_total` | Ẽ, the pseudo-energy: the sum over subdomains of the energy functional applied to the velocity and the acceleration, in J/s² |
 | `pseudo_energy_<subdomain>` | Ẽ of one subdomain, one column per subdomain in the order of `domains` |
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
-| `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`); for an adjoint-paired impedance pair, D is the subdomain listed first |
+| `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`) |
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in m and m/s |
 | `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (N s), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
 
@@ -318,56 +316,29 @@ fixed relaxation θ converges when every eigenvalue g of G satisfies
   θ = 1 does not converge.
 - nonconforming meshes: make the finer side the Dirichlet side.
 
-### `Schwarz impedance nonoverlap`
-
-Non-overlapping impedance (absorbing) coupling — the default and recommended
-non-overlapping method. The interface transmits the partner traction plus a
-dashpot term, making the interface energy exchange dissipative. See
-`docs/notes/schwarz-coupling` for the theory.
-
-| Key | Required | Default | Meaning |
-|---|---|---|---|
-| `source side set` | yes | — | partner interface surface |
-| `robin parameter` | no | `0.0` | Robin coefficient α; must be identical on both sides under `adjoint pairing` (the default), where it affects the convergence rate and not the converged solution when the interface jump closes (conforming or nested meshes); on nonconforming meshes the accepted iterate carries a residual jump and the effect of α on the converged solution has not been measured; per-side values are allowed with `adjoint pairing: false` |
-| `impedance scale` | no | `1.0` | scalar scaling of the dashpot impedance; must be > 0 |
-| `adjoint pairing` | no | `true` | use the adjoint-paired shared cross-mass transfer (recommended); `false` restores the legacy per-side transfer |
-
 ### `Schwarz RR nonoverlap`
 
-The classical Robin-Robin coupling `traction + α·displacement = data`: the
-Robin spring is the only coupling term and there is no dashpot (`impedance
-scale` is rejected under this keyword). The condition is not absorbing, so in
-elastodynamics it can pump energy at the interface (issue #176; on the
-cantilever and nested-cylinders benchmarks of `docs/notes/schwarz-coupling`
-nearly every dynamic Robin-Robin run ends by element inversion after
-exponential energy growth, on overlap and nonoverlap decompositions alike); it is intended
-for quasi-statics and for comparison against the classical Robin-Robin
-literature, and the run warns when it is used with a dynamic time integrator.
-For dynamics prefer `Schwarz impedance nonoverlap`.
+The classical Robin-Robin coupling t + α W u = g, with t the interface
+traction, u the interface displacement, W the boundary mass matrix, α the
+Robin parameter (force per unit area per unit displacement), and g the datum
+assembled from the traction and displacement of the partner. Each side builds
+its own transfer operators from the partner trace (per-side transfer), so the
+two sides of an interface may use different values of α. The condition does
+not absorb interface waves, so in elastodynamics it can inject energy at the
+interface (issue #176; on the cantilever and nested-cylinders benchmarks of
+`docs/notes/schwarz-coupling` nearly every dynamic Robin-Robin run ends by
+element inversion after exponential energy growth, on overlap and nonoverlap
+decompositions alike). It is intended for quasi-statics and for comparison
+against the classical Robin-Robin literature, and the run warns when it is used
+with a dynamic time integrator. For dynamics use the constrained
+Dirichlet-Neumann exchange: `Schwarz DN nonoverlap` with `constrained: true`
+and `constraint: velocity`, with `interface solve: direct` for two central
+difference subdomains at equal steps and `relaxation: anderson` otherwise.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `source side set` | yes | — | partner interface surface |
-| `robin parameter` | yes | — | Robin coefficient α (positive); the two sides may use different values under `adjoint pairing: false` (the default) |
-| `adjoint pairing` | no | `false` | `true` uses the adjoint-paired shared cross-mass transfer, which makes the Robin spring a conservative interface spring and requires one shared α per interface |
-
-### `Schwarz impedance overlap`
-
-Overlapping impedance coupling with recovered or consistent partner tractions.
-
-| Key | Required | Default | Meaning |
-|---|---|---|---|
-| `source block` | yes | — | partner element block covering the overlap |
-| `robin parameter` | no | `0.0` | Robin coefficient α |
-| `impedance scale` | no | `1.0` | dashpot impedance scaling (scalar, or a P/S-split schedule) |
-| `partner traction` | no | `auto` | `auto`, `consistent traction`, or `recovered stress` |
-| `transfer` | no | `variational` | partner-field transfer: `pointwise` or `variational` |
-| `transfer quadrature subdivisions` | no | `1` | quadrature refinement for variational transfer (integer ≥ 1) |
-| `representable dashpot` | no | `false` | restrict the dashpot to the representable subspace |
-| `content aware absorption` | no | `false` | content-aware absorption variant |
-
-Requesting `Schwarz impedance overlap` forces consistent nodal stress recovery
-on for the coupled model.
+| `robin parameter` | yes | — | Robin coefficient α (positive); the two sides may use different values |
 
 ### `Schwarz contact`
 
@@ -415,12 +386,13 @@ restart:
 - Overlapping Schwarz: `examples/overlap/`
 - Overlapping Schwarz with J2 plasticity (circular laser weld, graded pair):
   `examples/overlap/static-same-step/clw/`
-- Non-overlapping impedance (same and subcycled steps):
-  `examples/nonoverlap/dynamic-same-step/`,
-  `examples/nonoverlap/dynamic-different-steps/`
+- Non-overlapping Schwarz (Dirichlet-Neumann, constrained Dirichlet-Neumann,
+  and Robin-Robin): `examples/nonoverlap/dynamic-same-step/`,
+  `examples/nonoverlap/static-same-step/`; the constrained exchange on 2:1
+  nonconforming meshes: `examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming/`
 - Contact: `examples/contact/`
 - Adaptive mesh swapping: `examples/adaptive-time-stepping/`,
   `examples/ahead/`
 
 See `docs/notes/schwarz-coupling` for the theory and stability analysis of the
-impedance coupling.
+Schwarz couplings.

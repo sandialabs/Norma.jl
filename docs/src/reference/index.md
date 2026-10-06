@@ -114,9 +114,9 @@ older input format, or a key placed in the wrong section — produces a warning
 with a suggestion:
 
 ```text
-[WARNING] Input file 'cuboid-1.yaml': unknown key "adjoint paring" in
-          Schwarz impedance nonoverlap boundary condition 1.
-          Did you mean "adjoint pairing"?
+[WARNING] Input file 'cuboid-1.yaml': unknown key "constrainted" in
+          Schwarz DN nonoverlap boundary condition 1.
+          Did you mean "constrained"?
 ```
 
 Unknown keys warn rather than abort, and the run proceeds with the unknown

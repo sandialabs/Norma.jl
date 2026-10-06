@@ -21,7 +21,7 @@ Norma.run("bars.yaml")
 | `examples/materials/` | Material-model cases (for example J2 plasticity) |
 | `examples/element-types/` | Element-library cases (`tet4`, `tet10`, …) |
 | `examples/overlap/` | Overlapping Schwarz coupling (same and different time steps) |
-| `examples/nonoverlap/` | Non-overlapping Schwarz coupling, including the impedance method and subcycled cases |
+| `examples/nonoverlap/` | Non-overlapping Schwarz coupling: Dirichlet–Neumann (including the constrained exchange), Robin–Robin, and matrix inclusion |
 | `examples/contact/` | Contact via Schwarz (static, implicit, explicit) |
 | `examples/adaptive-time-stepping/` | Adaptive time stepping and mesh swapping |
 | `examples/ems/` | Mesh smoothing toward size and metric fields, and smoothing alternated with topological operations |

@@ -89,8 +89,9 @@ algorithms, with an emphasis on extensibility and experimentation:
   matrix-free steepest descent, and an explicit lumped-mass solver.
 - **Elements:** BAR2; TRI3, TRI6, QUAD4; TETRA4, TETRA10, HEX8; with Gauss,
   Dunavant, and Keast quadrature.
-- **Multidomain coupling:** overlapping and non-overlapping Schwarz, impedance
-  (absorbing) coupling, subcycled multi-time-step coupling, and Schwarz contact.
+- **Multidomain coupling:** overlapping and non-overlapping Schwarz, the
+  constrained Dirichlet–Neumann exchange for dynamics, subcycled
+  multi-time-step coupling, and Schwarz contact.
 - **Boundary conditions:** Dirichlet, Neumann traction and follower pressure,
   Robin, and inclined-surface (roller) support.
 - **Adaptive mesh swapping**, **nodal field recovery**, and **Exodus/CSV output**.
