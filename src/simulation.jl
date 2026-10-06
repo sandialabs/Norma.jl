@@ -416,8 +416,8 @@ function process_multidomain_restart!(params::Parameters)
 end
 
 # Warn (but do not abort) when a Schwarz restart is combined with
-# non-overlapping Schwarz coupling (`Schwarz DN nonoverlap`, `Schwarz RR
-# nonoverlap`, or `Schwarz impedance nonoverlap`). Nothing in process_restart!()
+# non-overlapping Schwarz coupling (`Schwarz DN nonoverlap` or `Schwarz RR
+# nonoverlap`). Nothing in process_restart!()
 # or process_multidomain_restart!() is specific to overlapping vs.
 # non-overlapping coupling — the positional nodal-field read is unaffected
 # either way — but this combination has not been exercised by the test suite,
@@ -428,9 +428,9 @@ function warn_restart_with_nonoverlap_schwarz(sim::MultiDomainSimulation)
     haskey(sim.params, "restart") || return nothing
     # Check the geometry-axis abstract type (overlap vs. non-overlap), not the
     # concrete `SolidMechanicsNonOverlapSchwarzBoundaryCondition` (the "Schwarz
-    # DN nonoverlap" type): "Schwarz RR nonoverlap" and "Schwarz impedance
-    # nonoverlap" both build SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition,
-    # a sibling concrete type under the same
+    # DN nonoverlap" type): "Schwarz RR nonoverlap" builds
+    # SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition, a sibling concrete
+    # type under the same
     # SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition abstract type that
     # the earlier concrete-type check never matched.
     has_nonoverlap = any(
@@ -1150,7 +1150,7 @@ function initialize(sim::MultiDomainSimulation)
     # reconstruction this time reads real data no matter which subdomain
     # is processed first.
     # A fresh (non-restart) start whose initial conditions put nonzero
-    # displacement or velocity on an impedance-Schwarz-coupled interface has
+    # displacement or velocity on a Robin-Robin-coupled interface has
     # the same consistency problem as a restart: the pass-1 accelerations
     # were solved against placeholder (zero) partner data, so the interface
     # force balance at t = 0 is one-sided, and the unbalanced Robin term
@@ -1293,11 +1293,11 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     return nothing
 end
 
-# True when any impedance-Schwarz-coupled DOF of this subdomain carries
+# True when any Robin-Robin-coupled DOF of this subdomain carries
 # nonzero initial displacement or velocity — the condition under which the
 # t = 0 acceleration refinement pass in initialize(sim::MultiDomainSimulation)
-# is needed for a fresh start. Restricted to the impedance nonoverlap
-# exchange, the only coupling the pass has been validated on: the unbalanced
+# is needed for a fresh start. Restricted to the Robin-Robin nonoverlap
+# exchange, the only remaining coupling the pass has been validated on: the unbalanced
 # Robin term α W u is what produces the one-step kick the pass removes, and
 # the DN d-form exchange demonstrably does not tolerate a trust-Schwarz
 # re-solve from a moving initial state (element inversion on the DN
@@ -1309,7 +1309,7 @@ function has_initial_interface_motion(subsim::SingleDomainSimulation)
     model = get_fom_model(subsim)
     model isa SolidMechanics || return false
     for bc in model.boundary_conditions
-        bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
+        bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition || continue
         for i_global in bc.global_from_local_map
             for comp in 1:3
                 if model.displacement[comp, i_global] != 0.0 ||
@@ -1456,17 +1456,6 @@ function schwarz(sim::MultiDomainSimulation)
         compute_interface_predictor!(sim)
     end
 
-    # Interface-jump criterion for adjoint-paired impedance interfaces: their slow
-    # jump mode contributes almost nothing to ΔU while still far from the
-    # fixed point, and the dashpot dissipates whatever jump the iteration
-    # leaves behind (measured: −16% of a wave packet crossing a conforming
-    # interface at the 1.0e-8 default tolerance) — see paired_impedance_jump
-    # (schwarz.jl). The criterion withholds convergence only while the jump is actually
-    # contracting: a jump mode with no dashpot authority (e.g. a quiescent
-    # interface) can stall above the tolerance, and holding then just rides
-    # the Schwarz iteration cap without improving the answer, so a stalled jump is
-    # accepted with a warning instead.
-    prev_jump_rel = -1.0
     constrained_stall = (Inf, 0)
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
@@ -1490,53 +1479,6 @@ function schwarz(sim::MultiDomainSimulation)
             )
             sim.controller.converged = false
         end
-        if sim.controller.converged
-            jump_rel = paired_impedance_jump(sim)
-            if jump_rel > sim.controller.relative_tolerance
-                if prev_jump_rel ≥ 0.0 && jump_rel > 0.95 * prev_jump_rel
-                    # A stalled jump is a representability floor of the pair's
-                    # trace spaces: no further Schwarz iteration reduces it, and the
-                    # dashpot dissipates it at a rate the tolerance no longer
-                    # bounds. The default accepts it loudly; "abort" is for
-                    # runs where that dissipation is unacceptable and the
-                    # remedy (mesh conformity or refinement) is on the user.
-                    stall_action = get(sim.params, "stalled interface jump action", "warn")
-                    if stall_action == "abort"
-                        norma_abort(
-                            "Impedance interface jump $(jump_rel) stalled above " *
-                            "tolerance $(sim.controller.relative_tolerance) and " *
-                            "`stalled interface jump action: abort` is set. The " *
-                            "jump is a representability limit of the interface " *
-                            "trace spaces (nonconforming meshes); the dashpot " *
-                            "dissipates it every stop. Refine toward conformity " *
-                            "or accept the loss with the default `warn`.",
-                        )
-                    elseif stall_action != "warn"
-                        norma_abort(
-                            "Unknown `stalled interface jump action: $(stall_action)`. " *
-                            "Valid values are `warn` (default) and `abort`.",
-                        )
-                    end
-                    norma_logf(
-                        0,
-                        :schwarz,
-                        "Impedance interface jump %.2e stalled above tolerance %.2e; accepting.",
-                        jump_rel,
-                        sim.controller.relative_tolerance,
-                    )
-                else
-                    norma_logf(
-                        0,
-                        :schwarz,
-                        "Impedance interface jump %.2e > %.2e holds convergence.",
-                        jump_rel,
-                        sim.controller.relative_tolerance,
-                    )
-                    sim.controller.converged = false
-                end
-            end
-            prev_jump_rel = jump_rel
-        end
         if iteration_number == 0
             # Initial Schwarz pass: there is no prior iterate to compare against,
             # so the relative criterion is not yet a Schwarz convergence measure.
@@ -1553,12 +1495,8 @@ function schwarz(sim::MultiDomainSimulation)
             )
             # Early exit: if the initial absolute update already meets the absolute
             # tolerance, no further Schwarz iterations are needed. The relative test
-            # still cannot be applied on iteration 0 (no prior iterate). Paired
-            # impedance interfaces must also satisfy the jump criterion here, since this
-            # path bypasses controller.converged entirely.
-            if ΔU ≤ sim.controller.absolute_tolerance &&
-                paired_impedance_jump(sim) ≤ sim.controller.relative_tolerance &&
-                constrained_converged
+            # still cannot be applied on iteration 0 (no prior iterate).
+            if ΔU ≤ sim.controller.absolute_tolerance && constrained_converged
                 norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
                 sim.controller.schwarz_iters[sim.controller.stop] = 0
                 break
@@ -1588,7 +1526,6 @@ function schwarz(sim::MultiDomainSimulation)
         save_schwarz_state(sim)
         restore_stop_state(sim)
     end
-    report_impedance_interface_work(sim)
 end
 
 function report_overlap_l2_errors(sim::MultiDomainSimulation)
@@ -2042,7 +1979,7 @@ end
 # nothing: the log ended in "Simulation Complete" and the simulation was not
 # marked failed, so an interface still far from converged was indistinguishable
 # from a converged one. Announce it, and let the input file promote it to an
-# abort, mirroring `stalled interface jump action` for the impedance condition.
+# abort, mirroring `stalled interface jump action` for the constrained exchange.
 function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::Int64)
     controller = sim.controller
     action = get(sim.params, "unconverged step action", "warn")
@@ -2161,10 +2098,8 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
     for subsim in sim.subsims
         bcs = subsim.model.boundary_conditions
         for bc in bcs
-            if bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
-                compute_impedance_schwarz_projectors!(subsim.model, bc)
-            elseif bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-                compute_impedance_overlap_schwarz_projectors!(subsim.model, bc)
+            if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+                compute_robin_schwarz_projectors!(subsim.model, bc)
             elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
                 coupled_model = get_fom_model(coupled_subsim_of(bc))
                 fom_model = get_fom_model(subsim)
@@ -2398,7 +2333,7 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
             #   - Non-overlap Neumann (is_dirichlet == false) reads force FROM the coupled domain.
             #   - Robin reads force from BOTH coupled domains.
             # So set predictor_∂Ω_f[x] when domain x's force is read by the other domain.
-            is_robin = bc_k isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
+            is_robin = bc_k isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
 
             pred_∂Ω_f_k = copy(controller.stop_∂Ω_f[dom_k])
             pred_∂Ω_f_j = copy(controller.stop_∂Ω_f[dom_j])

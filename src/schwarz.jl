@@ -6,15 +6,6 @@
 
 using LinearAlgebra: dot
 
-# ---------------------------------------------------------------------------
-# Impedance-matching Robin Schwarz: t + Z u̇ + α W u = g
-# ---------------------------------------------------------------------------
-#
-# g = -t_src_projected + Z * u̇_src_projected + α * W * u_src_projected
-#
-# The impedance term Z * u̇ absorbs outgoing waves at the interface,
-# preventing reflections that cause energy growth with mixed integrators.
-
 get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : sim.model
 
 # Resolve the partner (coupled) subsim of a Schwarz BC through its parent via
@@ -121,8 +112,11 @@ end
 # Irons–Tuck base frozen per Schwarz iteration) survived on the implicit pair but cost
 # 55 iterations/stop against 47.5 for fixed θ = 0.5 and 19.1 for θ = 1, while
 # locking θ persistently negative on the explicit pair (dead at 0.33 ms).
-# Windowed stops therefore use the configured relaxation parameter; for the
-# dashpot-stabilized impedance exchange θ = 1 is the measured optimum there.
+# These measurements were made with the impedance transmission condition
+# t + Z u̇ + α W u = g (Z the material impedance ρ c_p, u̇ the interface
+# velocity), which has since been removed from Norma; the policy is retained for
+# the remaining couplings. Windowed stops therefore use the configured
+# relaxation parameter.
 function aitken_applies(controller::MultiDomainTimeController, key::RelaxationKey)
     return length(relaxation_slots!(controller.lambda_time, key)) <= 1
 end
@@ -347,8 +341,19 @@ function recover_interface_kinematics!(controller, key, slot_k, integrator, inte
     return nothing
 end
 
-function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition)
-    Z = bc.impedance
+# ---------------------------------------------------------------------------
+# Robin-Robin nonoverlap Schwarz: t + α W u = g
+# ---------------------------------------------------------------------------
+#
+# Each side receives the datum g = -t_src + α W u_src, where t_src is the
+# interface reaction of the partner transferred by the Neumann projector, u_src
+# the interface displacement of the partner transferred by the Dirichlet
+# projector, W the boundary mass matrix of this side, and α its Robin
+# parameter. The self term α W u is added to the internal force
+# (build_robin_schwarz_force) and its tangent α W to the stiffness
+# (build_robin_schwarz_stiffness). The side listed later in `domains` relaxes
+# its datum.
+function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition)
     α = bc.robin_parameter
     W = bc.square_projector
     parent_sim = bc.parent
@@ -360,66 +365,58 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
     # Neumann part: -t_src projected
     neumann_force = get_dst_force(bc)
 
-    # Source displacement and velocity, projected to destination
+    # Source displacement, projected to destination
     src_sim = coupled_subsim_of(bc)
     src_model = get_fom_model(src_sim)
     src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
     src_global_from_local_map = src_bc.global_from_local_map
     num_src_nodes = length(src_global_from_local_map)
     src_disp = zeros(3, num_src_nodes)
-    src_velo = zeros(3, num_src_nodes)
     for (i_local, i_global) in enumerate(src_global_from_local_map)
         src_disp[:, i_local] = src_model.displacement[:, i_global]
-        src_velo[:, i_local] = src_model.velocity[:, i_global]
     end
     dirichlet_projector = bc.dirichlet_projector
     num_dst_nodes = size(dirichlet_projector, 1)
     dst_disp = zeros(3, num_dst_nodes)
-    dst_velo = zeros(3, num_dst_nodes)
     for i in 1:3
         dst_disp[i, :] = dirichlet_projector * src_disp[i, :]
-        dst_velo[i, :] = dirichlet_projector * src_velo[i, :]
     end
     global_from_local_map = bc.global_from_local_map
     theta = controller.relaxation_parameter
 
-    # RHS (partner contribution only): g = -t_src + Z*W*u̇_src + α*W*u_src
-    # The self terms (Z*W*u̇_self + α*W*u_self) are handled by
-    # apply_impedance_bcs_internal_force! called at each Newton iteration.
-    if (this_index < coupled_index)  # right subdomain
+    # Datum (partner contribution only): g = -t_src + α W u_src. The self term
+    # α W u_self is added by build_robin_schwarz_force at each evaluation.
+    if (this_index < coupled_index)  # side listed first: not relaxed
         for comp in 1:3
-            Z_W_vdot = Z * (W * dst_velo[comp, :])
             α_W_u = α * (W * dst_disp[comp, :])
             for (i_local, i_global) in enumerate(global_from_local_map)
                 dof_i = 3 * (i_global - 1) + comp
-                model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] +
-                                                Z_W_vdot[i_local] + α_W_u[i_local]
+                model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
             end
         end
-    else  # left subdomain (with relaxation)
+    else  # side listed later: relaxed
         # The relaxation state is per substep time slot (see relaxation_slot!):
-        # relaxing against the previous Schwarz iteration's RHS at the SAME time keeps the
-        # windowed exchange waveform-consistent. A fresh slot (every slot on
-        # iteration 0, since the state resets at each stop) has no previous
-        # iterate and starts from zero, as before.
+        # relaxing against the datum of the previous Schwarz iteration at the
+        # same time keeps a windowed exchange consistent in time. A fresh slot
+        # (every slot on iteration 0, since the state is reset at each stop) has
+        # no previous iterate and starts from zero.
         key = relaxation_key(bc)
         slot_k = relaxation_slot!(controller, key, model.time)
         g_slots = relaxation_slots!(controller.lambda_disp, key)
         ensure_slot!(g_slots, slot_k)
         g_stored = g_slots[slot_k]
         g = isempty(g_stored) ? zeros(length(model.boundary_force)) : g_stored
-        # Optional dynamic Aitken relaxation factor. The fixed-point iterate is
-        # the impedance RHS stored in lambda_disp; its unrelaxed (theta = 1)
-        # candidate is T(g) = boundary_force + impedance coupling term, from which
-        # the residual r = T(g) - g is formed. The fixed-theta blend is unchanged.
+        # Optional Aitken relaxation factor. The fixed-point iterate is the
+        # datum stored in lambda_disp; its unrelaxed (theta = 1) candidate is
+        # T(g) = boundary_force + Robin datum, from which the residual
+        # r = T(g) - g is formed.
         if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
             candidate = copy(model.boundary_force)
             for comp in 1:3
-                Z_W_vdot = Z * (W * dst_velo[comp, :])
                 α_W_u = α * (W * dst_disp[comp, :])
                 for (i_local, i_global) in enumerate(global_from_local_map)
                     dof_i = 3 * (i_global - 1) + comp
-                    candidate[dof_i] += neumann_force[3 * (i_local - 1) + comp] + Z_W_vdot[i_local] + α_W_u[i_local]
+                    candidate[dof_i] += neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
                 end
             end
             theta = controller.relaxation_method === :aitken_secant ?
@@ -429,11 +426,10 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
         frozen_relaxation_update!(controller, theta)
         g_slots[slot_k] = copy(model.boundary_force)
         for comp in 1:3
-            Z_W_vdot = Z * (W * dst_velo[comp, :])
             α_W_u = α * (W * dst_disp[comp, :])
             for (i_local, i_global) in enumerate(global_from_local_map)
                 dof_i = 3 * (i_global - 1) + comp
-                rhs_i = neumann_force[3 * (i_local - 1) + comp] + Z_W_vdot[i_local] + α_W_u[i_local]
+                rhs_i = neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
                 g_slots[slot_k][dof_i] += (1 - theta) * g[dof_i] + theta * rhs_i
                 model.boundary_force[dof_i] = g_slots[slot_k][dof_i]
             end
@@ -441,134 +437,60 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceNonOv
     end
 end
 
-# Tangent contribution: K_impedance = (Z * c_v + α) * W
-# where c_v = γ/(β·Δt) is the Newmark velocity coefficient.
-# For quasi-static (no velocity), only the α * W term contributes.
-# For explicit integrators, this is not called (no tangent assembly).
-function build_impedance_schwarz_stiffness(model::SolidMechanics, integrator::TimeIntegrator)
+# Tangent contribution α W of the Robin self term, for the implicit
+# integrators. Explicit integrators assemble no tangent.
+function build_robin_schwarz_stiffness(model::SolidMechanics)
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
-    K_is = spzeros(num_dofs, num_dofs)
+    K_rs = spzeros(num_dofs, num_dofs)
     for bc in model.boundary_conditions
-        bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
-        Z = bc.impedance
+        bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition || continue
         α = bc.robin_parameter
         W = bc.square_projector
-        # Velocity coefficient from Newmark: c_v = γ/(β·Δt)
-        c_v = if integrator isa Newmark
-            integrator.γ / (integrator.β * integrator.time_step)
-        else
-            0.0  # quasi-static: no velocity contribution
-        end
-        coeff = Z * c_v + α
         global_from_local_map = bc.global_from_local_map
         for (i_local, i_global) in enumerate(global_from_local_map)
             for (j_local, j_global) in enumerate(global_from_local_map)
-                w_ij = coeff * W[i_local, j_local]
+                w_ij = α * W[i_local, j_local]
                 for comp in 1:3
                     dof_i = 3 * (i_global - 1) + comp
                     dof_j = 3 * (j_global - 1) + comp
-                    K_is[dof_i, dof_j] += w_ij
+                    K_rs[dof_i, dof_j] += w_ij
                 end
             end
         end
     end
-    return K_is
+    return K_rs
 end
 
-has_paired_impedance_bcs(model::SolidMechanics) = any(
-    bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && bc.adjoint_pairing for
-    bc in model.boundary_conditions
-)
-
-# IMEX treatment of the paired impedance interface for explicit (central
-# difference) subdomains. The interface dashpot must act on the END-of-step
-# velocity v_{n+1} = ṽ + γΔt·a_{n+1} — evaluating it at the predictor ṽ
-# leaves the acceleration loop of the consistent-traction exchange unresolved
-# and is violently unstable. Because the dashpot force is linear in the
-# unknown acceleration, the implicit treatment closes on the interface rows:
-#   (M + γΔt·Z·W)|_Γ a_{n+1} = M·a_expl|_Γ ,
-# where a_expl is the plain explicit update (whose right-hand side already
-# contains the dashpot at ṽ and the Robin spring at the known u_{n+1}).
-# The interior stays matrix-free explicit; only this small SPD system (one
-# per interface, reused for the three components) is solved per evaluation,
-# which is Liu et al.'s IMEX-Newmark structure. At the Schwarz fixed point
-# both sides then satisfy the transmission condition with synchronized
-# t_{n+1} velocities, exactly as in the implicit-implicit case.
-# Interface DOFs held by Dirichlet BCs keep their prescribed acceleration
-# and enter the free rows' right-hand side as data.
-# The interface matrix (M + γΔt·Z·W)|_Γ of the IMEX solve depends only on the
-# lumped masses, the step, the impedance, and the projector, none of which
-# change within a run unless the subdomain is swapped or the step adapts. The
-# dense projector is a few thousand rows on a real interface, so refactoring
-# it for every component at every evaluation dominated the run; the Cholesky
-# factor is cached per boundary condition and component and rebuilt only when
-# one of its inputs changes.
-mutable struct ImexInterfaceFactor
-    projector::Matrix{Float64}   # identity of the projector the factor was built from
-    scale::Float64               # γΔt·Z
-    free_mask::Vector{Bool}
-    masses::Vector{Float64}
-    factor::Cholesky{Float64,Matrix{Float64}}
-end
-
-const IMEX_FACTOR_CACHE = IdDict{Any,Vector{Union{Nothing,ImexInterfaceFactor}}}()
-
-function imex_interface_factor(
-    bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition,
-    comp::Int64,
-    scale::Float64,
-    masses::Vector{Float64},
-    free_mask::Vector{Bool},
-)
-    entries = get!(() -> Vector{Union{Nothing,ImexInterfaceFactor}}(nothing, 3), IMEX_FACTOR_CACHE, bc)
-    entry = entries[comp]
-    W = bc.square_projector
-    if entry === nothing || entry.projector !== W || entry.scale != scale || entry.free_mask != free_mask ||
-        entry.masses != masses
-        ff = findall(free_mask)
-        A = Matrix(Diagonal(masses[ff])) + scale .* W[ff, ff]
-        entry = ImexInterfaceFactor(W, scale, copy(free_mask), copy(masses), cholesky(Symmetric(A)))
-        entries[comp] = entry
-    end
-    return entry.factor
-end
-
-function imex_interface_acceleration!(
-    a_new::Vector{Float64},
-    integrator::CentralDifference,
-    model::SolidMechanics,
-    solver::Solver,
-)
-    γΔt = integrator.γ * integrator.time_step
-    free = model.free_dofs
+# Robin self term W α u_self, returned as a separate force vector rather than
+# added to model.internal_force, because get_dst_force reads
+# model.internal_force for the traction transfer and must see only the elastic
+# internal force.
+function build_robin_schwarz_force(model::SolidMechanics)
+    num_dofs = 3 * size(model.reference, 2)
+    f = zeros(num_dofs)
     for bc in model.boundary_conditions
-        (bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && bc.adjoint_pairing) || continue
-        size(bc.square_projector, 1) > 0 || continue
-        Z = bc.impedance
+        bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition || continue
+        α = bc.robin_parameter
         W = bc.square_projector
-        gmap = bc.global_from_local_map
-        scale = γΔt * Z
+        global_from_local_map = bc.global_from_local_map
+        num_nodes = length(global_from_local_map)
+        self_disp = zeros(num_nodes)
         for comp in 1:3
-            dofs = [3 * (g - 1) + comp for g in gmap]
-            m = model.lumped_mass[dofs]
-            r = m .* a_new[dofs]
-            f_mask = Vector{Bool}(free[dofs])
-            factor = imex_interface_factor(bc, comp, scale, m, f_mask)
-            if all(f_mask)
-                a_new[dofs] = factor \ r
-            else
-                ff = findall(f_mask)
-                fx = findall(!, f_mask)
-                rf = r[ff] .- scale .* (W[ff, fx] * a_new[dofs[fx]])
-                a_new[dofs[ff]] = factor \ rf
+            for (i_local, i_global) in enumerate(global_from_local_map)
+                self_disp[i_local] = model.displacement[comp, i_global]
+            end
+            f_rs = W * (α * self_disp)
+            for (i_local, i_global) in enumerate(global_from_local_map)
+                dof_i = 3 * (i_global - 1) + comp
+                f[dof_i] += f_rs[i_local]
             end
         end
     end
-    return nothing
+    return f
 end
 
-function pair_bc(bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition, bc_index::Int64)
+function pair_bc(bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
     coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
@@ -581,13 +503,11 @@ function pair_bc(bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition, 
     return nothing
 end
 
-function compute_impedance_schwarz_projectors!(
-    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
+# Per-side transfer operators of a Robin-Robin interface: each side builds its
+# own Dirichlet and Neumann projectors and its boundary mass matrix W.
+function compute_robin_schwarz_projectors!(
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
 )
-    if dst_bc.adjoint_pairing
-        compute_paired_impedance_schwarz_projectors!(dst_model, dst_bc)
-        return nothing
-    end
     cache = RectangularProjectionCache()
     compute_dirichlet_projector(dst_model, dst_bc; cache=cache)
     compute_neumann_projector(dst_model, dst_bc; cache=cache)
@@ -595,115 +515,9 @@ function compute_impedance_schwarz_projectors!(
     return nothing
 end
 
-# Adjoint (variationally paired) construction: derive BOTH sides' transfer
-# operators from one shared cross-mass matrix B_mn = ∫_Γ φ¹_m φ²_n dS, so
-#   Π₁ = W₁⁻¹ B,   Π₂ = W₂⁻¹ Bᵀ,   N₁ = Π₂ᵀ,   N₂ = Π₁ᵀ,
-# which is the discrete adjoint condition W₁Π₁ = (W₂Π₂)ᵀ = B of the
-# energy-stable DG/mortar couplings. With the shared pair impedance
-# Z = 2 Z₁Z₂/(Z₁+Z₂) (harmonic mean; the Riemann-solver weighting, reducing to
-# the one-sided value for identical materials) and a shared Robin α, the
-# interface power of the dashpot channel telescopes to
-# -Z ∫_Γ [[u̇ʰ]]² dS ≤ 0 and the Robin channel becomes a conservative
-# interface spring. B is integrated over the facets of the finer side, where
-# the piecewise-smooth integrand is resolved best; the coarse-side partition
-# of unity and force-conservation certificates are then quadrature-exact up
-# to the nonconformity of the interface itself (logged below).
-function compute_paired_impedance_schwarz_projectors!(
-    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
-)
-    # The pair is processed once; the partner's pass finds its operators set.
-    if size(dst_bc.dirichlet_projector, 1) > 0
-        return nothing
-    end
-    src_sim = coupled_subsim_of(dst_bc)
-    src_model = get_fom_model(src_sim)
-    src_bc = src_model.boundary_conditions[dst_bc.coupled_bc_index]
-    if !(src_bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition) || !src_bc.adjoint_pairing
-        norma_abort(
-            "`adjoint pairing: true` must be set on BOTH sides of a Schwarz " *
-            "impedance nonoverlap pair (missing on the side coupled to '$(dst_bc.name)').",
-        )
-    end
-    W1 = get_square_projection_matrix(dst_model, dst_bc)
-    W2 = get_square_projection_matrix(src_model, src_bc)
-    n1 = size(W1, 1)
-    n2 = size(W2, 1)
-    # Integrate B over the finer side's facets (rows = this side, cols = partner).
-    B = if n1 >= n2
-        get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
-    else
-        Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
-    end
-    P1 = W1 \ B
-    P2 = W2 \ Matrix(transpose(B))
-    dst_bc.square_projector = W1
-    dst_bc.dirichlet_projector = P1
-    dst_bc.neumann_projector = Matrix(transpose(P2))
-    src_bc.square_projector = W2
-    src_bc.dirichlet_projector = P2
-    src_bc.neumann_projector = Matrix(transpose(P1))
-    # Shared pair impedance and Robin parameter. A zero pair impedance arises
-    # only from `Schwarz RR nonoverlap` (the classical Robin condition forces
-    # Z = 0) with `adjoint pairing: true`; guard the harmonic mean.
-    Z1 = dst_bc.impedance
-    Z2 = src_bc.impedance
-    Z_pair = Z1 + Z2 > 0.0 ? 2.0 * Z1 * Z2 / (Z1 + Z2) : 0.0
-    dst_bc.impedance = src_bc.impedance = Z_pair
-    α1 = dst_bc.robin_parameter
-    α2 = src_bc.robin_parameter
-    if !isapprox(α1, α2; rtol=1.0e-12, atol=0.0)
-        norma_abort(
-            "Adjoint pairing requires ONE Robin parameter per interface, but " *
-            "the sides '$(dst_bc.name)' and '$(src_bc.name)' specify " *
-            "$(α1) and $(α2). Set the same `robin parameter` on both sides " *
-            "(the Robin spring is conservative only when the two sides' " *
-            "interface forces pair through the same coefficient; the converged " *
-            "solution does not depend on its value, only the Schwarz " *
-            "convergence rate does). To use per-side Robin parameters with the " *
-            "legacy per-side transfer instead, set `adjoint pairing: false` " *
-            "on both sides of the interface.",
-        )
-    end
-    # The consistent (D'Alembert) traction exchanged under pairing couples the
-    # partner's acceleration into this side's force. Implicit (Newmark)
-    # subdomains resolve that algebraic loop within the Schwarz iteration;
-    # explicit (central difference) subdomains resolve it with the IMEX
-    # interface treatment (imex_interface_acceleration!): the interface rows
-    # of the acceleration update are solved implicitly so the dashpot acts on
-    # the end-of-step velocity, while the interior stays matrix-free explicit.
-    for sim_k in (coupled_subsim_of(dst_bc), self_subsim_of(dst_bc))
-        if sim_k.integrator isa CentralDifference
-            norma_log(
-                0,
-                :info,
-                "Adjoint pairing with an explicit (central difference) subdomain: " *
-                "IMEX interface treatment active (implicit interface rows in the " *
-                "acceleration update).",
-            )
-        end
-    end
-    # Quadrature-quality certificates (exact on conforming interfaces).
-    pu_error = max(
-        maximum(abs.(P1 * ones(n2) .- 1.0)),
-        maximum(abs.(P2 * ones(n1) .- 1.0)),
-    )
-    norma_logf(
-        0,
-        :info,
-        "Adjoint-paired impedance interface '%s'/'%s': Z = %.4e, α = %.3e, " *
-        "partition-of-unity error %.2e.",
-        dst_bc.name,
-        src_bc.name,
-        Z_pair,
-        dst_bc.robin_parameter,
-        pu_error,
-    )
-    return nothing
-end
-
 # Transfer operators of a constrained Dirichlet-Neumann pair, built from one
-# cross mass matrix B_mn = ∫_Γ φ¹_m φ²_n dS as for the adjoint-paired impedance
-# condition: Π₁ = W₁⁻¹ B, Π₂ = W₂⁻¹ Bᵀ, and each side's force transfer is the
+# cross mass matrix B_mn = ∫_Γ φ¹_m φ²_n dS, with φ¹ and φ² the trace shape
+# functions of the two sides: Π₁ = W₁⁻¹ B, Π₂ = W₂⁻¹ Bᵀ, and each side's force transfer is the
 # transpose of the partner's kinematic transfer, N₁ = Π₂ᵀ and N₂ = Π₁ᵀ. When
 # side 1 is the Dirichlet side, the Neumann side receives N₂ = Π_Dᵀ, so the
 # work of the transferred reaction on the Neumann velocity equals the work of
@@ -1089,882 +903,6 @@ function direct_initial_acceleration!(bc::SolidMechanicsNonOverlapSchwarzBoundar
     return nothing
 end
 
-# ---------------------------------------------------------------------------
-# Impedance overlap Schwarz: absorbing condition on overlap boundaries
-# ---------------------------------------------------------------------------
-#
-# Instead of overwriting DOFs (DBC-DBC), applies an impedance-matching
-# (zeroth-order optimized-Schwarz Robin) force built from the partner's
-# traction and kinematics, strongly interpolated at this subdomain's overlap
-# boundary:
-#   boundary_force += W * (t_partner + Z * u̇_partner + α * u_partner)
-# with the matching self terms W * (Z * u̇ + α * u) assembled on the
-# internal-force side (build_impedance_schwarz_force), so the converged
-# transmission condition is
-#   t - t_partner + Z * (u̇ - u̇_partner) + α * (u - u_partner) = 0,
-# which the monodomain solution satisfies identically. Omitting t_partner
-# turns the condition into a relative dashpot t = Z(u̇_partner - u̇) + ...,
-# which the monodomain solution fails by exactly t: the converged coupled
-# solution then carries a spurious interface velocity jump ≈ t/Z whose power
-# drain ~|t|²/Z acts as permanent interface damping.
-# DOFs remain free — waves pass through instead of reflecting.
-
-function _get_impedance_scale(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
-    scales = bc.impedance_scale
-    if length(scales) == 1
-        return scales[1]
-    end
-    parent_sim = bc.parent
-    step = max(1, parent_sim.controller.stop)
-    return scales[min(step, length(scales))]
-end
-
-function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition)
-    scale = _get_impedance_scale(bc)
-    Z_p = bc.impedance * scale
-    Z_s = bc.impedance_shear * scale
-    α = bc.robin_parameter
-    W = bc.square_projector
-
-    coupled_model_obj = coupled_subsim_of(bc).model
-    coupled_solid =
-        coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
-
-    # Partner traction t_partner = σ_partner · n at this subdomain's Schwarz
-    # boundary. That boundary is an interior surface of the partner mesh, so
-    # the partner's assembled internal force cannot supply the traction there
-    # (interior rows carry the inertia residual, not σ·n). On node-aligned
-    # interfaces the weak traction W·t_p comes from the consistent-traction patch
-    # (exact discrete traction; see build_consistent_traction_patch!). Otherwise
-    # interpolate the partner's nodal-recovered stress with the same
-    # shape-function data used for u̇ and u below; stress recovery is
-    # force-enabled for coupled models when this BC type is present (see
-    # SolidMechanics() in model.jl).
-    use_consistent_traction = bc.traction_patch !== nothing
-    if use_consistent_traction && size(bc.traction_patch.transfer, 1) > 0
-        # Stage 2c (non-aligned interface): the whole partner right-hand side
-        # comes through the single-operator characteristic transfer; the
-        # kinematic projector is bypassed for the RHS.
-        traction_term, impedance_term, robin_term =
-            characteristic_partner_terms(coupled_solid, bc, Z_p, Z_s, α)
-        # Representable dashpot: restrict the impedance channel to the
-        # transferable subspace. The terms here are weak (W-weighted)
-        # vectors; since Π is W-orthogonal (W Π = Πᵀ W), the weak form of
-        # the filtered field is the right-multiplication f Π per component
-        # (fᵀ ← Πᵀ fᵀ). The matching self term is filtered identically in
-        # build_impedance_schwarz_force.
-        if size(bc.representable_projector, 1) > 0
-            impedance_term = impedance_term * bc.representable_projector
-        end
-        partner_rhs = traction_term .+ impedance_term .+ robin_term
-        for comp in 1:3
-            for (i_local, i_global) in enumerate(bc.global_from_local_map)
-                dof_i = 3 * (i_global - 1) + comp
-                model.boundary_force[dof_i] += partner_rhs[comp, i_local]
-            end
-        end
-        return nothing
-    end
-    coupled_nodal_stress = Matrix{Float64}(undef, 0, 0)
-    weak_traction = Matrix{Float64}(undef, 0, 0)
-    if use_consistent_traction
-        weak_traction = consistent_partner_traction(coupled_solid, bc)
-    else
-        recover_stress!(coupled_solid)
-        coupled_nodal_stress = if size(coupled_solid.recovered_stress, 1) > 0
-            coupled_solid.recovered_stress
-        elseif size(coupled_solid.consistent_recovered_stress, 1) > 0
-            coupled_solid.consistent_recovered_stress
-        else
-            norma_abort(
-                "Schwarz impedance overlap requires nodal stress recovery on the coupled " *
-                "subdomain to evaluate the partner traction. Enable `nodal recovery:` with " *
-                "`stress: true` in the coupled subdomain's `model:` block.",
-            )
-        end
-    end
-    # Outward unit normals of this subdomain's Schwarz boundary, indexed like
-    # global_from_local_map (= unique(side_set_node_indices), same ordering).
-    normals = compute_normal(model.mesh, bc.side_set_id, model)
-
-    global_from_local_map = bc.global_from_local_map
-
-    # Partner traction, displacement, and velocity at each overlap boundary
-    # node, by variational projection or pointwise interpolation.
-    partner_velo, partner_disp, partner_trac =
-        impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
-    num_dst_nodes = size(partner_velo, 2)
-    # Representable dashpot: project the partner velocity onto the
-    # transferable subspace before the impedance product, matching the
-    # filtered self term in build_impedance_schwarz_force, so the dashpot
-    # acts on Π(u̇_p − u̇) — the component of the jump both trace spaces can
-    # represent, which vanishes at Schwarz convergence. (Under variational
-    # transfer u̇_p already lies in the span and only the self side changes.)
-    dashpot_velo =
-        size(bc.representable_projector, 1) > 0 ? partner_velo * bc.representable_projector' : partner_velo
-    partner_Zvdot = zeros(3, num_dst_nodes)
-    for i in 1:num_dst_nodes
-        # P/S-split tensor impedance: Z_p on the normal velocity component,
-        # Z_s on the tangential components (Lysmer-Kuhlemeyer split).
-        n = normals[:, i]
-        v = dashpot_velo[:, i]
-        vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
-        partner_Zvdot[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
-    end
-
-    # RHS (partner contribution only): f = W * (t_partner + Z·u̇_partner + α * u_partner)
-    # The self terms (W*(Z·u̇_self + α*u_self)) are handled by
-    # apply_impedance_bcs_internal_force! called at each Newton iteration.
-    # With the consistent-traction patch, W·t_partner is available directly as
-    # the weak traction (no separate W application).
-    for comp in 1:3
-        alpha_u = α * partner_disp[comp, :]
-        rhs = W * (partner_Zvdot[comp, :] + alpha_u)
-        rhs += use_consistent_traction ? weak_traction[comp, :] : W * partner_trac[comp, :]
-        for (i_local, i_global) in enumerate(global_from_local_map)
-            dof_i = 3 * (i_global - 1) + comp
-            model.boundary_force[dof_i] += rhs[i_local]
-        end
-    end
-    # DOFs remain free — no model.free_dofs modification
-end
-
-function build_impedance_overlap_schwarz_stiffness(model::SolidMechanics, integrator::TimeIntegrator)
-    num_nodes = size(model.reference, 2)
-    num_dofs = 3 * num_nodes
-    K_io = spzeros(num_dofs, num_dofs)
-    for bc in model.boundary_conditions
-        bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
-        scale = _get_impedance_scale(bc)
-        Z_p = bc.impedance * scale
-        Z_s = bc.impedance_shear * scale
-        α = bc.robin_parameter
-        W = bc.square_projector
-        c_v = if integrator isa Newmark
-            integrator.γ / (integrator.β * integrator.time_step)
-        else
-            0.0
-        end
-        global_from_local_map = bc.global_from_local_map
-        normals = compute_normal(model.mesh, bc.side_set_id, model)
-        # Tangent of the self term Σ_j W_ij (T(n_j) u̇_j + α u_j) with the
-        # tensor impedance T(n) = Z_p n⊗n + Z_s (I - n⊗n) applied at the
-        # source node j: 3x3 block W_ij (c_v T(n_j) + α I). With the
-        # representable dashpot the velocity entering the impedance term is
-        # Π u̇, so the dashpot part moves into the Π-weighted block below and
-        # only the α-spring remains here.
-        representable = size(bc.representable_projector, 1) > 0
-        for (j_local, j_global) in enumerate(global_from_local_map)
-            n = normals[:, j_local]
-            T = zeros(3, 3)
-            for a in 1:3, b in 1:3
-                dash = representable ? 0.0 : c_v * ((Z_p - Z_s) * n[a] * n[b] + (a == b ? Z_s : 0.0))
-                T[a, b] = dash + (a == b ? α : 0.0)
-            end
-            for (i_local, i_global) in enumerate(global_from_local_map)
-                w_ij = W[i_local, j_local]
-                for a in 1:3, b in 1:3
-                    T[a, b] == 0.0 && continue
-                    dof_i = 3 * (i_global - 1) + a
-                    dof_j = 3 * (j_global - 1) + b
-                    K_io[dof_i, dof_j] += w_ij * T[a, b]
-                end
-            end
-        end
-        # Filter-weighted dashpot tangents, c_v Σ_l W_il T(n_l) F_lj blocks:
-        # F = content_filter for the content-aware absorption term, and
-        # F = representable_projector for the filtered self-impedance term.
-        for F in (bc.content_filter, bc.representable_projector)
-            (size(F, 1) > 0 && c_v != 0.0) || continue
-            num_nodes = length(global_from_local_map)
-            for (l_local, _) in enumerate(global_from_local_map)
-                n = normals[:, l_local]
-                Tl = zeros(3, 3)
-                for a in 1:3, b in 1:3
-                    Tl[a, b] = c_v * ((Z_p - Z_s) * n[a] * n[b] + (a == b ? Z_s : 0.0))
-                end
-                for i_local in 1:num_nodes, j_local in 1:num_nodes
-                    coeff = W[i_local, l_local] * F[l_local, j_local]
-                    coeff == 0.0 && continue
-                    i_global = global_from_local_map[i_local]
-                    j_global = global_from_local_map[j_local]
-                    for a in 1:3, b in 1:3
-                        Tl[a, b] == 0.0 && continue
-                        dof_i = 3 * (i_global - 1) + a
-                        dof_j = 3 * (j_global - 1) + b
-                        K_io[dof_i, dof_j] += coeff * Tl[a, b]
-                    end
-                end
-            end
-        end
-    end
-    return K_io
-end
-
-function pair_bc(bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition, bc_index::Int64)
-    # Overlap BCs don't pair — they use strong interpolation from the partner's interior
-    return nothing
-end
-
-function compute_impedance_overlap_schwarz_projectors!(
-    dst_model::SolidMechanics, dst_bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-)
-    dst_bc.square_projector = get_square_projection_matrix(dst_model, dst_bc)
-    build_consistent_traction_patch!(dst_model, dst_bc)
-    if dst_bc.transfer_mode == "variational" || dst_bc.content_absorption || dst_bc.representable_dashpot
-        # Variational projector: P = W \\ L is the L2(Γ)-orthogonal projection
-        # of the partner fields onto this side's trace space — non-expansive
-        # in L2 for any quadrature, and constants transfer exactly (partner
-        # partition of unity gives L·1 = W·1). On a node-aligned interface
-        # L = W row-permuted and P reduces to the identity selection. Also
-        # built (without being used for the transfer) when the content-aware
-        # absorption or the representable dashpot needs its column span.
-        coupled_solid = get_fom_model(coupled_subsim_of(dst_bc))
-        L = get_overlap_rectangular_projection_matrix(
-            dst_model, dst_bc, coupled_solid, dst_bc.coupled_block_name, dst_bc.search_tolerance;
-            subdivisions=dst_bc.transfer_subdivisions,
-        )
-        dst_bc.variational_projector = dst_bc.square_projector \ L
-    else
-        dst_bc.variational_projector = Matrix{Float64}(undef, 0, 0)
-    end
-    if dst_bc.content_absorption || dst_bc.representable_dashpot
-        # W-orthogonal projection Π onto the transferable space at this
-        # boundary — the span of the variational projector's columns (one
-        # column per partner node with support on the interface). What Π
-        # keeps can be represented by the partner and crosses the interface;
-        # what I - Π keeps cannot. P·1 = 1 puts constants in the span, and on
-        # node-aligned interfaces the span is everything (Π = I).
-        # Two independent consumers:
-        #   content_filter = I - Π    (content-aware absorption: LK-dissipate
-        #                              the non-transferable self content)
-        #   representable_projector = Π  (representable dashpot: restrict the
-        #                              impedance term to the transferable jump
-        #                              so it vanishes at Schwarz convergence)
-        P = dst_bc.variational_projector
-        W = dst_bc.square_projector
-        cols = [j for j in 1:size(P, 2) if maximum(abs.(P[:, j])) > 1.0e-12]
-        B = P[:, cols]
-        G = B' * W * B
-        Π = B * (pinv(G; rtol=1.0e-10) * (B' * W))
-        dst_bc.content_filter =
-            dst_bc.content_absorption ? Matrix{Float64}(I, size(Π)...) - Π : Matrix{Float64}(undef, 0, 0)
-        dst_bc.representable_projector = dst_bc.representable_dashpot ? Π : Matrix{Float64}(undef, 0, 0)
-    else
-        dst_bc.content_filter = Matrix{Float64}(undef, 0, 0)
-        dst_bc.representable_projector = Matrix{Float64}(undef, 0, 0)
-    end
-    return nothing
-end
-
-# Partner kinematic fields (and, when nodal stress is supplied, the partner
-# traction) sampled at this BC's boundary nodes: variational L2 projection when
-# the projector is present, pointwise interpolation otherwise. Voigt order
-# of the nodal stress: xx, yy, zz, yz, xz, xy. Used by apply_bc_detail and
-# by the interface-work instrumentation so that the reported powers reflect
-# the transfer the BC actually applies.
-function impedance_partner_fields(
-    bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition,
-    coupled_solid::SolidMechanics,
-    coupled_nodal_stress::Matrix{Float64},
-    normals::Matrix{Float64},
-)
-    num_dst_nodes = length(bc.global_from_local_map)
-    partner_velo = zeros(3, num_dst_nodes)
-    partner_disp = zeros(3, num_dst_nodes)
-    partner_trac = zeros(3, num_dst_nodes)
-    want_traction = size(coupled_nodal_stress, 1) > 0
-    traction_from_stress! = (trac, σ, n, i) -> begin
-        trac[1, i] = σ[1] * n[1] + σ[6] * n[2] + σ[5] * n[3]
-        trac[2, i] = σ[6] * n[1] + σ[2] * n[2] + σ[4] * n[3]
-        trac[3, i] = σ[5] * n[1] + σ[4] * n[2] + σ[3] * n[3]
-    end
-    if bc.transfer_mode == "variational"
-        P = bc.variational_projector
-        partner_velo .= coupled_solid.velocity * P'
-        partner_disp .= coupled_solid.displacement * P'
-        if want_traction
-            projected_stress = coupled_nodal_stress * P'
-            for i in 1:num_dst_nodes
-                traction_from_stress!(partner_trac, projected_stress[:, i], normals[:, i], i)
-            end
-        end
-    else
-        unique_node_indices = unique(bc.side_set_node_indices)
-        for i in eachindex(unique_node_indices)
-            coupled_node_indices = bc.coupled_nodes_indices[i]
-            N = bc.interpolation_function_values[i]
-            for comp in 1:3
-                partner_velo[comp, i] = sum(coupled_solid.velocity[comp, coupled_node_indices] .* N)
-                partner_disp[comp, i] = sum(coupled_solid.displacement[comp, coupled_node_indices] .* N)
-            end
-            if want_traction
-                σ = coupled_nodal_stress[:, coupled_node_indices] * N
-                traction_from_stress!(partner_trac, σ, normals[:, i], i)
-            end
-        end
-    end
-    return partner_velo, partner_disp, partner_trac
-end
-
-# Variationally consistent partner traction (i.e. consistent nodal reactions;
-# the solid-mechanics counterpart of the consistent-boundary-flux method of
-# Wheeler and of Hughes et al.): on a node-aligned interface, the weak partner traction
-# ∫_Γ t_p·φ_i is exactly the partial assembly of the partner's discrete
-# momentum residual (internal force + inertia; body force is not modeled)
-# over the partner elements on the EXTERIOR side of Γ — the side this
-# subdomain's outward normal points toward, i.e. the elements this subdomain
-# is missing. With that definition the monodomain solution satisfies this
-# subdomain's coupled equations identically, so the transmission condition
-# transmits ALL discrete content, including the mesh-scale part that nodal
-# stress recovery misrepresents (measured as O(h) interface dissipation:
-# 3.9% → 1.9% per halving of h on the conforming cantilever benchmark).
-function build_consistent_traction_patch!(
-    model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-)
-    bc.traction_patch = nothing
-    bc.partner_traction_mode == "recovered stress" && return nothing
-    coupled_subsim = coupled_subsim_of(bc)
-    coupled_solid = get_fom_model(coupled_subsim)
-    unique_node_indices = unique(bc.side_set_node_indices)
-    # Node-aligned check: every boundary node must coincide with a partner
-    # node (its interpolation reduces to a single unit weight).
-    dst_of_coupled = Dict{Int64,Int64}()
-    conforming = true
-    for i in eachindex(unique_node_indices)
-        N = bc.interpolation_function_values[i]
-        a = argmax(N)
-        if N[a] < 1.0 - 1.0e-8
-            conforming = false
-            break
-        end
-        dst_of_coupled[bc.coupled_nodes_indices[i][a]] = i
-    end
-    if conforming == false
-        # Non-conforming: the consistent traction is available through the
-        # offset partner facet surface, which requires the variational
-        # transfer machinery (stage 2a). With pointwise transfer, fall back
-        # to recovered stress (legacy behavior) unless explicitly requested.
-        if bc.transfer_mode == "variational"
-            build_offset_traction_patch!(model, bc)
-        elseif bc.partner_traction_mode == "consistent traction"
-            norma_abort(
-                "`partner traction: consistent traction` on a non-aligned interface " *
-                "(side set \"$(bc.name)\") requires `transfer: variational`.",
-            )
-        end
-        return nothing
-    end
-    normals = compute_normal(model.mesh, bc.side_set_id, model)
-    element_nodes = Vector{Vector{Int64}}()
-    element_block = Vector{Int64}()
-    element_index = Vector{Int64}()
-    element_rows = Vector{Vector{Tuple{Int64,Int64}}}()
-    blocks = Exodus.read_sets(coupled_solid.mesh, Block)
-    block_element_type = Vector{ElementType}(undef, length(blocks))
-    for (block_index, block) in enumerate(blocks)
-        element_type_string = Exodus.read_block_parameters(coupled_solid.mesh, block.id)[1]
-        block_element_type[block_index] = element_type_from_string(element_type_string)
-        connectivity = get_block_connectivity(coupled_solid.mesh, block.id)
-        num_block_elements, num_element_nodes = size(connectivity)
-        for e in 1:num_block_elements
-            nodes = [connectivity[(e - 1) * num_element_nodes + n] for n in 1:num_element_nodes]
-            rows = Vector{Tuple{Int64,Int64}}()
-            for (a, g) in enumerate(nodes)
-                i = get(dst_of_coupled, g, 0)
-                i > 0 && push!(rows, (a, i))
-            end
-            isempty(rows) && continue
-            centroid = vec(sum(coupled_solid.reference[:, nodes]; dims=2)) ./ num_element_nodes
-            num_exterior = 0
-            num_interior = 0
-            for (_, i) in rows
-                offset = centroid - model.reference[:, unique_node_indices[i]]
-                if dot(offset, normals[:, i]) > 0.0
-                    num_exterior += 1
-                else
-                    num_interior += 1
-                end
-            end
-            if num_exterior > 0 && num_interior > 0
-                if bc.partner_traction_mode == "consistent traction"
-                    norma_abort(
-                        "Ambiguous interface-side classification of a partner element for " *
-                        "the consistent traction of side set \"$(bc.name)\".",
-                    )
-                end
-                bc.traction_patch = nothing
-                return nothing  # auto: geometry too irregular, fall back
-            end
-            num_exterior > 0 || continue
-            push!(element_nodes, nodes)
-            push!(element_block, block_index)
-            push!(element_index, e)
-            push!(element_rows, rows)
-        end
-    end
-    lumped_mass = coupled_subsim.integrator isa CentralDifference
-    bc.traction_patch = ConsistentTractionPatch(
-        element_nodes,
-        element_block,
-        element_index,
-        element_rows,
-        block_element_type,
-        lumped_mass,
-        length(unique_node_indices),
-        Matrix{Float64}(undef, 0, 0),
-        Matrix{Float64}(undef, 0, 0),
-        Int64[],
-        Matrix{Float64}(undef, 3, 0),
-    )
-    norma_log(
-        0,
-        :schwarz,
-        "Impedance overlap side set \"$(bc.name)\": node-aligned interface, using " *
-        "consistent partner traction ($(length(element_nodes)) partner elements).",
-    )
-    return nothing
-end
-
-# Exodus HEX8 local face connectivity (node orderings; orientation is
-# irrelevant here — faces are matched between elements by sorted node sets
-# and used only for surface quadrature).
-const _hex8_faces = (
-    (1, 2, 6, 5), (2, 3, 7, 6), (3, 4, 8, 7), (1, 5, 8, 4), (1, 4, 3, 2), (5, 6, 7, 8)
-)
-
-# Closest point on a bilinear quadrilateral (columns of X, 3x4) to point p:
-# Gauss-Newton on the tangent-orthogonality conditions, clamped to the
-# reference square. Returns the reference coordinates and the distance.
-function _closest_point_quad4(X::Matrix{Float64}, p::AbstractVector{Float64})
-    ξ = zeros(2)
-    for _ in 1:20
-        N, dN, _ = interpolate(QUAD4, ξ)
-        x = X * Vector(N)
-        J = X * Matrix(dN)'
-        r = J' * (x - p)
-        Δ = (J' * J) \ r
-        ξ -= Δ
-        norm(Δ) < 1.0e-12 && break
-    end
-    ξ = clamp.(ξ, -1.0, 1.0)
-    N, _, _ = interpolate(QUAD4, ξ)
-    return ξ, norm(X * Vector(N) - p)
-end
-
-# Stage 2a of the variational-transfer design: consistent partner traction
-# across a NON-conforming interface. Γ_k cuts through partner elements, so
-# the one-sided partial assembly is performed on the offset partner facet
-# surface Γ̃ — the boundary between the partner elements exterior to Γ_k
-# (centroid on the side this BC's outward normal points toward) and the
-# rest, a staircase within one partner element of Γ_k. The weak traction there
-# is the exact discrete traction of the partner scheme; it is converted to
-# a traction field with W̃⁻¹ and carried to this side's trace space with the
-# surface-to-surface variational operator R, precomposed as transfer = R W̃⁻¹.
-# The surface offset introduces an O(h_partner) modeling error that acts on
-# the exact discrete traction instead of recovered stress.
-function build_offset_traction_patch!(
-    model::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-)
-    coupled_subsim = coupled_subsim_of(bc)
-    coupled_solid = get_fom_model(coupled_subsim)
-    unique_node_indices = unique(bc.side_set_node_indices)
-    num_dst_nodes = length(unique_node_indices)
-    normals = compute_normal(model.mesh, bc.side_set_id, model)
-    own_points = model.reference[:, unique_node_indices]
-
-    # Classify every partner element by the side of Γ_k its centroid lies on,
-    # using the outward normal at the nearest boundary node of this side. The
-    # nearest node comes from a grid over this side's nodes: a scan of every
-    # node for every partner element was quadratic.
-    own_point_grid = PointGrid([SVector{3,Float64}(view(own_points, :, i)) for i in 1:num_dst_nodes])
-    struct_record = Vector{Tuple{Int64,Int64,Vector{Int64},Bool}}()  # (block, elem, nodes, exterior)
-    blocks = Exodus.read_sets(coupled_solid.mesh, Block)
-    block_element_type = Vector{ElementType}(undef, length(blocks))
-    for (block_index, block) in enumerate(blocks)
-        element_type_string = Exodus.read_block_parameters(coupled_solid.mesh, block.id)[1]
-        block_element_type[block_index] = element_type_from_string(element_type_string)
-        connectivity = get_block_connectivity(coupled_solid.mesh, block.id)
-        num_block_elements, num_element_nodes = size(connectivity)
-        if num_element_nodes != 8
-            if bc.partner_traction_mode == "consistent traction"
-                norma_abort(
-                    "Consistent traction across a non-aligned interface currently requires " *
-                    "hexahedral partner elements (side set \"$(bc.name)\").",
-                )
-            end
-            return nothing  # auto: fall back to recovered stress
-        end
-        for e in 1:num_block_elements
-            nodes = [connectivity[(e - 1) * num_element_nodes + n] for n in 1:num_element_nodes]
-            centroid = vec(sum(coupled_solid.reference[:, nodes]; dims=2)) ./ num_element_nodes
-            best_i = nearest_point_index(own_point_grid, SVector{3,Float64}(centroid))
-            exterior = dot(centroid - own_points[:, best_i], normals[:, best_i]) > 0.0
-            push!(struct_record, (block_index, e, nodes, exterior))
-        end
-    end
-
-    # Γ̃ faces: partner element faces shared by an exterior and an interior
-    # element, found by matching sorted node quadruples.
-    face_owner = Dict{NTuple{4,Int64},Vector{Tuple{Bool,NTuple{4,Int64}}}}()
-    for (_, _, nodes, exterior) in struct_record
-        for f in _hex8_faces
-            fn = (nodes[f[1]], nodes[f[2]], nodes[f[3]], nodes[f[4]])
-            key = NTuple{4,Int64}(sort(collect(fn)))
-            push!(get!(face_owner, key, Vector{Tuple{Bool,NTuple{4,Int64}}}()), (exterior, fn))
-        end
-    end
-    tilde_faces = Vector{NTuple{4,Int64}}()
-    for (_, owners) in face_owner
-        if length(owners) == 2 && owners[1][1] != owners[2][1]
-            push!(tilde_faces, owners[1][2])
-        end
-    end
-    if isempty(tilde_faces)
-        if bc.partner_traction_mode == "consistent traction"
-            norma_abort(
-                "Could not construct the offset partner facet surface for side set " *
-                "\"$(bc.name)\" (no exterior/interior partner element boundary found).",
-            )
-        end
-        return nothing
-    end
-    tilde_index = Dict{Int64,Int64}()
-    for fn in tilde_faces, g in fn
-        haskey(tilde_index, g) || (tilde_index[g] = length(tilde_index) + 1)
-    end
-    num_tilde = length(tilde_index)
-
-    # Surface mass matrix W̃ on Γ̃ (2x2 Gauss per quadrilateral face).
-    N_q, dN_q, w_q, _ = isoparametric(QUAD4, 4)
-    W̃ = zeros(num_tilde, num_tilde)
-    for fn in tilde_faces
-        face_nodes = collect(fn)
-        Xf = coupled_solid.reference[:, face_nodes]
-        rows = [tilde_index[g] for g in face_nodes]
-        for point in 1:4
-            Np = Vector(N_q[:, point])
-            dNp = Matrix(dN_q[:, :, point])
-            dXdξ = dNp * Xf'
-            j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
-            W̃[rows, rows] += Np * Np' * j * w_q[point]
-        end
-    end
-
-    # Surface-to-surface variational operator R = ∫_Γ N_k Ñᵀ dΓ, assembled
-    # with this BC's (optionally subdivided) facet quadrature; at each
-    # quadrature point the closest Γ̃ face provides the source values. The
-    # Γ̃ faces are binned by bounding box so that each query projects onto
-    # the few faces that can be nearest, not onto every face.
-    tilde_coords = [coupled_solid.reference[:, collect(fn)] for fn in tilde_faces]
-    tilde_box_min = [SVector{3,Float64}(minimum(X[i, :]) for i in 1:3) for X in tilde_coords]
-    tilde_box_max = [SVector{3,Float64}(maximum(X[i, :]) for i in 1:3) for X in tilde_coords]
-    tilde_grid = BoxGrid(tilde_box_min, tilde_box_max)
-    local_from_global_map = bc.local_from_global_map
-    R = zeros(num_dst_nodes, num_tilde)
-    coords = model.reference
-    side_set_node_index = 1
-    m = bc.transfer_subdivisions
-    g = 1.0 / sqrt(3.0)
-    for num_side in bc.num_nodes_sides
-        side_nodes = bc.side_set_node_indices[side_set_node_index:(side_set_node_index + num_side - 1)]
-        side_set_node_index += num_side
-        num_side == 4 || norma_abort(
-            "Consistent traction across a non-aligned interface requires quadrilateral " *
-            "boundary facets (side set \"$(bc.name)\").",
-        )
-        Xs = coords[:, side_nodes]
-        dst_rows = [local_from_global_map[g_] for g_ in side_nodes]
-        for i in 1:m, j_ in 1:m, (η₁, η₂) in ((-g, -g), (g, -g), (g, g), (-g, g))
-            ξ_sub = [-1.0 + (2 * i - 1) / m + η₁ / m, -1.0 + (2 * j_ - 1) / m + η₂ / m]
-            Np, dNp, _ = interpolate(QUAD4, ξ_sub)
-            Np = Vector(Np)
-            dNp = Matrix(dNp)
-            dXdξ = dNp * Xs'
-            jac = norm(cross(dXdξ[1, :], dXdξ[2, :]))
-            x_qp = Xs * Np
-            _, best_face = box_grid_nearest_item(
-                tilde_grid, SVector{3,Float64}(x_qp), tilde_box_min, tilde_box_max,
-                face -> _closest_point_quad4(tilde_coords[face], x_qp)[2],
-            )
-            ξ_f, _ = _closest_point_quad4(tilde_coords[best_face], x_qp)
-            Ñ, _, _ = interpolate(QUAD4, ξ_f)
-            src_rows = [tilde_index[g_] for g_ in tilde_faces[best_face]]
-            R[dst_rows, src_rows] += Np * Vector(Ñ)' * jac / m^2
-        end
-    end
-    transfer = Matrix((W̃ \ R')')
-
-    # One-sided patch: exterior partner elements touching any Γ̃ node.
-    element_nodes = Vector{Vector{Int64}}()
-    element_block = Vector{Int64}()
-    element_index = Vector{Int64}()
-    element_rows = Vector{Vector{Tuple{Int64,Int64}}}()
-    for (block_index, e, nodes, exterior) in struct_record
-        exterior || continue
-        rows = Vector{Tuple{Int64,Int64}}()
-        for (a, g_) in enumerate(nodes)
-            idx = get(tilde_index, g_, 0)
-            idx > 0 && push!(rows, (a, idx))
-        end
-        isempty(rows) && continue
-        push!(element_nodes, nodes)
-        push!(element_block, block_index)
-        push!(element_index, e)
-        push!(element_rows, rows)
-    end
-    lumped_mass = coupled_subsim.integrator isa CentralDifference
-    tilde_nodes = Vector{Int64}(undef, num_tilde)
-    for (g_, idx) in tilde_index
-        tilde_nodes[idx] = g_
-    end
-    tilde_normals = zeros(3, num_tilde)
-    for idx in 1:num_tilde
-        p = coupled_solid.reference[:, tilde_nodes[idx]]
-        best_i = 1
-        best_d2 = Inf
-        for i in 1:num_dst_nodes
-            d2 = sum((p .- own_points[:, i]) .^ 2)
-            if d2 < best_d2
-                best_d2 = d2
-                best_i = i
-            end
-        end
-        tilde_normals[:, idx] = normals[:, best_i]
-    end
-    bc.traction_patch = ConsistentTractionPatch(
-        element_nodes, element_block, element_index, element_rows, block_element_type,
-        lumped_mass, num_tilde, transfer, W̃, tilde_nodes, tilde_normals,
-    )
-    norma_log(
-        0,
-        :schwarz,
-        "Impedance overlap side set \"$(bc.name)\": non-aligned interface, using " *
-        "consistent partner traction via the offset facet surface " *
-        "($(length(element_nodes)) patch elements, $(length(tilde_faces)) offset faces).",
-    )
-    return nothing
-end
-
-# Weak partner traction W·t_p (3 × num boundary nodes) by partial assembly
-# over the consistent-traction patch: -(internal force + inertia) of the exterior-side
-# partner elements, restricted to the interface rows. The element kernels
-# mirror evaluate() in model.jl (total Lagrangian, first Piola against
-# reference gradients); the inertia uses the partner's mass discretization
-# (consistent for implicit, lumped for explicit).
-function consistent_partner_traction(
-    coupled_solid::SolidMechanics, bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-)
-    patch = bc.traction_patch
-    weak_traction = zeros(3, patch.num_targets)
-    for element in eachindex(patch.element_nodes)
-        nodes = patch.element_nodes[element]
-        block_index = patch.element_block[element]
-        block_element_index = patch.element_index[element]
-        material = coupled_solid.materials[block_index]
-        density = material.ρ
-        element_type = patch.block_element_type[block_index]
-        num_points = coupled_solid.num_int_pts[block_index]
-        N, dN, ip_weights = isoparametric(element_type, num_points)
-        num_element_nodes = length(nodes)
-        X = coupled_solid.reference[:, nodes]
-        x = X + coupled_solid.displacement[:, nodes]
-        acceleration = coupled_solid.acceleration[:, nodes]
-        λ = zeros(3, num_element_nodes)
-        reduced_mass = patch.lumped_mass ? nothing : zeros(num_element_nodes, num_element_nodes)
-        lumped = patch.lumped_mass ? zeros(num_element_nodes) : nothing
-        for point in 1:num_points
-            Np = N[:, point]
-            dNdξ = dN[:, :, point]
-            dXdξ = SMatrix{3,3,Float64,9}(dNdξ * X')
-            dNdX = dXdξ \ dNdξ
-            F = SMatrix{3,3,Float64,9}(x * dNdX')
-            local P
-            if material isa Elastic
-                _, P, _ = constitutive(material, F; need_tangent=false)
-            else
-                state = coupled_solid.state_old[block_index][block_element_index][point]
-                _, P, _, _ = constitutive(material, F, state; need_tangent=false)
-            end
-            dvol = det(dXdξ) * ip_weights[point]
-            λ .+= (P * dNdX) .* dvol
-            if patch.lumped_mass
-                lumped .+= (density * dvol * sum(Np)) .* Np
-            else
-                reduced_mass .+= (density * dvol) .* (Np * Np')
-            end
-        end
-        λ .+= patch.lumped_mass ? acceleration .* lumped' : acceleration * reduced_mass
-        for (a, i) in patch.element_rows[element]
-            weak_traction[1, i] -= λ[1, a]
-            weak_traction[2, i] -= λ[2, a]
-            weak_traction[3, i] -= λ[3, a]
-        end
-    end
-    # Non-conforming (offset-surface) patch: carry the weak traction from the
-    # offset surface Γ̃ to this side's trace space.
-    if size(patch.transfer, 1) > 0
-        weak_traction = weak_traction * patch.transfer'
-    end
-    return weak_traction
-end
-
-# Stage 2c: the partner's complete Robin datum, assembled on the offset
-# surface Γ̃ from the partner's OWN nodal trace values (no interpolation)
-# and carried over by the single operator T = R W̃⁻¹. Returned as the three
-# channels (traction, impedance, Robin), each weak on this side's trace
-# space, so callers can sum them for the right-hand side and the
-# instrumentation can report them separately. Transferring the combined
-# datum through one operator preserves the characteristic cancellation
-# between traction and velocity at mesh scale, which separate transfers
-# through different operators destroy.
-function characteristic_partner_terms(
-    coupled_solid::SolidMechanics,
-    bc::SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition,
-    Z_p::Float64,
-    Z_s::Float64,
-    α::Float64,
-)
-    patch = bc.traction_patch
-    traction_term = consistent_partner_traction(coupled_solid, bc)
-    num_tilde = patch.num_targets
-    zv = zeros(3, num_tilde)
-    au = zeros(3, num_tilde)
-    for m in 1:num_tilde
-        n = patch.tilde_normals[:, m]
-        g_ = patch.tilde_nodes[m]
-        v = coupled_solid.velocity[:, g_]
-        u = coupled_solid.displacement[:, g_]
-        vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
-        zv[:, m] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
-        au[:, m] = α .* u
-    end
-    impedance_term = (zv * patch.tilde_mass) * patch.transfer'
-    robin_term = (au * patch.tilde_mass) * patch.transfer'
-    return traction_term, impedance_term, robin_term
-end
-
-# Compute the self-impedance internal force: W*(Z*u̇_self + α*u_self)
-# Returns a separate force vector rather than modifying model.internal_force,
-# because get_dst_force reads model.internal_force for traction transfer and
-# must see only the elastic internal force.
-function build_impedance_schwarz_force(model::SolidMechanics)
-    num_dofs = 3 * size(model.reference, 2)
-    f = zeros(num_dofs)
-    for bc in model.boundary_conditions
-        if bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition
-            # P/S-split tensor impedance, matching the partner terms in
-            # apply_bc_detail (same scale, same tensor, same W weighting).
-            scale = _get_impedance_scale(bc)
-            Z_p = bc.impedance * scale
-            Z_s = bc.impedance_shear * scale
-            α = bc.robin_parameter
-            W = bc.square_projector
-            global_from_local_map = bc.global_from_local_map
-            num_nodes = length(global_from_local_map)
-            normals = compute_normal(model.mesh, bc.side_set_id, model)
-            velo = model.velocity[:, global_from_local_map]
-            # Representable dashpot: the self velocity entering the impedance
-            # term is projected onto the transferable subspace, matching the
-            # filtered partner term in apply_bc_detail so the dashpot acts on
-            # Π(u̇_p − u̇). The α·u spring term stays unfiltered.
-            dashpot_velo =
-                size(bc.representable_projector, 1) > 0 ? velo * bc.representable_projector' : velo
-            # Content-aware absorption: LK-dissipate the non-transferable
-            # component (I - Π) u̇ of this side's boundary velocity.
-            filtered = size(bc.content_filter, 1) > 0 ? velo * bc.content_filter' : zeros(3, 0)
-            Zv = zeros(3, num_nodes)
-            for (i_local, i_global) in enumerate(global_from_local_map)
-                n = normals[:, i_local]
-                v = dashpot_velo[:, i_local]
-                u = model.displacement[:, i_global]
-                vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
-                Zv[:, i_local] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n) .+ α .* u
-                if size(filtered, 2) > 0
-                    vf = filtered[:, i_local]
-                    vfn = n[1] * vf[1] + n[2] * vf[2] + n[3] * vf[3]
-                    Zv[:, i_local] .+= (Z_p * vfn) .* n .+ Z_s .* (vf .- vfn .* n)
-                end
-            end
-            for comp in 1:3
-                f_imp = W * Zv[comp, :]
-                for (i_local, i_global) in enumerate(global_from_local_map)
-                    dof_i = 3 * (i_global - 1) + comp
-                    f[dof_i] += f_imp[i_local]
-                end
-            end
-        elseif bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition
-            Z = bc.impedance
-            α = bc.robin_parameter
-            W = bc.square_projector
-            global_from_local_map = bc.global_from_local_map
-            num_nodes = length(global_from_local_map)
-            self_velo = zeros(num_nodes)
-            self_disp = zeros(num_nodes)
-            for comp in 1:3
-                for (i_local, i_global) in enumerate(global_from_local_map)
-                    self_velo[i_local] = model.velocity[comp, i_global]
-                    self_disp[i_local] = model.displacement[comp, i_global]
-                end
-                f_imp = W * (Z * self_velo + α * self_disp)
-                for (i_local, i_global) in enumerate(global_from_local_map)
-                    dof_i = 3 * (i_global - 1) + comp
-                    f[dof_i] += f_imp[i_local]
-                end
-            end
-        end
-    end
-    return f
-end
-
-# Maximum relative kinematic jump across all adjoint-paired impedance
-# interfaces, each side measuring the partner trace through its own transfer
-# operator. The paired exchange has a slow interface-jump mode whose per-Schwarz-iteration
-# displacement increment is far smaller than its remaining distance to the
-# fixed point, so the ΔU-based Schwarz criterion alone can declare convergence
-# while the interface still carries an O(10%) kinematic jump — which the
-# dashpot then dissipates (measured: −16% of the energy of a wave packet
-# crossing a conforming interface at the 1.0e-8 default tolerance, restored to
-# −0.003% once the jump is actually converged). The jump vanishes at the true
-# fixed point, so it serves as an additional convergence criterion; see
-# update_schwarz_convergence_criterion (simulation.jl). Displacement and
-# velocity jumps are tested separately, each relative to its own trace scale;
-# traces whose scale is below the controller's absolute tolerance (velocity:
-# divided by the controller step) are quiescent and skipped so roundoff on an
-# idle interface cannot stall the iteration.
-function paired_impedance_jump(sim::MultiDomainSimulation)
-    controller = sim.controller
-    floor_u = controller.absolute_tolerance
-    floor_v = controller.absolute_tolerance / controller.time_step
-    max_rel = 0.0
-    for subsim in sim.subsims
-        model = get_fom_model(subsim)
-        model isa SolidMechanics || continue
-        for bc in model.boundary_conditions
-            bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition || continue
-            bc.adjoint_pairing || continue
-            size(bc.dirichlet_projector, 1) > 0 || continue
-            src_model = get_fom_model(coupled_subsim_of(bc))
-            src_bc = src_model.boundary_conditions[bc.coupled_bc_index]
-            src_map = src_bc.global_from_local_map
-            dst_map = bc.global_from_local_map
-            P = bc.dirichlet_projector
-            for (field, floor_scale) in ((:displacement, floor_u), (:velocity, floor_v))
-                self_trace = getfield(model, field)[:, dst_map]
-                src_trace = getfield(src_model, field)[:, src_map]
-                transferred = similar(self_trace)
-                for comp in 1:3
-                    transferred[comp, :] = P * src_trace[comp, :]
-                end
-                scale = max(norm(self_trace), norm(transferred))
-                scale ≤ floor_scale && continue
-                max_rel = max(max_rel, norm(self_trace - transferred) / scale)
-            end
-        end
-    end
-    return max_rel
-end
-
 # --- Dirichlet-Neumann interface residuals ---------------------------------
 #
 # For a DN pair with Dirichlet side D and Neumann side N, Π_D the Dirichlet
@@ -2220,167 +1158,6 @@ function check_constrained_time_steps(bc::SolidMechanicsNonOverlapSchwarzBoundar
             "'$(d_sim.name)' and '$(n_sim.name)' took steps $(Δt_D) and $(Δt_N) " *
             "(the explicit stable step can shorten the requested step; raise CFL or lower the step).",
         )
-    end
-    return nothing
-end
-
-# --- Interface work instrumentation (diagnosis; enabled via env var) --------
-#
-# When NORMA_IMPEDANCE_WORK_CSV is set, a row is appended per impedance-overlap
-# BC after each converged Schwarz stop, decomposing the instantaneous interface
-# power into partner-traction, dashpot, and Robin parts:
-#
-#   P = Σ_i u̇_i · [ W (t_p + T(n)(u̇_p − u̇) + α (u_p − u)) ]_i
-#
-# The exact (monodomain) solution satisfies u̇_p = u̇ and u_p = u on the
-# overlap boundary, so the dashpot and Robin powers vanish identically for it:
-# their measured work is purely spurious interface dissipation. The RMS
-# velocity jump |u̇_p − u̇| and traction mismatch |t_p − t_own| (both from
-# recovered stress) are recorded to attribute the residual: recovery error
-# shows up as traction mismatch, Schwarz iteration lag and time-level error as
-# velocity jump that shrinks (or does not) with the Schwarz tolerance.
-
-function report_impedance_interface_work(sim)
-    csv_path = get(ENV, "NORMA_IMPEDANCE_WORK_CSV", "")
-    isempty(csv_path) && return nothing
-    if isfile(csv_path) == false
-        open(csv_path, "w") do io
-            println(
-                io,
-                "time,subdomain,side_set,P_total,P_traction,P_dashpot,P_robin," *
-                "velocity_jump_rms,traction_mismatch_rms,P_absorb",
-            )
-        end
-    end
-    t = sim.controller.time
-    for (subsim_index, subsim) in enumerate(sim.subsims)
-        model = subsim.model
-        model isa SolidMechanics || continue
-        for bc in model.boundary_conditions
-            bc isa SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition || continue
-            scale = _get_impedance_scale(bc)
-            Z_p = bc.impedance * scale
-            Z_s = bc.impedance_shear * scale
-            α = bc.robin_parameter
-            W = bc.square_projector
-            coupled_model_obj = coupled_subsim_of(bc).model
-            coupled_solid =
-                coupled_model_obj isa SolidMechanics ? coupled_model_obj : coupled_model_obj.fom_model
-            recover_stress!(coupled_solid)
-            recover_stress!(model)
-            nodal_stress(m) =
-                size(m.recovered_stress, 1) > 0 ? m.recovered_stress : m.consistent_recovered_stress
-            coupled_nodal_stress = nodal_stress(coupled_solid)
-            own_nodal_stress = nodal_stress(model)
-            normals = compute_normal(model.mesh, bc.side_set_id, model)
-            unique_node_indices = unique(bc.side_set_node_indices)
-            num_nodes = length(unique_node_indices)
-            partner_velo, partner_disp, trac_p =
-                impedance_partner_fields(bc, coupled_solid, coupled_nodal_stress, normals)
-            # Mirror the representable-dashpot filter applied by the BC: the
-            # dashpot channel uses the Π-projected velocities. The reported
-            # velocity-jump RMS stays RAW so it keeps measuring the full
-            # (including unrepresentable) interface jump.
-            representable = size(bc.representable_projector, 1) > 0
-            self_velo = model.velocity[:, unique_node_indices]
-            dash_partner = representable ? partner_velo * bc.representable_projector' : partner_velo
-            dash_self = representable ? self_velo * bc.representable_projector' : self_velo
-            dash = zeros(3, num_nodes)
-            robin = zeros(3, num_nodes)
-            velo = zeros(3, num_nodes)
-            vjump2 = 0.0
-            tmis2 = 0.0
-            for (i, node_index) in enumerate(unique_node_indices)
-                n = normals[:, i]
-                v = model.velocity[:, node_index]
-                u = model.displacement[:, node_index]
-                σ_o = own_nodal_stress[:, node_index]
-                t_o = [
-                    σ_o[1] * n[1] + σ_o[6] * n[2] + σ_o[5] * n[3],
-                    σ_o[6] * n[1] + σ_o[2] * n[2] + σ_o[4] * n[3],
-                    σ_o[5] * n[1] + σ_o[4] * n[2] + σ_o[3] * n[3],
-                ]
-                dv = dash_partner[:, i] .- dash_self[:, i]
-                dvn = n[1] * dv[1] + n[2] * dv[2] + n[3] * dv[3]
-                dash[:, i] = (Z_p * dvn) .* n .+ Z_s .* (dv .- dvn .* n)
-                robin[:, i] = α .* (partner_disp[:, i] .- u)
-                velo[:, i] = v
-                dv_raw = partner_velo[:, i] .- v
-                vjump2 += dot(dv_raw, dv_raw)
-                tmis2 += dot(trac_p[:, i] - t_o, trac_p[:, i] - t_o)
-            end
-            P_trac = 0.0
-            P_dash = 0.0
-            P_robin = 0.0
-            # Channel powers from the terms the BC actually applies. With the
-            # stage-2c characteristic transfer, each channel of the partner
-            # datum passes through the same operator; the self parts of the
-            # dashpot and Robin channels are subtracted at this side's nodes.
-            # The recovered-stress traction mismatch below stays informational
-            # in all modes.
-            patch = bc.traction_patch
-            if patch !== nothing && size(patch.transfer, 1) > 0
-                traction_term, impedance_term, robin_term =
-                    characteristic_partner_terms(coupled_solid, bc, Z_p, Z_s, α)
-                if representable
-                    impedance_term = impedance_term * bc.representable_projector
-                end
-                self_zv = zeros(3, num_nodes)
-                self_au = zeros(3, num_nodes)
-                for (i, node_index) in enumerate(unique_node_indices)
-                    n = normals[:, i]
-                    v = dash_self[:, i]
-                    vn = n[1] * v[1] + n[2] * v[2] + n[3] * v[3]
-                    self_zv[:, i] = (Z_p * vn) .* n .+ Z_s .* (v .- vn .* n)
-                    self_au[:, i] = α .* model.displacement[:, node_index]
-                end
-                for comp in 1:3
-                    P_trac += dot(velo[comp, :], traction_term[comp, :])
-                    P_dash += dot(velo[comp, :], impedance_term[comp, :] - W * self_zv[comp, :])
-                    P_robin += dot(velo[comp, :], robin_term[comp, :] - W * self_au[comp, :])
-                end
-            else
-                if patch !== nothing
-                    weak_traction = consistent_partner_traction(coupled_solid, bc)
-                    for comp in 1:3
-                        P_trac += dot(velo[comp, :], weak_traction[comp, :])
-                    end
-                else
-                    for comp in 1:3
-                        P_trac += dot(velo[comp, :], W * trac_p[comp, :])
-                    end
-                end
-                for comp in 1:3
-                    P_dash += dot(velo[comp, :], W * dash[comp, :])
-                    P_robin += dot(velo[comp, :], W * robin[comp, :])
-                end
-            end
-            # Content-aware absorption drain (self term; ≤ 0 by construction).
-            P_absorb = 0.0
-            if size(bc.content_filter, 1) > 0
-                filtered = velo * bc.content_filter'
-                zvf = zeros(3, num_nodes)
-                for i in 1:num_nodes
-                    n = normals[:, i]
-                    vf = filtered[:, i]
-                    vfn = n[1] * vf[1] + n[2] * vf[2] + n[3] * vf[3]
-                    zvf[:, i] = (Z_p * vfn) .* n .+ Z_s .* (vf .- vfn .* n)
-                end
-                for comp in 1:3
-                    P_absorb -= dot(velo[comp, :], W * zvf[comp, :])
-                end
-            end
-            P_total = P_trac + P_dash + P_robin + P_absorb
-            vjump_rms = sqrt(vjump2 / num_nodes)
-            tmis_rms = sqrt(tmis2 / num_nodes)
-            open(csv_path, "a") do io
-                println(
-                    io,
-                    "$t,$subsim_index,$(bc.side_set_id),$P_total,$P_trac,$P_dash,$P_robin," *
-                    "$vjump_rms,$tmis_rms,$P_absorb",
-                )
-            end
-        end
     end
     return nothing
 end
@@ -2684,12 +1461,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         # window's converged one, which holds because restore_stop_state runs
         # before subcycle pushes the anchor snapshot, and loads on the
         # Dirichlet interface rows that are constant within the window
-        # (dalembert_inertia_minus_loads reads their current value). For the
-        # paired impedance coupling, three replacements of the coarse side's
-        # exchange that are work-conjugate to the fine side's interpolation
-        # (the trapezoidal window average, the recursion F = 2 avg - F_prev,
-        # and the least-squares endpoint fit) were measured and either add
-        # dissipation (average) or diverge (recursion, endpoint fit).
+        # (dalembert_inertia_minus_loads reads their current value).
         interp_disp = interpolate(time_hist, disp_hist, time)
         interp_velo = interpolate(time_hist, velo_hist, time)
         interp_acce = interpolate(time_hist, acce_hist, time)
@@ -2999,19 +1771,6 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
     src_global_force = get_internal_force(src_model)
-    # Adjoint-paired impedance interfaces exchange the dynamically consistent
-    # (D'Alembert) reaction M·a + f_int - f_body instead of the static
-    # internal force alone. In dynamics the two sides' static reactions are
-    # NOT equal and opposite — they differ by the interface nodes' inertia,
-    # each side carrying its own tributary mass — so transferring -f_int
-    # makes the coupled fixed point inconsistent with the monodomain
-    # discretization by O(m_Γ·a), which the cantilever benchmark measures as
-    # a steady interface energy drain (-9.6%/ms on CONFORMING meshes). With
-    # the inertia included, the two sides' interface rows sum to the
-    # monodomain row exactly, so the monodomain trajectory is the fixed
-    # point and the transmission channels vanish at Schwarz convergence.
-    # (The overlap variant achieves the same through its consistent-traction
-    # element patch; here the source's own assembled operators suffice.)
     if is_constrained_dn(dst_bc)
         # Constrained DN exchange: the Neumann side receives the d'Alembert
         # reaction of the Dirichlet side, -(M a + f_int - f_body - f_boundary)
@@ -3019,22 +1778,6 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
         # of the undecomposed problem. f_boundary is the Dirichlet side's own
         # applied surface load on the interface nodes, if any.
         src_global_force = src_global_force + dalembert_inertia_minus_loads(get_fom_model(src_sim))
-    elseif dst_bc isa SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition && dst_bc.adjoint_pairing
-        src_fom = get_fom_model(src_sim)
-        a = vec(src_fom.acceleration)
-        inertial_force = if size(src_fom.mass, 1) == length(a)
-            src_fom.mass * a
-        elseif length(src_fom.lumped_mass) == length(a)
-            src_fom.lumped_mass .* a
-        else
-            # Pre-initialization exchange: no mass assembled yet, and the
-            # acceleration is still zero — the correction vanishes anyway.
-            zeros(length(a))
-        end
-        src_global_force = src_global_force + inertial_force
-        if length(src_fom.body_force) == length(src_global_force)
-            src_global_force = src_global_force - src_fom.body_force
-        end
     end
     src_force = -extract_local_vector(src_bc, src_global_force, 3)
     neumann_projector = dst_bc.neumann_projector
@@ -3186,7 +1929,7 @@ function _create_bcs(subsim::SingleDomainSimulation)
                     subsim, coupled_subsim, input_mesh, bc_setting_params
                 )
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type == "Schwarz overlap" || bc_type == "Schwarz DN nonoverlap" || bc_type == "Schwarz RR nonoverlap" || bc_type == "Schwarz impedance nonoverlap" || bc_type == "Schwarz impedance overlap"
+            elseif bc_type in ("Schwarz overlap", "Schwarz DN nonoverlap", "Schwarz RR nonoverlap")
                 sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]

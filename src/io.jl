@@ -319,7 +319,7 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
             writedlm(disp_filename, model.displacement[bc.offset, bc.node_set_node_indices])
         elseif bc isa SolidMechanicsCouplingSchwarzBoundaryCondition
-            # Every coupling Schwarz BC (overlap/non-overlap, DBC/impedance)
+            # Every coupling Schwarz BC (overlap/non-overlap, Dirichlet/Robin)
             # exposes name and side_set_node_indices; the force block below is
             # specific to the non-overlap DN variant.
             side_set_name = bc.name

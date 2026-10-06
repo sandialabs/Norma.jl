@@ -258,16 +258,14 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
-    K_is = build_impedance_schwarz_stiffness(model, integrator)
-    K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
+    K_rs = build_robin_schwarz_stiffness(model)
     K_surface = build_surface_penalty_stiffness(model)
     K_total = model.stiffness
     K_total = nnz(K_robin) > 0 ? K_total + K_robin : K_total
-    K_total = nnz(K_is) > 0 ? K_total + K_is : K_total
-    K_total = nnz(K_io) > 0 ? K_total + K_io : K_total
+    K_total = nnz(K_rs) > 0 ? K_total + K_rs : K_total
     K_total = nnz(K_surface) > 0 ? K_total + K_surface : K_total
-    is_internal_force = build_impedance_schwarz_force(model)
-    solver.gradient = model.internal_force + is_internal_force - external_force
+    rs_internal_force = build_robin_schwarz_force(model)
+    solver.gradient = model.internal_force + rs_internal_force - external_force
     solver.hessian = K_total
     return nothing
 end
@@ -286,8 +284,8 @@ function evaluate(integrator::QuasiStatic, solver::MatrixFree, model::SolidMecha
     integrator.stored_energy = model.strain_energy
     solver.value = model.strain_energy
     external_force = model.body_force + model.boundary_force
-    is_internal_force = build_impedance_schwarz_force(model)
-    solver.gradient = model.internal_force + is_internal_force - external_force
+    rs_internal_force = build_robin_schwarz_force(model)
+    solver.gradient = model.internal_force + rs_internal_force - external_force
     # Exact roller, step 2: project the residual onto the tangent subspace so the
     # descent direction slides along the surface (the normal force is the roller
     # reaction).  A no-op when no exact-mode surface BCs are present.
@@ -323,14 +321,12 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
     K_robin = build_robin_stiffness(model)
-    K_is = build_impedance_schwarz_stiffness(model, integrator)
-    K_io = build_impedance_overlap_schwarz_stiffness(model, integrator)
+    K_rs = build_robin_schwarz_stiffness(model)
     stiffness = ᾱ > 0.0 ? (1.0 - ᾱ) * model.stiffness : model.stiffness
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
-    stiffness = nnz(K_is) > 0 ? stiffness + K_is : stiffness
-    stiffness = nnz(K_io) > 0 ? stiffness + K_io : stiffness
-    is_internal_force = build_impedance_schwarz_force(model)
-    internal_force = internal_force + is_internal_force
+    stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
+    rs_internal_force = build_robin_schwarz_force(model)
+    internal_force = internal_force + rs_internal_force
     solver.hessian = newmark_hessian(stiffness, model.mass, β, Δt)
     solver.gradient = internal_force - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
@@ -352,8 +348,8 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     # Model boundary force -> global
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
-    is_internal_force = build_impedance_schwarz_force(model)
-    internal_force = internal_force + is_internal_force
+    rs_internal_force = build_robin_schwarz_force(model)
+    internal_force = internal_force + rs_internal_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     # Gradient -> local, local, local
     solver.gradient = internal_force - external_force + inertial_force
@@ -636,16 +632,6 @@ end
 function compute_step(integrator::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
     step = -solver.gradient[free] ./ solver.lumped_hessian[free]
-    if has_paired_impedance_bcs(model)
-        # Adjoint-paired impedance interfaces: replace the diagonal update on
-        # the interface rows with the small implicit (IMEX) solve so the
-        # dashpot acts on the end-of-step velocity. See
-        # imex_interface_acceleration! in schwarz.jl.
-        a_new = copy(solver.solution)
-        a_new[free] .+= step
-        imex_interface_acceleration!(a_new, integrator, model, solver)
-        step = a_new[free] .- solver.solution[free]
-    end
     return step
 end
 

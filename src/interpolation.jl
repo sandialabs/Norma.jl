@@ -975,14 +975,10 @@ end
 
 function get_overlap_rectangular_projection_matrix(
     dst_model::SolidMechanics,
-    dst_bc::Union{
-        SolidMechanicsOverlapSchwarzBoundaryCondition,
-        SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition,
-    },
+    dst_bc::SolidMechanicsOverlapSchwarzBoundaryCondition,
     src_model::SolidMechanics,
     coupled_block_name::String,
-    tol::Float64;
-    subdivisions::Int64=1,
+    tol::Float64,
 )
     src_mesh = src_model.mesh
     src_block_id = block_id_from_name(coupled_block_name, src_mesh)
@@ -1001,35 +997,12 @@ function get_overlap_rectangular_projection_matrix(
         dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
         dst_side_coordinates = dst_coords[:, dst_side_nodes]
         dst_element_type = get_element_type(2, Int64(dst_num_nodes_side))
-        # Facet quadrature samples (shape values, shape gradients, weight).
-        # The integrand is only piecewise smooth (the source elements change
-        # within a receiving facet), so an optional subdivided rule places a
-        # 2x2 Gauss rule in each of subdivisions^2 sub-cells of the facet.
-        samples = Vector{Tuple{Vector{Float64},Matrix{Float64},Float64}}()
-        if subdivisions == 1
-            dst_num_int_points = default_num_int_pts(dst_element_type)
-            dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
-            for dst_point in 1:dst_num_int_points
-                push!(
-                    samples,
-                    (Vector(dst_N[:, dst_point]), Matrix(dst_dNdξ[:, :, dst_point]), dst_w[dst_point]),
-                )
-            end
-        else
-            if dst_element_type != QUAD4
-                norma_abort(
-                    "`transfer quadrature subdivisions` > 1 requires quadrilateral interface facets.",
-                )
-            end
-            g = 1.0 / sqrt(3.0)
-            m = subdivisions
-            for i in 1:m, j in 1:m, (η₁, η₂) in ((-g, -g), (g, -g), (g, g), (-g, g))
-                ξ_sub = [-1.0 + (2 * i - 1) / m + η₁ / m, -1.0 + (2 * j - 1) / m + η₂ / m]
-                N_sub, dN_sub, _ = interpolate(dst_element_type, ξ_sub)
-                push!(samples, (Vector(N_sub), Matrix(dN_sub), 1.0 / m^2))
-            end
-        end
-        for (dst_Nₚ, dst_dNdξₚ, dst_wₚ) in samples
+        dst_num_int_points = default_num_int_pts(dst_element_type)
+        dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
+        for dst_point in 1:dst_num_int_points
+            dst_Nₚ = Vector(dst_N[:, dst_point])
+            dst_dNdξₚ = Matrix(dst_dNdξ[:, :, dst_point])
+            dst_wₚ = dst_w[dst_point]
             dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
             dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
             dst_int_point_coord = dst_side_coordinates * dst_Nₚ
@@ -1101,73 +1074,6 @@ function interpolate(param_hist::Vector{Float64}, value_hist::Vector{Vector{Floa
     # query interpolates on its own segment [index, index + 1].
     index = searchsortedlast(param_hist, param)
     return interpolate(param_hist[index], param_hist[index + 1], value_hist[index], value_hist[index + 1], param)
-end
-
-# Union of the window endpoints and the interior history times: the exact
-# integration grid for window integrals of the piecewise-linear interpolant.
-function window_breakpoints(param_hist::Vector{Float64}, t0::Float64, t1::Float64)
-    breakpoints = [t0]
-    for t in param_hist
-        if t0 < t < t1 && !isapprox(t, t0; rtol=1.0e-06, atol=1.0e-12) && !isapprox(t, t1; rtol=1.0e-06, atol=1.0e-12)
-            push!(breakpoints, t)
-        end
-    end
-    push!(breakpoints, t1)
-    return breakpoints
-end
-
-# Time average (1 / (t1 - t0)) ∫ over [t0, t1] of the piecewise-linear
-# interpolant of the history, evaluated exactly by the trapezoidal rule on
-# the union of the window endpoints and the interior history times. Outside
-# the stored range the interpolant clamps to the end values, matching
-# `interpolate` above. A degenerate window falls back to point interpolation.
-function time_average(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, t0::Float64, t1::Float64)
-    window = t1 - t0
-    if window <= 0.0 || isapprox(t0, t1; rtol=1.0e-06, atol=1.0e-12)
-        return interpolate(param_hist, value_hist, t1)
-    end
-    breakpoints = window_breakpoints(param_hist, t0, t1)
-    average = zeros(length(value_hist[1]))
-    value_prev = interpolate(param_hist, value_hist, breakpoints[1])
-    for i in 2:length(breakpoints)
-        value_next = interpolate(param_hist, value_hist, breakpoints[i])
-        average .+= (0.5 * (breakpoints[i] - breakpoints[i - 1])) .* (value_prev .+ value_next)
-        value_prev = value_next
-    end
-    average ./= window
-    return average
-end
-
-# Endpoint value of the least-squares linear-in-time fit of the history's
-# piecewise-linear interpolant over [t0, t1]: with the window average v̄ and
-# the centered first moment m = ∫ v(t) (t - t_c) dt (t_c the window center),
-# the LS line is v̄ + (12 m / W³)(t - t_c) and its value at t1 is
-# v̄ + 6 m / W². Both integrals are evaluated exactly per breakpoint segment.
-# For a trajectory that is linear across the window this returns the exact
-# endpoint value; content the line cannot represent is filtered out rather
-# than aliased in. A degenerate window falls back to point interpolation.
-function time_endpoint_fit(param_hist::Vector{Float64}, value_hist::Vector{Vector{Float64}}, t0::Float64, t1::Float64)
-    window = t1 - t0
-    if window <= 0.0 || isapprox(t0, t1; rtol=1.0e-06, atol=1.0e-12)
-        return interpolate(param_hist, value_hist, t1)
-    end
-    breakpoints = window_breakpoints(param_hist, t0, t1)
-    center = 0.5 * (t0 + t1)
-    integral = zeros(length(value_hist[1]))
-    moment = zeros(length(value_hist[1]))
-    value_prev = interpolate(param_hist, value_hist, breakpoints[1])
-    for i in 2:length(breakpoints)
-        a = breakpoints[i - 1]
-        b = breakpoints[i]
-        h = b - a
-        value_next = interpolate(param_hist, value_hist, breakpoints[i])
-        integral .+= (0.5 * h) .* (value_prev .+ value_next)
-        # ∫_a^b [v_a + (v_b - v_a)(t - a)/h] (t - t_c) dt, exactly:
-        moment .+= (h * (0.5 * (a + b) - center)) .* value_prev .+
-                   (h * h / 3.0 + 0.5 * (a - center) * h) .* (value_next .- value_prev)
-        value_prev = value_next
-    end
-    return integral ./ window .+ (6.0 / window^2) .* moment
 end
 
 using Einsum

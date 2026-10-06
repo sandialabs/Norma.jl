@@ -7,7 +7,7 @@
 # Input keyword validation, in the fashion of Carina's input_parsing.jl.
 #
 # Norma reads its YAML input with plain Dict lookups, so an unrecognized key
-# is silently ignored: `adjoint paring: false` leaves adjoint pairing on,
+# is silently ignored: `constrainted: true` leaves the constrained exchange off,
 # `relaxation type: classical` sets nothing, and the run proceeds with
 # defaults the user believes were overridden. Every loaded input file is
 # therefore walked against the known-key sets below, and any key that no
@@ -253,29 +253,13 @@ const BC_ENTRY_KEYS = Dict(
         "constraint",
         "interface solve",
     ]),
-    "Schwarz impedance nonoverlap" => Set([
+    "Schwarz RR nonoverlap" => Set([
         "source",
         "side set",
         "source side set",
         "source block",
         "search tolerance",
         "robin parameter",
-        "impedance scale",
-        "adjoint pairing",
-    ]),
-    "Schwarz impedance overlap" => Set([
-        "source",
-        "side set",
-        "source block",
-        "source side set",
-        "search tolerance",
-        "robin parameter",
-        "impedance scale",
-        "partner traction",
-        "transfer",
-        "transfer quadrature subdivisions",
-        "content aware absorption",
-        "representable dashpot",
     ]),
     "OpInf Schwarz overlap" => Set([
         "source",
@@ -287,11 +271,6 @@ const BC_ENTRY_KEYS = Dict(
         "compute overlap L2 relative error",
     ]),
 )
-# The classical Robin-Robin condition accepts a subset of the impedance keys:
-# `impedance scale` is rejected by its parser with a hard abort that points at
-# `Schwarz impedance nonoverlap`. Share the impedance key set here so that
-# abort is not preceded by a spurious unknown-key warning.
-BC_ENTRY_KEYS["Schwarz RR nonoverlap"] = BC_ENTRY_KEYS["Schwarz impedance nonoverlap"]
 
 const BC_TYPE_KEYS = Set(keys(BC_ENTRY_KEYS))
 

@@ -13,7 +13,7 @@ D = Differential(t)
 # Swappable Dirichlet-Neumann Schwarz couplings.  Contact and non-overlap (DN)
 # Schwarz are the couplings whose two sides carry complementary Dirichlet and
 # Neumann roles (fields is_dirichlet / swap_bcs / dirichlet_projector /
-# neumann_projector) and can exchange those roles; impedance (Robin) and overlap
+# neumann_projector) and can exchange those roles; Robin-Robin and overlap
 # (pure Dirichlet) couplings cannot.  Contact sits outside the CouplingSchwarz
 # subtree, so this capability cuts across the single-inheritance hierarchy and is
 # expressed as a trait predicate rather than a shared supertype: it is the one
@@ -267,82 +267,6 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     )
 end
 
-function SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
-    coupled_block_name::String,
-    tol::Float64,
-    mesh::ExodusDatabase,
-    side_set_name::String,
-    side_set_id::Int64,
-    side_set_node_indices::Vector{Int64},
-    num_nodes_sides::Vector{Int64},
-    coupled_subsim::Simulation,
-    subsim::Simulation,
-    impedance::Float64,
-    impedance_shear::Float64,
-    robin_parameter::Float64,
-    impedance_scale::Vector{Float64},
-    partner_traction_mode::String,
-    transfer_mode::String,
-    transfer_subdivisions::Int64,
-    content_absorption::Bool,
-    representable_dashpot::Bool,
-)
-    # Pointwise interpolation infrastructure (same as regular overlap)
-    coupled_mesh = get_fom_model(coupled_subsim).mesh
-    coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
-    element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
-    element_type = element_type_from_string(element_type_string)
-    coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
-    interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
-    unique_node_indices = unique(side_set_node_indices)
-    for node_index in unique_node_indices
-        point = subsim.model.reference[:, node_index]
-        node_indices, ξ, found = find_point_in_mesh(point, coupled_subsim.model, coupled_block_id, tol)
-        if found == false
-            norma_abortf(
-                "Could not find subdomain %s point (%.4e, %.4e, %.4e) in subdomain %s",
-                subsim.name, point[1], point[2], point[3], coupled_subsim.name,
-            )
-        end
-        N = interpolate(element_type, ξ)[1]
-        push!(coupled_nodes_indices, node_indices)
-        push!(interpolation_function_values, N)
-    end
-    # Surface projector infrastructure (for weak force application)
-    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
-    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
-    square_projector = Matrix{Float64}(undef, 0, 0)
-    return SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
-        side_set_name,
-        side_set_id,
-        side_set_node_indices,
-        num_nodes_sides,
-        coupled_nodes_indices,
-        interpolation_function_values,
-        local_from_global_map,
-        global_from_local_map,
-        square_projector,
-        impedance,
-        impedance_shear,
-        robin_parameter,
-        impedance_scale,
-        partner_traction_mode,
-        nothing,
-        transfer_mode,
-        transfer_subdivisions,
-        Matrix{Float64}(undef, 0, 0),
-        content_absorption,
-        Matrix{Float64}(undef, 0, 0),
-        representable_dashpot,
-        Matrix{Float64}(undef, 0, 0),
-        coupled_block_name,
-        tol,
-        subsim.parent,
-        subsim.handle,
-        coupled_subsim.handle,
-    )
-end
-
 function SolidMechanicsContactSchwarzBoundaryCondition(
     subsim::SingleDomainSimulation,
     coupled_subsim::SingleDomainSimulation,
@@ -393,7 +317,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     )
 end
 
-function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
+function SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition(
     mesh::ExodusDatabase,
     side_set_name::String,
     coupled_side_set_name::String,
@@ -402,9 +326,7 @@ function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
     num_nodes_sides::Vector{Int64},
     coupled_subsim::Simulation,
     subsim::Simulation,
-    impedance::Float64,
     robin_parameter::Float64,
-    adjoint_pairing::Bool,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -412,7 +334,7 @@ function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
     coupled_bc_index = 0
-    return SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
+    return SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition(
         side_set_name,
         side_set_id,
         side_set_node_indices,
@@ -424,9 +346,7 @@ function SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
         dirichlet_projector,
         neumann_projector,
         square_projector,
-        impedance,
         robin_parameter,
-        adjoint_pairing,
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,
@@ -477,42 +397,6 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         subsim.handle,
         coupled_subsim.handle,
     )
-end
-
-# Characteristic impedances Z_p = √(ρ(λ + 2μ)) = ρ c_p and Z_s = √(ρμ) = ρ c_s
-# of a material.
-function wave_impedances(material::Solid)
-    return sqrt(material.ρ * (material.λ + 2.0 * material.μ)), sqrt(material.ρ * material.μ)
-end
-
-# Index of the element block that owns the faces of a side set: the block of
-# its first face's element. Side set element ids are global and the blocks
-# are stored in file order, so the block is found from the cumulative element
-# counts. A side set spanning several blocks (an interface through a material
-# boundary) takes the first block, with a warning, since the impedance is one
-# value per side set.
-function side_set_block_index(model::SolidMechanics, side_set_id::Integer, side_set_name::String)
-    elements, _ = Exodus.read_side_set_elements_and_sides(model.mesh, Int32(side_set_id))
-    offsets = cumsum([block.num_elements for block in model.blocks])
-    block_of(element) = searchsortedfirst(offsets, Int64(element))
-    first_block = block_of(elements[1])
-    if any(block_of(element) != first_block for element in elements)
-        norma_logf(
-            0,
-            :warning,
-            "Side set \"%s\" spans several element blocks; its impedance uses the material of block %d.",
-            side_set_name,
-            first_block,
-        )
-    end
-    return first_block
-end
-
-function block_index_from_name(model::SolidMechanics, block_name::String)
-    names = Exodus.read_names(model.mesh, Block)
-    index = findfirst(==(block_name), names)
-    index === nothing && norma_abort("Element block \"$block_name\" not found in the mesh.")
-    return index
 end
 
 function SMCouplingSchwarzBC(
@@ -608,175 +492,43 @@ function SMCouplingSchwarzBC(
             constraint,
             direct_solve,
         )
-    elseif bc_type == "Schwarz RR nonoverlap" ||
-           bc_type == "Schwarz impedance nonoverlap" ||
-           bc_type == "Schwarz impedance overlap"
-        # Nonoverlap variant: scalar P-impedance of this subdomain's own
-        # material at the interface, the material of the block that owns the
-        # side set. Overlap variant: P/S-split tensor impedance from the
-        # NEIGHBOR's material in the source block, per the optimized-Schwarz
-        # cross-scaling principle (each side's optimal transmission operator
-        # approximates the neighbor's DtN map). Both come from the constructed
-        # materials, so every way of specifying the elastic constants works
-        # and a multi-material subdomain gets the impedance of the block at
-        # the interface.
+    elseif bc_type == "Schwarz RR nonoverlap"
+        # Classical Robin-Robin transmission condition t + α W u = g, with
+        # per-side transfer operators and per-side Robin parameters. The
+        # condition does not absorb interface waves and can inject energy at the
+        # interface in elastodynamics (issue #176: a growing interface mode,
+        # with a lateral kink of the bar axis under pure torsion), so it is
+        # intended for quasi-statics and for comparison studies. For dynamics the
+        # constrained Dirichlet-Neumann exchange (`Schwarz DN nonoverlap` with
+        # `constrained: true`) is recommended.
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
-        raw_scale = get(bc_params, "impedance scale", 1.0)
-        if raw_scale isa AbstractVector
-            impedance_scale = Float64.(raw_scale)
-        else
-            impedance_scale = [Float64(raw_scale)]
-        end
-        if bc_type == "Schwarz RR nonoverlap"
-            # Classical Robin-Robin transmission condition t + α W u = g: no
-            # dashpot, and by default the legacy per-side transfer with
-            # per-side Robin parameters, as in the classical Robin-Robin
-            # literature. The condition has no absorbing mechanism and can
-            # pump energy at the interface in elastodynamics (issue #176:
-            # growing interface mode, lateral kink of the bar axis under pure
-            # torsion), so it is intended for quasi-statics and for comparison
-            # studies; `Schwarz impedance nonoverlap` is the recommended
-            # condition for dynamics.
-            if haskey(bc_params, "impedance scale")
-                norma_abort(
-                    "`impedance scale` is not a `Schwarz RR nonoverlap` key: this " *
-                    "condition has no dashpot. For the impedance condition " *
-                    "t + Z u̇ + α W u = g use `Schwarz impedance nonoverlap`.",
-                )
-            end
-            if robin_parameter <= 0.0
-                norma_abort(
-                    "`Schwarz RR nonoverlap` requires a positive `robin parameter` " *
-                    "(the Robin spring is this condition's only coupling term).",
-                )
-            end
-            if get(get(subsim.params, "time integrator", Parameters()), "type", "") != "quasi static"
-                norma_log(
-                    0,
-                    :warning,
-                    "`Schwarz RR nonoverlap` applies the classical Robin condition " *
-                    "t + α W u = g, which is not absorbing and can pump energy at " *
-                    "the interface in elastodynamics (issue #176). For dynamics " *
-                    "prefer `Schwarz impedance nonoverlap`.",
-                )
-            end
-            # `adjoint pairing: true` remains available: it makes the Robin
-            # spring a conservative interface spring built from the shared
-            # cross-mass transfer, and requires ONE α per interface.
-            adjoint_pairing = Bool(get(bc_params, "adjoint pairing", false))
-            SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
-                input_mesh,
-                side_set_name,
-                coupled_side_set_name,
-                side_set_id,
-                side_set_node_indices,
-                num_nodes_sides,
-                coupled_subsim,
-                subsim,
-                0.0,
-                robin_parameter,
-                adjoint_pairing,
-            )
-        elseif bc_type == "Schwarz impedance nonoverlap"
-            # Scalar dashpot scaling for the nonoverlap variant. A zero scale
-            # would degenerate to the classical pure displacement-Robin
-            # coupling, which has its own keyword; keep each keyword meaning
-            # its condition.
-            if length(impedance_scale) != 1
-                norma_abort(
-                    "`impedance scale` for `$bc_type` must be a scalar " *
-                    "(the P/S-split schedule is an overlap-variant feature).",
-                )
-            end
-            if impedance_scale[1] <= 0.0
-                norma_abort(
-                    "`impedance scale` must be positive for `$bc_type` " *
-                    "(got $(impedance_scale[1])). For the classical pure Robin " *
-                    "condition t + α W u = g (no dashpot) use `Schwarz RR nonoverlap`.",
-                )
-            end
-            interface_block = side_set_block_index(subsim.model, side_set_id, side_set_name)
-            impedance, _ = wave_impedances(subsim.model.materials[interface_block])
-            impedance *= impedance_scale[1]
-            # Adjoint pairing is the default: both sides derive their transfer
-            # operators from one shared cross-mass matrix, share one impedance
-            # and Robin parameter, and exchange the dynamically consistent
-            # d'Alembert reaction (M·a + f_int − f_body). The cantilever
-            # benchmark measured the legacy per-side transfer losing 9.6%/ms
-            # even on conforming meshes (static reactions miss the interface
-            # inertia) and injecting up to +363% on nonconforming ones, where
-            # the paired coupling is sign-definite at every mesh ratio and
-            # integrator combination (see docs/notes/schwarz-coupling).
-            # The legacy behavior remains available as an explicit opt-out.
-            adjoint_pairing = Bool(get(bc_params, "adjoint pairing", true))
-            SolidMechanicsImpedanceNonOverlapSchwarzBoundaryCondition(
-                input_mesh,
-                side_set_name,
-                coupled_side_set_name,
-                side_set_id,
-                side_set_node_indices,
-                num_nodes_sides,
-                coupled_subsim,
-                subsim,
-                impedance,
-                robin_parameter,
-                adjoint_pairing,
-            )
-        else
-            coupled_block_name = bc_params["source block"]
-            coupled_block = block_index_from_name(coupled_subsim.model, coupled_block_name)
-            impedance_p_coupled, impedance_s_coupled = wave_impedances(coupled_subsim.model.materials[coupled_block])
-            tol = Float64(get(bc_params, "search tolerance", 1.0e-06))
-            partner_traction_mode = get(bc_params, "partner traction", "auto")
-            if partner_traction_mode ∉ ("auto", "consistent traction", "recovered stress")
-                norma_abort(
-                    "Invalid `partner traction: $partner_traction_mode`. Valid values are " *
-                    "\"auto\", \"consistent traction\", and \"recovered stress\".",
-                )
-            end
-            # Variational (L2-projection) transfer is the default: it is the
-            # contraction the nonmatching-grid Schwarz theory requires
-            # (Gander-Halpern-Nataf 2003, Thm 7.4), and the cantilever
-            # parametric study measured pointwise interpolation making the
-            # impedance dashpot's interface work sign-indefinite on
-            # nonconforming meshes (energy growth), where variational transfer
-            # restores controlled dissipation (see
-            # docs/notes/schwarz-coupling). On node-aligned interfaces
-            # the two coincide. Pointwise remains an explicit legacy opt-in.
-            transfer_mode = get(bc_params, "transfer", "variational")
-            if transfer_mode ∉ ("pointwise", "variational")
-                norma_abort(
-                    "Invalid `transfer: $transfer_mode`. Valid values are " *
-                    "\"pointwise\" and \"variational\".",
-                )
-            end
-            transfer_subdivisions = Int64(get(bc_params, "transfer quadrature subdivisions", 1))
-            if transfer_subdivisions < 1
-                norma_abort("`transfer quadrature subdivisions` must be a positive integer.")
-            end
-            content_absorption = Bool(get(bc_params, "content aware absorption", false))
-            representable_dashpot = Bool(get(bc_params, "representable dashpot", false))
-            SolidMechanicsImpedanceOverlapSchwarzBoundaryCondition(
-                coupled_block_name,
-                tol,
-                input_mesh,
-                side_set_name,
-                side_set_id,
-                side_set_node_indices,
-                num_nodes_sides,
-                coupled_subsim,
-                subsim,
-                impedance_p_coupled,
-                impedance_s_coupled,
-                robin_parameter,
-                impedance_scale,
-                partner_traction_mode,
-                transfer_mode,
-                transfer_subdivisions,
-                content_absorption,
-                representable_dashpot,
+        if robin_parameter <= 0.0
+            norma_abort(
+                "`Schwarz RR nonoverlap` requires a positive `robin parameter` " *
+                "(the Robin spring is this condition's only coupling term).",
             )
         end
+        if get(get(subsim.params, "time integrator", Parameters()), "type", "") != "quasi static"
+            norma_log(
+                0,
+                :warning,
+                "`Schwarz RR nonoverlap` applies the classical Robin condition " *
+                "t + α W u = g, which is not absorbing and can inject energy at " *
+                "the interface in elastodynamics (issue #176). For dynamics " *
+                "prefer `Schwarz DN nonoverlap` with `constrained: true`.",
+            )
+        end
+        SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition(
+            input_mesh,
+            side_set_name,
+            coupled_side_set_name,
+            side_set_id,
+            side_set_node_indices,
+            num_nodes_sides,
+            coupled_subsim,
+            subsim,
+            robin_parameter,
+        )
     else
         norma_abort("Unknown boundary condition type : $bc_type")
     end
