@@ -179,15 +179,11 @@ end
     rm("cuboids-blended-energy.csv"; force=true)
 end
 
-@testset "Overlap Blended Energy: Impedance Overlap Matches Monodomain" begin
-    # Regression for the overlap-recognition bug: an impedance (Robin) overlap
-    # coupling meshes the shared region twice just like a DBC overlap, but its BC
-    # type is a *sibling* of SolidMechanicsOverlapSchwarzBoundaryCondition, so it
-    # was skipped by overlap_partners -> every weight was 1 -> the blended energy
-    # silently reduced to the naive double-counted sum (and therefore depended on
-    # the overlap width).  On a nonconforming impedance decomposition the blended
-    # energy of the initial field must instead match the true monodomain energy,
-    # which is independent of the overlap width.
+@testset "Overlap Blended Energy: Nonconforming Overlap Matches Monodomain" begin
+    # On a nonconforming overlapping decomposition the naive sum of the two
+    # subdomain strain energies counts the overlap region twice. The blended
+    # energy of the initial field must instead match the energy of the
+    # undecomposed cantilever, which does not depend on the overlap width.
 
     # True monodomain reference: the full cantilever with the same IC/material.
     cp("../examples/single/implicit-dynamic-solid/cantilever/cantilever.yaml", "cantilever.yaml"; force=true)
@@ -202,20 +198,20 @@ end
     rm("cantilever.g"; force=true)
     rm("cantilever.e"; force=true)
 
-    # Nonconforming impedance-overlap decomposition of the same cantilever.
+    # Nonconforming overlapping decomposition of the same cantilever.
     ncdir = "../examples/overlap/dynamic-same-step/cantilever-nonconforming"
-    cp("$ncdir/cantilever-impedance.yaml", "cantilever-impedance.yaml"; force=true)
-    cp("$ncdir/cantilever-free-impedance.yaml", "cantilever-free-impedance.yaml"; force=true)
-    cp("$ncdir/cantilever-clamped-impedance.yaml", "cantilever-clamped-impedance.yaml"; force=true)
+    cp("$ncdir/cantilever.yaml", "cantilever.yaml"; force=true)
+    cp("$ncdir/cantilever-free.yaml", "cantilever-free.yaml"; force=true)
+    cp("$ncdir/cantilever-clamped.yaml", "cantilever-clamped.yaml"; force=true)
     cp("$ncdir/cantilever-free.g", "cantilever-free.g"; force=true)
     cp("$ncdir/cantilever-clamped.g", "cantilever-clamped.g"; force=true)
-    sim = Norma.create_simulation("cantilever-impedance.yaml")
+    sim = Norma.create_simulation("cantilever.yaml")
     Norma.apply_ics(sim)
     for subsim in sim.subsims
         Norma.evaluate(subsim.model, subsim.integrator, subsim.solver)
     end
 
-    # The impedance overlap coupling must now be recognized on both subdomains.
+    # The overlap coupling must be recognized on both subdomains.
     for subsim in sim.subsims
         @test !isempty(Norma.overlap_partners(subsim))
     end
@@ -233,9 +229,9 @@ end
         Exodus.close(subsim.params["output_mesh"])
     end
     empty!(Norma.ARLEQUIN_WEIGHT_CACHE)
-    rm("cantilever-impedance.yaml"; force=true)
-    rm("cantilever-free-impedance.yaml"; force=true)
-    rm("cantilever-clamped-impedance.yaml"; force=true)
+    rm("cantilever.yaml"; force=true)
+    rm("cantilever-free.yaml"; force=true)
+    rm("cantilever-clamped.yaml"; force=true)
     rm("cantilever-free.g"; force=true)
     rm("cantilever-clamped.g"; force=true)
     rm("cantilever-free.e"; force=true)

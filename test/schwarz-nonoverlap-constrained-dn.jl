@@ -302,8 +302,8 @@ end
 # Direct interface solve of the explicit pair (`interface solve: direct`): the
 # interface force is solved from the velocity constraint once per stop. It must
 # reproduce the iteration converged to 1e-12 and conserve Ẽ. Conforming meshes
-# and the 2:1 nonconforming meshes of the impedance example.
-const nonconforming_beam = "../examples/nonoverlap/dynamic-same-step/cantilever-impedance-nonconforming"
+# and the 2:1 nonconforming meshes of the cantilever-dn-nonconforming example.
+const nonconforming_beam = "../examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming"
 for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconforming", nonconforming_beam))
     @testset "Constrained DN: Direct Interface Solve, EE $label" begin
         runs = Dict{String,Any}()

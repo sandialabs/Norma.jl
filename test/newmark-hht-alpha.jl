@@ -14,9 +14,9 @@
 @testset "Newmark HHT Alpha" begin
     example = "../examples/overlap/dynamic-same-step/cantilever-conforming"
     files = [
-        "cantilever-impedance.yaml",
-        "cantilever-clamped-impedance.yaml",
-        "cantilever-free-impedance.yaml",
+        "cantilever.yaml",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
         "cantilever-clamped.g",
         "cantilever-free.g",
     ]
@@ -30,18 +30,18 @@
             cp(joinpath(example, f), f; force=true)
         end
         if hht_alpha > 0.0
-            for f in ("cantilever-clamped-impedance.yaml", "cantilever-free-impedance.yaml")
+            for f in ("cantilever-clamped.yaml", "cantilever-free.yaml")
                 y = read(f, String)
                 y = replace(y, "γ: 0.5" => "γ: 0.5\n  HHT alpha: $hht_alpha")
                 write(f, y)
             end
         end
-        multi = read("cantilever-impedance.yaml", String)
+        multi = read("cantilever.yaml", String)
         # Long enough that the HHT dissipation (tens of percent) dominates
         # the ±15% overlap double-count artifact of this energy sum.
         multi = replace(multi, "final time: 3.0e-4" => "final time: 1.5e-4")
-        write("cantilever-impedance.yaml", multi)
-        sim = Norma.run("cantilever-impedance.yaml")
+        write("cantilever.yaml", multi)
+        sim = Norma.run("cantilever.yaml")
         for f in vcat(files, ["cantilever-clamped.e", "cantilever-free.e"])
             rm(f; force=true)
         end

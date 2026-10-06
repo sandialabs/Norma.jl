@@ -12,9 +12,9 @@ model:
       Poisson's ratio: 0.25
       density: 2768.0
 time integrator:
-  type: central difference
-  time step: 2.5e-07
-  CFL: 1.0
+  type: Newmark
+  time step: 1.0e-06
+  β: 0.25
   γ: 0.5
 initial conditions:
   displacement:
@@ -22,12 +22,14 @@ initial conditions:
       component: y
       function: "0.393701 * x * x"
 boundary conditions:
-  Schwarz impedance nonoverlap:
+  Schwarz overlap:
     - side set: ssx-
       source: cantilever-clamped
-      source side set: ssx+
-      robin parameter: 2.0e+09
-      adjoint pairing: true
+      source block: cantilever_clamped
 solver:
-  type: explicit solver
-  step: explicit
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 2.54e-08

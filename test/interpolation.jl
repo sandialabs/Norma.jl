@@ -220,3 +220,18 @@ end
     @test Norma.is_inside(element_type, vertices, x5)[2] == true
     @test Norma.is_inside(element_type, vertices, x6)[2] == true
 end
+
+# Piecewise-linear interpolation of a partner time history, used by the
+# Schwarz exchange of subcycled and windowed stops. The query must be
+# interpolated on its own segment of the history: an indexing error once
+# returned the end-of-history value for every query.
+@testset "Time History Interpolation" begin
+    th2 = [0.0, 1.0]
+    vh2 = [[0.0], [10.0]]
+    @test Norma.interpolate(th2, vh2, 0.25) ≈ [2.5]
+    th5 = collect(0.0:0.25:1.0)
+    kinked = [[abs(t - 0.5)] for t in th5]
+    @test Norma.interpolate(th5, kinked, 0.30) ≈ [0.2]
+    @test Norma.interpolate(th5, kinked, 0.0) ≈ [0.5]
+    @test Norma.interpolate(th5, kinked, 1.0) ≈ [0.5]
+end

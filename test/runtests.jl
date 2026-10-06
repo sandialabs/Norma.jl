@@ -104,7 +104,6 @@ const indexed_test_files = [
     (56, "schwarz-overlap-dynamic-cantilever-weak.jl"),
     (57, "schwarz-overlap-static-cuboid-hex8-swap.jl"),
     (58, "schwarz-nonoverlap-static-cuboid-hex8-aitken.jl"),
-    (59, "schwarz-overlap-dynamic-cantilever-impedance.jl"),
     (60, "single-static-solid-cube-time-swap.jl"),
     (61, "linear-krom-schwarz-overlap-cuboid-hex8.jl"),
     (62, "rbf-krom-schwarz-overlap-cuboid-hex8.jl"),
@@ -139,9 +138,7 @@ const indexed_test_files = [
     (91, "schwarz-nonoverlap-static-cuboid-hex8-aitken-secant.jl"),
     (92, "schwarz-nonoverlap-dynamic-cantilever-dn-aitken-secant.jl"),
     (93, "schwarz-nonoverlap-static-cuboid-robin-robin-aitken.jl"),
-    (94, "schwarz-nonoverlap-dynamic-cuboids-impedance-aitken.jl"),
     (95, "schwarz-nonoverlap-dynamic-cantilever-rr-aitken.jl"),
-    (96, "schwarz-nonoverlap-dynamic-cantilever-impedance-aitken.jl"),
     (97, "schwarz-ahead-overlap-dynamic-clamped-3sd-multi-swap-all-subdomains.jl"),
     (98, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-rom-fom-multi-swap.jl"),
     (99, "single-ahead-cuboid-dynamic-restart.jl"),
@@ -149,13 +146,9 @@ const indexed_test_files = [
     (101, "single-ahead-clamped-opinf-rom-restart.jl"),
     (102, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-fom-fom-restart.jl"),
     (103, "schwarz-ahead-overlap-dynamic-clamped-single-gaussian-opinf-rom-restart.jl"),
-    (104, "schwarz-overlap-dynamic-cantilever-impedance-energy.jl"),
-    (105, "schwarz-overlap-impedance-tensor-crossscale.jl"),
-    (106, "schwarz-overlap-impedance-variational-transfer.jl"),
     (107, "newmark-hht-alpha.jl"),
     (108, "schwarz-ahead-nonoverlap-dynamic-notched-cylinder.jl"),
     (109, "schwarz-overlap-blended-energy.jl"),
-    (110, "schwarz-nonoverlap-impedance-adjoint-pairing.jl"),
     (111, "restart-past-final-time.jl"),
     (112, "restart-inplace-checkpoint.jl"),
     (113, "schwarz-overlap-static-cuboids-restart.jl"),
@@ -182,6 +175,7 @@ const indexed_test_files = [
     (134, "adaptivity-quality.jl"),
     (135, "pseudo-energy.jl"),
     (136, "schwarz-nonoverlap-constrained-dn.jl"),
+    (137, "schwarz-nonoverlap-windowed-stops.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach
@@ -201,12 +195,11 @@ const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopi
 # - 55       schwarz-nonoverlap-dynamic-cantilever-dn
 # - 78, 80, 81, 84..87, 89, 90, 97, 98   long swapping cases
 # - 100, 102, 103                        long restart cases
-# - 104      schwarz-overlap-dynamic-cantilever-impedance-energy
 # - 108      schwarz-ahead-nonoverlap-dynamic-notched-cylinder
 # - 114..116 in-memory restart cases
 const optional_test_indices = Int[
     27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
-    52, 55, 78, 80, 81, 84, 85, 86, 87, 89, 90, 97, 98, 100, 102, 103, 104, 108,
+    52, 55, 78, 80, 81, 84, 85, 86, 87, 89, 90, 97, 98, 100, 102, 103, 108,
     114, 115, 116,
 ]
 

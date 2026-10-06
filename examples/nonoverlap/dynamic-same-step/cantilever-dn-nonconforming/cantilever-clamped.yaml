@@ -13,9 +13,9 @@ model:
       density: 2768.0
 time integrator:
   type: Newmark
-  time step: 1.0e-06
   β: 0.25
   γ: 0.5
+  time step: 5.0e-07
 initial conditions:
   displacement:
     - node set: nsall
@@ -32,11 +32,14 @@ boundary conditions:
     - node set: nsx-
       component: z
       function: "0.0"
-  Schwarz impedance overlap:
+  Schwarz DN nonoverlap:
     - side set: ssx+
-      source: cantilever-free-impedance
-      source block: cantilever_free
-      robin parameter: 0.0
+      source: cantilever-free
+      source side set: ssx-
+      default BC type: Neumann
+      swap BC types: false
+      constrained: true
+      constraint: velocity
 solver:
   type: Hessian minimizer
   step: full Newton

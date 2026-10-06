@@ -8,7 +8,6 @@ using YAML
 
 const dn_example = "../examples/nonoverlap/dynamic-same-step/cuboids-dirichlet-neumann"
 const rr_example = "../examples/nonoverlap/dynamic-same-step/cuboids-robin-robin"
-const imp_example = "../examples/nonoverlap/dynamic-same-step/cuboids-impedance"
 
 # Run the single-domain reference solution for 5 steps.
 function run_single_domain()
@@ -111,21 +110,6 @@ end
 
     @test sim.controller.use_interface_predictor == true
     @test sim.failed == false
-
-    # Interface displacement continuity
-    @test maximum(u1z) ≈ minimum(u2z) rtol = 1.0e-03
-
-    # Applied BC matches single domain
-    @test maximum(u2z) ≈ 6.156e-03 rtol = 1.0e-02
-
-    # Schwarz convergence bounded
-    @test all(iters[1:5] .≤ 20)
-end
-
-@testset "Schwarz Nonoverlap Dynamic Cuboid Impedance" begin
-    sim = run_schwarz(imp_example, "cuboids.yaml")
-    u1z, u2z = interface_displacements(sim)
-    iters = sim.controller.schwarz_iters
 
     # Interface displacement continuity
     @test maximum(u1z) ≈ minimum(u2z) rtol = 1.0e-03
