@@ -1841,12 +1841,11 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
         Δt = controller.time_step
         u_prev = controller.schwarz_disp[i] + Δt * controller.schwarz_velo[i]
         u_curr = subsims[i].integrator.displacement + Δt * subsims[i].integrator.velocity
-        if subsims[i].model isa SolidMechanics
-            X = vec(subsims[i].model.reference)
-            norms_pos[i] = norm(X + u_curr)
-        else
-            norms_pos[i] = norm(u_curr)
-        end
+        # The relative error is taken against the solution itself, not against
+        # the current positions X + u: dividing by the positions made the test
+        # depend on the coordinate origin and looser than stated by the ratio of
+        # the displacement to the size of the body.
+        norms_pos[i] = norm(u_curr)
         norms_diff[i] = norm(u_curr - u_prev)
     end
     norm_pos = norm(norms_pos)

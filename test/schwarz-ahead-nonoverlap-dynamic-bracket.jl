@@ -40,17 +40,22 @@ using YAML
     avg_stress_bracket1 = average_components(model_bracket1.stress)
     avg_stress_bracket2 = average_components(model_bracket2.stress)
 
-    @test min_disp_x_bracket1 ≈ -2.416082185471358e-5 atol = 1e-8
-    @test min_disp_y_bracket1 ≈ -2.9613924802343594e-5 atol = 1e-8
-    @test max_disp_z_bracket1 ≈ 8.127325097578087e-5 atol = 1e-8
-    @test min_disp_x_bracket2 ≈ -0.00010888117759164236 atol = 1e-8
-    @test min_disp_y_bracket2 ≈ -5.119349852748901e-5 atol = 1e-8
-    @test max_disp_z_bracket2 ≈ 0.0008415849066282396 atol = 1e-8
+    # Baseline of the relative Schwarz criterion normalized by the solution (not
+    # by the positions X + u, under which every early stop accepted its first
+    # iterate). With the example's absolute tolerance of 1e-6 m the largest
+    # displacement differs by 2.6% from the answer converged to 1e-14 (4.0%
+    # under the former criterion).
+    @test min_disp_x_bracket1 ≈ -2.4039728277800348e-5 atol = 1e-8
+    @test min_disp_y_bracket1 ≈ -2.998071050631785e-5 atol = 1e-8
+    @test max_disp_z_bracket1 ≈ 8.24591776516464e-5 atol = 1e-8
+    @test min_disp_x_bracket2 ≈ -0.00010887463311789825 atol = 1e-8
+    @test min_disp_y_bracket2 ≈ -5.13008163845687e-5 atol = 1e-8
+    @test max_disp_z_bracket2 ≈ 0.0008415476201673325 atol = 1e-8
     @test avg_stress_bracket1 ≈
-        [671148.4643141687 -16166.361832799912 38622.727354287 7526.39763241908 -4.310521770042798e6 -160587.5639295959] atol =
+        [652910.6580490598 -12123.223816426462 50154.572220476926 5493.09267826974 -4.39286450144604e6 -146484.54939631541] atol =
         1.0e1
     @test avg_stress_bracket2 ≈
-        [734015.580680691 433545.2157936324 1202.5290838340559 -404357.11662489665 872167.0272852193 271677.52974129445] atol =
+        [759835.7486153797 405964.9277498441 -7906.673323030443 -399843.83671783155 887611.4735772951 235560.99596637356] atol =
         1.0e1
-    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 1, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4] atol = 0
+    @test sim.controller.schwarz_iters ≈ [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 4, 6, 7, 8, 8, 8, 8, 7, 7, 7, 8, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 9, 9, 9, 9, 8, 8, 8] atol = 0
 end

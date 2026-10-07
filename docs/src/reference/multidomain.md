@@ -47,7 +47,7 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `minimum iterations` | yes | — | minimum Schwarz iterations per step |
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
 | `absolute tolerance` | yes | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds |
-| `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of the current positions X + u + Δt v (of u + Δt v for reduced-order models); because X is of the size of the body this ratio is small even when the interface has not converged. Constrained pairs use their own interface criterion instead (see `constrained`) |
+| `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Constrained pairs use their own interface criterion instead (see `constrained`) |
 | `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (m/s or m); the controller's `absolute tolerance` does not apply to constrained pairs |
 | `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
 | `stalled interface jump action` | no | `warn` | what to do when the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
