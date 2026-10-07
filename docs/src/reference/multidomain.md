@@ -49,7 +49,7 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `absolute tolerance` | yes | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds |
 | `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Constrained pairs use their own interface criterion instead (see `constrained`) |
 | `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (m/s or m); the controller's `absolute tolerance` does not apply to constrained pairs |
-| `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
+| `unconverged step action` | no | `abort` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `abort` the run, or `warn` and continue with the last iterate |
 | `stalled interface jump action` | no | `warn` | what to do when the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
 
 A step that reaches `maximum iterations` without converging reports the errors
@@ -62,8 +62,8 @@ instead, for cases where an unconverged interface must not be carried forward.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation, or `anderson` (Anderson acceleration of the constrained datum of constrained Dirichlet–Neumann pairs); omit for a fixed factor |
-| `anderson depth` | no | `10` | number m of previous iterates combined by Anderson acceleration |
-| `relaxation parameter` | no | `1.0` | relaxation factor θ; the constant factor under fixed relaxation, and under either Aitken method the factor used wherever an adaptive one is not yet available |
+| `anderson depth` | no | `10` | number m of previous iterates combined by Anderson acceleration; it must cover the Schwarz iterations a stop needs (5 is too short with an explicit Dirichlet side) |
+| `relaxation parameter` | no | `1.0`; `0.5` under `anderson` | relaxation factor θ: the constant factor under fixed relaxation; under either Aitken method the factor used wherever an adaptive one is not yet available; under `anderson` the mixing parameter β of the update (see below), which is also the factor of the first Schwarz iteration of every stop |
 | `aitken N0 parameter` | no | `1` | Schwarz iteration, counting from zero, at which the adaptive factor takes over from `relaxation parameter` (Aitken methods only) |
 | `interface predictor` | no | `false` | extrapolate the interface state at the start of each step |
 | `naive stabilized` | no | `false` | naive interface stabilization |
@@ -215,11 +215,24 @@ u = u_pre + β Δt² a, and with `constraint: displacement`, u = Π_D u_N,
 a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
 constrained quantity only, and Aitken factors and Anderson coefficients are
 formed from its projected interface trace Π_D q_N, not from the partner's
-whole field. Anderson acceleration (`relaxation: anderson`, `anderson depth:
-10`, `relaxation parameter: 0.5` as the mixing parameter) is the recommended
-setting for constrained pairs. It combines the last m iterates by the
-least-squares problem of Walker and Ni (2011), solved by QR with the oldest
-column dropped while the condition number exceeds 1e10, keeps its state per
+whole field. Anderson acceleration (`relaxation: anderson`, with the defaults
+`anderson depth: 10` and `relaxation parameter: 0.5`) is the recommended
+setting for constrained pairs. With x_k the datum the Dirichlet side used at
+Schwarz iteration k, f_k = G(x_k) − x_k the residual (G the partner datum the
+iteration returns), t_k the projected interface trace of f_k, and ΔX, ΔF, ΔT
+the differences of the last m + 1 iterates, it computes the coefficients
+γ = argmin ‖t_k − ΔT γ‖ and the next datum
+x_{k+1} = x_k + β f_k − (ΔX + β ΔF) γ, with β the mixing parameter
+`relaxation parameter`. The first iteration of a stop has no history, so it is
+the fixed relaxation x_1 = x_0 + β f_0. With β = 1 and a depth at least the
+iteration count the iterates are those of GMRES on a linear interface map
+(test 136 checks this); β < 1 damps the residual term. On the cantilever
+(1 ms, tolerance 1e-12) β = 0.5 needed 7.0, 23.1, and 7.9 Schwarz iterations
+per stop on the implicit pair, the mixed pair with the explicit side as the
+Dirichlet side, and the subcycled 1:0.5 explicit pair with the coarse mesh as
+the Dirichlet side, against 8.9, 28.7, and 8.8 at β = 1, with the same
+energies; hence the default 0.5. The least-squares problem is solved by QR
+with the oldest column dropped while the condition number exceeds 1e10. It keeps its state per
 pair and per substep slot, clears it at every stop and after a stall, and
 applies only to stops with a single substep (windowed stops use the fixed
 factor `relaxation parameter`, as for Aitken). On the cantilever it needed

@@ -490,9 +490,18 @@ $\Delta ~F$ the differences of the last $m + 1$ iterates,
   ~x_{k+1} = ~x_k + \beta\, ~f_k - (\Delta ~X + \beta\, \Delta ~F)\, ~\gamma ,
   \label{eq:anderson}
 \end{equation}
-with mixing parameter $\beta = 0.5$, the least-squares problem solved by QR
-with the oldest column dropped while the condition number exceeds
-$10^{10}$. For a linear interface map with $\beta = 1$ and a depth at least
+with mixing parameter $\beta$, the least-squares problem solved by QR with
+the oldest column dropped while the condition number exceeds $10^{10}$. The
+first iteration of a window has no history and is the fixed relaxation
+$~x_1 = ~x_0 + \beta ~f_0$; for $k \ge 1$ the term $\beta ~f_k$ is damped by
+$\beta$ and the history term corrects it. With $\beta = 1$ the update is the
+undamped quasi-Newton step. On the beam ($1$\,ms, $\epsilon = 10^{-12}$),
+$\beta = 0.5$ needs $7.0$, $23.1$, and $7.9$ iterations per window on the
+implicit pair, on the mixed pair with the explicit side as the Dirichlet
+side, and on the explicit pair at ratio $1{:}0.5$ with $4{:}1$ steps and the
+coarse mesh as the Dirichlet side, against $8.9$, $28.7$, and $8.8$ at
+$\beta = 1$, with the same energies; $\beta = 0.5$ is the recommended
+value and the default in Norma. For a linear interface map with $\beta = 1$ and a depth at least
 the iteration count, the iterate equals the map applied to the GMRES iterate
 of the same index (Walker and Ni, Theorem~2.2). The first iteration of a
 window has no history and is not entered in it. A depth of $10$ covers
@@ -969,7 +978,8 @@ The exchange is a \code{Schwarz DN nonoverlap} condition with
 \code{interface solve: direct} selects the direct solve for two explicit
 sides at equal steps. The top-level input sets the relative tolerance
 $\epsilon$, \code{relaxation: anderson} with \code{anderson depth} and
-\code{relaxation parameter} (the mixing parameter), or
+\code{relaxation parameter} (the mixing parameter $\beta$, default $0.5$ under
+Anderson acceleration and $1$ otherwise), or
 \code{relaxation: aitken recursive}; \code{constraint absolute tolerance}
 sets an absolute floor in the units of the constrained quantity (default
 $0$), and \code{stalled interface jump action} selects what a stalled stop

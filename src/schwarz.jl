@@ -38,6 +38,9 @@ end
 # log line maps straight back to the input file. Defined once and used by both
 # the start-up echo and the per-iteration factor lines, which previously spelled
 # the same method two ways (issue #217).
+# Default mixing parameter β of Anderson acceleration (see `relaxation: anderson`).
+const ANDERSON_DEFAULT_MIXING = 0.5
+
 function relaxation_method_name(method::Symbol)
     method === :anderson && return "Anderson"
     method === :aitken_recursive && return "Aitken recursive"

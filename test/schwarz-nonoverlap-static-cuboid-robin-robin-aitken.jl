@@ -77,18 +77,21 @@ end
 
 # A step that exhausts `maximum iterations` used to end in "Simulation Complete"
 # with nothing said, so an interface far from converged looked like a converged
-# one. It now warns, and `unconverged step action: abort` promotes that to an
-# abort, mirroring `stalled interface jump action`.
+# one. It now aborts the run by default, and `unconverged step action: warn`
+# demotes that to a warning that continues with the last iterate.
 @testset "Schwarz Nonoverlap Unconverged Step Action" begin
     capped = Dict{String,Any}("maximum iterations" => 1)
 
-    # Default: the run finishes, and says it did not converge.
-    sim = run_robin_robin(nothing; overrides=capped)
+    # Default: the step aborts the run.
+    run_robin_robin(nothing; overrides=capped, expect_abort=true)
+
+    # Opting out: the run finishes, and says it did not converge.
+    sim = run_robin_robin(nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "warn")))
     @test sim.controller.converged == false
     @test sim.controller.absolute_error > sim.controller.absolute_tolerance
     @test sim.controller.relative_error > sim.controller.relative_tolerance
 
-    # Opting in turns the same step into an abort.
+    # Setting the default explicitly aborts as well.
     run_robin_robin(nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "abort")),
                     expect_abort=true)
 
