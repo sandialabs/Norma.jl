@@ -406,34 +406,35 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         ensure_slot!(g_slots, slot_k)
         g_stored = g_slots[slot_k]
         g = isempty(g_stored) ? zeros(length(model.boundary_force)) : g_stored
-        # Optional Aitken relaxation factor. The fixed-point iterate is the
-        # datum stored in lambda_disp; its unrelaxed (theta = 1) candidate is
-        # T(g) = boundary_force + Robin datum, from which the residual
-        # r = T(g) - g is formed.
-        if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
-            candidate = copy(model.boundary_force)
-            for comp in 1:3
-                α_W_u = α * (W * dst_disp[comp, :])
-                for (i_local, i_global) in enumerate(global_from_local_map)
-                    dof_i = 3 * (i_global - 1) + comp
-                    candidate[dof_i] += neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
-                end
-            end
-            theta = controller.relaxation_method === :aitken_secant ?
-                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, candidate, g) :
-                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, candidate, g)
-        end
-        frozen_relaxation_update!(controller, theta)
-        g_slots[slot_k] = copy(model.boundary_force)
+        # The relaxed iterate is the Robin datum alone, on the interface degrees
+        # of freedom: rhs = -t_src + α W u_src. Other loads already in
+        # boundary_force (Neumann and pressure conditions on interface nodes) are
+        # not part of the iterate; relaxing them would scale them by 1/θ at the
+        # fixed point.
+        rhs = zeros(length(model.boundary_force))
         for comp in 1:3
             α_W_u = α * (W * dst_disp[comp, :])
             for (i_local, i_global) in enumerate(global_from_local_map)
                 dof_i = 3 * (i_global - 1) + comp
-                rhs_i = neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
-                g_slots[slot_k][dof_i] += (1 - theta) * g[dof_i] + theta * rhs_i
-                model.boundary_force[dof_i] = g_slots[slot_k][dof_i]
+                rhs[dof_i] = neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
             end
         end
+        # Optional Aitken relaxation factor. The fixed-point iterate is the datum
+        # stored in lambda_disp; its unrelaxed (theta = 1) candidate is rhs, from
+        # which the residual r = rhs - g is formed.
+        if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
+            theta = controller.relaxation_method === :aitken_secant ?
+                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g) :
+                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, rhs, g)
+        end
+        frozen_relaxation_update!(controller, theta)
+        datum = zeros(length(model.boundary_force))
+        for i_global in global_from_local_map, comp in 1:3
+            dof_i = 3 * (i_global - 1) + comp
+            datum[dof_i] = (1 - theta) * g[dof_i] + theta * rhs[dof_i]
+            model.boundary_force[dof_i] += datum[dof_i]
+        end
+        g_slots[slot_k] = datum
     end
 end
 
@@ -494,8 +495,11 @@ function pair_bc(bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition, bc_i
     coupled_bc_name = bc.coupled_bc_name
     coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
+    # The partner is the Robin condition on the named side set; other
+    # conditions on the same side set (a Neumann load, for example) share its
+    # name and are not partners.
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
-        if coupled_bc_name == coupled_bc.name
+        if coupled_bc_name == coupled_bc.name && coupled_bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
             bc.coupled_bc_index = coupled_bc_index
             coupled_bc.coupled_bc_index = bc_index
         end
@@ -1607,6 +1611,9 @@ function transfer_normal_component(source::Vector{Float64}, target::Vector{Float
     return tangent_projection * target + normal_projection * source
 end
 
+# Largest departure of |n_x| from 1 accepted for a frictionless contact normal.
+const FRICTIONLESS_NORMAL_TOLERANCE = 1.0e-6
+
 function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBoundaryCondition)
     nodal_curr, _, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
@@ -1615,6 +1622,17 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
         normal = normals[:, i_local]
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
         if bc.friction_type == 0
+            # The constrained degree of freedom is the Cartesian x component, so
+            # the normal must lie along x; a contact surface of another
+            # orientation would need the constraint in a rotated nodal frame.
+            if abs(normal[1]) < 1.0 - FRICTIONLESS_NORMAL_TOLERANCE
+                norma_abort(
+                    "Frictionless Schwarz contact on side set $(bc.name) has a normal " *
+                    "($(normal[1]), $(normal[2]), $(normal[3])) at node $(i_global) that is not along x. " *
+                    "Frictionless contact constrains the x component only and supports contact " *
+                    "surfaces normal to x; use friction type: tied, or orient the contact along x.",
+                )
+            end
             @inbounds model.displacement[:, i_global] = transfer_normal_component(
                 nodal_curr[:, i_local], model.reference[:, i_global] + model.displacement[:, i_global], normal
             ) - model.reference[:, i_global]
@@ -1635,9 +1653,6 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
         else
             norma_abort("Unknown or not implemented friction type.")
         end
-        # Update the rotation matrix
-        axis = SVector{3,Float64}(-normalize(normal))
-        bc.rotation_matrix = compute_rotation_matrix(axis)
     end
 end
 
@@ -2057,8 +2072,11 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     coupled_bc_name = bc.coupled_bc_name
     coupled_model = coupled_subsim_of(bc).model
     coupled_bcs = coupled_model.boundary_conditions
+    # The partner is the Schwarz condition on the named side set; other
+    # conditions on the same side set (a Neumann load, for example) share its
+    # name and are not partners.
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
-        if coupled_bc_name == coupled_bc.name
+        if coupled_bc_name == coupled_bc.name && coupled_bc isa SolidMechanicsSchwarzBoundaryCondition
             if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition &&
                coupled_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 if bc.is_dirichlet == coupled_bc.is_dirichlet

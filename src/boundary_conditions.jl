@@ -284,7 +284,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     local_from_global_map = get_side_set_local_from_global_map(input_mesh, side_set_id)
     global_from_local_map = get_side_set_global_from_local_map(input_mesh, side_set_id)
     coupled_bc_index = 0
-    rotation_matrix = I(3)
     active_contact = false
     swap_bcs = get(bc_params, "swap BC types", false)
     friction_type_string = bc_params["friction type"]
@@ -308,7 +307,6 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
         neumann_projector,
         is_dirichlet,
         swap_bcs,
-        rotation_matrix,
         active_contact,
         friction_type,
         subsim.parent,
@@ -830,28 +828,6 @@ function assert_no_exact_surface_bcs(model::SolidMechanics, solver_desc::String)
         end
     end
     return nothing
-end
-
-
-function compute_rotation_matrix(axis::SVector{3,Float64})::SMatrix{3,3,Float64}
-    e1 = @SVector [1.0, 0.0, 0.0]
-    angle_btwn = acos(dot(axis, e1))
-    w = cross(axis, e1)
-    s = clamp(norm(w), -1.0, 1.0)
-    if isapprox(angle_btwn, 0.0; atol=1e-12)
-        return @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
-    elseif isapprox(angle_btwn, π; atol=1e-12)
-        return @SMatrix [
-            -1.0 0.0 0.0
-            0.0 -1.0 0.0
-            0.0 0.0 1.0
-        ]
-    else
-        θ = angle_btwn > π / 2 ? π - asin(s) : asin(s)
-        m = normalize(w)
-        rv = θ * m
-        return rt_of_rv(rv)
-    end
 end
 
 

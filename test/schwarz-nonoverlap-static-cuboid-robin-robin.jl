@@ -3,6 +3,8 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+using YAML
+
 @testset "Schwarz Nonoverlap Static Cuboid Hex8 Robin-Robin Same Step" begin
     cp("../examples/nonoverlap/static-same-step/cuboids-robin-robin/cuboids.yaml", "cuboids.yaml"; force=true)
     cp("../examples/nonoverlap/static-same-step/cuboids-robin-robin/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
@@ -46,4 +48,41 @@
     @test avg_stress_coarse[4] ≈ 0.0 atol = 1.0e-01
     @test avg_stress_coarse[5] ≈ 0.0 atol = 1.0e-01
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-01
+end
+
+# The relaxed side of a Robin-Robin pair relaxes the Robin datum only. A
+# Neumann load on its interface nodes is applied unrelaxed, so the converged
+# solution does not depend on the relaxation factor; relaxing the whole
+# boundary force scaled such a load by 1/θ at the fixed point.
+@testset "Schwarz Nonoverlap Robin-Robin Relaxation Leaves Interface Loads Unscaled" begin
+    example = "../examples/nonoverlap/static-same-step/cuboids-robin-robin"
+    mesh_dir = "../examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann"
+    function run_with(theta)
+        cp("$mesh_dir/cuboid-1.g", "cuboid-1.g"; force=true)
+        cp("$mesh_dir/cuboid-2.g", "cuboid-2.g"; force=true)
+        cp("$example/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+        sub = YAML.load_file("$example/cuboid-2.yaml"; dicttype=Norma.Parameters)
+        sub["boundary conditions"]["Neumann"] = [
+            Norma.Parameters("side set" => "ssz-", "component" => "x", "function" => "1.0e+06 * t")
+        ]
+        YAML.write_file("cuboid-2.yaml", sub)
+        top = YAML.load_file("$example/cuboids.yaml"; dicttype=Norma.Parameters)
+        top["relaxation parameter"] = theta
+        top["maximum iterations"] = 256
+        YAML.write_file("cuboids.yaml", top)
+        sim = Norma.run("cuboids.yaml")
+        displacements = [copy(subsim.model.displacement) for subsim in sim.subsims]
+        for f in ("cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e",
+                  "cuboid-2.e")
+            rm(f; force=true)
+        end
+        return displacements
+    end
+    full = run_with(1.0)
+    half = run_with(0.5)
+    for k in 1:2
+        @test norm(half[k] - full[k]) ≤ 1.0e-6 * norm(full[k])
+    end
+    # The load moves the interface in x, so the test is not vacuous.
+    @test maximum(abs.(full[2][1, :])) > 1.0e-4
 end

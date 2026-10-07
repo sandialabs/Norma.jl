@@ -1026,10 +1026,13 @@ end
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
     num_nodes_sides, side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)
     local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
+    # The normal of the configuration in which equilibrium is stated: the
+    # current configuration for finite kinematics, the reference configuration
+    # for infinitesimal kinematics.
     if model.kinematics == Finite
-        coords = model.reference
-    else
         coords = model.reference .+ model.displacement
+    else
+        coords = model.reference
     end
     num_nodes = length(local_from_global_map)
     space_dim, _ = size(coords)

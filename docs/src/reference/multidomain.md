@@ -46,8 +46,8 @@ Each controller step performs Schwarz iterations until the interface converges.
 |---|---|---|---|
 | `minimum iterations` | yes | — | minimum Schwarz iterations per step |
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
-| `absolute tolerance` | yes | — | absolute interface convergence tolerance |
-| `relative tolerance` | yes | — | relative interface convergence tolerance |
+| `absolute tolerance` | yes | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds |
+| `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of the current positions X + u + Δt v (of u + Δt v for reduced-order models); because X is of the size of the body this ratio is small even when the interface has not converged. Constrained pairs use their own interface criterion instead (see `constrained`) |
 | `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (m/s or m); the controller's `absolute tolerance` does not apply to constrained pairs |
 | `unconverged step action` | no | `warn` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `warn` and continue, or `abort` |
 | `stalled interface jump action` | no | `warn` | what to do when the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
@@ -68,13 +68,16 @@ instead, for cases where an unconverged interface must not be carried forward.
 | `interface predictor` | no | `false` | extrapolate the interface state at the start of each step |
 | `naive stabilized` | no | `false` | naive interface stabilization |
 
-Relaxation is not tied to a particular transmission condition: it applies to
-whatever datum a coupling boundary condition transmits. For `Schwarz overlap`
-and `Schwarz DN nonoverlap` the relaxed quantity is the interface displacement;
-for `Schwarz RR nonoverlap` it is the interface force right-hand side, the
-Robin datum of the subdomain listed later in `domains`. Both Aitken forms work
-with all of them, and `relaxation parameter` and `aitken N0 parameter` mean the
-same thing in each.
+Relaxation applies to the datum that a nonoverlap or contact coupling
+transmits: for `Schwarz DN nonoverlap` and `Schwarz contact` it is the
+kinematic datum of the Dirichlet side (the interface displacement, or for a
+constrained pair the constrained quantity); for `Schwarz RR nonoverlap` it is
+the Robin datum of the subdomain listed later in `domains`, and only that
+datum: other loads on the interface nodes, such as Neumann or pressure
+conditions, are applied unrelaxed. `Schwarz overlap` is not relaxed; the
+relaxation keys have no effect on it. Both Aitken forms work with every relaxed
+coupling, and `relaxation parameter` and `aitken N0 parameter` mean the same
+thing in each.
 
 `relaxation parameter` is not ignored when `relaxation` names an Aitken method.
 It is the factor applied for Schwarz iterations below `aitken N0 parameter`,
@@ -184,7 +187,7 @@ every relaxation parameter; use Aitken relaxation
 |---|---|---|---|
 | `source side set` | yes | — | partner interface surface |
 | `default BC type` | no | `Dirichlet` | this side's role: `Dirichlet` or `Neumann` (the two sides must be opposite) |
-| `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles between Schwarz iterations |
+| `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles once per controller stop, before its Schwarz iteration |
 | `constrained` | no | `false` | constrained exchange: the Dirichlet side imposes one projected quantity and derives the other two kinematic fields from its own Newmark relations; the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides |
 | `constraint` | no | `velocity` | quantity imposed by the constrained exchange: `velocity` or `displacement`; one value per pair, which may be given on either side or on both (then equal) |
 | `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a constrained pair of two central difference subdomains at equal time steps under the velocity constraint, set on both sides |
@@ -342,13 +345,18 @@ difference subdomains at equal steps and `relaxation: anderson` otherwise.
 
 ### `Schwarz contact`
 
-Frictionless or tied contact enforced through Schwarz coupling.
+Frictionless or tied contact enforced through Schwarz coupling. Frictionless
+contact constrains the Cartesian x component of the interface nodes, so it
+supports contact surfaces whose normal lies along x and aborts otherwise; tied
+contact has no such restriction. Normals are computed on the current
+configuration for finite kinematics and on the reference configuration for
+infinitesimal kinematics.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `source side set` | yes | — | partner contact surface |
 | `friction type` | yes | — | `frictionless` or `tied` |
-| `swap BC types` | no | `false` | swap the interface roles between iterations |
+| `swap BC types` | no | `false` | swap the interface roles once per controller stop, before its Schwarz iteration |
 
 ## Mesh swapping (`swaps`)
 

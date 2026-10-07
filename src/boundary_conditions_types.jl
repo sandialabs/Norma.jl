@@ -124,7 +124,6 @@ mutable struct SolidMechanicsContactSchwarzBoundaryCondition <: SolidMechanicsSc
     neumann_projector::Matrix{Float64}
     is_dirichlet::Bool
     swap_bcs::Bool
-    rotation_matrix::Matrix{Float64}
     active_contact::Bool
     friction_type::Int64
     parent::Simulation
