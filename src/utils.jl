@@ -284,6 +284,43 @@ function thread_report()::String
     return report
 end
 
+# The commit of the Norma source tree, its date, and whether tracked files
+# differ from it, so that a log records which code produced it (issue #229).
+# Computed once per Julia session: the code loaded in a session does not change
+# when the checkout changes afterward.
+const NORMA_SOURCE_ROOT = dirname(@__DIR__)
+const NORMA_VERSION_REPORT = Ref{Union{String,Nothing}}(nothing)
+
+function git_output(root::AbstractString, args::Vector{String})::Union{String,Nothing}
+    Sys.which("git") === nothing && return nothing
+    try
+        return strip(read(pipeline(`git -C $root $args`; stderr=devnull), String))
+    catch
+        return nothing
+    end
+end
+
+function version_report(root::AbstractString=NORMA_SOURCE_ROOT)::String
+    commit = git_output(root, ["log", "-1", "--format=%h %cd", "--date=format:%Y-%m-%d %H:%M:%S %z"])
+    (commit === nothing || isempty(commit)) && return "commit unknown (not a git checkout: $root)"
+    hash, date = split(commit, ' '; limit=2)
+    report = "commit $hash of $date"
+    changes = git_output(root, ["status", "--porcelain", "--untracked-files=no"])
+    if changes === nothing
+        report *= ", working tree state unknown"
+    elseif !isempty(changes)
+        report *= ", with uncommitted changes"
+    end
+    return report
+end
+
+function version_report_cached()::String
+    if NORMA_VERSION_REPORT[] === nothing
+        NORMA_VERSION_REPORT[] = version_report()
+    end
+    return NORMA_VERSION_REPORT[]
+end
+
 function format_time(seconds::Float64)::String
     days = floor(Int, seconds / 86400)  # 86400 seconds in a day
     seconds %= 86400

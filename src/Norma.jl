@@ -53,6 +53,7 @@ function run(input_file::String)
     open_log_file(input_file)
     try
         norma_log(0, :norma, "BEGIN SIMULATION")
+        norma_log(0, :info, "Norma " * version_report_cached())
         params = load_input(input_file)
         if haskey(params, "adaptivity")
             return run_adaptive(params)
@@ -70,6 +71,7 @@ end
 
 function run(params::Parameters)
     norma_log(0, :norma, "BEGIN SIMULATION")
+    norma_log(0, :info, "Norma " * version_report_cached())
     if haskey(params, "adaptivity")
         return run_adaptive(params)
     end

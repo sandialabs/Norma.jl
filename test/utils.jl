@@ -116,4 +116,26 @@ using Logging
         end
     end
 
+
+    @testset "Version Report" begin
+        # The log records the commit of the source tree (issue #229).
+        @test startswith(Norma.version_report_cached(), "commit ")
+        mktempdir() do dir
+            @test startswith(Norma.version_report(dir), "commit unknown")
+            Sys.which("git") === nothing && return nothing
+            file = joinpath(dir, "a.txt")
+            write(file, "1\n")
+            git = `git -C $dir -c user.name=test -c user.email=test@example.com`
+            date = "2026-10-08T12:00:00+00:00"
+            env = ("GIT_COMMITTER_DATE" => date, "GIT_AUTHOR_DATE" => date)
+            run(pipeline(`git -C $dir init -q`; stderr=devnull))
+            run(`$git add a.txt`)
+            run(addenv(`$git commit -q -m initial`, env...))
+            hash = strip(read(`git -C $dir rev-parse --short HEAD`, String))
+            @test Norma.version_report(dir) == "commit $hash of 2026-10-08 12:00:00 +0000"
+            write(file, "2\n")
+            @test Norma.version_report(dir) == "commit $hash of 2026-10-08 12:00:00 +0000, with uncommitted changes"
+        end
+    end
+
 end
