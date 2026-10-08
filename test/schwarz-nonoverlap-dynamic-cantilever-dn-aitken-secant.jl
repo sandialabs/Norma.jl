@@ -88,3 +88,25 @@ end
     @test all(iters_secant .≤ 10)
     @test sum(iters_secant) ≤ sum(iters_aitken) + 1
 end
+
+# Anderson acceleration of the unconstrained Dirichlet-Neumann exchange: the
+# three imposed kinematic fields are updated with the coefficients of one
+# residual trace. Before issue #228 the keyword was accepted on this path but
+# the fixed factor was applied, so the run was identical to fixed relaxation.
+@testset "Schwarz Nonoverlap Dynamic Cantilever DN Anderson" begin
+    num_steps = 10
+    sim_aitken = run_cantilever_dn_secant(num_steps, "aitken recursive")
+    sim_anderson = run_cantilever_dn_secant(num_steps, "anderson")
+    @test sim_anderson.controller.relaxation_method == :anderson
+    @test sim_anderson.controller.relaxation_parameter == 0.5
+    # The fixed factor 0.5 needs about 20 iterations per stop on this pair
+    # (gain near -1 on conforming meshes); the accelerated schemes need fewer
+    # than 10, and Anderson is within a few iterations of recursive Aitken.
+    @test maximum(sim_anderson.controller.schwarz_iters) <= 8
+    @test sum(sim_anderson.controller.schwarz_iters) <= sum(sim_aitken.controller.schwarz_iters) + 2 * num_steps
+    for k in 1:2
+        u_a = sim_anderson.subsims[k].model.displacement
+        u_f = sim_aitken.subsims[k].model.displacement
+        @test norm(u_a - u_f) <= 1.0e-6 * norm(u_f)
+    end
+end

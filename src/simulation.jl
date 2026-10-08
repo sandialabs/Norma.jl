@@ -779,9 +779,11 @@ function SolidMultiDomainTimeController(params::Parameters)
                 aitken_N0 = Int(params["aitken N0 parameter"])
             end
         elseif relaxation_string == "anderson"
-            # Anderson acceleration of the constrained datum of constrained
-            # Dirichlet-Neumann pairs (anderson_step! in schwarz.jl); other
-            # couplings use the fixed factor `relaxation parameter`. Under
+            # Anderson acceleration (anderson_step! in schwarz.jl) of the datum
+            # every relaxed coupling transmits: the constrained quantity of a
+            # constrained pair, the three kinematic fields of an unconstrained
+            # Dirichlet-Neumann or contact pair, the Robin datum of a Robin-Robin
+            # pair. Windowed stops use the fixed factor, as for Aitken. Under
             # Anderson acceleration `relaxation parameter` is the mixing
             # parameter β, default 0.5: on the cantilever β = 0.5 needed 10 to
             # 25% fewer Schwarz iterations than β = 1 and never more.

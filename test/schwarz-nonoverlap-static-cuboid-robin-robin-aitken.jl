@@ -103,3 +103,17 @@ end
     sim_ok = run_robin_robin(nothing)
     @test sim_ok.controller.converged == true
 end
+
+# Anderson acceleration of the Robin datum on the relaxed side (issue #228: the
+# keyword was accepted but the fixed factor was applied).
+@testset "Schwarz Nonoverlap Robin-Robin Anderson" begin
+    sim_fixed = run_robin_robin(nothing)
+    sim_anderson = run_robin_robin("anderson")
+    @test sim_anderson.controller.relaxation_method == :anderson
+    @test sum(sim_anderson.controller.schwarz_iters) < sum(sim_fixed.controller.schwarz_iters)
+    for k in 1:2
+        u_a = sim_anderson.subsims[k].model.displacement
+        u_f = sim_fixed.subsims[k].model.displacement
+        @test norm(u_a - u_f) <= 1.0e-8 * norm(u_f)
+    end
+end

@@ -61,7 +61,7 @@ instead, for cases where an unconverged interface must not be carried forward.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
-| `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation, or `anderson` (Anderson acceleration of the constrained datum of constrained Dirichlet–Neumann pairs); omit for a fixed factor |
+| `relaxation` | no | fixed | `aitken recursive` (Irons–Tuck) or `aitken secant` adaptive relaxation, or `anderson` (Anderson acceleration of the transmitted datum, for every relaxed coupling); omit for a fixed factor |
 | `anderson depth` | no | `10` | number m of previous iterates combined by Anderson acceleration; it must cover the Schwarz iterations a stop needs (5 is too short with an explicit Dirichlet side) |
 | `relaxation parameter` | no | `1.0`; `0.5` under `anderson` | relaxation factor θ: the constant factor under fixed relaxation; under either Aitken method the factor used wherever an adaptive one is not yet available; under `anderson` the mixing parameter β of the update (see below), which is also the factor of the first Schwarz iteration of every stop |
 | `aitken N0 parameter` | no | `1` | Schwarz iteration, counting from zero, at which the adaptive factor takes over from `relaxation parameter` (Aitken methods only) |

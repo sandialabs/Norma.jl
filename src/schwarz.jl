@@ -267,11 +267,15 @@ AndersonHistory() = AndersonHistory(Vector{Float64}[], Vector{Float64}[], Vector
 
 # Per controller, per interface, and per substep slot; cleared at every stop
 # with the rest of the relaxation state.
-const ANDERSON_STATE = IdDict{Any,Dict{Tuple{RelaxationKey,Int},AndersonHistory}}()
+const ANDERSON_STATE = IdDict{Any,Dict{Tuple{RelaxationKey,Int,Symbol},AndersonHistory}}()
 
-function anderson_history!(controller, key::RelaxationKey, slot_k::Int)
-    state = get!(() -> Dict{Tuple{RelaxationKey,Int},AndersonHistory}(), ANDERSON_STATE, controller)
-    return get!(AndersonHistory, state, (key, slot_k))
+# One history per interface, substep slot, and relaxed field. The three
+# kinematic fields of an unconstrained pair are updated with the coefficients
+# of one residual trace, so they keep separate histories of iterates and
+# residuals and share the trace.
+function anderson_history!(controller, key::RelaxationKey, slot_k::Int, field::Symbol=:datum)
+    state = get!(() -> Dict{Tuple{RelaxationKey,Int,Symbol},AndersonHistory}(), ANDERSON_STATE, controller)
+    return get!(AndersonHistory, state, (key, slot_k, field))
 end
 
 function reset_anderson_state!(controller)
@@ -425,16 +429,26 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         # Optional Aitken relaxation factor. The fixed-point iterate is the datum
         # stored in lambda_disp; its unrelaxed (theta = 1) candidate is rhs, from
         # which the residual r = rhs - g is formed.
-        if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
-            theta = controller.relaxation_method === :aitken_secant ?
-                relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g) :
-                relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, rhs, g)
-        end
-        frozen_relaxation_update!(controller, theta)
         datum = zeros(length(model.boundary_force))
+        if controller.relaxation_method === :anderson && aitken_applies(controller, key) && !isempty(g_stored)
+            # Anderson acceleration of the Robin datum; the datum lives on the
+            # interface degrees of freedom only, so it is its own trace. A fresh
+            # slot (g = 0) is not entered into the history.
+            depth = Int(get(parent_sim.params, "anderson depth", 10))
+            datum = anderson_step!(
+                anderson_history!(controller, key, slot_k), g, rhs, rhs .- g, controller.relaxation_parameter, depth
+            )
+        else
+            if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
+                theta = controller.relaxation_method === :aitken_secant ?
+                    relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g) :
+                    relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, rhs, g)
+            end
+            frozen_relaxation_update!(controller, theta)
+            datum .= (1 - theta) .* g .+ theta .* rhs
+        end
         for i_global in global_from_local_map, comp in 1:3
             dof_i = 3 * (i_global - 1) + comp
-            datum[dof_i] = (1 - theta) * g[dof_i] + theta * rhs[dof_i]
             model.boundary_force[dof_i] += datum[dof_i]
         end
         g_slots[slot_k] = datum
@@ -1405,7 +1419,7 @@ end
 
 # Projected interface trace Π_D q_N of a partner field q (all degrees of
 # freedom of the Neumann side, interleaved components), as a vector.
-function constrained_partner_trace(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, field::AbstractVector{Float64})
+function constrained_partner_trace(bc::SolidMechanicsSchwarzBoundaryCondition, field::AbstractVector{Float64})
     n_bc = coupled_subsim_of(bc).model.boundary_conditions[bc.coupled_bc_index]
     q_N = reshape(field, 3, :)[:, n_bc.global_from_local_map]
     return vec(transpose(bc.dirichlet_projector * transpose(q_N)))
@@ -1566,6 +1580,31 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 velo_slots[slot_k] = interp_velo
             end
             acce_slots[slot_k] = interp_acce
+        elseif controller.relaxation_method === :anderson && aitken_applies(controller, key)
+            # Anderson acceleration of the three imposed kinematic fields. The
+            # least-squares coefficients come from the projected interface trace
+            # of the displacement residual, and the same coefficients update the
+            # displacement, the velocity, and the acceleration, each with its own
+            # history of iterates. A fresh slot has a residual of exactly zero
+            # and is not entered into the history.
+            if isempty(λ_u_stored)
+                disp_slots[slot_k] = copy(interp_disp)
+                velo_slots[slot_k] = copy(interp_velo)
+                acce_slots[slot_k] = copy(interp_acce)
+            else
+                trace = constrained_partner_trace(bc, interp_disp) .- constrained_partner_trace(bc, λ_u_prev)
+                β = controller.relaxation_parameter
+                depth = Int(get(bc.parent.params, "anderson depth", 10))
+                disp_slots[slot_k] = anderson_step!(
+                    anderson_history!(controller, key, slot_k, :displacement), λ_u_prev, interp_disp, trace, β, depth
+                )
+                velo_slots[slot_k] = anderson_step!(
+                    anderson_history!(controller, key, slot_k, :velocity), λ_v_prev, interp_velo, trace, β, depth
+                )
+                acce_slots[slot_k] = anderson_step!(
+                    anderson_history!(controller, key, slot_k, :acceleration), λ_a_prev, interp_acce, trace, β, depth
+                )
+            end
         elseif controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
