@@ -145,16 +145,81 @@ end
 # Energy densities (energy per unit ideal volume) of the alive elements of a
 # topology at its current positions; dead elements get NaN.
 function energy_densities(model::SolidMechanics, topology::MeshTopology)
-    alive = findall(topology.element_alive)
     densities = fill(NaN, length(topology.element_alive))
-    for block_index in unique(topology.block[alive])
-        elements = [e for e in alive if topology.block[e] == block_index]
+    energy_densities!(densities, model, topology, findall(topology.element_alive))
+    return densities
+end
+
+# Energy densities of the given elements, written into `densities`.
+function energy_densities!(
+    densities::Vector{Float64}, model::SolidMechanics, topology::MeshTopology, selected::AbstractVector{Int}
+)
+    for block_index in unique(topology.block[selected])
+        elements = [e for e in selected if topology.block[e] == block_index]
         connectivity = topology.connectivity[:, elements]
         energies = element_energies(model, block_index, connectivity, topology.positions)
         volumes = ideal_element_volumes(model, block_index, connectivity, topology.positions)
         densities[elements] = energies ./ volumes
     end
     return densities
+end
+
+# Scaled Jacobians of the given elements, written into `quality`.
+function element_qualities!(
+    quality::Vector{Float64}, model::SolidMechanics, topology::MeshTopology, selected::AbstractVector{Int}
+)
+    quality[selected] = quality_jacobians(model, topology.positions, topology.connectivity[:, selected])
+    return quality
+end
+
+# The energy densities and, under the scaled Jacobian criterion, the scaled
+# Jacobians of the elements of the topology, from the memory of the phase
+# when it matches the topology, and evaluated and stored in it otherwise.
+function phase_element_values!(
+    memory::PhaseMemory, model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions
+)
+    n = length(topology.element_alive)
+    if length(memory.density) != n || (options.shape_by_quality && length(memory.quality) != n)
+        alive = findall(topology.element_alive)
+        resize!(memory.density, n)
+        fill!(memory.density, NaN)
+        energy_densities!(memory.density, model, topology, alive)
+        if options.shape_by_quality
+            resize!(memory.quality, n)
+            fill!(memory.quality, NaN)
+            element_qualities!(memory.quality, model, topology, alive)
+        end
+    end
+    return memory.density, memory.quality
+end
+
+# Renumber the element values of the memory after a compaction and evaluate
+# those of the elements added since `first_new`; empty them when they did not
+# match the topology before it.
+function remap_element_values!(
+    memory::PhaseMemory,
+    model::SolidMechanics,
+    topology::MeshTopology,
+    element_map::Vector{Int},
+    first_new::Int,
+    options::AdaptivityOptions,
+)
+    for values in (memory.density, memory.quality)
+        if length(values) != first_new - 1
+            empty!(values)
+            continue
+        end
+        remapped = fill(NaN, length(topology.element_alive))
+        for e in 1:(first_new - 1)
+            element_map[e] > 0 && (remapped[element_map[e]] = values[e])
+        end
+        resize!(values, length(remapped))
+        copyto!(values, remapped)
+    end
+    added = [element_map[e] for e in first_new:length(element_map) if element_map[e] > 0]
+    isempty(memory.density) || energy_densities!(memory.density, model, topology, added)
+    options.shape_by_quality && !isempty(memory.quality) && element_qualities!(memory.quality, model, topology, added)
+    return memory
 end
 
 # The geometric floor: an operation may not create an element whose scaled
@@ -901,10 +966,10 @@ function split_pass!(
     shape::Bool;
     memory::PhaseMemory=PhaseMemory(),
 )
-    densities = energy_densities(model, topology)
+    densities, quality = phase_element_values!(memory, model, topology, options)
     edges = Set{Tuple{Int,Int}}()
     if shape
-        for e in candidate_elements(model, topology, densities, options)
+        for e in candidate_elements(model, topology, densities, options, quality)
             c = view(topology.connectivity, :, e)
             for i in 1:4, j in (i + 1):4
                 push!(edges, sorted_edge(c[i], c[j]))
@@ -923,7 +988,7 @@ function split_pass!(
         if options.size_by_length && edge in size_edges
             return (1, metric_edge_length(model, topology, a, b))
         end
-        return (0, cavity_rank(model, topology, densities, edge_elements(topology, a, b), options))
+        return (0, cavity_rank(model, topology, densities, edge_elements(topology, a, b), options, quality))
     end
     ranked = ranked_by(split_rank, ranked)
     accepted = 0
@@ -998,10 +1063,10 @@ function collapse_pass!(
     shape::Bool;
     memory::PhaseMemory=PhaseMemory(),
 )
-    densities = energy_densities(model, topology)
+    densities, quality = phase_element_values!(memory, model, topology, options)
     edges = Set{Tuple{Int,Int}}()
     if shape
-        for e in candidate_elements(model, topology, densities, options)
+        for e in candidate_elements(model, topology, densities, options, quality)
             c = view(topology.connectivity, :, e)
             for i in 1:4, j in (i + 1):4
                 push!(edges, sorted_edge(c[i], c[j]))
@@ -1012,7 +1077,8 @@ function collapse_pass!(
     union!(edges, size_edges)
     setdiff!(edges, memory.collapses)
     ranked = collect(edges)
-    edge_energy(edge) = cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options)
+    edge_energy(edge) =
+        cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options, quality)
     ranked = ranked_by(edge_energy, ranked)
     accepted = 0
     decrease = 0.0
@@ -1038,7 +1104,11 @@ end
 # Candidate elements: those above the desired density, dilated by the given
 # number of layers of node adjacency.
 function candidate_elements(
-    model::SolidMechanics, topology::MeshTopology, densities::Vector{Float64}, options::AdaptivityOptions
+    model::SolidMechanics,
+    topology::MeshTopology,
+    densities::Vector{Float64},
+    options::AdaptivityOptions,
+    quality::Vector{Float64}=Float64[],
 )
     candidates = falses(length(densities))
     if options.shape_by_quality
@@ -1046,6 +1116,12 @@ function candidate_elements(
         # elements below the desired quality, and every edge of such an
         # element is incident to it, so no dilation is needed.
         alive = findall(topology.element_alive)
+        if length(quality) == length(densities)
+            for e in alive
+                quality[e] < options.desired_quality && (candidates[e] = true)
+            end
+            return findall(candidates)
+        end
         sj = quality_jacobians(model, topology.positions, topology.connectivity[:, alive])
         for (k, e) in enumerate(alive)
             sj[k] < options.desired_quality && (candidates[e] = true)
@@ -1082,10 +1158,16 @@ end
 # criterion, the negative of their minimum scaled Jacobian, so that the
 # worst cavities are tried first in either case.
 function cavity_rank(
-    model::SolidMechanics, topology::MeshTopology, densities::Vector{Float64}, elements, options::AdaptivityOptions
+    model::SolidMechanics,
+    topology::MeshTopology,
+    densities::Vector{Float64},
+    elements,
+    options::AdaptivityOptions,
+    quality::Vector{Float64}=Float64[],
 )
     if options.shape_by_quality
         isempty(elements) && return -1.0
+        length(quality) == length(densities) && return -minimum(quality[e] for e in elements)
         return -minimum(quality_jacobians(model, topology.positions, topology.connectivity[:, collect(elements)]))
     end
     return sum(densities[e] for e in elements; init=0.0)
@@ -1099,8 +1181,8 @@ end
 function swap_pass!(
     model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions; memory::PhaseMemory=PhaseMemory()
 )
-    densities = energy_densities(model, topology)
-    candidates = candidate_elements(model, topology, densities, options)
+    densities, quality = phase_element_values!(memory, model, topology, options)
+    candidates = candidate_elements(model, topology, densities, options, quality)
     edges = Set{Tuple{Int,Int}}()
     boundary_edges = Set{Tuple{Int,Int}}()
     faces = Set{NTuple{3,Int}}()
@@ -1122,8 +1204,9 @@ function swap_pass!(
     end
     # Rank the edges and faces by the energy of the elements around them, in
     # decreasing order.
-    ring_energy(edge) = cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options)
-    face_energy(face) = cavity_rank(model, topology, densities, get(topology.faces, face, Int[]), options)
+    ring_energy(edge) =
+        cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options, quality)
+    face_energy(face) = cavity_rank(model, topology, densities, get(topology.faces, face, Int[]), options, quality)
     ranked_boundary = ranked_by(ring_energy, collect(boundary_edges))
     ranked = ranked_by(ring_energy, collect(edges))
     ranked_faces = ranked_by(face_energy, collect(faces))
@@ -1185,11 +1268,16 @@ function topology_phase!(
         # starts from a current adjacency: the operations of one operator
         # are kept independent by the dead elements of their cavities, but
         # the next operator would otherwise not see the elements they made.
+        # An operator that accepted nothing left the topology unchanged
+        # (every accepted operation adds elements), so there is nothing to
+        # compact.
         function compact_all!(first_new)
+            first_new > length(topology.element_alive) && return nothing
             forget_changed!(memory, topology, first_new)
-            node_map, _ = compact!(topology)
+            node_map, element_map = compact!(topology)
             compact_metric!(model.metric_field, findall(>(0), node_map))
             remap!(memory, node_map)
+            remap_element_values!(memory, model, topology, element_map, first_new, options)
             return nothing
         end
         function swaps!()

@@ -268,3 +268,31 @@ end
         rm(Norma.sequence_file_name("adaptive.e", k + 1); force=true)
     end
 end
+
+@testset "phase_element_values" begin
+    # The memory of a phase keeps the densities and the scaled Jacobians of
+    # the elements; after an operator and a compaction they must equal a
+    # fresh evaluation (issue #231).
+    sim = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "swap-values.e"; size_field="0.214")
+    Norma.run(sim)
+    model = sim.model
+    for criterion in ("energy", "scaled Jacobian")
+        phase_options = Norma.AdaptivityOptions(Dict{String,Any}("shape criterion" => criterion))
+        topology = Norma.build_topology(model)
+        memory = Norma.PhaseMemory()
+        density, quality = Norma.phase_element_values!(memory, model, topology, phase_options)
+        @test density == Norma.energy_densities(model, topology)
+        first_new = length(topology.element_alive) + 1
+        accepted, _ = Norma.swap_pass!(model, topology, phase_options; memory)
+        @test accepted > 0
+        _, element_map = Norma.compact!(topology)
+        Norma.remap_element_values!(memory, model, topology, element_map, first_new, phase_options)
+        @test memory.density == Norma.energy_densities(model, topology)
+        if criterion == "scaled Jacobian"
+            @test memory.quality == Norma.quality_jacobians(model, topology.positions, topology.connectivity)
+        else
+            @test isempty(memory.quality)
+        end
+    end
+    rm("swap-values.e"; force=true)
+end

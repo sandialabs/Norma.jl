@@ -117,16 +117,33 @@ end
 # The edges and faces whose operation a topology phase has refused, kept
 # until an element around them changes: nodes do not move within a phase,
 # so a refused proposal stays refused until its cavity does.
+#
+# For the same reason the energy density and the scaled Jacobian of an
+# element do not change while it lives, and the memory keeps them, indexed
+# like the elements of the topology: the operators read them instead of
+# evaluating the whole mesh, and only the elements added by an operator are
+# evaluated after it (issue #231).  The vectors are empty until the first
+# operator of the phase fills them, `quality` stays empty unless the shape
+# criterion is the scaled Jacobian, and both are emptied when they no longer
+# match the topology.
 struct PhaseMemory
     swaps::Set{Tuple{Int,Int}}
     boundary_swaps::Set{Tuple{Int,Int}}
     face_swaps::Set{NTuple{3,Int}}
     collapses::Set{Tuple{Int,Int}}
     splits::Set{Tuple{Int,Int}}
+    density::Vector{Float64}
+    quality::Vector{Float64}
 end
 function PhaseMemory()
     return PhaseMemory(
-        Set{Tuple{Int,Int}}(), Set{Tuple{Int,Int}}(), Set{NTuple{3,Int}}(), Set{Tuple{Int,Int}}(), Set{Tuple{Int,Int}}()
+        Set{Tuple{Int,Int}}(),
+        Set{Tuple{Int,Int}}(),
+        Set{NTuple{3,Int}}(),
+        Set{Tuple{Int,Int}}(),
+        Set{Tuple{Int,Int}}(),
+        Float64[],
+        Float64[],
     )
 end
 
