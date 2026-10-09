@@ -225,3 +225,44 @@ end
         rm(replace(output, ".e" => "-2.e"); force=true)
     end
 end
+
+@testset "split_evaluation_ahead" begin
+    # The splits of a pass are evaluated in parallel before the splits
+    # accepted earlier in the pass; the result taken from the evaluation must
+    # be that of try_edge_split on the current state, with the new node
+    # renumbered (issue #231).  The tube has boundary edges on analytic
+    # surfaces and side sets that earlier splits change.
+    sim = smoothing_model("../examples/ems/tube/tube.g", "tube", "split-ahead.e"; size_field="0.06", surfaces=true)
+    Norma.run(sim)
+    model = sim.model
+    topology = Norma.build_topology(model)
+    edges = sort(Norma.long_edges(model, topology))
+    evaluated_node = size(topology.positions, 2) + 1
+    evaluations = [Norma.try_edge_split(model, topology, a, b, options; by_length=true) for (a, b) in edges]
+    same(p, q) =
+        (p === nothing && q === nothing) || (
+            p !== nothing &&
+            q !== nothing &&
+            p.old_elements == q.old_elements &&
+            p.new_connectivity == q.new_connectivity &&
+            p.energy_before == q.energy_before &&
+            p.energy_after == q.energy_after &&
+            p.split.position == q.split.position &&
+            p.split.node_sets == q.split.node_sets &&
+            p.split.side_sets == q.split.side_sets
+        )
+    agree = true
+    applied = 0
+    for (k, (a, b)) in enumerate(edges)
+        ring_intact = all(topology.element_alive[e] for e in Norma.edge_elements(topology, a, b))
+        expected = Norma.try_edge_split(model, topology, a, b, options; by_length=true)
+        taken = Norma.edge_split_from_evaluation(topology, evaluations[k], evaluated_node, ring_intact)
+        agree &= same(expected, taken)
+        expected === nothing && continue
+        Norma.apply!(topology, expected; metric=model.metric_field)
+        applied += 1
+    end
+    @test applied > 10
+    @test agree
+    rm("split-ahead.e"; force=true)
+end

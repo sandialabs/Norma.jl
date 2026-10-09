@@ -53,11 +53,10 @@ end
 function tetrahedron_scaled_jacobian(x::AbstractMatrix{Float64})
     p = ntuple(i -> SVector{3,Float64}(x[1, i], x[2, i], x[3, i]), 4)
     jacobian = dot(p[2] - p[1], cross(p[3] - p[1], p[4] - p[1]))
-    lengths = Dict{Tuple{Int,Int},Float64}()
-    for i in 1:4, j in (i + 1):4
-        lengths[(i, j)] = norm(p[i] - p[j])
-    end
-    edge_length(i, j) = lengths[i < j ? (i, j) : (j, i)]
+    # The six edge lengths, each computed once, in a table indexed by the
+    # ordered vertex pair.
+    lengths = SMatrix{4,4,Float64,16}(i < j ? norm(p[i] - p[j]) : 0.0 for i in 1:4, j in 1:4)
+    edge_length(i, j) = i < j ? lengths[i, j] : lengths[j, i]
     largest = 0.0
     for v in 1:4
         product = 1.0
@@ -71,7 +70,10 @@ function tetrahedron_scaled_jacobian(x::AbstractMatrix{Float64})
 end
 
 function scaled_jacobians(positions::AbstractMatrix{Float64}, connectivity::AbstractMatrix{<:Integer})
-    return [tetrahedron_scaled_jacobian(positions[:, view(connectivity, :, e)]) for e in 1:size(connectivity, 2)]
+    return [
+        tetrahedron_scaled_jacobian(SMatrix{3,4,Float64,12}(positions[i, connectivity[j, e]] for i in 1:3, j in 1:4))
+        for e in 1:size(connectivity, 2)
+    ]
 end
 
 function element_volume(topology::MeshTopology, e::Int)

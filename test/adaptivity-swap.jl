@@ -296,3 +296,39 @@ end
     end
     rm("swap-values.e"; force=true)
 end
+
+@testset "swap_evaluation_ahead" begin
+    # The swaps of a pass are evaluated in parallel before the operations
+    # accepted earlier in the pass; the result taken from the evaluation must
+    # be that of try_edge_swap on the current state (issue #231).
+    sim = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "swap-ahead.e"; size_field="0.214")
+    Norma.run(sim)
+    model = sim.model
+    topology = Norma.build_topology(model)
+    edges = sort([edge for edge in keys(topology.edges) if !Norma.is_boundary_edge(topology, edge...)])
+    evaluations = [Norma.evaluate_edge_swap(model, topology, a, b, options) for (a, b) in edges]
+    created = Norma.CreatedEntities()
+    same(p, q) =
+        (p === nothing && q === nothing) || (
+            p !== nothing &&
+            q !== nothing &&
+            p.old_elements == q.old_elements &&
+            p.new_connectivity == q.new_connectivity &&
+            p.energy_before == q.energy_before &&
+            p.energy_after == q.energy_after
+        )
+    agree = true
+    applied = 0
+    for (k, (a, b)) in enumerate(edges)
+        expected = Norma.try_edge_swap(model, topology, a, b, options; created)
+        taken = Norma.edge_swap_from_evaluation(model, topology, a, b, options, evaluations[k], created)
+        agree &= same(expected, taken)
+        expected === nothing && continue
+        Norma.apply!(topology, expected)
+        Norma.record!(created, expected.new_connectivity)
+        applied += 1
+    end
+    @test applied > 10
+    @test agree
+    rm("swap-ahead.e"; force=true)
+end

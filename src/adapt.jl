@@ -350,9 +350,14 @@ function edge_ring(topology::MeshTopology, a::Int, b::Int)
 end
 
 # All triangulations of the polygon with vertices 1..n, as lists of triangles
-# of vertex indices (Catalan number of the polygon).
+# of vertex indices (Catalan number of the polygon).  They are computed once
+# per n and shared, since every swap of a ring of n nodes needs them; the
+# callers must not modify them.
+const POLYGON_TRIANGULATIONS = Dict{Int,Vector{Vector{NTuple{3,Int}}}}()
+const POLYGON_TRIANGULATIONS_LOCK = ReentrantLock()
+
 function polygon_triangulations(n::Int)
-    return chain_triangulations(1, n)
+    return @lock POLYGON_TRIANGULATIONS_LOCK get!(() -> chain_triangulations(1, n), POLYGON_TRIANGULATIONS, n)
 end
 
 function chain_triangulations(i::Int, j::Int)
@@ -410,6 +415,54 @@ function swapped_connectivity(
     return connectivity
 end
 
+# Whether a chord of the ring polygon of a triangulation is an edge already,
+# in the mesh or from an operation of this pass.
+function chords_exist(
+    topology::MeshTopology, ring_nodes::Vector{Int}, triangles::Vector{NTuple{3,Int}}, created::CreatedEntities
+)
+    n = length(ring_nodes)
+    for (i, j, k) in triangles, (u, v) in ((i, j), (j, k), (k, i))
+        mod(u - v, n) in (1, n - 1) && continue
+        edge = sorted_edge(ring_nodes[u], ring_nodes[v])
+        (haskey(topology.edges, edge) || edge in created.edges) && return true
+    end
+    return false
+end
+
+# The ring of the interior edge (a, b) and the triangulation of least energy
+# among those whose chords and faces are new: a named tuple with the ring
+# elements and nodes, their block, and the best triangles and connectivity
+# (nothing when no triangulation is admissible); nothing when the edge has no
+# ring of elements of one block.
+function best_edge_swap(
+    model::SolidMechanics, topology::MeshTopology, a::Int, b::Int, options::AdaptivityOptions, created::CreatedEntities
+)
+    ring = edge_ring(topology, a, b)
+    ring === nothing && return nothing
+    elements, ring_nodes = ring
+    n = length(ring_nodes)
+    block = topology.block[elements[1]]
+    all(topology.block[e] == block for e in elements) || return nothing
+    best = nothing
+    best_triangles = nothing
+    best_score = Inf
+    for triangles in polygon_triangulations(n)
+        # A chord of the ring polygon becomes an edge; it may not exist
+        # already, since the link of an edge must be a single ring.
+        chords_exist(topology, ring_nodes, triangles, created) && continue
+        connectivity = swapped_connectivity(topology, a, b, ring_nodes, triangles)
+        connectivity === nothing && continue
+        faces_are_new(topology, elements, connectivity, created) || continue
+        score = configuration_score(model, topology, block, connectivity, options)
+        if score < best_score
+            best_score = score
+            best = connectivity
+            best_triangles = triangles
+        end
+    end
+    return (; elements, ring_nodes, block, triangles=best_triangles, connectivity=best)
+end
+
 # Try to swap the interior edge (a, b): evaluate every triangulation of its
 # ring, keep the one of least energy, and submit it to the acceptance test.  Returns
 # the accepted proposal or nothing.
@@ -421,39 +474,53 @@ function try_edge_swap(
     options::AdaptivityOptions;
     created::CreatedEntities=CreatedEntities(),
 )
-    ring = edge_ring(topology, a, b)
-    ring === nothing && return nothing
-    elements, ring_nodes = ring
-    n = length(ring_nodes)
-    block = topology.block[elements[1]]
-    all(topology.block[e] == block for e in elements) || return nothing
-    best = nothing
-    best_score = Inf
-    for triangles in polygon_triangulations(n)
-        # A chord of the ring polygon becomes an edge; it may not exist
-        # already, in the mesh or from an operation of this pass, since the
-        # link of an edge must be a single ring.
-        chords_are_new = true
-        for (i, j, k) in triangles, (u, v) in ((i, j), (j, k), (k, i))
-            mod(u - v, n) in (1, n - 1) && continue
-            edge = sorted_edge(ring_nodes[u], ring_nodes[v])
-            if haskey(topology.edges, edge) || edge in created.edges
-                chords_are_new = false
-                break
-            end
-        end
-        chords_are_new || continue
-        connectivity = swapped_connectivity(topology, a, b, ring_nodes, triangles)
-        connectivity === nothing && continue
-        faces_are_new(topology, elements, connectivity, created) || continue
-        score = configuration_score(model, topology, block, connectivity, options)
-        if score < best_score
-            best_score = score
-            best = connectivity
-        end
-    end
+    best = best_edge_swap(model, topology, a, b, options, created)
+    (best === nothing || best.connectivity === nothing) && return nothing
+    return accept_proposal(model, topology, best.elements, best.connectivity, best.block, options)
+end
+
+# The swap of an interior edge evaluated ahead of the sequential loop of a
+# pass, on the topology at the start of its chunk and with no entity of the
+# pass excluded: the best triangulation and the outcome of its acceptance
+# test (issue #231).
+struct EdgeSwapEvaluation
+    best::Any
+    proposal::Union{CavityProposal,Nothing}
+end
+
+function evaluate_edge_swap(model::SolidMechanics, topology::MeshTopology, a::Int, b::Int, options::AdaptivityOptions)
+    best = best_edge_swap(model, topology, a, b, options, CreatedEntities())
+    (best === nothing || best.connectivity === nothing) && return EdgeSwapEvaluation(best, nothing)
+    return EdgeSwapEvaluation(
+        best, accept_proposal(model, topology, best.elements, best.connectivity, best.block, options)
+    )
+end
+
+# The result of try_edge_swap for the current state of the pass, from an
+# evaluation made before the operations accepted since.  A dead ring element
+# gives nothing, as edge_ring does.  The evaluation chose among a superset of
+# the triangulations admissible now; when its best is still admissible it is
+# also the first of least score among them, and the outcome of the
+# acceptance test, which depends on the cavity alone, is the same.
+# Otherwise the swap is evaluated again.
+function edge_swap_from_evaluation(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    a::Int,
+    b::Int,
+    options::AdaptivityOptions,
+    evaluation::EdgeSwapEvaluation,
+    created::CreatedEntities,
+)
+    best = evaluation.best
     best === nothing && return nothing
-    return accept_proposal(model, topology, elements, best, block, options)
+    all(topology.element_alive[e] for e in best.elements) || return nothing
+    best.connectivity === nothing && return nothing
+    if chords_exist(topology, best.ring_nodes, best.triangles, created) ||
+       !faces_are_new(topology, best.elements, best.connectivity, created)
+        return try_edge_swap(model, topology, a, b, options; created)
+    end
+    return evaluation.proposal
 end
 
 # Score of a candidate configuration of a swap, lower is better: the cavity
@@ -635,7 +702,9 @@ function faces_are_new(
     connectivity::AbstractMatrix{<:Integer},
     created::CreatedEntities,
 )
-    old_faces = Set{NTuple{3,Int}}()
+    # A cavity has a few tens of faces, which a vector searches faster than
+    # a set hashes them.
+    old_faces = NTuple{3,Int}[]
     for e in old_elements, face in element_faces(topology, e)
         push!(old_faces, face)
     end
@@ -993,19 +1062,55 @@ function split_pass!(
     ranked = ranked_by(split_rank, ranked)
     accepted = 0
     decrease = 0.0
-    for (a, b) in ranked
-        by_length = options.size_by_length && (a, b) in size_edges
-        ring_intact = all(topology.element_alive[e] for e in edge_elements(topology, a, b))
-        proposal = try_edge_split(model, topology, a, b, options; by_length)
-        if proposal === nothing
-            ring_intact && push!(memory.splits, (a, b))
-            continue
+    # The splits are evaluated in parallel, a chunk of the ranked edges at a
+    # time, and accepted in rank order; the result is that of the sequential
+    # loop (see edge_split_from_evaluation).
+    for chunk in Iterators.partition(ranked, SPLIT_EVALUATION_CHUNK)
+        evaluations = Vector{Union{CavityProposal,Nothing}}(undef, length(chunk))
+        evaluated_node = size(topology.positions, 2) + 1
+        Threads.@threads for k in eachindex(chunk)
+            (a, b) = chunk[k]
+            by_length = options.size_by_length && (a, b) in size_edges
+            evaluations[k] = try_edge_split(model, topology, a, b, options; by_length)
         end
-        apply!(topology, proposal; metric=model.metric_field)
-        accepted += 1
-        decrease += proposal.energy_before - proposal.energy_after
+        for (k, (a, b)) in enumerate(chunk)
+            ring_intact = all(topology.element_alive[e] for e in edge_elements(topology, a, b))
+            proposal = edge_split_from_evaluation(topology, evaluations[k], evaluated_node, ring_intact)
+            if proposal === nothing
+                ring_intact && push!(memory.splits, (a, b))
+                continue
+            end
+            apply!(topology, proposal; metric=model.metric_field)
+            accepted += 1
+            decrease += proposal.energy_before - proposal.energy_after
+        end
     end
     return accepted, decrease
+end
+
+# Number of ranked edges whose splits are evaluated in parallel at a time.
+const SPLIT_EVALUATION_CHUNK = 1024
+
+# The result of try_edge_split for the current state of the pass, from an
+# evaluation made before the splits accepted since (issue #231).  A split
+# reads its ring, the positions of existing nodes, which do not move, and
+# the set memberships of the faces of its ring, which an earlier split
+# changes only for the faces of its own cavity, whose elements are dead.  So
+# with its ring intact the evaluation is the sequential result, except for
+# the index of the new node: the evaluation numbered it `evaluated_node`,
+# and the splits accepted since have taken that index and those after it.
+function edge_split_from_evaluation(
+    topology::MeshTopology, evaluation::Union{CavityProposal,Nothing}, evaluated_node::Int, ring_intact::Bool
+)
+    (evaluation === nothing || !ring_intact) && return nothing
+    node = size(topology.positions, 2) + 1
+    if node != evaluated_node
+        connectivity = evaluation.new_connectivity
+        for i in eachindex(connectivity)
+            connectivity[i] == evaluated_node && (connectivity[i] = node)
+        end
+    end
+    return evaluation
 end
 
 # Length of the segment between two points measured in the prescribed
@@ -1173,6 +1278,9 @@ function cavity_rank(
     return sum(densities[e] for e in elements; init=0.0)
 end
 
+# Number of ranked edges whose swaps are evaluated in parallel at a time.
+const SWAP_EVALUATION_CHUNK = 4096
+
 # One pass of swaps over the candidate elements in decreasing order of
 # cavity energy: the boundary edges (when enabled), then the interior edges,
 # then the faces (when enabled).  An edge or face whose cavity was changed
@@ -1232,9 +1340,18 @@ function swap_pass!(
         proposal = try_boundary_edge_swap(model, topology, a, b, options; created)
         accept!(proposal, (a, b), memory.boundary_swaps, intact(a, b))
     end
-    for (a, b) in ranked
-        proposal = try_edge_swap(model, topology, a, b, options; created)
-        accept!(proposal, (a, b), memory.swaps, intact(a, b))
+    # The swaps are evaluated in parallel, a chunk of the ranked edges at a
+    # time, and accepted in rank order; the result is that of the sequential
+    # loop (see edge_swap_from_evaluation).
+    for chunk in Iterators.partition(ranked, SWAP_EVALUATION_CHUNK)
+        evaluations = Vector{EdgeSwapEvaluation}(undef, length(chunk))
+        Threads.@threads for k in eachindex(chunk)
+            evaluations[k] = evaluate_edge_swap(model, topology, chunk[k][1], chunk[k][2], options)
+        end
+        for (k, (a, b)) in enumerate(chunk)
+            proposal = edge_swap_from_evaluation(model, topology, a, b, options, evaluations[k], created)
+            accept!(proposal, (a, b), memory.swaps, intact(a, b))
+        end
     end
     for face in ranked_faces
         proposal = try_face_swap(model, topology, face, options; created)
