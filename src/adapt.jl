@@ -1154,13 +1154,22 @@ end
 # cap is reached.  Compacts the topology after every operator, so the
 # adjacency is current at the start of the next.  Returns the number of
 # accepted operations and the total decrease of the energy.
-function topology_phase!(model::SolidMechanics, topology::MeshTopology, options::AdaptivityOptions)
+# The time of each pass and of each operator in it is logged after the pass
+# and, when times are given, added to them.
+function topology_phase!(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    options::AdaptivityOptions;
+    times::Union{AdaptivityTimes,Nothing}=nothing,
+)
     total_accepted = 0
     total_decrease = 0.0
     memory = PhaseMemory()
     previous_swaps = 1
     for pass in 1:options.maximum_passes
+        pass_start = time()
         accepted_swaps = accepted_collapses = accepted_splits = 0
+        time_swaps = time_collapses = time_splits = 0.0
         decrease = 0.0
         # The topology is compacted after every operator, so that each one
         # starts from a current adjacency: the operations of one operator
@@ -1175,10 +1184,12 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
         end
         function swaps!()
             options.swaps || return nothing
+            start = time()
             first_new = length(topology.element_alive) + 1
             accepted_swaps, decrease_swaps = swap_pass!(model, topology, options; memory)
             decrease += decrease_swaps
             compact_all!(first_new)
+            time_swaps = time() - start
             return nothing
         end
         # The edges outside the length band of a prescribed target are
@@ -1188,16 +1199,20 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
         # operations come first).
         function size_operations!(shape)
             if options.collapses
+                start = time()
                 first_new = length(topology.element_alive) + 1
                 accepted_collapses, decrease_collapses = collapse_pass!(model, topology, options, shape; memory)
                 decrease += decrease_collapses
                 compact_all!(first_new)
+                time_collapses = time() - start
             end
             if options.splits
+                start = time()
                 first_new = length(topology.element_alive) + 1
                 accepted_splits, decrease_splits = split_pass!(model, topology, options, shape; memory)
                 decrease += decrease_splits
                 compact_all!(first_new)
+                time_splits = time() - start
             end
             return nothing
         end
@@ -1221,6 +1236,19 @@ function topology_phase!(model::SolidMechanics, topology::MeshTopology, options:
             accepted_splits,
             decrease,
         )
+        time_pass = time() - pass_start
+        norma_log(
+            0,
+            :time,
+            "Topology pass $pass time = $(format_time(time_pass)) (swaps $(format_time(time_swaps)), " *
+            "collapses $(format_time(time_collapses)), splits $(format_time(time_splits)))",
+        )
+        if times !== nothing
+            times.passes += time_pass
+            times.swaps += time_swaps
+            times.collapses += time_collapses
+            times.splits += time_splits
+        end
         total_accepted += accepted
         total_decrease += decrease
         accepted == 0 && break
@@ -1253,25 +1281,45 @@ function run_adaptive(params::Parameters)
     options = AdaptivityOptions(get(params, "adaptivity", Parameters()))
     output_file = params["output mesh file"]
     name = stripped_name(output_file)
-    sim = create_simulation(params)
-    run(sim)
+    run_start = time()
+    times = AdaptivityTimes()
+    times.setup += @elapsed sim = create_simulation(params)
+    times.smoothing += @elapsed run(sim)
     model = sim.model
     model isa SolidMechanics && model.mesh_smoothing || norma_abort("Adaptivity requires a mesh smoothing model")
     for iteration in 1:options.outer_iterations
+        build_start = time()
         topology = build_topology(model)
         energy_before = sum(energy_densities(model, topology) .* ideal_element_volumes(
             model, 1, topology.connectivity, topology.positions
         ))
-        accepted, decrease = topology_phase!(model, topology, options)
+        time_build = time() - build_start
+        times.build += time_build
+        passes_before = times.passes
+        accepted, decrease = topology_phase!(model, topology, options; times)
+        time_passes = times.passes - passes_before
         observer = TOPOLOGY_PHASE_OBSERVER[]
         observer === nothing || observer(model, topology, accepted, decrease)
         norma_logf(
             0, :info, "Adaptivity iteration %d: %d operations accepted, energy %.6e -> %.6e",
             iteration, accepted, energy_before, energy_before - decrease,
         )
+        time_write = 0.0
+        if accepted > 0
+            mesh_file = "$name-adapted-$iteration.g"
+            time_write = @elapsed write_topology(
+                topology, mesh_file; nodal_variables=metric_nodal_variables(model.metric_field)
+            )
+            times.write += time_write
+        end
+        norma_log(
+            0,
+            :time,
+            "Topology phase time = $(format_time(time_build + time_passes + time_write)) " *
+            "(build $(format_time(time_build)), passes $(format_time(time_passes)), " *
+            "mesh write $(format_time(time_write)))",
+        )
         accepted == 0 && break
-        mesh_file = "$name-adapted-$iteration.g"
-        write_topology(topology, mesh_file; nodal_variables=metric_nodal_variables(model.metric_field))
         next_params = deepcopy(params)
         next_params["input mesh file"] = mesh_file
         next_params["output mesh file"] = sequence_file_name(output_file, iteration + 1)
@@ -1279,9 +1327,16 @@ function run_adaptive(params::Parameters)
         time_offset = get(sim.params, "exodus_time_offset", 0.0)
         elapsed = controller.time - controller.initial_time
         next_params["exodus_time_offset"] = time_offset + elapsed + controller.time_step
-        sim = create_simulation(next_params)
-        run(sim)
+        times.setup += @elapsed sim = create_simulation(next_params)
+        times.smoothing += @elapsed run(sim)
         model = sim.model
     end
+    norma_log(0, :time, adaptivity_time_report(time() - run_start, times))
     return sim
+end
+
+function adaptivity_time_report(wall::Float64, times::AdaptivityTimes)::String
+    return "Adaptivity Time = $(format_time(wall)) (smoothing $(format_time(times.smoothing)), " *
+           "topology $(format_time(times.build + times.passes)), mesh write $(format_time(times.write)), " *
+           "setup $(format_time(times.setup)))"
 end

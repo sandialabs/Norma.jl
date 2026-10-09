@@ -156,9 +156,17 @@ end
     boundary0 = Set(Norma.boundary_faces(topology))
     densities0 = Norma.energy_densities(model, topology)
     energy0 = sum(densities0 .* Norma.ideal_element_volumes(model, 1, topology.connectivity, topology.positions))
-    accepted, decrease = Norma.topology_phase!(model, topology, options)
+    times = Norma.AdaptivityTimes()
+    phase_time = @elapsed (accepted, decrease) = Norma.topology_phase!(model, topology, options; times)
     @test accepted > 0
     @test decrease > 0.0
+    # The pass times contain the operator times and are contained in the
+    # time of the phase (issue #230).
+    @test min(times.swaps, times.collapses, times.splits) >= 0.0
+    @test times.swaps > 0.0
+    @test times.swaps + times.collapses + times.splits <= times.passes <= phase_time
+    @test Norma.adaptivity_time_report(90.5, Norma.AdaptivityTimes(60.0, 1.0, 2.0, 25.0, 20.0, 3.0, 2.0, 0.5)) ==
+          "Adaptivity Time = 1m 30.50s (smoothing 1m 0.00s, topology 27.00s, mesh write 0.50s, setup 1.00s)"
     @test Norma.num_alive_nodes(topology) == nn0
     @test Norma.euler_characteristic(topology) == chi0
     @test Set(Norma.boundary_faces(topology)) == boundary0

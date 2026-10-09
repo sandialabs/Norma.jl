@@ -137,3 +137,20 @@ struct CreatedEntities
     faces::Set{NTuple{3,Int}}
 end
 CreatedEntities() = CreatedEntities(Set{Tuple{Int,Int}}(), Set{NTuple{3,Int}}())
+
+# Wall times of an adaptive run, in seconds, accumulated over its adaptivity
+# iterations (issue #230): the smoothing phases, the setup of each smoothing
+# simulation, the construction of the topology with its initial energy, the
+# topology passes and, within them, each operator with the compaction that
+# follows it, and the writing of the adapted meshes.
+mutable struct AdaptivityTimes
+    smoothing::Float64
+    setup::Float64
+    build::Float64
+    passes::Float64
+    swaps::Float64
+    collapses::Float64
+    splits::Float64
+    write::Float64
+end
+AdaptivityTimes() = AdaptivityTimes(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
