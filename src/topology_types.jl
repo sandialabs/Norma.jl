@@ -13,9 +13,19 @@
 # build_adjacency!; within a pass an operation may make them stale around the
 # cavity it changed, which the driver handles by deferring cavities that touch
 # modified elements to the next pass.
+#
+# The positions and the connectivity grow by one node or a few elements per
+# accepted operation.  They are stored with spare columns, whose number is
+# doubled when they run out, and read as `topology.positions` (3 × num_nodes)
+# and `topology.connectivity` (4 × num_elements, positively oriented), views
+# of the columns in use.  Appending a column by `hcat` copied the whole
+# matrix, so the cost of a pass grew with the product of the mesh size and
+# the number of accepted operations (issue #231).
 mutable struct MeshTopology
-    positions::Matrix{Float64}      # 3 × num_nodes, current coordinates
-    connectivity::Matrix{Int}       # 4 × num_elements, positively oriented
+    position_storage::Matrix{Float64}
+    num_positions::Int
+    connectivity_storage::Matrix{Int}
+    num_connectivity::Int
     block::Vector{Int}              # block index of every element
     block_ids::Vector{Int}          # Exodus block id per block index
     block_names::Vector{String}
@@ -37,12 +47,41 @@ mutable struct MeshTopology
     node_side_sets::Dict{Int,BitVector}
 end
 
+function MeshTopology(positions::AbstractMatrix{Float64}, connectivity::AbstractMatrix{Int}, rest...)
+    return MeshTopology(
+        Matrix(positions), size(positions, 2), Matrix(connectivity), size(connectivity, 2), rest...
+    )
+end
+
+function Base.getproperty(topology::MeshTopology, name::Symbol)
+    if name === :positions
+        return view(getfield(topology, :position_storage), :, 1:getfield(topology, :num_positions))
+    elseif name === :connectivity
+        return view(getfield(topology, :connectivity_storage), :, 1:getfield(topology, :num_connectivity))
+    end
+    return getfield(topology, name)
+end
+
+function Base.setproperty!(topology::MeshTopology, name::Symbol, value)
+    if name === :positions
+        setfield!(topology, :position_storage, Matrix{Float64}(value))
+        return setfield!(topology, :num_positions, size(value, 2))
+    elseif name === :connectivity
+        setfield!(topology, :connectivity_storage, Matrix{Int}(value))
+        return setfield!(topology, :num_connectivity, size(value, 2))
+    end
+    return setfield!(topology, name, convert(fieldtype(MeshTopology, name), value))
+end
+
 # A matrix of nodal columns extended by one column for a node that is not
 # yet added, so that a split can be evaluated without copying the data: the
 # positions of a topology, or the nodal values of a metric.
-struct MatrixWithColumn{N} <: AbstractMatrix{Float64}
-    base::Matrix{Float64}
+struct MatrixWithColumn{N,M<:AbstractMatrix{Float64}} <: AbstractMatrix{Float64}
+    base::M
     extra::SVector{N,Float64}
+end
+function MatrixWithColumn{N}(base::AbstractMatrix{Float64}, extra::AbstractVector{Float64}) where {N}
+    return MatrixWithColumn{N,typeof(base)}(base, SVector{N,Float64}(extra))
 end
 Base.size(m::MatrixWithColumn{N}) where {N} = (N, size(m.base, 2) + 1)
 function Base.getindex(m::MatrixWithColumn, i::Int, j::Int)

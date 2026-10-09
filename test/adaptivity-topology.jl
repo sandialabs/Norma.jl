@@ -219,3 +219,32 @@ end
     rm("topology-edit.e"; force=true)
     rm("topology-edit2.e"; force=true)
 end
+
+@testset "topology_growth_and_ranking" begin
+    # Nodes and elements are appended in place, with spare capacity, and read
+    # back as the columns in use (issue #231).
+    positions = [0.0 1.0 0.0 0.0; 0.0 0.0 1.0 0.0; 0.0 0.0 0.0 1.0]
+    topology = Norma.build_topology(positions, reshape([1, 2, 3, 4], 4, 1))
+    expected_positions = copy(positions)
+    expected_connectivity = reshape([1, 2, 3, 4], 4, 1)
+    for k in 1:40
+        x = [1.0 + k, 1.0 + k, 1.0 + k]
+        @test Norma.add_node!(topology, x) == 4 + k
+        expected_positions = hcat(expected_positions, x)
+        element = [1, 2, 3, 4 + k]
+        @test Norma.add_elements!(topology, reshape(element, 4, 1), 1) == [1 + k]
+        expected_connectivity = hcat(expected_connectivity, element)
+    end
+    @test topology.positions == expected_positions
+    @test topology.connectivity == expected_connectivity
+    @test size(topology.positions) == (3, 44)
+    @test size(topology.connectivity) == (4, 41)
+    @test length(topology.element_alive) == 41
+    # Assigning a matrix replaces the storage.
+    topology.positions = expected_positions[:, 1:4]
+    @test topology.positions == positions
+    # Ranking computes each rank once and keeps the order of a stable sort.
+    items = [(i, j) for i in 1:6 for j in 1:3]
+    rank(item) = Float64(mod(item[1] * 7 + item[2], 4))
+    @test Norma.ranked_by(rank, items) == sort(items; by=rank, rev=true)
+end

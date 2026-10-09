@@ -269,6 +269,23 @@ function euler_characteristic(topology::MeshTopology)
     return num_alive_nodes(topology) - length(topology.edges) + length(topology.faces) - num_alive_elements(topology)
 end
 
+# Append columns to the storage of the positions or the connectivity,
+# doubling its capacity when the spare columns run out.
+function append_columns!(topology::MeshTopology, storage_name::Symbol, count_name::Symbol, columns::AbstractMatrix)
+    storage = getfield(topology, storage_name)
+    used = getfield(topology, count_name)
+    added = size(columns, 2)
+    if used + added > size(storage, 2)
+        grown = similar(storage, size(storage, 1), max(2 * size(storage, 2), used + added, 16))
+        copyto!(view(grown, :, 1:used), view(storage, :, 1:used))
+        setfield!(topology, storage_name, grown)
+        storage = grown
+    end
+    storage[:, (used + 1):(used + added)] .= columns
+    setfield!(topology, count_name, used + added)
+    return topology
+end
+
 # Append a node; it inherits the set memberships given.  Returns its index.
 function add_node!(
     topology::MeshTopology,
@@ -276,7 +293,7 @@ function add_node!(
     node_sets::Vector{Int}=Int[],
     side_sets::Vector{Int}=Int[],
 )
-    topology.positions = hcat(topology.positions, Vector{Float64}(position))
+    append_columns!(topology, :position_storage, :num_positions, reshape(Vector{Float64}(position), 3, 1))
     push!(topology.node_alive, true)
     n = size(topology.positions, 2)
     for (id, flags) in topology.node_sets
@@ -295,7 +312,7 @@ end
 function add_elements!(topology::MeshTopology, connectivity::AbstractMatrix{<:Integer}, block::Int)
     size(connectivity, 1) == 4 || norma_abort("Elements must be four-node tetrahedra")
     first = size(topology.connectivity, 2) + 1
-    topology.connectivity = hcat(topology.connectivity, Int.(connectivity))
+    append_columns!(topology, :connectivity_storage, :num_connectivity, connectivity)
     m = size(connectivity, 2)
     append!(topology.block, fill(block, m))
     append!(topology.element_alive, trues(m))
@@ -438,7 +455,7 @@ function write_topology(
     )
     isfile(file_name) && rm(file_name; force=true)
     exo = Exodus.ExodusDatabase{Int32,Int32,Int32,Float64}(file_name, "w", init)
-    Exodus.write_coordinates(exo, topology.positions)
+    Exodus.write_coordinates(exo, Matrix(topology.positions))
     # Elements are written block by block; Exodus numbers them globally in
     # that order, which the side sets refer to.
     global_index = zeros(Int, num_elements)

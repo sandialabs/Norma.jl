@@ -925,7 +925,7 @@ function split_pass!(
         end
         return (0, cavity_rank(model, topology, densities, edge_elements(topology, a, b), options))
     end
-    sort!(ranked; by=split_rank, rev=true)
+    ranked = ranked_by(split_rank, ranked)
     accepted = 0
     decrease = 0.0
     for (a, b) in ranked
@@ -1013,7 +1013,7 @@ function collapse_pass!(
     setdiff!(edges, memory.collapses)
     ranked = collect(edges)
     edge_energy(edge) = cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options)
-    sort!(ranked; by=edge_energy, rev=true)
+    ranked = ranked_by(edge_energy, ranked)
     accepted = 0
     decrease = 0.0
     created = CreatedEntities()
@@ -1067,6 +1067,16 @@ function candidate_elements(
     return findall(candidates)
 end
 
+# The items in decreasing order of their rank, each rank computed once.
+# `sort!` with `by` evaluates the key at every comparison, which for the
+# cavity ranks recomputed the energies or the scaled Jacobians of each
+# cavity about log2(n) times (issue #231). Both sorts are stable, so the
+# order, and with it the result of a pass, is unchanged.
+function ranked_by(rank, items::Vector)
+    ranks = map(rank, items)
+    return items[sortperm(ranks; rev=true)]
+end
+
 # Score by which the operations of a pass are ranked: the energy of the
 # elements around an edge or a face, or, under the scaled Jacobian
 # criterion, the negative of their minimum scaled Jacobian, so that the
@@ -1114,9 +1124,9 @@ function swap_pass!(
     # decreasing order.
     ring_energy(edge) = cavity_rank(model, topology, densities, edge_elements(topology, edge[1], edge[2]), options)
     face_energy(face) = cavity_rank(model, topology, densities, get(topology.faces, face, Int[]), options)
-    ranked_boundary = sort!(collect(boundary_edges); by=ring_energy, rev=true)
-    ranked = sort!(collect(edges); by=ring_energy, rev=true)
-    ranked_faces = sort!(collect(faces); by=face_energy, rev=true)
+    ranked_boundary = ranked_by(ring_energy, collect(boundary_edges))
+    ranked = ranked_by(ring_energy, collect(edges))
+    ranked_faces = ranked_by(face_energy, collect(faces))
     accepted = 0
     decrease = 0.0
     created = CreatedEntities()
