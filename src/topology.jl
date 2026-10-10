@@ -23,6 +23,21 @@ function sorted_face(a::Integer, b::Integer, c::Integer)
     return (x, y, z)
 end
 
+# Edges of a four-node tetrahedron with nodes `c` as sorted pairs, in the
+# order of the local node pairs (1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4).
+function tetrahedron_edges(c::AbstractVector{<:Integer})
+    return (
+        sorted_edge(c[1], c[2]),
+        sorted_edge(c[1], c[3]),
+        sorted_edge(c[1], c[4]),
+        sorted_edge(c[2], c[3]),
+        sorted_edge(c[2], c[4]),
+        sorted_edge(c[3], c[4]),
+    )
+end
+
+element_edges(topology::MeshTopology, e::Int) = tetrahedron_edges(view(topology.connectivity, :, e))
+
 # Faces of element `e` as sorted triples, in the Exodus side order.
 function element_faces(topology::MeshTopology, e::Int)
     c = view(topology.connectivity, :, e)
@@ -69,10 +84,18 @@ function tetrahedron_scaled_jacobian(x::AbstractMatrix{Float64})
     return sqrt(2.0) * jacobian / largest
 end
 
+# Coordinates of the four nodes `node_indices` of a tetrahedron, from the
+# nodal columns of `positions`, as a static 3 × 4 matrix.  Inlined: as a
+# call, it changed which multiply-add operations of the element energy the
+# compiler fused, and with them the rounding of the energies.
+@inline function tetrahedron_coordinates(positions::AbstractMatrix{Float64}, node_indices::AbstractVector{<:Integer})
+    return SMatrix{3,4,Float64,12}(positions[i, node_indices[j]] for i in 1:3, j in 1:4)
+end
+
 function scaled_jacobians(positions::AbstractMatrix{Float64}, connectivity::AbstractMatrix{<:Integer})
     return [
-        tetrahedron_scaled_jacobian(SMatrix{3,4,Float64,12}(positions[i, connectivity[j, e]] for i in 1:3, j in 1:4))
-        for e in 1:size(connectivity, 2)
+        tetrahedron_scaled_jacobian(tetrahedron_coordinates(positions, view(connectivity, :, e))) for
+        e in 1:size(connectivity, 2)
     ]
 end
 
@@ -100,7 +123,6 @@ function build_topology(model::SolidMechanics)
         push!(block_ids, Int(block_data.id))
         push!(block_names, Exodus.read_name(mesh, Block, block_data.id))
     end
-    num_elements = size(connectivity, 2)
     node_sets = Dict{Int,BitVector}()
     node_set_names = Dict{Int,String}()
     for id in Exodus.read_ids(mesh, NodeSet)
@@ -124,13 +146,60 @@ function build_topology(model::SolidMechanics)
         side_set_names[Int(id)] = Exodus.read_name(mesh, SideSet, id)
     end
     Exodus.close(mesh)
+    return new_topology(
+        positions,
+        connectivity,
+        block,
+        block_ids,
+        block_names,
+        node_sets,
+        node_set_names,
+        side_sets,
+        side_set_names;
+        context=" of the input mesh",
+    )
+end
+
+# Topology from arrays, without sets: one block, for tests and prototypes.
+function build_topology(
+    positions::Matrix{Float64}, connectivity::Matrix{Int}; block_id::Int=1, block_name::String="block"
+)
+    return new_topology(
+        positions,
+        connectivity,
+        fill(1, size(connectivity, 2)),
+        [block_id],
+        [block_name],
+        Dict{Int,BitVector}(),
+        Dict{Int,String}(),
+        Dict{Int,Set{NTuple{3,Int}}}(),
+        Dict{Int,String}(),
+    )
+end
+
+# A topology of alive nodes and elements with the given blocks and sets, its
+# adjacency built.  The positions and the connectivity are copied.  Aborts
+# when an element is inverted or degenerate, naming it with `context`.
+function new_topology(
+    positions::AbstractMatrix{Float64},
+    connectivity::AbstractMatrix{Int},
+    block::Vector{Int},
+    block_ids::Vector{Int},
+    block_names::Vector{String},
+    node_sets::Dict{Int,BitVector},
+    node_set_names::Dict{Int,String},
+    side_sets::Dict{Int,Set{NTuple{3,Int}}},
+    side_set_names::Dict{Int,String};
+    context::String="",
+)
+    num_elements = size(connectivity, 2)
     topology = MeshTopology(
         positions,
         connectivity,
         block,
         block_ids,
         block_names,
-        trues(num_nodes),
+        trues(size(positions, 2)),
         trues(num_elements),
         Int[],
         Int[],
@@ -144,39 +213,7 @@ function build_topology(model::SolidMechanics)
         Dict{Int,BitVector}(),
     )
     for e in 1:num_elements
-        element_volume(topology, e) > 0.0 || norma_abort("Element $e of the input mesh is inverted or degenerate")
-    end
-    build_adjacency!(topology)
-    return topology
-end
-
-# Topology from arrays, without sets: one block, for tests and prototypes.
-function build_topology(
-    positions::Matrix{Float64}, connectivity::Matrix{Int}; block_id::Int=1, block_name::String="block"
-)
-    num_nodes = size(positions, 2)
-    num_elements = size(connectivity, 2)
-    topology = MeshTopology(
-        copy(positions),
-        copy(connectivity),
-        fill(1, num_elements),
-        [block_id],
-        [block_name],
-        trues(num_nodes),
-        trues(num_elements),
-        Int[],
-        Int[],
-        Dict{Tuple{Int,Int},Vector{Int}}(),
-        Dict{NTuple{3,Int},Vector{Int}}(),
-        Set{Tuple{Int,Int}}(),
-        Dict{Int,BitVector}(),
-        Dict{Int,String}(),
-        Dict{Int,Set{NTuple{3,Int}}}(),
-        Dict{Int,String}(),
-        Dict{Int,BitVector}(),
-    )
-    for e in 1:num_elements
-        element_volume(topology, e) > 0.0 || norma_abort("Element $e is inverted or degenerate")
+        element_volume(topology, e) > 0.0 || norma_abort("Element $e$context is inverted or degenerate")
     end
     build_adjacency!(topology)
     return topology
@@ -216,9 +253,8 @@ function build_adjacency!(topology::MeshTopology)
     sizehint!(faces, 2 * num_elements)
     for e in 1:num_elements
         topology.element_alive[e] || continue
-        c = view(topology.connectivity, :, e)
-        for i in 1:4, j in (i + 1):4
-            push!(get!(() -> Int[], edges, sorted_edge(c[i], c[j])), e)
+        for edge in element_edges(topology, e)
+            push!(get!(() -> Int[], edges, edge), e)
         end
         for face in element_faces(topology, e)
             push!(get!(() -> Int[], faces, face), e)

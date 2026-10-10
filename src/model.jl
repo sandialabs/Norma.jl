@@ -372,7 +372,7 @@ function ideal_volumes(
     for element in 1:size(connectivity, 2)
         node_indices = view(connectivity, :, element)
         X, _, _ = smoothing_reference(model, element_type, gather_nodal(model.reference, node_indices, N); node_indices)
-        volumes[element] = abs(dot(X[:, 2] - X[:, 1], cross(X[:, 3] - X[:, 1], X[:, 4] - X[:, 1]))) / 6.0
+        volumes[element] = abs(tetrahedron_volume(X))
     end
     return volumes
 end
@@ -430,12 +430,10 @@ function element_energies(
     energies = zeros(num_elements)
     for element in 1:num_elements
         node_indices = view(connectivity, :, element)
-        sample = SMatrix{3,4,Float64,12}(
-            sample_positions[i, node_indices[j]] for i in 1:3, j in 1:4
-        )
+        sample = tetrahedron_coordinates(sample_positions, node_indices)
         X, F_M, F_M_inv = smoothing_reference(model, element_type, sample; node_indices, metric)
         element_reference_position = gather_nodal(X, N)
-        element_current_position = SMatrix{3,4,Float64,12}(positions[i, node_indices[j]] for i in 1:3, j in 1:4)
+        element_current_position = tetrahedron_coordinates(positions, node_indices)
         energy = 0.0
         for point in 1:num_points
             dNdξ = dN[:, :, point]

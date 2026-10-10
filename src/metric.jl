@@ -139,6 +139,12 @@ function metric_tensor(h::SVector{3,Float64}, R::SMatrix{3,3,Float64,9})
     return SMatrix{3,3,Float64,9}(R * Diagonal(SVector{3,Float64}(1.0 / h[1]^2, 1.0 / h[2]^2, 1.0 / h[3]^2)) * R')
 end
 
+# The factor F_M = diag(1/h) Rᵀ of the metric with principal sizes h and
+# principal frame R, which maps a segment to its length in the metric space.
+function metric_factor(h::AbstractVector{Float64}, R::AbstractMatrix{Float64})
+    return SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
+end
+
 # Nodes adjacent to every node through the elements of a model.
 function node_neighbors(model::SolidMechanics)
     num_nodes = size(model.reference, 2)
@@ -468,16 +474,13 @@ function create_metric_reference(
         metric_field.source, node_indices, centroid, time
     )::Tuple{SVector{3,Float64},SMatrix{3,3,Float64,9}}
     if metric_field.restricted
-        u = X[:, 2] - X[:, 1]
-        v = X[:, 3] - X[:, 1]
-        w = X[:, 4] - X[:, 1]
-        element_volume = dot(u, cross(v, w)) / 6.0
+        element_volume = tetrahedron_volume(X)
         ideal_volume = h[1] * h[2] * h[3] / (6.0 * sqrt(2.0))
         if ideal_volume < element_volume
             h = h * cbrt(element_volume / ideal_volume)
         end
     end
-    F_M = SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
+    F_M = metric_factor(h, R)
     F_M_inv = R * SMatrix{3,3,Float64,9}(Diagonal(h))
     return F_M_inv * UNIT_TETRAHEDRON, F_M, F_M_inv
 end

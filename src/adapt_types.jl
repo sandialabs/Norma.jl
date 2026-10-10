@@ -106,14 +106,6 @@ struct CavityProposal
     surface::Union{Nothing,SurfaceSwap}
 end
 
-function CavityProposal(
-    old_elements, new_connectivity, block, energy_before, energy_after, removed_node, surviving_node, split
-)
-    return CavityProposal(
-        old_elements, new_connectivity, block, energy_before, energy_after, removed_node, surviving_node, split, nothing
-    )
-end
-
 # The edges and faces whose operation a topology phase has refused, kept
 # until an element around them changes: nodes do not move within a phase,
 # so a refused proposal stays refused until its cavity does.
