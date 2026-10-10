@@ -883,18 +883,7 @@ function get_square_projection_matrix(model::SolidMechanics, bc::SolidMechanicsS
     for num_nodes_side in num_nodes_sides
         side_nodes = side_set_node_indices[side_set_node_index:(side_set_node_index + num_nodes_side - 1)]
         side_coordinates = coords[:, side_nodes]
-        element_type = get_element_type(2, Int64(num_nodes_side))
-        num_int_points = default_num_int_pts(element_type)
-        N, dNdξ, w, _ = isoparametric(element_type, num_int_points)
-        side_matrix = zeros(num_nodes_side, num_nodes_side)
-        for point in 1:num_int_points
-            Nₚ = N[:, point]
-            dNdξₚ = dNdξ[:, :, point]
-            dXdξ = dNdξₚ * side_coordinates'
-            j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
-            wₚ = w[point]
-            side_matrix += Nₚ * Nₚ' * j * wₚ
-        end
+        side_matrix = get_side_set_nodal_stiffness(side_coordinates, 0.0)
         local_indices = get.(Ref(local_from_global_map), side_nodes, 0)
         square_projection_matrix[local_indices, local_indices] += side_matrix
         side_set_node_index += num_nodes_side

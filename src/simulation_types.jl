@@ -46,6 +46,7 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     relaxation_parameter::Float64
     relaxation_method::Symbol
     aitken_N0::Int
+    anderson_depth::Int
     naive_stabilized::Bool
     # Relaxation state for the Schwarz fixed-point iteration, stored per
     # interface (RelaxationKey) AND per substep time slot within the current

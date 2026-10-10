@@ -799,6 +799,7 @@ function SolidMultiDomainTimeController(params::Parameters)
     if has_relaxation_parameter
         relaxation_parameter = Float64(params["relaxation parameter"])
     end
+    anderson_depth = Int(get(params, "anderson depth", 10))
     # Echo the effective relaxation settings once, so a misspelled or misplaced
     # YAML key (silently ignored, like all unrecognized keys) is visible at startup.
     if relaxation_method === :fixed
@@ -806,8 +807,7 @@ function SolidMultiDomainTimeController(params::Parameters)
             relaxation_method_name(relaxation_method), relaxation_parameter)
     elseif relaxation_method === :anderson
         norma_logf(0, :schwarz, "Relaxation: %s, mixing β = %.4e, depth = %d",
-            relaxation_method_name(relaxation_method), relaxation_parameter,
-            Int(get(params, "anderson depth", 10)))
+            relaxation_method_name(relaxation_method), relaxation_parameter, anderson_depth)
     else
         norma_logf(0, :schwarz, "Relaxation: %s, θ₀ = %.4e, N0 = %d",
             relaxation_method_name(relaxation_method), relaxation_parameter, aitken_N0)
@@ -865,7 +865,8 @@ function SolidMultiDomainTimeController(params::Parameters)
         ∂Ω_f_hist,
         relaxation_parameter,
         relaxation_method,
-        aitken_N0, 
+        aitken_N0,
+        anderson_depth,
         naive_stabilized,
         lambda_time,
         lambda_disp,
@@ -1229,7 +1230,7 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     anderson = controller.relaxation_method === :anderson
     aitken = controller.relaxation_method !== :fixed && !anderson
     anderson_histories = Dict{Int,AndersonHistory}()
-    anderson_depth = Int(get(sim.params, "anderson depth", 10))
+    anderson_depth = controller.anderson_depth
     previous_residual = Dict{Int,Matrix{Float64}}()
     previous_iterate = Dict{Int,Matrix{Float64}}()
     norma_log(0, :acceleration, "Coupled initial acceleration of constrained DN pairs (θ = $(θ))")
@@ -2041,7 +2042,7 @@ function check_overlap(model::SolidMechanics, bc::SolidMechanicsContactSchwarzBo
     overlap = false
     unique_node_indices = unique(bc.side_set_node_indices)
     coupled_model = coupled_subsim_of(bc).model
-    coupled_bc = coupled_model.boundary_conditions[bc.coupled_bc_index]
+    coupled_bc = coupled_bc_of(bc)
     coupled_side_set_id = coupled_bc.side_set_id
 
     # Tolerance value to calculate closest point projection, to avoid projection failure

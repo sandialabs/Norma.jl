@@ -14,6 +14,12 @@ get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : 
 coupled_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.coupled_handle.id]
 self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsims[bc.self_handle.id]
 
+# The partner's coupling condition, read from the partner's own model: for a
+# reduced order partner that is the RomModel, not its full order model.
+function coupled_bc_of(bc::SolidMechanicsSchwarzBoundaryCondition)
+    return coupled_subsim_of(bc).model.boundary_conditions[bc.coupled_bc_index]
+end
+
 # Floor on ‖δ‖² guarding the division when successive residuals are essentially
 # identical (a stale residual direction). This is numerical safety only; the
 # Aitken factor itself is left unclamped so it is free to take the large or
@@ -382,25 +388,25 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
     for (i_local, i_global) in enumerate(src_global_from_local_map)
         src_disp[:, i_local] = src_model.displacement[:, i_global]
     end
-    dirichlet_projector = bc.dirichlet_projector
-    num_dst_nodes = size(dirichlet_projector, 1)
-    dst_disp = zeros(3, num_dst_nodes)
-    for i in 1:3
-        dst_disp[i, :] = dirichlet_projector * src_disp[i, :]
-    end
+    dst_disp = project_components(bc.dirichlet_projector, src_disp)
     global_from_local_map = bc.global_from_local_map
-    theta = controller.relaxation_parameter
 
-    # Datum (partner contribution only): g = -t_src + α W u_src. The self term
-    # α W u_self is added by build_robin_schwarz_force at each evaluation.
-    if (this_index < coupled_index)  # side listed first: not relaxed
-        for comp in 1:3
-            α_W_u = α * (W * dst_disp[comp, :])
-            for (i_local, i_global) in enumerate(global_from_local_map)
-                dof_i = 3 * (i_global - 1) + comp
-                model.boundary_force[dof_i] += neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
-            end
+    # Datum (partner contribution only), on the interface degrees of freedom:
+    # rhs = -t_src + α W u_src. The self term α W u_self is added by
+    # build_robin_schwarz_force at each evaluation. Other loads already in
+    # boundary_force (Neumann and pressure conditions on interface nodes) are
+    # not part of the datum; relaxing them would scale them by 1/θ at the
+    # fixed point.
+    rhs = zeros(length(model.boundary_force))
+    for comp in 1:3
+        α_W_u = α * (W * dst_disp[comp, :])
+        for (i_local, i_global) in enumerate(global_from_local_map)
+            dof_i = 3 * (i_global - 1) + comp
+            rhs[dof_i] = neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
         end
+    end
+    if (this_index < coupled_index)  # side listed first: not relaxed
+        datum = rhs
     else  # side listed later: relaxed
         # The relaxation state is per substep time slot (see relaxation_slot!):
         # relaxing against the datum of the previous Schwarz iteration at the
@@ -413,45 +419,36 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         ensure_slot!(g_slots, slot_k)
         g_stored = g_slots[slot_k]
         g = isempty(g_stored) ? zeros(length(model.boundary_force)) : g_stored
-        # The relaxed iterate is the Robin datum alone, on the interface degrees
-        # of freedom: rhs = -t_src + α W u_src. Other loads already in
-        # boundary_force (Neumann and pressure conditions on interface nodes) are
-        # not part of the iterate; relaxing them would scale them by 1/θ at the
-        # fixed point.
-        rhs = zeros(length(model.boundary_force))
-        for comp in 1:3
-            α_W_u = α * (W * dst_disp[comp, :])
-            for (i_local, i_global) in enumerate(global_from_local_map)
-                dof_i = 3 * (i_global - 1) + comp
-                rhs[dof_i] = neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
-            end
-        end
         # Optional Aitken relaxation factor. The fixed-point iterate is the datum
         # stored in lambda_disp; its unrelaxed (theta = 1) candidate is rhs, from
         # which the residual r = rhs - g is formed.
-        datum = zeros(length(model.boundary_force))
         if controller.relaxation_method === :anderson && aitken_applies(controller, key) && !isempty(g_stored)
             # Anderson acceleration of the Robin datum; the datum lives on the
             # interface degrees of freedom only, so it is its own trace. A fresh
             # slot (g = 0) is not entered into the history.
-            depth = Int(get(parent_sim.params, "anderson depth", 10))
             datum = anderson_step!(
-                anderson_history!(controller, key, slot_k), g, rhs, rhs .- g, controller.relaxation_parameter, depth
+                anderson_history!(controller, key, slot_k),
+                g,
+                rhs,
+                rhs .- g,
+                controller.relaxation_parameter,
+                controller.anderson_depth,
             )
         else
+            theta = controller.relaxation_parameter
             if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
                 theta = controller.relaxation_method === :aitken_secant ?
                     relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g) :
                     relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, rhs, g)
             end
             frozen_relaxation_update!(controller, theta)
-            datum .= (1 - theta) .* g .+ theta .* rhs
-        end
-        for i_global in global_from_local_map, comp in 1:3
-            dof_i = 3 * (i_global - 1) + comp
-            model.boundary_force[dof_i] += datum[dof_i]
+            datum = (1 - theta) .* g .+ theta .* rhs
         end
         g_slots[slot_k] = datum
+    end
+    for i_global in global_from_local_map, comp in 1:3
+        dof_i = 3 * (i_global - 1) + comp
+        model.boundary_force[dof_i] += datum[dof_i]
     end
 end
 
@@ -559,7 +556,7 @@ function compute_constrained_dn_projectors!(
         norma_abort("`constrained: true` requires full order (solid mechanics) models on both sides of the pair.")
     end
     src_model = src_sim.model
-    src_bc = src_model.boundary_conditions[dst_bc.coupled_bc_index]
+    src_bc = coupled_bc_of(dst_bc)
     if !(src_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition) || !src_bc.constrained
         norma_abort(
             "`constrained: true` must be set on BOTH sides of a Schwarz DN nonoverlap pair " *
@@ -725,6 +722,8 @@ is_direct_dn(bc::SolidMechanicsBoundaryCondition) = is_constrained_dn(bc) && bc.
 
 struct DirectInterfaceFactor
     factors::Vector{Any}              # Cholesky factor of H₀ per component
+    d_inverse_mass::Vector{Vector{Float64}}  # interface_inverse_mass of D per component
+    n_inverse_mass::Vector{Vector{Float64}}  # interface_inverse_mass of N per component
 end
 
 const DIRECT_INTERFACE_CACHE = IdDict{Any,DirectInterfaceFactor}()
@@ -757,15 +756,19 @@ function direct_interface_factor(bc::SolidMechanicsNonOverlapSchwarzBoundaryCond
     return get!(DIRECT_INTERFACE_CACHE, bc) do
         d_model = self_subsim_of(bc).model
         n_model = coupled_subsim_of(bc).model
-        n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+        n_bc = coupled_bc_of(bc)
         P = bc.dirichlet_projector
         d_fixed = prescribed_dofs(d_model)
         n_fixed = prescribed_dofs(n_model)
         t0 = time()
         factors = Any[]
+        d_inverse_mass = Vector{Float64}[]
+        n_inverse_mass = Vector{Float64}[]
         for comp in 1:3
             d_inv = interface_inverse_mass(d_model, bc.global_from_local_map, comp, d_fixed)
             n_inv = interface_inverse_mass(n_model, n_bc.global_from_local_map, comp, n_fixed)
+            push!(d_inverse_mass, d_inv)
+            push!(n_inverse_mass, n_inv)
             H = P * (n_inv .* transpose(P))
             for i in eachindex(d_inv)
                 H[i, i] += d_inv[i]
@@ -783,26 +786,27 @@ function direct_interface_factor(bc::SolidMechanicsNonOverlapSchwarzBoundaryCond
             0, :setup, "Direct interface solve '%s': %d interface nodes, three factorizations in %.2f s.",
             bc.name, size(P, 1), time() - t0,
         )
-        DirectInterfaceFactor(factors)
+        DirectInterfaceFactor(factors, d_inverse_mass, n_inverse_mass)
     end
 end
 
 # Apply the interface force λ (3 × n_D) to the two sides: change of the
 # acceleration on the interface rows by m⁻¹ times the force, and of the
 # velocity by `velocity_factor` times that (γΔt within a step, 0 at t = 0).
+# The inverse masses are those of the factorization, which direct_interface_force
+# computed before.
 function apply_direct_interface_force!(
     bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, λ::Matrix{Float64}, velocity_factor::Float64
 )
+    factor = direct_interface_factor(bc)
     d_model = self_subsim_of(bc).model
     n_model = coupled_subsim_of(bc).model
-    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     P = bc.dirichlet_projector
-    d_fixed = prescribed_dofs(d_model)
-    n_fixed = prescribed_dofs(n_model)
     f_N = zeros(3, length(n_bc.global_from_local_map))
     for comp in 1:3
-        d_inv = interface_inverse_mass(d_model, bc.global_from_local_map, comp, d_fixed)
-        n_inv = interface_inverse_mass(n_model, n_bc.global_from_local_map, comp, n_fixed)
+        d_inv = factor.d_inverse_mass[comp]
+        n_inv = factor.n_inverse_mass[comp]
         f_N[comp, :] = -(transpose(P) * λ[comp, :])
         for (i, node) in enumerate(bc.global_from_local_map)
             Δa = d_inv[i] * λ[comp, i]
@@ -831,7 +835,7 @@ function direct_interface_force(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondi
     factor = direct_interface_factor(bc)
     d_model = self_subsim_of(bc).model
     n_model = coupled_subsim_of(bc).model
-    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     P = bc.dirichlet_projector
     q_D = getfield(d_model, field)[:, bc.global_from_local_map]
     q_N = getfield(n_model, field)[:, n_bc.global_from_local_map]
@@ -902,7 +906,7 @@ end
 function direct_initial_acceleration!(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     d_model = self_subsim_of(bc).model
     n_model = coupled_subsim_of(bc).model
-    n_bc = n_model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     P = bc.dirichlet_projector
     for field in (:displacement, :velocity)
         q_N = getfield(n_model, field)[:, n_bc.global_from_local_map]
@@ -968,13 +972,31 @@ function inverse_weighted_norm(W::AbstractMatrix{Float64}, x::Matrix{Float64})
     return sqrt(max(total, 0.0))
 end
 
+# The operator A applied to each of the three components of a nodal field q
+# (3 × n), row by row.
+function project_components(A::AbstractMatrix{Float64}, q::AbstractMatrix{Float64})
+    result = zeros(3, size(A, 1))
+    for comp in 1:3
+        result[comp, :] = A * q[comp, :]
+    end
+    return result
+end
+
+# Relative difference, in the norm of W_N⁻¹, between the reaction r_D of the
+# Dirichlet side transferred by Pᵀ and the force `applied` to the Neumann side.
+function dn_force_residual(
+    W_N::AbstractMatrix{Float64}, P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64}
+)
+    transferred = project_components(transpose(P), r_D)
+    scale = inverse_weighted_norm(W_N, transferred)
+    difference = inverse_weighted_norm(W_N, transferred - applied)
+    return scale > 0.0 ? difference / scale : difference
+end
+
 function dn_one_sided_jump(
     W::AbstractMatrix{Float64}, P::AbstractMatrix{Float64}, q_D::Matrix{Float64}, q_N::Matrix{Float64}
 )
-    transferred = similar(q_D)
-    for comp in 1:3
-        transferred[comp, :] = P * q_N[comp, :]
-    end
+    transferred = project_components(P, q_N)
     jump = weighted_norm(W, q_D - transferred)
     scale = weighted_norm(W, q_D)
     area = sum(W)
@@ -992,7 +1014,7 @@ end
 function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     n_sim = coupled_subsim_of(bc)
     n_model = get_fom_model(n_sim)
-    n_bc = n_sim.model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     W_D = bc.square_projector
     P = bc.dirichlet_projector
     d_map = bc.global_from_local_map
@@ -1013,14 +1035,7 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
     if !isempty(f_N) && size(W_N, 1) == length(n_map) && length(model.internal_force) == length(model.displacement)
         r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
-        transferred = zeros(3, length(n_map))
-        for comp in 1:3
-            transferred[comp, :] = transpose(P) * r_D[comp, :]
-        end
-        applied = reshape(f_N, 3, :)
-        scale = inverse_weighted_norm(W_N, transferred)
-        difference = inverse_weighted_norm(W_N, transferred - applied)
-        force_residual = scale > 0.0 ? difference / scale : difference
+        force_residual = dn_force_residual(W_N, P, r_D, reshape(f_N, 3, :))
     end
     return DNInterfaceResiduals(
         self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms
@@ -1062,7 +1077,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
     d_model = get_fom_model(self_subsim_of(bc))
     n_sim = coupled_subsim_of(bc)
     n_model = get_fom_model(n_sim)
-    n_bc = n_sim.model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     W_D = bc.square_projector
     P = bc.dirichlet_projector
     d_map = bc.global_from_local_map
@@ -1095,13 +1110,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
         f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t)
         r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
         r_D = nodal(extract_local_vector(bc, r_global, 3))
-        transferred = zeros(3, length(n_map))
-        for comp in 1:3
-            transferred[comp, :] = transpose(P) * r_D[comp, :]
-        end
-        scale = inverse_weighted_norm(W_N, transferred)
-        difference = inverse_weighted_norm(W_N, transferred - nodal(f_N))
-        force_residual = max(force_residual, scale > 0.0 ? difference / scale : difference)
+        force_residual = max(force_residual, dn_force_residual(W_N, P, r_D, nodal(f_N)))
     end
     found || (force_residual = NaN)
     return DNInterfaceResiduals(
@@ -1124,8 +1133,7 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
     nan = (fill(NaN, 3), NaN)
     d_id = bc.self_handle.id
     d_times = controller.time_hist[d_id]
-    n_sim = coupled_subsim_of(bc)
-    n_bc = n_sim.model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     n_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition || return nan
     t_start = controller.prev_time
     tol_t = 1.0e-12 * max(1.0, abs(controller.time))
@@ -1151,10 +1159,7 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
         impulse_N .+= 0.5 * (entries[k][1] - entries[k - 1][1]) .* (reshape(entries[k - 1][2], 3, :) .+
                                                                      reshape(entries[k][2], 3, :))
     end
-    transferred = zeros(3, size(P, 2))
-    for comp in 1:3
-        transferred[comp, :] = transpose(P) * impulse_D[comp, :]
-    end
+    transferred = project_components(transpose(P), impulse_D)
     residual = impulse_N .- transferred
     net = vec(sum(residual; dims=2))
     scale = inverse_weighted_norm(W_N, transferred)
@@ -1406,7 +1411,7 @@ end
 # Projected interface trace Π_D q_N of a partner field q (all degrees of
 # freedom of the Neumann side, interleaved components), as a vector.
 function constrained_partner_trace(bc::SolidMechanicsSchwarzBoundaryCondition, field::AbstractVector{Float64})
-    n_bc = coupled_subsim_of(bc).model.boundary_conditions[bc.coupled_bc_index]
+    n_bc = coupled_bc_of(bc)
     q_N = reshape(field, 3, :)[:, n_bc.global_from_local_map]
     return vec(transpose(bc.dirichlet_projector * transpose(q_N)))
 end
@@ -1479,7 +1484,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_acce = controller.predictor_acce[coupled_index]
         interp_∂Ω_f = !isempty(controller.predictor_∂Ω_f[coupled_index]) ?
             controller.predictor_∂Ω_f[coupled_index] : controller.stop_∂Ω_f[coupled_index]
-    elseif isempty(time_hist) && !isempty(controller.stop_disp[coupled_index])
+    elseif !isempty(controller.stop_disp[coupled_index])
         interp_disp = controller.stop_disp[coupled_index]
         interp_velo = controller.stop_velo[coupled_index]
         interp_acce = controller.stop_acce[coupled_index]
@@ -1508,6 +1513,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         # falls back to the interpolated partner state, as before.
         key = relaxation_key(bc)
         slot_k = relaxation_slot!(controller, key, time)
+        use_anderson = controller.relaxation_method === :anderson && aitken_applies(controller, key)
         disp_slots = relaxation_slots!(controller.lambda_disp, key)
         velo_slots = relaxation_slots!(controller.lambda_velo, key)
         acce_slots = relaxation_slots!(controller.lambda_acce, key)
@@ -1540,16 +1546,20 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             trace_c = constrained_partner_trace(bc, interp_c)
             trace_prev = constrained_partner_trace(bc, λ_c_prev)
             fresh_slot = isempty(relax_velocity ? λ_v_stored : λ_u_stored)
-            if controller.relaxation_method === :anderson && aitken_applies(controller, key) && fresh_slot
+            if use_anderson && fresh_slot
                 # A fresh slot seeds the previous iterate with the incoming datum,
                 # so its residual is exactly zero; entered into the history, that
                 # pair makes the least-squares coefficient cancel the next update.
                 c_slots[slot_k] = copy(interp_c)
-            elseif controller.relaxation_method === :anderson && aitken_applies(controller, key)
+            elseif use_anderson
                 history = anderson_history!(controller, key, slot_k)
-                depth = Int(get(bc.parent.params, "anderson depth", 10))
                 c_slots[slot_k] = anderson_step!(
-                    history, λ_c_prev, interp_c, trace_c .- trace_prev, controller.relaxation_parameter, depth
+                    history,
+                    λ_c_prev,
+                    interp_c,
+                    trace_c .- trace_prev,
+                    controller.relaxation_parameter,
+                    controller.anderson_depth,
                 )
             else
                 θ = if controller.relaxation_method === :aitken_secant
@@ -1566,7 +1576,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 velo_slots[slot_k] = interp_velo
             end
             acce_slots[slot_k] = interp_acce
-        elseif controller.relaxation_method === :anderson && aitken_applies(controller, key)
+        elseif use_anderson
             # Anderson acceleration of the three imposed kinematic fields. The
             # least-squares coefficients come from the projected interface trace
             # of the displacement residual, and the same coefficients update the
@@ -1580,7 +1590,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             else
                 trace = constrained_partner_trace(bc, interp_disp) .- constrained_partner_trace(bc, λ_u_prev)
                 β = controller.relaxation_parameter
-                depth = Int(get(bc.parent.params, "anderson depth", 10))
+                depth = controller.anderson_depth
                 disp_slots[slot_k] = anderson_step!(
                     anderson_history!(controller, key, slot_k, :displacement), λ_u_prev, interp_disp, trace, β, depth
                 )
