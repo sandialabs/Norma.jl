@@ -556,17 +556,8 @@ function size_field_tet_h(
     return h
 end
 
-function characteristic_element_length_centroid(nodal_coordinates::Matrix{Float64})::Float64
-    centroid = sum(nodal_coordinates; dims=2) / size(nodal_coordinates, 2)
-    total = 0.0
-    @inbounds for i in 1:size(nodal_coordinates, 2)
-        δ = nodal_coordinates[:, i] - centroid
-        total += norm(δ)
-    end
-    return 2 * total / size(nodal_coordinates, 2)  # Approximate diameter
-end
-
-# Same measure on a static nodal coordinate matrix, without allocation.
+# Approximate diameter of an element, twice the mean distance of its nodes
+# from their centroid, on a static nodal coordinate matrix.
 function characteristic_element_length_centroid(X::SMatrix{3,N,T})::T where {N,T}
     centroid = zero(SVector{3,T})
     @inbounds for a in 1:N

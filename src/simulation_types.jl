@@ -64,8 +64,6 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     lambda_velo::Dict{RelaxationKey,Vector{Vector{Float64}}}
     lambda_acce::Dict{RelaxationKey,Vector{Vector{Float64}}}
     aitken_prev_residual_disp::Dict{RelaxationKey,Vector{Vector{Float64}}}
-    aitken_prev_residual_velo::Dict{RelaxationKey,Vector{Vector{Float64}}}
-    aitken_prev_residual_acce::Dict{RelaxationKey,Vector{Vector{Float64}}}
     aitken_theta_disp::Dict{RelaxationKey,Vector{Float64}}
     # Previous interface displacement iterate g^(n-1), used by the Aitken-secant
     # (paper eq. 9) variant to form d^(n) = g^(n) - g^(n-1) directly.

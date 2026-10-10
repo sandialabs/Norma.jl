@@ -133,20 +133,6 @@ function box_grid_nearest_item(
     return best, best_item
 end
 
-# A grid over a set of points, for nearest-point queries.
-struct PointGrid
-    grid::BoxGrid
-    points::Vector{SVector{3,Float64}}
-end
-
-function PointGrid(points::Vector{SVector{3,Float64}})
-    return PointGrid(BoxGrid(points, points), points)
-end
-
-function nearest_point_index(pg::PointGrid, p::SVector{3,Float64})
-    return box_grid_nearest_item(pg.grid, p, pg.points, pg.points, i -> norm(pg.points[i] - p))[2]
-end
-
 # Elements of a model binned by their reference bounding boxes.
 struct ElementGrid
     grid::BoxGrid

@@ -820,8 +820,6 @@ function SolidMultiDomainTimeController(params::Parameters)
     lambda_velo = Dict{RelaxationKey,Vector{Vector{Float64}}}()
     lambda_acce = Dict{RelaxationKey,Vector{Vector{Float64}}}()
     aitken_prev_residual_disp = Dict{RelaxationKey,Vector{Vector{Float64}}}()
-    aitken_prev_residual_velo = Dict{RelaxationKey,Vector{Vector{Float64}}}()
-    aitken_prev_residual_acce = Dict{RelaxationKey,Vector{Vector{Float64}}}()
     aitken_theta_disp = Dict{RelaxationKey,Vector{Float64}}()
     aitken_prev_lambda_disp = Dict{RelaxationKey,Vector{Vector{Float64}}}()
     is_schwarz = true
@@ -874,8 +872,6 @@ function SolidMultiDomainTimeController(params::Parameters)
         lambda_velo,
         lambda_acce,
         aitken_prev_residual_disp,
-        aitken_prev_residual_velo,
-        aitken_prev_residual_acce,
         aitken_theta_disp,
         aitken_prev_lambda_disp,
         is_schwarz,
@@ -1809,8 +1805,6 @@ function reset_relaxation_state!(controller::MultiDomainTimeController)
     empty!(controller.lambda_velo)
     empty!(controller.lambda_acce)
     empty!(controller.aitken_prev_residual_disp)
-    empty!(controller.aitken_prev_residual_velo)
-    empty!(controller.aitken_prev_residual_acce)
     empty!(controller.aitken_theta_disp)
     empty!(controller.aitken_prev_lambda_disp)
     reset_anderson_state!(controller)

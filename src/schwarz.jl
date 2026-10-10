@@ -723,8 +723,7 @@ is_direct_dn(bc::SolidMechanicsBoundaryCondition) = is_constrained_dn(bc) && bc.
 #   H₀ λ = Π_D a_N,free - a_D,free.
 # ---------------------------------------------------------------------------
 
-mutable struct DirectInterfaceFactor
-    masks::Vector{BitVector}          # free interface rows of D and of N, per component
+struct DirectInterfaceFactor
     factors::Vector{Any}              # Cholesky factor of H₀ per component
 end
 
@@ -764,7 +763,6 @@ function direct_interface_factor(bc::SolidMechanicsNonOverlapSchwarzBoundaryCond
         n_fixed = prescribed_dofs(n_model)
         t0 = time()
         factors = Any[]
-        masks = BitVector[]
         for comp in 1:3
             d_inv = interface_inverse_mass(d_model, bc.global_from_local_map, comp, d_fixed)
             n_inv = interface_inverse_mass(n_model, n_bc.global_from_local_map, comp, n_fixed)
@@ -780,13 +778,12 @@ function direct_interface_factor(bc::SolidMechanicsNonOverlapSchwarzBoundaryCond
                 )
             end
             push!(factors, F)
-            push!(masks, BitVector(d_inv .> 0.0))
         end
         norma_logf(
             0, :setup, "Direct interface solve '%s': %d interface nodes, three factorizations in %.2f s.",
             bc.name, size(P, 1), time() - t0,
         )
-        DirectInterfaceFactor(masks, factors)
+        DirectInterfaceFactor(factors)
     end
 end
 
@@ -1404,17 +1401,6 @@ end
 
 function set_internal_force!(model::SolidMechanics, force)
     return model.internal_force = force
-end
-
-# Expand interface-sized field (3 × n_interface_nodes) to full-DOF vector (num_dofs)
-function _expand_to_full_dofs(field_iface::Matrix{Float64}, global_from_local_map, num_dofs::Int)
-    full = zeros(num_dofs)
-    num_nodes = num_dofs ÷ 3
-    full_3xN = reshape(full, (3, num_nodes))
-    for (i_local, i_global) in enumerate(global_from_local_map)
-        @inbounds full_3xN[:, i_global] = field_iface[:, i_local]
-    end
-    return reshape(full_3xN, num_dofs)
 end
 
 # Projected interface trace Π_D q_N of a partner field q (all degrees of
