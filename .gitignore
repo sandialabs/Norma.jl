@@ -19,7 +19,6 @@ docs/build/
 # Meshes written by the adaptivity loop and by the refinement stages of the plate example
 *-adapted-*.g
 examples/ems/plate/plate-stage-*.g
-.JuliaFormatter.toml
 CLAUDE.md
 
 # Claude Code session data
@@ -42,3 +41,4 @@ CLAUDE.md
 *.toc
 *.bbl
 *.blg
+!format/Manifest.toml

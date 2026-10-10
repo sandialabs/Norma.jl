@@ -49,6 +49,24 @@ Norma.run("input.yaml")
 
 ---
 
+## Formatting
+
+The Julia sources are formatted with JuliaFormatter in the blue style with a
+line width of 120, as set in `.JuliaFormatter.toml`. The formatter version is
+pinned in `format/Manifest.toml`, and CI rejects a change whose files are not
+formatted with that version. Format the sources before committing with:
+
+```bash
+julia --project=format -e 'using Pkg; Pkg.instantiate()'   # once
+julia --project=format format/format.jl
+```
+
+The commit that formatted the whole tree is listed in `.git-blame-ignore-revs`;
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` makes `git blame`
+skip it.
+
+---
+
 ## Documentation
 
 Full documentation lives in the [`docs/`](docs/) directory and is built with

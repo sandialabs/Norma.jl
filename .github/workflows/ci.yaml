@@ -20,6 +20,30 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 jobs:
+  # Formatting with the JuliaFormatter version pinned in format/Manifest.toml
+  # and the style in .JuliaFormatter.toml. The pinned version keeps the check
+  # from changing its result when a new formatter release changes its output.
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.13'
+
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v2
+
+      - name: Check formatting
+        run: |
+          julia --color=no --project=format -e 'using Pkg; Pkg.instantiate()'
+          julia --color=no --project=format format/format.jl --check
+
   # The full suite on every platform and Julia version, without coverage
   # instrumentation. Coverage makes Julia about eleven times slower (one
   # mid-size test takes 24 s without it and 4.5 min with it), which put the
