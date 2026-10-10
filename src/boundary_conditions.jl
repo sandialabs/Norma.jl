@@ -202,8 +202,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     compute_overlap_l2_error::String="",
 )
     mesh = get_fom_model(subsim).mesh
-    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
-    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
     element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
@@ -281,8 +280,7 @@ function SolidMechanicsContactSchwarzBoundaryCondition(
     is_dirichlet = true
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
-    local_from_global_map = get_side_set_local_from_global_map(input_mesh, side_set_id)
-    global_from_local_map = get_side_set_global_from_local_map(input_mesh, side_set_id)
+    local_from_global_map, global_from_local_map = get_side_set_node_maps(input_mesh, side_set_id)
     coupled_bc_index = 0
     active_contact = false
     swap_bcs = get(bc_params, "swap BC types", false)
@@ -329,8 +327,7 @@ function SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition(
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
     square_projector = Matrix{Float64}(undef, 0, 0)
-    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
-    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
     coupled_bc_index = 0
     return SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition(
         side_set_name,
@@ -369,8 +366,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
     square_projector = Matrix{Float64}(undef, 0, 0)
-    local_from_global_map = get_side_set_local_from_global_map(mesh, side_set_id)
-    global_from_local_map = get_side_set_global_from_local_map(mesh, side_set_id)
+    local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
     coupled_bc_index = 0
     return SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         side_set_name,

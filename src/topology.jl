@@ -400,12 +400,7 @@ end
 # node; a already carries them (see may_collapse in adapt.jl).
 function collapse_sets!(topology::MeshTopology, b::Int, a::Int)
     for (id, faces) in topology.side_sets
-        renamed = Set{NTuple{3,Int}}()
-        for face in faces
-            b in face || continue
-            push!(renamed, face)
-        end
-        for face in renamed
+        for face in filter(face -> b in face, faces)
             delete!(faces, face)
             a in face && continue
             push!(faces, sorted_face(map(n -> n == b ? a : n, face)...))
@@ -428,24 +423,12 @@ end
 # rebuild the adjacency.  Returns the maps from old to new indices (zero for a
 # dropped entity).
 function compact!(topology::MeshTopology)
-    node_map = zeros(Int, length(topology.node_alive))
-    k = 0
-    for n in 1:length(topology.node_alive)
-        if topology.node_alive[n]
-            k += 1
-            node_map[n] = k
-        end
-    end
-    element_map = zeros(Int, length(topology.element_alive))
-    k = 0
-    for e in 1:length(topology.element_alive)
-        if topology.element_alive[e]
-            k += 1
-            element_map[e] = k
-        end
-    end
     alive_nodes = findall(topology.node_alive)
     alive_elements = findall(topology.element_alive)
+    node_map = zeros(Int, length(topology.node_alive))
+    node_map[alive_nodes] = 1:length(alive_nodes)
+    element_map = zeros(Int, length(topology.element_alive))
+    element_map[alive_elements] = 1:length(alive_elements)
     topology.positions = topology.positions[:, alive_nodes]
     connectivity = topology.connectivity[:, alive_elements]
     for i in eachindex(connectivity)

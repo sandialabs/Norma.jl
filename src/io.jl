@@ -294,22 +294,12 @@ end
 
 function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechanics)
     stop = sim.controller.stop
-    integrator = sim.integrator
     index_string = "-" * string(stop; pad=4)
     prefix = sim.name * "-"
     for bc in model.boundary_conditions
         if bc isa SolidMechanicsDirichletBoundaryCondition
             node_set_name = bc.name
-            offset = bc.offset
-            if offset == 1
-                offset_name = "x"
-            end
-            if offset == 2
-                offset_name = "y"
-            end
-            if offset == 3
-                offset_name = "z"
-            end
+            offset_name = ("x", "y", "z")[bc.offset]
             curr_filename = prefix * node_set_name * "-" * offset_name * "-curr" * index_string * ".csv"
             disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"

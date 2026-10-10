@@ -848,10 +848,7 @@ function try_edge_collapse(
         a in view(topology.connectivity, :, e) || push!(kept, e)
     end
     isempty(kept) && return nothing
-    new_connectivity = topology.connectivity[:, kept]
-    for i in eachindex(new_connectivity)
-        new_connectivity[i] == b && (new_connectivity[i] = a)
-    end
+    new_connectivity = replace!(topology.connectivity[:, kept], b => a)
     faces_are_new(topology, star, new_connectivity, created) || return nothing
     if options.size_by_length
         # No edge from the surviving node may become longer than the band.
@@ -1154,10 +1151,7 @@ function edge_split_from_evaluation(
     (evaluation === nothing || !ring_intact) && return nothing
     node = size(topology.positions, 2) + 1
     if node != evaluated_node
-        connectivity = evaluation.new_connectivity
-        for i in eachindex(connectivity)
-            connectivity[i] == evaluated_node && (connectivity[i] = node)
-        end
+        replace!(evaluation.new_connectivity, evaluated_node => node)
     end
     return evaluation
 end

@@ -138,22 +138,12 @@ function register_variants!(r::InMemoryRestart, target, pairs)
     return r
 end
 
-"""
-Register `name` as resolving to `slot`, refusing to steal it from another slot.
-The in-memory counterpart of the collision guard in `apply_swap!`.
-"""
-function _claim_name!(sim::MultiDomainSimulation, slot::Int64, name::AbstractString)
-    if haskey(sim.handle_by_name, name) && sim.handle_by_name[name].id != slot
-        norma_abortf(
-            "In-memory restart: switching slot %d would register subsim name '%s', but " *
-            "that name is already claimed by slot %d. Two different subsims cannot share " *
-            "a name while both are live; rename one of the variant input files.",
-            slot, name, sim.handle_by_name[name].id,
-        )
-    end
-    sim.handle_by_name[name] = DomainHandle(slot)
-    return nothing
-end
+# The format of the abort message of _claim_name! (swap.jl) for a switch, with
+# the slot, the name, and the slot that holds the name.
+const RESTART_NAME_CLAIM_MESSAGE =
+    "In-memory restart: switching slot %d would register subsim name '%s', but " *
+    "that name is already claimed by slot %d. Two different subsims cannot share " *
+    "a name while both are live; rename one of the variant input files."
 
 """
     switch!(r::InMemoryRestart, target, name) -> Bool
@@ -180,35 +170,19 @@ function switch!(r::InMemoryRestart, target, name::AbstractString)
     new = r.variants[slot][key]
     old === new && return false
 
-    # A ROM's shadow FOM is refreshed only as a side effect of its Schwarz
-    # partner reading it, so it can be one iteration stale. That lag is below
-    # tolerance during ordinary stepping but not here, where it is treated as
-    # authoritative -- reconstruct from the just-converged reduced state first.
-    old.model isa RomModel && reconstruct_fom_fields!(old.integrator, old.solver, old.model)
-
-    copy_model_state!(new.model, old.model)   # FOM->ROM projects, ROM->FOM lifts
-    align_replacement_time!(new, sim, old)
-    # ROM integrators hold reduced arrays that are not views into the model, so
-    # the transferred state has to be pushed into them.
-    _sync_integrator_from_model!(new.integrator, new.model)
-
-    # Seed the rollback buffers: they are empty until the variant's first
-    # successful step, and a step failure right after the switch would otherwise
-    # broadcast into a zero-length array.
-    new.integrator.prev_disp = copy(new.integrator.displacement)
-    new.integrator.prev_velo = copy(new.integrator.velocity)
-    new.integrator.prev_acce = copy(new.integrator.acceleration)
-    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+    # The same transfer as apply_swap!: a ROM's shadow FOM is reconstructed
+    # from its just-converged reduced state, FOM->ROM projects, ROM->FOM lifts.
+    transfer_state!(new, old, sim.controller)
 
     sim.subsims[slot] = new
     # Previous names survive as aliases (Schwarz partners resolve by slot id),
     # so `target` may keep being addressed by whichever name the caller started with.
-    _claim_name!(sim, slot, new.name)
+    _claim_name!(sim, slot, new.name, RESTART_NAME_CLAIM_MESSAGE)
     sim.name_by_handle[slot] = new.name
     # If `uniquify_swap_output!` renamed the variant, keep the name its input
     # file asked for resolvable too.
     intended = get(r.intended[slot], key, new.name)
-    intended == new.name || _claim_name!(sim, slot, intended)
+    intended == new.name || _claim_name!(sim, slot, intended, RESTART_NAME_CLAIM_MESSAGE)
 
     # Same rewiring `apply_swap!` does after re-pointing a slot: partner BCs
     # cache `coupled_bc_index` and `is_dirichlet` against the old BC list, and

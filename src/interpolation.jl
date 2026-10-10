@@ -850,26 +850,21 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
     return best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance
 end
 
-function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::Integer)
-    side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)[2]
-    unique_node_indices = unique(side_set_node_indices)
-    num_nodes = length(unique_node_indices)
+# The maps between the global indices of the nodes of a side set and their
+# local indices, numbered in the order of first appearance in the node list
+# of the side set: local from global as a dictionary, and global from local
+# as a vector.  The node list is read once.
+function get_side_set_node_maps(mesh::ExodusDatabase, side_set_id::Integer)
+    global_from_local_map = Int64.(unique(Exodus.read_side_set_node_list(mesh, side_set_id)[2]))
     local_from_global_map = Dict{Int64,Int64}()
-    for i in 1:num_nodes
-        local_from_global_map[Int64(unique_node_indices[i])] = i
+    for (i, node) in enumerate(global_from_local_map)
+        local_from_global_map[node] = i
     end
-    return local_from_global_map
+    return local_from_global_map, global_from_local_map
 end
 
-function get_side_set_global_from_local_map(mesh::ExodusDatabase, side_set_id::Integer)
-    side_set_node_indices = Exodus.read_side_set_node_list(mesh, side_set_id)[2]
-    unique_node_indices = unique(side_set_node_indices)
-    num_nodes = length(unique_node_indices)
-    global_from_local_map = zeros(Int64, num_nodes)
-    for i in 1:num_nodes
-        global_from_local_map[i] = Int64(unique_node_indices[i])
-    end
-    return global_from_local_map
+function get_side_set_local_from_global_map(mesh::ExodusDatabase, side_set_id::Integer)
+    return get_side_set_node_maps(mesh, side_set_id)[1]
 end
 
 function get_square_projection_matrix(model::SolidMechanics, bc::SolidMechanicsSchwarzBoundaryCondition)

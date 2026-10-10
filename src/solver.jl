@@ -635,15 +635,9 @@ function compute_step(integrator::CentralDifference, model::SolidMechanics, solv
     return step
 end
 
-function update_solver_convergence_criterion(solver::HessianMinimizer, absolute_error::Float64)
-    solver.absolute_error = absolute_error
-    solver.relative_error = solver.initial_norm > 0.0 ? absolute_error / solver.initial_norm : absolute_error
-    converged_absolute = solver.absolute_error ≤ solver.absolute_tolerance
-    converged_relative = solver.relative_error ≤ solver.relative_tolerance
-    return solver.converged = converged_absolute || converged_relative
-end
-
-function update_solver_convergence_criterion(solver::SteepestDescent, absolute_error::Float64)
+function update_solver_convergence_criterion(
+    solver::Union{HessianMinimizer,SteepestDescent,RomHessianMinimizer}, absolute_error::Float64
+)
     solver.absolute_error = absolute_error
     solver.relative_error = solver.initial_norm > 0.0 ? absolute_error / solver.initial_norm : absolute_error
     converged_absolute = solver.absolute_error ≤ solver.absolute_tolerance
@@ -723,26 +717,7 @@ function reset_energy_stagnation!(solver::SteepestDescent)
     return nothing
 end
 
-function stop_solve(solver::HessianMinimizer, iteration_number::Int64)
-    if solver.failed == true
-        return true
-    end
-    zero_residual = solver.absolute_error == 0.0
-    if zero_residual == true
-        return true
-    end
-    exceeds_minimum_iterations = iteration_number > solver.minimum_iterations
-    if exceeds_minimum_iterations == false
-        return false
-    end
-    exceeds_maximum_iterations = iteration_number > solver.maximum_iterations
-    if exceeds_maximum_iterations == true
-        return true
-    end
-    return solver.converged
-end
-
-function stop_solve(solver::SteepestDescent, iteration_number::Int64)
+function stop_solve(solver::Union{HessianMinimizer,SteepestDescent,RomHessianMinimizer}, iteration_number::Int64)
     if solver.failed == true
         return true
     end

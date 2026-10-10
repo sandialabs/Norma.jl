@@ -580,42 +580,7 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
                old.name, plan.replacement_file, sim.controller.time)
 
     new = build_replacement_subsim(sim, slot, plan)
-    # If the source is a ROM, its shadow FOM (old.model.fom_model) is only
-    # refreshed as an incidental side effect of OTHER subsims' Schwarz
-    # overlap-BC coupling reading it (see apply_bc in schwarz.jl, which
-    # temporarily writes interpolated state into a coupled ROM's integrator,
-    # calls reconstruct_fom_fields!, then restores and reconstructs again).
-    # Because subcycle() always processes subsims in a fixed order
-    # (1, 2, 3, ...), a subsim that is processed LATER than its Schwarz
-    # partner never gets this incidental refresh applied with its own
-    # FINAL, converged-this-iteration acceleration: the partner already ran
-    # earlier in the same iteration, using whatever this subsim's integrator
-    # held at the END of the PREVIOUS iteration. That one-iteration lag is
-    # harmless during normal time-stepping (Schwarz has converged by the
-    # time anything reads it, so the lag is below tolerance), but it is not
-    # acceptable here: this is the one place that treats the shadow FOM as
-    # exactly authoritative.  Force a fresh reconstruction directly from
-    # old's own integrator (which holds the true, just-converged reduced
-    # acceleration with no staleness, since correct() sets it directly)
-    # before reading it, rather than trusting whatever the last incidental
-    # side effect happened to leave there.
-    if old.model isa RomModel
-        reconstruct_fom_fields!(old.integrator, old.solver, old.model)
-    end
-    copy_model_state!(new.model, old.model)
-    align_replacement_time!(new, sim, old)
-
-    # After state transfer, sync the new integrator's kinematic arrays from
-    # the model.  ROM integrators hold reduced-space arrays that must be
-    # copied from the model's reduced_state / reduced_velocity which
-    # copy_model_state! just populated.
-    _sync_integrator_from_model!(new.integrator, new.model)
-
-    # Seed the new integrator's rollback buffers (same reason as single-domain).
-    new.integrator.prev_disp  = copy(new.integrator.displacement)
-    new.integrator.prev_velo  = copy(new.integrator.velocity)
-    new.integrator.prev_acce  = copy(new.integrator.acceleration)
-    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+    transfer_state!(new, old, sim.controller)
 
     finalize_writing(old)
     initialize_writing(new)
@@ -646,25 +611,17 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     # resolves Schwarz partners by slot id rather than by name, an old name
     # continuing to point at its slot causes no ambiguity on its own.
     #
-    # Guard against two different slots concurrently claiming the same name:
-    # this can only happen if two distinct swap plans (for two distinct
-    # slots) share the same replacement file and are both live (applied) at
-    # once, which would make a `subsim:` name lookup ambiguous between the
-    # two slots.  This is a narrower, runtime-only case beyond what
-    # validate_swap_plans can catch statically (it permits the same
-    # replacement file for different slots, since that's fine as long as
-    # they don't overlap in time).  Re-claiming a name already owned by THIS
-    # same slot (e.g. swapping back to the original domain name in a
-    # round-trip chain) is fine and does not trigger this guard.
-    if haskey(sim.handle_by_name, new.name) && sim.handle_by_name[new.name].id != slot
-        norma_abortf(
-            "Swap into slot %d would register subsim name '%s', but that name is " *
-            "already claimed by slot %d.  Two different subsims cannot share the same " *
-            "replacement name while both are active; rename one of the replacement files.",
-            slot, new.name, sim.handle_by_name[new.name].id,
-        )
-    end
-    sim.handle_by_name[new.name] = DomainHandle(slot)
+    # _claim_name! guards against two different slots concurrently claiming
+    # the same name: this can only happen if two distinct swap plans (for two
+    # distinct slots) share the same replacement file and are both live
+    # (applied) at once, which would make a `subsim:` name lookup ambiguous
+    # between the two slots.  This is a narrower, runtime-only case beyond
+    # what validate_swap_plans can catch statically (it permits the same
+    # replacement file for different slots, since that's fine as long as they
+    # don't overlap in time).  Re-claiming a name already owned by THIS same
+    # slot (e.g. swapping back to the original domain name in a round-trip
+    # chain) is fine and does not trigger the guard.
+    _claim_name!(sim, slot, new.name, SWAP_NAME_CLAIM_MESSAGE)
     sim.name_by_handle[slot] = new.name
 
     # uniquify_swap_output! (called from build_replacement_subsim, above) may
@@ -685,17 +642,7 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     # slots resolve to the same intended name while both are live, which is
     # exactly the ambiguous case the guard above already rejects.
     intended_name = stripped_name(plan.replacement_file)
-    if intended_name != new.name
-        if haskey(sim.handle_by_name, intended_name) && sim.handle_by_name[intended_name].id != slot
-            norma_abortf(
-                "Swap into slot %d would register subsim name '%s', but that name is " *
-                "already claimed by slot %d.  Two different subsims cannot share the same " *
-                "replacement name while both are active; rename one of the replacement files.",
-                slot, intended_name, sim.handle_by_name[intended_name].id,
-            )
-        end
-        sim.handle_by_name[intended_name] = DomainHandle(slot)
-    end
+    intended_name == new.name || _claim_name!(sim, slot, intended_name, SWAP_NAME_CLAIM_MESSAGE)
 
     # Cached coupled_bc_index and is_dirichlet flags on partner BCs may now
     # point into the old BC list — rebuild them.
@@ -707,29 +654,111 @@ function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     return nothing
 end
 
+# The format of the abort message of _claim_name! for a scheduled swap, with
+# the slot, the name, and the slot that holds the name.
+const SWAP_NAME_CLAIM_MESSAGE =
+    "Swap into slot %d would register subsim name '%s', but that name is " *
+    "already claimed by slot %d.  Two different subsims cannot share the same " *
+    "replacement name while both are active; rename one of the replacement files."
+
+"""
+Register `name` as resolving to `slot`, refusing to steal it from another slot:
+when another slot holds the name, abort with `message`, a format of the slot, the
+name, and the slot that holds it.
+"""
+function _claim_name!(sim::MultiDomainSimulation, slot::Int64, name::AbstractString, message::AbstractString)
+    if haskey(sim.handle_by_name, name) && sim.handle_by_name[name].id != slot
+        norma_abortf(message, slot, name, sim.handle_by_name[name].id)
+    end
+    sim.handle_by_name[name] = DomainHandle(slot)
+    return nothing
+end
+
+# Hand the converged state of `old` to its replacement `new`: copy the model
+# state, align the clocks of `new` with `controller` and with `old`, push the
+# state into the integrator of `new`, and seed its rollback buffers.
+function transfer_state!(new::SingleDomainSimulation, old::SingleDomainSimulation, controller::TimeController)
+    # If the source is a ROM, its shadow FOM (old.model.fom_model) is only
+    # refreshed as an incidental side effect of OTHER subsims' Schwarz
+    # overlap-BC coupling reading it (see apply_bc in schwarz.jl, which
+    # temporarily writes interpolated state into a coupled ROM's integrator,
+    # calls reconstruct_fom_fields!, then restores and reconstructs again).
+    # Because subcycle() always processes subsims in a fixed order
+    # (1, 2, 3, ...), a subsim that is processed LATER than its Schwarz
+    # partner never gets this incidental refresh applied with its own
+    # FINAL, converged-this-iteration acceleration: the partner already ran
+    # earlier in the same iteration, using whatever this subsim's integrator
+    # held at the END of the PREVIOUS iteration. That one-iteration lag is
+    # harmless during normal time-stepping (Schwarz has converged by the
+    # time anything reads it, so the lag is below tolerance), but it is not
+    # acceptable here: this is the one place that treats the shadow FOM as
+    # exactly authoritative.  Force a fresh reconstruction directly from
+    # old's own integrator (which holds the true, just-converged reduced
+    # acceleration with no staleness, since correct() sets it directly)
+    # before reading it, rather than trusting whatever the last incidental
+    # side effect happened to leave there.
+    if old.model isa RomModel
+        reconstruct_fom_fields!(old.integrator, old.solver, old.model)
+    end
+    copy_model_state!(new.model, old.model)
+    align_replacement_time!(new, controller, old)
+
+    # After state transfer, sync the new integrator's kinematic arrays from
+    # the model.  For a FOM (SolidMechanics) the integrator holds unsafe_wrap
+    # views into the model's arrays so no explicit sync is needed.  For a ROM
+    # the integrator's displacement/velocity/acceleration are in the reduced
+    # coordinate space and must be copied from the model's reduced_state /
+    # reduced_velocity which copy_model_state! just populated.
+    _sync_integrator_from_model!(new.integrator, new.model)
+
+    # Seed the new integrator's "previous step" save-state buffers.
+    # These are Float64[] after construction and normally filled by
+    # save_curr_state at the end of the first successful step.  If that
+    # first step fails (e.g. due to a difficult elastic-plastic transition),
+    # restore_prev_state broadcasts into them and crashes with:
+    #   DimensionMismatch: array could not be broadcast to match destination
+    # Seeding with the just-transferred state gives a physically meaningful
+    # fallback and prevents the crash.
+    new.integrator.prev_disp = copy(new.integrator.displacement)
+    new.integrator.prev_velo = copy(new.integrator.velocity)
+    new.integrator.prev_acce = copy(new.integrator.acceleration)
+    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+    return nothing
+end
+
 function build_replacement_subsim(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
+    new = SingleDomainSimulation(replacement_params(sim.controller, sim.params, plan))
+    # Wire parent/handle BEFORE create_bcs so Schwarz BC factories can
+    # resolve peers via sim.handle_by_name in _create_bcs.
+    new.parent = sim
+    new.handle = DomainHandle(slot)
+    return prepare_replacement!(new, sim.controller)
+end
+
+# The parameters of the replacement read from `plan.replacement_file`, with the
+# times of `controller` and the output intervals of `params`, the parameters of
+# the simulation it joins or replaces.
+function replacement_params(controller::TimeController, params::Parameters, plan::SwapPlan)
     subparams = YAML.load_file(plan.replacement_file; dicttype=Parameters)
     validate_input_parameters(subparams, plan.replacement_file)
     subparams["name"] = stripped_name(plan.replacement_file)
 
     integrator_params = subparams["time integrator"]
-    integrator_params["initial time"] = sim.controller.initial_time
-    integrator_params["final time"] = sim.controller.final_time
-    requested_dt = get(integrator_params, "time step", sim.controller.time_step)
-    integrator_params["time step"] = min(requested_dt, sim.controller.time_step)
+    integrator_params["initial time"] = controller.initial_time
+    integrator_params["final time"] = controller.final_time
+    requested_dt = get(integrator_params, "time step", controller.time_step)
+    integrator_params["time step"] = min(requested_dt, controller.time_step)
 
-    subparams["Exodus output interval"] = Float64(
-        get(sim.params, "Exodus output interval", sim.controller.time_step))
-    subparams["CSV output interval"] = Float64(
-        get(sim.params, "CSV output interval", 0.0))
+    subparams["Exodus output interval"] = Float64(get(params, "Exodus output interval", controller.time_step))
+    subparams["CSV output interval"] = Float64(get(params, "CSV output interval", 0.0))
 
     uniquify_swap_output!(subparams)
+    return subparams
+end
 
-    new = SingleDomainSimulation(subparams)
-    # Wire parent/handle BEFORE create_bcs so Schwarz BC factories can
-    # resolve peers via sim.handle_by_name in _create_bcs.
-    new.parent = sim
-    new.handle = DomainHandle(slot)
+# Create the boundary conditions and the storage of a replacement and apply
+# its boundary conditions at the last converged time of `controller`.
+function prepare_replacement!(new::SingleDomainSimulation, controller::TimeController)
     create_bcs(new)
     initialize_storage(new)
     # Apply BCs at the swap time before returning so that free_dofs is
@@ -739,23 +768,23 @@ function build_replacement_subsim(sim::MultiDomainSimulation, slot::Int64, plan:
     # _project_fom_to_rom! incorrectly includes constrained-node displacements
     # in the basis projection, producing a wrong initial reduced state and
     # negative Jacobians on the first FOM evaluate after a ROM→FOM swap.
-    new.model.time = sim.controller.prev_time
+    new.model.time = controller.prev_time
     apply_bcs(new)
     return new
 end
 
-function align_replacement_time!(new::SingleDomainSimulation,
-                                 sim::MultiDomainSimulation,
-                                 old::SingleDomainSimulation)
+# Align the controller of `new` with `controller`, the controller of the
+# multidomain simulation or of the replaced single-domain simulation, and the
+# integrator and model times of `new` with those of `old`.
+function align_replacement_time!(new::SingleDomainSimulation, controller::TimeController, old::SingleDomainSimulation)
     nc = new.controller
-    pc = sim.controller
-    nc.initial_time = pc.initial_time
-    nc.final_time = pc.final_time
-    nc.time_step = pc.time_step
-    nc.num_stops = pc.num_stops
-    nc.stop = pc.stop
-    nc.prev_time = pc.prev_time
-    nc.time = pc.time
+    nc.initial_time = controller.initial_time
+    nc.final_time = controller.final_time
+    nc.time_step = controller.time_step
+    nc.num_stops = controller.num_stops
+    nc.stop = controller.stop
+    nc.prev_time = controller.prev_time
+    nc.time = controller.time
     new.integrator.prev_time = old.integrator.prev_time
     new.integrator.time = old.integrator.time
     new.integrator.time_step = old.integrator.time_step
@@ -777,37 +806,7 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
                sim.name, plan.replacement_file, sim.controller.time)
 
     new = build_replacement_single_domain_sim(sim, plan)
-    # See the analogous comment in apply_swap! (multi-domain): a ROM's
-    # shadow FOM is not guaranteed to be refreshed from its own integrator's
-    # current, converged reduced state at an arbitrary point in time — force
-    # a fresh reconstruction here so copy_model_state! reads an authoritative
-    # value rather than whatever was last left there.
-    if sim.model isa RomModel
-        reconstruct_fom_fields!(sim.integrator, sim.solver, sim.model)
-    end
-    copy_model_state!(new.model, sim.model)
-    align_replacement_time_single!(new, sim)
-
-    # After state transfer, sync the new integrator's kinematic arrays from
-    # the model.  For a FOM (SolidMechanics) the integrator holds unsafe_wrap
-    # views into the model's arrays so no explicit sync is needed.  For a ROM
-    # the integrator's displacement/velocity/acceleration are in the reduced
-    # coordinate space and must be copied from the model's reduced_state /
-    # reduced_velocity which copy_model_state! just populated.
-    _sync_integrator_from_model!(new.integrator, new.model)
-
-    # Seed the new integrator's "previous step" save-state buffers.
-    # These are Float64[] after construction and normally filled by
-    # save_curr_state at the end of the first successful step.  If that
-    # first step fails (e.g. due to a difficult elastic-plastic transition),
-    # restore_prev_state broadcasts into them and crashes with:
-    #   DimensionMismatch: array could not be broadcast to match destination
-    # Seeding with the just-transferred state gives a physically meaningful
-    # fallback and prevents the crash.
-    new.integrator.prev_disp  = copy(new.integrator.displacement)
-    new.integrator.prev_velo  = copy(new.integrator.velocity)
-    new.integrator.prev_acce  = copy(new.integrator.acceleration)
-    new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+    transfer_state!(new, sim, sim.controller)
 
     finalize_writing(sim)
     initialize_writing(new)
@@ -847,53 +846,8 @@ function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
 end
 
 function build_replacement_single_domain_sim(sim::SingleDomainSimulation, plan::SwapPlan)
-    subparams = YAML.load_file(plan.replacement_file; dicttype=Parameters)
-    validate_input_parameters(subparams, plan.replacement_file)
-    subparams["name"] = stripped_name(plan.replacement_file)
-
-    integrator_params = subparams["time integrator"]
-    integrator_params["initial time"] = sim.controller.initial_time
-    integrator_params["final time"] = sim.controller.final_time
-    requested_dt = get(integrator_params, "time step", sim.controller.time_step)
-    integrator_params["time step"] = min(requested_dt, sim.controller.time_step)
-
-    subparams["Exodus output interval"] = Float64(
-        get(sim.params, "Exodus output interval", sim.controller.time_step))
-    subparams["CSV output interval"] = Float64(
-        get(sim.params, "CSV output interval", 0.0))
-
-    uniquify_swap_output!(subparams)
-
-    new = SingleDomainSimulation(subparams)
-    create_bcs(new)
-    initialize_storage(new)
-    # Apply BCs at the swap time before returning so that free_dofs is
-    # correctly populated (constrained DOFs marked false) when the caller
-    # subsequently invokes copy_model_state!.  Without this, free_dofs is
-    # all-true (set in the SolidMechanics / OpInfModel constructor) and
-    # _project_fom_to_rom! incorrectly includes constrained-node displacements
-    # in the basis projection, producing a wrong initial reduced state and
-    # negative Jacobians on the first FOM evaluate after a ROM→FOM swap.
-    new.model.time = sim.controller.prev_time
-    apply_bcs(new)
-    return new
-end
-
-function align_replacement_time_single!(new::SingleDomainSimulation, old::SingleDomainSimulation)
-    nc = new.controller
-    oc = old.controller
-    nc.initial_time = oc.initial_time
-    nc.final_time = oc.final_time
-    nc.time_step = oc.time_step
-    nc.num_stops = oc.num_stops
-    nc.stop = oc.stop
-    nc.prev_time = oc.prev_time
-    nc.time = oc.time
-    new.integrator.prev_time = old.integrator.prev_time
-    new.integrator.time = old.integrator.time
-    new.integrator.time_step = old.integrator.time_step
-    new.model.time = old.model.time
-    return nothing
+    new = SingleDomainSimulation(replacement_params(sim.controller, sim.params, plan))
+    return prepare_replacement!(new, sim.controller)
 end
 
 # ---------------------------------------------------------------------------
