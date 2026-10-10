@@ -35,7 +35,7 @@ tet_back_edge = [1, 2]
 tet_first_node = [1]
 
 @testset "smooth_reference" begin
-    ref_tet_eqvol = Norma.create_smooth_reference("equal volume", Norma.TETRA4, reg_tet_coords);
+    ref_tet_eqvol = Norma.create_smooth_reference("equal volume", Norma.TETRA4, reg_tet_coords)
     @test size(ref_tet_eqvol) == (3, 4)
     a1 = norm(ref_tet_eqvol[:, 1] - ref_tet_eqvol[:, 2])
     a2 = norm(ref_tet_eqvol[:, 1] - ref_tet_eqvol[:, 3])
@@ -50,7 +50,7 @@ tet_first_node = [1]
     @test a1 ≈ a5 atol = 1.0e-12
     @test a1 ≈ a6 atol = 1.0e-12
 
-    ref_tet_eqedl = Norma.create_smooth_reference("average edge length", Norma.TETRA4, reg_tet_coords);
+    ref_tet_eqedl = Norma.create_smooth_reference("average edge length", Norma.TETRA4, reg_tet_coords)
     @test size(ref_tet_eqedl) == (3, 4)
     a1 = norm(ref_tet_eqedl[:, 1] - ref_tet_eqedl[:, 2])
     a2 = norm(ref_tet_eqedl[:, 1] - ref_tet_eqedl[:, 3])
@@ -77,11 +77,11 @@ tet_first_node = [1]
             norm(random_tet[:, 3] - random_tet[:, 4]) +
             norm(random_tet[:, 4] - random_tet[:, 2])
 
-        ref_tet_eqvol = Norma.create_smooth_reference("equal volume", Norma.TETRA4, random_tet);
+        ref_tet_eqvol = Norma.create_smooth_reference("equal volume", Norma.TETRA4, random_tet)
         a_eqvol = norm(ref_tet_eqvol[:, 1] - ref_tet_eqvol[:, 2])
         @test random_tet_vol ≈ a_eqvol^3 / 6.0 / sqrt(2.0) atol = 1.0e-12
 
-        ref_tet_eqedl = Norma.create_smooth_reference("average edge length", Norma.TETRA4, random_tet);
+        ref_tet_eqedl = Norma.create_smooth_reference("average edge length", Norma.TETRA4, random_tet)
         a_eqedl = norm(ref_tet_eqedl[:, 1] - ref_tet_eqedl[:, 2])
         @test random_tet_edl ≈ 6 * a_eqedl atol = 1.0e-12
 
@@ -93,8 +93,12 @@ end
     # The size field prescribes the target edge length of the regular reference
     # element, combined with the volume criterion via max(size field, volume).
     tet_edges(ref) = [
-        norm(ref[:, 1] - ref[:, 2]), norm(ref[:, 1] - ref[:, 3]), norm(ref[:, 1] - ref[:, 4]),
-        norm(ref[:, 2] - ref[:, 3]), norm(ref[:, 2] - ref[:, 4]), norm(ref[:, 3] - ref[:, 4]),
+        norm(ref[:, 1] - ref[:, 2]),
+        norm(ref[:, 1] - ref[:, 3]),
+        norm(ref[:, 1] - ref[:, 4]),
+        norm(ref[:, 2] - ref[:, 3]),
+        norm(ref[:, 2] - ref[:, 4]),
+        norm(ref[:, 3] - ref[:, 4]),
     ]
 
     # A regular tet of edge ~1: a large constant size field dominates the volume
@@ -164,7 +168,9 @@ end
     bad = Norma.create_size_field("size field", "x - 100.0")
     @test_throws Exception Norma.create_smooth_reference("size field", Norma.TETRA4, reg_tet_coords, bad, 0.0)
     bad = Norma.create_size_field("size field unrestricted", "x - 100.0")
-    @test_throws Exception Norma.create_smooth_reference("size field unrestricted", Norma.TETRA4, reg_tet_coords, bad, 0.0)
+    @test_throws Exception Norma.create_smooth_reference(
+        "size field unrestricted", Norma.TETRA4, reg_tet_coords, bad, 0.0
+    )
 end
 
 base_params = Dict{String,Any}(
@@ -547,8 +553,12 @@ end
                 "material" => Dict{String,Any}(
                     "blocks" => Dict{String,Any}("awful" => "elastic"),
                     "elastic" => Dict{String,Any}(
-                        "model" => "seth-hill", "m" => 2, "n" => 2,
-                        "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                        "model" => "seth-hill",
+                        "m" => 2,
+                        "n" => 2,
+                        "bulk modulus" => 1.0e3,
+                        "shear modulus" => 1.0e3,
+                        "density" => 1.0e3,
                     ),
                 ),
             ),
@@ -566,11 +576,16 @@ end
                 ],
             ),
             "solver" => Dict{String,Any}(
-                "type" => "steepest descent", "step" => step,
-                "minimum iterations" => 1, "maximum iterations" => 30,
-                "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-                "step length" => 1.0e-3, "use line search" => true,
-                "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+                "type" => "steepest descent",
+                "step" => step,
+                "minimum iterations" => 1,
+                "maximum iterations" => 30,
+                "absolute tolerance" => 1.0e-8,
+                "relative tolerance" => 1.0e-12,
+                "step length" => 1.0e-3,
+                "use line search" => true,
+                "line search backtrack factor" => 0.5,
+                "line search decrease factor" => 1.0e-4,
                 "line search maximum iterations" => 16,
             ),
         )
@@ -615,35 +630,44 @@ function _smooth_surface_cylinder(enforcement::String)
         d
     end
     params = Dict{String,Any}(
-        "name" => "surface_cylinder_$(enforcement)", "type" => "single",
-        "input mesh file" => mesh, "output mesh file" => out,
-        "Exodus output interval" => 0, "CSV output interval" => 0,
+        "name" => "surface_cylinder_$(enforcement)",
+        "type" => "single",
+        "input mesh file" => mesh,
+        "output mesh file" => out,
+        "Exodus output interval" => 0,
+        "CSV output interval" => 0,
         "model" => Dict{String,Any}(
-            "type" => "mesh smoothing", "smooth reference" => "max",
+            "type" => "mesh smoothing",
+            "smooth reference" => "max",
             "material" => Dict{String,Any}(
                 "blocks" => Dict{String,Any}("cylinder" => "elastic"),
                 "elastic" => Dict{String,Any}(
-                    "model" => "seth-hill", "m" => 2, "n" => 2,
-                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    "model" => "seth-hill",
+                    "m" => 2,
+                    "n" => 2,
+                    "bulk modulus" => 1.0e3,
+                    "shear modulus" => 1.0e3,
+                    "density" => 1.0e3,
                 ),
             ),
         ),
-        "time integrator" => Dict{String,Any}(
-            "type" => "quasi static", "initial time" => 0.0, "final time" => 5.0, "time step" => 1.0
-        ),
+        "time integrator" =>
+            Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 5.0, "time step" => 1.0),
         "boundary conditions" => Dict{String,Any}(
-            "Surface" => [
-                surface("lateral", "x^2 + y^2 - 1.0"),
-                surface("top", "z + 1.0"),
-                surface("bottom", "z - 1.0"),
-            ],
+            "Surface" =>
+                [surface("lateral", "x^2 + y^2 - 1.0"), surface("top", "z + 1.0"), surface("bottom", "z - 1.0")],
         ),
         "solver" => Dict{String,Any}(
-            "type" => "steepest descent", "step" => "steepest descent",
-            "minimum iterations" => 1, "maximum iterations" => 64,
-            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-            "step length" => 1.0e-3, "use line search" => true,
-            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "type" => "steepest descent",
+            "step" => "steepest descent",
+            "minimum iterations" => 1,
+            "maximum iterations" => 64,
+            "absolute tolerance" => 1.0e-8,
+            "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3,
+            "use line search" => true,
+            "line search backtrack factor" => 0.5,
+            "line search decrease factor" => 1.0e-4,
             "line search maximum iterations" => 16,
         ),
     )
@@ -716,16 +740,24 @@ end
     function smooth_cube(bcs, tag)
         out = joinpath(@__DIR__, "reduce_cube_$(tag).e")
         params = Dict{String,Any}(
-            "name" => "reduce_cube_$(tag)", "type" => "single",
-            "input mesh file" => mesh, "output mesh file" => out,
-            "Exodus output interval" => 0, "CSV output interval" => 0,
+            "name" => "reduce_cube_$(tag)",
+            "type" => "single",
+            "input mesh file" => mesh,
+            "output mesh file" => out,
+            "Exodus output interval" => 0,
+            "CSV output interval" => 0,
             "model" => Dict{String,Any}(
-                "type" => "mesh smoothing", "smooth reference" => "max",
+                "type" => "mesh smoothing",
+                "smooth reference" => "max",
                 "material" => Dict{String,Any}(
                     "blocks" => Dict{String,Any}("cube" => "elastic"),
                     "elastic" => Dict{String,Any}(
-                        "model" => "seth-hill", "m" => 2, "n" => 2,
-                        "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                        "model" => "seth-hill",
+                        "m" => 2,
+                        "n" => 2,
+                        "bulk modulus" => 1.0e3,
+                        "shear modulus" => 1.0e3,
+                        "density" => 1.0e3,
                     ),
                 ),
             ),
@@ -734,11 +766,17 @@ end
             ),
             "boundary conditions" => bcs,
             "solver" => Dict{String,Any}(
-                "type" => "steepest descent", "step" => "steepest descent",
-                "step length" => 5.0e-4, "minimum iterations" => 1, "maximum iterations" => 16,
-                "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-                "use line search" => true, "line search backtrack factor" => 0.5,
-                "line search decrease factor" => 1.0e-4, "line search maximum iterations" => 16,
+                "type" => "steepest descent",
+                "step" => "steepest descent",
+                "step length" => 5.0e-4,
+                "minimum iterations" => 1,
+                "maximum iterations" => 16,
+                "absolute tolerance" => 1.0e-8,
+                "relative tolerance" => 1.0e-12,
+                "use line search" => true,
+                "line search backtrack factor" => 0.5,
+                "line search decrease factor" => 1.0e-4,
+                "line search maximum iterations" => 16,
             ),
         )
         try
@@ -798,10 +836,18 @@ function _make_tet_grid(n)
         (i in (0, n) || j in (0, n) || k in (0, n)) ? push!(boundary, p) : push!(interior, p)
     end
     tets = NTuple{4,Int}[]
-    for k in 0:n-1, j in 0:n-1, i in 0:n-1
-        v = (idx(i, j, k), idx(i+1, j, k), idx(i+1, j+1, k), idx(i, j+1, k),
-             idx(i, j, k+1), idx(i+1, j, k+1), idx(i+1, j+1, k+1), idx(i, j+1, k+1))
-        for t in ((1,2,3,7), (1,3,4,7), (1,4,8,7), (1,8,5,7), (1,5,6,7), (1,6,2,7))
+    for k in 0:(n - 1), j in 0:(n - 1), i in 0:(n - 1)
+        v = (
+            idx(i, j, k),
+            idx(i+1, j, k),
+            idx(i+1, j+1, k),
+            idx(i, j+1, k),
+            idx(i, j, k+1),
+            idx(i+1, j, k+1),
+            idx(i+1, j+1, k+1),
+            idx(i, j+1, k+1),
+        )
+        for t in ((1, 2, 3, 7), (1, 3, 4, 7), (1, 4, 8, 7), (1, 8, 5, 7), (1, 5, 6, 7), (1, 6, 2, 7))
             push!(tets, (v[t[1]], v[t[2]], v[t[3]], v[t[4]]))
         end
     end
@@ -817,8 +863,10 @@ end
 function _orient_tets!(coords, conn)
     for e in 1:size(conn, 1)
         p = coords[:, conn[e, :]]
-        if dot(p[:,2]-p[:,1], cross(p[:,3]-p[:,1], p[:,4]-p[:,1])) < 0
-            tmp = conn[e, 3]; conn[e, 3] = conn[e, 4]; conn[e, 4] = tmp
+        if dot(p[:, 2]-p[:, 1], cross(p[:, 3]-p[:, 1], p[:, 4]-p[:, 1])) < 0
+            tmp = conn[e, 3]
+            conn[e, 3] = conn[e, 4]
+            conn[e, 4] = tmp
         end
     end
 end
@@ -843,16 +891,24 @@ end
         out = joinpath(@__DIR__, "torture_robustness_$(step).e")
         rm(out; force=true)
         params = Dict{String,Any}(
-            "name" => "torture_robustness", "type" => "single",
-            "input mesh file" => mesh, "output mesh file" => out,
-            "Exodus output interval" => 0, "CSV output interval" => 0,
+            "name" => "torture_robustness",
+            "type" => "single",
+            "input mesh file" => mesh,
+            "output mesh file" => out,
+            "Exodus output interval" => 0,
+            "CSV output interval" => 0,
             "model" => Dict{String,Any}(
-                "type" => "mesh smoothing", "smooth reference" => "max",
+                "type" => "mesh smoothing",
+                "smooth reference" => "max",
                 "material" => Dict{String,Any}(
                     "blocks" => Dict{String,Any}("block" => "elastic"),
                     "elastic" => Dict{String,Any}(
-                        "model" => "seth-hill", "m" => 2, "n" => 2,
-                        "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                        "model" => "seth-hill",
+                        "m" => 2,
+                        "n" => 2,
+                        "bulk modulus" => 1.0e3,
+                        "shear modulus" => 1.0e3,
+                        "density" => 1.0e3,
                     ),
                 ),
             ),
@@ -867,11 +923,16 @@ end
                 ],
             ),
             "solver" => Dict{String,Any}(
-                "type" => "steepest descent", "step" => step,
-                "minimum iterations" => 1, "maximum iterations" => 60,
-                "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-                "step length" => 1.0e-3, "use line search" => true,
-                "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+                "type" => "steepest descent",
+                "step" => step,
+                "minimum iterations" => 1,
+                "maximum iterations" => 60,
+                "absolute tolerance" => 1.0e-8,
+                "relative tolerance" => 1.0e-12,
+                "step length" => 1.0e-3,
+                "use line search" => true,
+                "line search backtrack factor" => 0.5,
+                "line search decrease factor" => 1.0e-4,
                 "line search maximum iterations" => 16,
             ),
         )
@@ -920,9 +981,12 @@ end
     # element loop (catching any world-age/thread-safety issue with the compiled
     # field) and confirms the smoother reduces energy without inverting.
     make_params(ref, name, mesh, out) = Dict{String,Any}(
-        "name" => name, "type" => "single",
-        "input mesh file" => mesh, "output mesh file" => out,
-        "Exodus output interval" => 0, "CSV output interval" => 0,
+        "name" => name,
+        "type" => "single",
+        "input mesh file" => mesh,
+        "output mesh file" => out,
+        "Exodus output interval" => 0,
+        "CSV output interval" => 0,
         "model" => Dict{String,Any}(
             "type" => "mesh smoothing",
             "smooth reference" => ref,
@@ -930,8 +994,12 @@ end
             "material" => Dict{String,Any}(
                 "blocks" => Dict{String,Any}("block" => "elastic"),
                 "elastic" => Dict{String,Any}(
-                    "model" => "seth-hill", "m" => 2, "n" => 2,
-                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    "model" => "seth-hill",
+                    "m" => 2,
+                    "n" => 2,
+                    "bulk modulus" => 1.0e3,
+                    "shear modulus" => 1.0e3,
+                    "density" => 1.0e3,
                 ),
             ),
         ),
@@ -946,11 +1014,17 @@ end
             ],
         ),
         "solver" => Dict{String,Any}(
-            "type" => "steepest descent", "step" => "lbfgs", "memory" => 10,
-            "minimum iterations" => 1, "maximum iterations" => 40,
-            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-            "step length" => 1.0e-3, "use line search" => true,
-            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "type" => "steepest descent",
+            "step" => "lbfgs",
+            "memory" => 10,
+            "minimum iterations" => 1,
+            "maximum iterations" => 40,
+            "absolute tolerance" => 1.0e-8,
+            "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3,
+            "use line search" => true,
+            "line search backtrack factor" => 0.5,
+            "line search decrease factor" => 1.0e-4,
             "line search maximum iterations" => 16,
         ),
     )
@@ -1015,23 +1089,30 @@ end
         coords[:, p] .+= (2 .* Random.rand(3) .- 1) .* (0.2 * h)
     end
     params = Dict{String,Any}(
-        "name" => "size_field_out", "type" => "single",
-        "input mesh file" => mesh, "output mesh file" => out,
-        "Exodus output interval" => 1, "CSV output interval" => 0,
+        "name" => "size_field_out",
+        "type" => "single",
+        "input mesh file" => mesh,
+        "output mesh file" => out,
+        "Exodus output interval" => 1,
+        "CSV output interval" => 0,
         "model" => Dict{String,Any}(
-            "type" => "mesh smoothing", "smooth reference" => "size field",
+            "type" => "mesh smoothing",
+            "smooth reference" => "size field",
             "size field" => "0.3 + 0.1 * x",
             "material" => Dict{String,Any}(
                 "blocks" => Dict{String,Any}("block" => "elastic"),
                 "elastic" => Dict{String,Any}(
-                    "model" => "seth-hill", "m" => 2, "n" => 2,
-                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    "model" => "seth-hill",
+                    "m" => 2,
+                    "n" => 2,
+                    "bulk modulus" => 1.0e3,
+                    "shear modulus" => 1.0e3,
+                    "density" => 1.0e3,
                 ),
             ),
         ),
-        "time integrator" => Dict{String,Any}(
-            "type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0
-        ),
+        "time integrator" =>
+            Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0),
         "boundary conditions" => Dict{String,Any}(
             "Dirichlet" => [
                 Dict{String,Any}("node set" => "boundary", "component" => "x", "function" => "0.0"),
@@ -1040,11 +1121,17 @@ end
             ],
         ),
         "solver" => Dict{String,Any}(
-            "type" => "steepest descent", "step" => "lbfgs", "memory" => 10,
-            "minimum iterations" => 1, "maximum iterations" => 30,
-            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-            "step length" => 1.0e-3, "use line search" => true,
-            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "type" => "steepest descent",
+            "step" => "lbfgs",
+            "memory" => 10,
+            "minimum iterations" => 1,
+            "maximum iterations" => 30,
+            "absolute tolerance" => 1.0e-8,
+            "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3,
+            "use line search" => true,
+            "line search backtrack factor" => 0.5,
+            "line search decrease factor" => 1.0e-4,
             "line search maximum iterations" => 16,
         ),
     )
@@ -1052,13 +1139,15 @@ end
         init = Initialization{Int32}(
             Int32(3), Int32(size(coords, 2)), Int32(size(conn, 1)), Int32(1), Int32(1), Int32(0)
         )
-        rm(mesh; force=true); rm(out; force=true)
+        rm(mesh; force=true)
+        rm(out; force=true)
         exo = ExodusDatabase{Int32,Int32,Int32,Float64}(mesh, "w", init)
         write_coordinates(exo, coords)
         write_block(exo, 1, "TETRA4", Matrix{Int32}(permutedims(conn)))
         write_name(exo, Block, 1, "block")
         ns = NodeSet(1, Vector{Int32}(boundary))
-        write_set(exo, ns); write_name(exo, ns, "boundary")
+        write_set(exo, ns)
+        write_name(exo, ns, "boundary")
         close(exo)
 
         Norma.run(params)
@@ -1078,7 +1167,8 @@ end
             Exodus.close(db)
         end
     finally
-        rm(mesh; force=true); rm(out; force=true)
+        rm(mesh; force=true)
+        rm(out; force=true)
     end
 end
 
@@ -1107,8 +1197,7 @@ end
         p["output mesh file"] = output_mesh_file
         p["boundary conditions"] = Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => "base", "component" => c, "function" => "0.0") for
-                c in ("x", "y", "z")
+                Dict{String,Any}("node set" => "base", "component" => c, "function" => "0.0") for c in ("x", "y", "z")
             ],
         )
         p["model"]["material"]["elastic"]["shear modulus"] = 1.0

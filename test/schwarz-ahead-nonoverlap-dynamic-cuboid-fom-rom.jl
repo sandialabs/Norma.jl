@@ -12,7 +12,11 @@ using YAML
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-fom-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-1.g", "../cuboid-1.g"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-2.g", "../cuboid-2.g"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-fom-rom/opinf-operator-2.npz", "opinf-operator-2.npz"; force=true)
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-fom-rom/opinf-operator-2.npz",
+        "opinf-operator-2.npz";
+        force=true,
+    )
     input_file = "cuboids.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = 0.0
@@ -47,13 +51,114 @@ using YAML
     @test max_disp_z_cuboid1 ≈ 0.5004841940014242 atol = 1e-3
     @test min_disp_x_cuboid2 ≈ -0.16665158451344417 atol = 1e-4
     @test min_disp_y_cuboid2 ≈ -0.16664972274193932 atol = 1e-4
-    @test max_disp_z_cuboid2 ≈ 1.0  atol = 1e-8
+    @test max_disp_z_cuboid2 ≈ 1.0 atol = 1e-8
 
     @test avg_stress_cuboid1 ≈
         [8087.802813310952 8087.802813305131 6.666729066377105e8 3894.3684619929786 3894.368461988243 1631.755300987] atol =
         1.0e1
-    @test avg_stress_cuboid2 ≈
-        [5821.435206125956 5821.435206125956 6.666673813049967e8 -525.5654264209811 -525.5654264223617 1099.5777099071604] atol =
-        1.0e1
-    @test sim.controller.schwarz_iters ≈ [7, 20, 21, 21, 22, 22, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 22, 22, 21, 21, 20] atol = 0
+    @test avg_stress_cuboid2 ≈ [
+        5821.435206125956 5821.435206125956 6.666673813049967e8 -525.5654264209811 -525.5654264223617 1099.5777099071604
+    ] atol = 1.0e1
+    @test sim.controller.schwarz_iters ≈ [
+        7,
+        20,
+        21,
+        21,
+        22,
+        22,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        25,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        22,
+        22,
+        21,
+        21,
+        20,
+    ] atol = 0
 end

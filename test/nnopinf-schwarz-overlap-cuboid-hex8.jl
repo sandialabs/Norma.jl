@@ -8,7 +8,7 @@
 # in the NormaPyTorchExt package extension. Loading PyCall here triggers that
 # extension so the NN methods are available for the tests below. (This file only
 # runs under `--with-nnopinf`, where PyCall + torch are expected to be present.)
-import PyCall
+using PyCall: PyCall
 
 @testset "NN Opinf Schwarz Overlap Dynamic Cuboid Hex8 Same Step" begin
     cp("../examples/ahead/overlap/cuboid/dynamic-nn-opinf-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
@@ -34,7 +34,7 @@ import PyCall
     end
     # Now remove the empty directory
     rm("ml-models"; force=true)
-    @test model_coarse.reduced_state[1] ≈  0.000848847640847531  rtol = 1.0e-06
+    @test model_coarse.reduced_state[1] ≈ 0.000848847640847531 rtol = 1.0e-06
     @test model_coarse.reduced_state[2] ≈ 0.0004393255173410676 rtol = 1.0e-06
 end
 
@@ -48,7 +48,8 @@ end
 
     sim_default = Norma.create_simulation("cuboids.yaml")
     bc_default = only([
-        bc for bc in sim_default.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
+        bc for bc in sim_default.subsims[2].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     ])
     @test bc_default isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     @test bc_default.fom_bc.compute_overlap_l2_error == ""
@@ -58,19 +59,24 @@ end
     Exodus.close(sim_default.subsims[2].params["output_mesh"])
 
     cuboids_text = read("cuboids.yaml", String)
-    write("cuboids.yaml", replace(cuboids_text, "absolute tolerance: 1.0e-08" => "absolute tolerance: 1.0e-08\nCSV output interval: 0.001"))
+    write(
+        "cuboids.yaml",
+        replace(
+            cuboids_text, "absolute tolerance: 1.0e-08" => "absolute tolerance: 1.0e-08\nCSV output interval: 0.001"
+        ),
+    )
     cuboid_2_text = read("cuboid-2.yaml", String)
     write(
         "cuboid-2.yaml",
         replace(
-            cuboid_2_text,
-            "source block: fine" => "source block: fine\n      compute overlap L2 relative error: disp",
+            cuboid_2_text, "source block: fine" => "source block: fine\n      compute overlap L2 relative error: disp"
         ),
     )
 
     sim = Norma.run("cuboids.yaml")
     bc = only([
-        bc for bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
+        bc for bc in sim.subsims[2].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     ])
     @test bc isa Norma.SolidMechanicsOpInfOverlapSchwarzBoundaryCondition
     @test bc.fom_bc.compute_overlap_l2_error == "disp"

@@ -4,7 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-
 using Base.Threads: @threads, threadid, nthreads, maxthreadid
 
 # Whether `model` was constructed by resuming from a restart checkpoint (see
@@ -105,8 +104,11 @@ function SolidMechanics(params::Parameters)
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
         block_name = element_block_names[block_index]
-        num_points = haskey(num_int_pts_overrides, block_name) ?
-            Int(num_int_pts_overrides[block_name]) : default_num_int_pts(element_type)
+        num_points = if haskey(num_int_pts_overrides, block_name)
+            Int(num_int_pts_overrides[block_name])
+        else
+            default_num_int_pts(element_type)
+        end
         num_int_pts[block_index] = num_points
         # Stored as one column per element (the flat Exodus order is element by
         # element), so an element's nodes are a contiguous column.
@@ -115,7 +117,15 @@ function SolidMechanics(params::Parameters)
         connectivity = reshape(Int64.(vec(raw_connectivity)), (num_nodes_per_element, num_block_elements))
         N, dN, weights = isoparametric(element_type, num_points)
         block_data[block_index] = ElementBlockData(
-            Int64(block_id), element_type, num_points, num_block_elements, num_nodes_per_element, connectivity, N, dN, weights
+            Int64(block_id),
+            element_type,
+            num_points,
+            num_block_elements,
+            num_nodes_per_element,
+            connectivity,
+            N,
+            dN,
+            weights,
         )
         material = materials[block_index]
         num_states = number_states(material)
@@ -192,10 +202,7 @@ function SolidMechanics(params::Parameters)
         elseif method == "both"
             recovery_kind = :both
         else
-            norma_abort(
-                "nodal recovery: 'method' must be 'lumped', 'consistent', or 'both' " *
-                "(got '$method').",
-            )
+            norma_abort("nodal recovery: 'method' must be 'lumped', 'consistent', or 'both' " * "(got '$method').")
         end
         rec_stress = Bool(get(recovery_params, "stress", true))
         rec_vm = Bool(get(recovery_params, "von mises stress", false))
@@ -327,7 +334,7 @@ function create_size_field(smooth_reference::String, expression)
     end
     if expression === nothing
         norma_abort(
-            "smooth reference = \"$smooth_reference\" requires a \"size field\" expression under the model parameters",
+            "smooth reference = \"$smooth_reference\" requires a \"size field\" expression under the model parameters"
         )
     end
     size_num = eval(Meta.parse(string(expression)))
@@ -365,9 +372,7 @@ function ideal_volumes(model::SolidMechanics, block_index::Int)
     return ideal_volumes(model, block.element_type, block.connectivity, block.N)
 end
 
-function ideal_volumes(
-    model::SolidMechanics, element_type::ElementType, connectivity::Matrix{<:Integer}, N::SMatrix
-)
+function ideal_volumes(model::SolidMechanics, element_type::ElementType, connectivity::Matrix{<:Integer}, N::SMatrix)
     volumes = Vector{Float64}(undef, size(connectivity, 2))
     for element in 1:size(connectivity, 2)
         node_indices = view(connectivity, :, element)
@@ -474,8 +479,7 @@ function pull_back_tangent(
         p in 1:3, q in 1:3, k in 1:3, L in 1:3
     )
     return SArray{Tuple{3,3,3,3},Float64,4,81}(
-        sum(F_M[p, i] * F_M_inv[J, q] * B[p, q, k, L] for p in 1:3, q in 1:3) for
-        i in 1:3, J in 1:3, k in 1:3, L in 1:3
+        sum(F_M[p, i] * F_M_inv[J, q] * B[p, q, k, L] for p in 1:3, q in 1:3) for i in 1:3, J in 1:3, k in 1:3, L in 1:3
     )
 end
 
@@ -537,11 +541,11 @@ evaluate_size_field(size_field::Function, args::NTuple{4,Float64})::Float64 = Fl
 
 # Target edge length from the user-defined size field, evaluated at the element
 # reference centroid.
-function size_field_tet_h(
-    size_field::Union{Function,Nothing}, element_ref_pos::SMatrix{3,4,Float64,12}, time::Float64
-)
+function size_field_tet_h(size_field::Union{Function,Nothing}, element_ref_pos::SMatrix{3,4,Float64,12}, time::Float64)
     if size_field === nothing
-        norma_abort("smooth reference = \"size field\" or \"size field unrestricted\" selected but no size field was compiled")
+        norma_abort(
+            "smooth reference = \"size field\" or \"size field unrestricted\" selected but no size field was compiled"
+        )
     end
     centroid = (element_ref_pos[:, 1] + element_ref_pos[:, 2] + element_ref_pos[:, 3] + element_ref_pos[:, 4]) / 4.0
     h = evaluate_size_field(size_field, (time, centroid[1], centroid[2], centroid[3]))
@@ -572,14 +576,18 @@ end
 # Minimum characteristic length over the elements of a block at the current
 # configuration. Threaded over elements with a per-thread minimum; the shape
 # function table only supplies the static node count through the barrier.
-function minimum_characteristic_length(model::SolidMechanics, block::ElementBlockData, ::SMatrix{NN,NP,T}) where {NN,NP,T}
+function minimum_characteristic_length(
+    model::SolidMechanics, block::ElementBlockData, ::SMatrix{NN,NP,T}
+) where {NN,NP,T}
     connectivity = block.connectivity
     if Threads.nthreads() == 1
         # A threaded loop has a per-call cost of tens of microseconds on macOS.
         h_min = T(Inf)
         for element in 1:block.num_elements
             node_indices = view(connectivity, :, element)
-            X = SMatrix{3,NN,T}(view(model.reference, :, node_indices)) + SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
+            X =
+                SMatrix{3,NN,T}(view(model.reference, :, node_indices)) +
+                SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
             h_min = min(h_min, characteristic_element_length_centroid(X))
         end
         return h_min
@@ -587,7 +595,9 @@ function minimum_characteristic_length(model::SolidMechanics, block::ElementBloc
     minima = fill(T(Inf), maxthreadid())
     @threads for element in 1:block.num_elements
         node_indices = view(connectivity, :, element)
-        X = SMatrix{3,NN,T}(view(model.reference, :, node_indices)) + SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
+        X =
+            SMatrix{3,NN,T}(view(model.reference, :, node_indices)) +
+            SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
         h = characteristic_element_length_centroid(X)
         t = threadid()
         @inbounds minima[t] = min(minima[t], h)
@@ -633,13 +643,7 @@ end
 function set_time_step(integrator::CentralDifference, model::SolidMechanics)
     stable = stable_time_step(integrator, model)
     if stable < integrator.time_step
-        norma_logf(
-            0,
-            :warning,
-            "Δt = %.3e exceeds stable Δt = %.3e; using stable step.",
-            integrator.time_step,
-            stable,
-        )
+        norma_logf(0, :warning, "Δt = %.3e exceeds stable Δt = %.3e; using stable step.", integrator.time_step, stable)
     end
     integrator.time_step = min(stable, integrator.time_step)
     return nothing
@@ -653,8 +657,6 @@ end
 function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
-
-
 
 @generated function create_element_matrix(::Type{T}, ::Val{N}) where {T,N}
     dof_per_node = 3
@@ -672,16 +674,6 @@ end
     end
 end
 
-
-
-
-
-
-
-
-
-
-
 using Base.Threads
 
 function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T,N}
@@ -691,8 +683,6 @@ end
 function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
     return [create_element_vector(T, Val(N)) for _ in 1:Threads.maxthreadid()]
 end
-
-
 
 # Internal force from the first Piola-Kirchhoff stress: for node a and
 # direction i, f[(a,i)] += P[i,k] dN_a/dX_k dV, written as loops over the
@@ -949,7 +939,6 @@ function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver
     )
 end
 
-
 function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
     valN = Val(num_element_nodes)
     energy = zeros(maxthreadid())
@@ -1010,8 +999,6 @@ function compute_element_threadlocal_arrays!(
     return nothing
 end
 
-
-
 function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)
     flags = compute_flags(model, integrator, solver)
     if (flags.compute_stiffness == true || flags.compute_mass == true) && model.matrix_pattern === nothing
@@ -1053,8 +1040,22 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         # type depends on the element type, so the loop must be compiled for
         # the concrete types to avoid dynamic dispatch on every operation.
         ok = evaluate_block!(
-            model, energy_tl, element_arrays_tl, force_values, lumped_mass_values, stiffness_values, mass_values,
-            block_index, material, density, element_type, N, dN, ip_weights, element_block_connectivity, flags,
+            model,
+            energy_tl,
+            element_arrays_tl,
+            force_values,
+            lumped_mass_values,
+            stiffness_values,
+            mass_values,
+            block_index,
+            material,
+            density,
+            element_type,
+            N,
+            dN,
+            ip_weights,
+            element_block_connectivity,
+            flags,
         )
         ok || return nothing
     end
@@ -1075,7 +1076,9 @@ end
 
 # Gather the nodal values of an element into a static 3 x NN matrix; the node
 # count comes from the type of the shape function table.
-@inline function gather_nodal(A::Matrix{Float64}, node_indices::AbstractVector{<:Integer}, ::SMatrix{NN,NP,T}) where {NN,NP,T}
+@inline function gather_nodal(
+    A::Matrix{Float64}, node_indices::AbstractVector{<:Integer}, ::SMatrix{NN,NP,T}
+) where {NN,NP,T}
     return SMatrix{3,NN,T}(view(A, :, node_indices))
 end
 @inline function gather_nodal(A::AbstractMatrix, ::SMatrix{NN,NP,T}) where {NN,NP,T}
@@ -1088,8 +1091,13 @@ end
 # with a concrete return type. On failure the returned values are zeros and the
 # first entry is false.
 function guarded_constitutive!(
-    model::SolidMechanics, material::Material, F::SMatrix{3,3,Float64,9},
-    block_index::Int64, block_element_index::Int64, point::Int64, need_tangent::Bool,
+    model::SolidMechanics,
+    material::Material,
+    F::SMatrix{3,3,Float64,9},
+    block_index::Int64,
+    block_element_index::Int64,
+    point::Int64,
+    need_tangent::Bool,
 )
     try
         if material isa Elastic
@@ -1224,9 +1232,24 @@ function evaluate_block!(
     @threads for block_element_index in 1:num_block_elements
         model.failed && continue
         evaluate_element!(
-            model, energy_tl, element_arrays_tl, force_values, lumped_mass_values, stiffness_values, mass_values,
-            block_index, block_element_index, material, density, element_type, N, dN, ip_weights,
-            element_block_connectivity, flags, num_points,
+            model,
+            energy_tl,
+            element_arrays_tl,
+            force_values,
+            lumped_mass_values,
+            stiffness_values,
+            mass_values,
+            block_index,
+            block_element_index,
+            material,
+            density,
+            element_type,
+            N,
+            dN,
+            ip_weights,
+            element_block_connectivity,
+            flags,
+            num_points,
         )
     end
     return !model.failed

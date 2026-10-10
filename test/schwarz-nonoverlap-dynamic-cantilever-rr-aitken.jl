@@ -11,8 +11,13 @@ const cantilever_rr_example = "../examples/nonoverlap/dynamic-same-step/cantilev
 # Run the Robin-Robin DD cantilever (Newmark) for a few steps with the requested
 # relaxation method.
 function run_cantilever_rr_aitken(relaxation; num_steps=5)
-    for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
-              "cantilever-clamped.g", "cantilever-free.g"]
+    for f in [
+        "cantilever-multi.yaml",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+    ]
         cp("$cantilever_rr_example/$f", f; force=true)
     end
     params = YAML.load_file("cantilever-multi.yaml"; dicttype=Norma.Parameters)
@@ -20,8 +25,15 @@ function run_cantilever_rr_aitken(relaxation; num_steps=5)
     params["final time"] = num_steps * 5.0e-07
     relaxation !== nothing && (params["relaxation"] = relaxation)
     sim = Norma.run(params)
-    for f in ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
-              "cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e"]
+    for f in [
+        "cantilever-multi.yaml",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+    ]
         rm(f; force=true)
     end
     return sim

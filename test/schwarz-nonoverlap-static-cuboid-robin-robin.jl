@@ -72,8 +72,8 @@ end
         YAML.write_file("cuboids.yaml", top)
         sim = Norma.run("cuboids.yaml")
         displacements = [copy(subsim.model.displacement) for subsim in sim.subsims]
-        for f in ("cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e",
-                  "cuboid-2.e")
+        for f in
+            ("cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e")
             rm(f; force=true)
         end
         return displacements

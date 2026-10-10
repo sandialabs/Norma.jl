@@ -155,8 +155,8 @@ function metric_model(mesh_file, metric_field; output=nothing, interval=0)
             Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0),
         "boundary conditions" => Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-                (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+                (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
             ],
         ),
         "solver" => Dict{String,Any}(
@@ -317,8 +317,12 @@ end
     positions = copy(sim_g.model.reference)
     sizes, rotation = Norma.nodal_metric_output(sim_g.model, positions, 0.0)
     graded_variables = Dict{String,Vector{Float64}}(
-        "h1" => sizes[1, :], "h2" => sizes[2, :], "h3" => sizes[3, :],
-        "r1" => rotation[1, :], "r2" => rotation[2, :], "r3" => rotation[3, :],
+        "h1" => sizes[1, :],
+        "h2" => sizes[2, :],
+        "h3" => sizes[3, :],
+        "r1" => rotation[1, :],
+        "r2" => rotation[2, :],
+        "r3" => rotation[3, :],
     )
     graded_file = mesh_with_variables(model0, "metric-nodal-graded.g", graded_variables)
     Egn, _, _ = assembled_energy(metric_model(graded_file, nodal_sizes), u)

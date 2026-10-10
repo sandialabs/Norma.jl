@@ -30,19 +30,19 @@
     # The YAML files reference the mesh as ../cuboid.g (relative to CWD),
     # so we copy it one directory above the test working directory.
     cp("../examples/ahead/single/cuboid/cuboid.g", "../cuboid.g"; force=true)
-    cp("$example_dir/cuboid-rom-t-swap.yaml",          "cuboid-rom-t-swap.yaml";          force=true)
-    cp("$example_dir/cuboid-fom-t-swap-phase2.yaml",   "cuboid-fom-t-swap-phase2.yaml";   force=true)
-    cp("$example_dir/opinf-operator.npz",              "opinf-operator.npz";              force=true)
+    cp("$example_dir/cuboid-rom-t-swap.yaml", "cuboid-rom-t-swap.yaml"; force=true)
+    cp("$example_dir/cuboid-fom-t-swap-phase2.yaml", "cuboid-fom-t-swap-phase2.yaml"; force=true)
+    cp("$example_dir/opinf-operator.npz", "opinf-operator.npz"; force=true)
 
     sim = Norma.run("cuboid-rom-t-swap.yaml")
 
     # ── Clean up ────────────────────────────────────────────────────────────
-    rm("cuboid-rom-t-swap.yaml";        force=true)
+    rm("cuboid-rom-t-swap.yaml"; force=true)
     rm("cuboid-fom-t-swap-phase2.yaml"; force=true)
-    rm("opinf-operator.npz";            force=true)
-    rm("../cuboid.g";                   force=true)
-    rm("cuboid-rom.e";                  force=true)
-    rm("cuboid-fom-phase2.e";           force=true)
+    rm("opinf-operator.npz"; force=true)
+    rm("../cuboid.g"; force=true)
+    rm("cuboid-rom.e"; force=true)
+    rm("cuboid-fom-phase2.e"; force=true)
 
     # ── Swap fired ──────────────────────────────────────────────────────────
     # After execute the sim should carry the phase-2 name and have no
@@ -89,8 +89,8 @@
     # These values were obtained from a reference run and are stored here to
     # guard against unintended changes. Tolerances are intentionally loose
     # (1 %) to accommodate minor floating-point variation across platforms.
-    @test max_disp_z  ≈ 1.0        rtol = 1.0e-6
-    @test min_disp_x  ≈ -0.16669139545385825 rtol = 1.0e-4
-    @test min_disp_y  ≈ -0.16669139545385825 rtol = 1.0e-4
+    @test max_disp_z ≈ 1.0 rtol = 1.0e-6
+    @test min_disp_x ≈ -0.16669139545385825 rtol = 1.0e-4
+    @test min_disp_y ≈ -0.16669139545385825 rtol = 1.0e-4
     @test avg_stress[3] ≈ 6.666666666666667e8 rtol = 1.0e-2
 end

@@ -66,7 +66,9 @@ using Exodus
     cp("$example_dir/clamped.yaml", "clamped.yaml"; force=true)
     # CSV output isn't used by this test (only the Exodus checkpoint and the
     # final in-memory model state are), so turn it off to save I/O.
-    write("clamped.yaml", replace(read("clamped.yaml", String), "CSV output interval: 1.0e-5" => "CSV output interval: 0"))
+    write(
+        "clamped.yaml", replace(read("clamped.yaml", String), "CSV output interval: 1.0e-5" => "CSV output interval: 0")
+    )
 
     sim_dynamic = Norma.run("clamped.yaml")
 
@@ -96,7 +98,9 @@ using Exodus
     cp("$restart_example_dir/clamped-1.yaml", "clamped-1.yaml"; force=true)
     cp("$restart_example_dir/clamped-2.yaml", "clamped-2.yaml"; force=true)
     cp("$restart_example_dir/clamped.yaml", "clamped.yaml"; force=true)
-    write("clamped.yaml", replace(read("clamped.yaml", String), "CSV output interval: 1.0e-5" => "CSV output interval: 0"))
+    write(
+        "clamped.yaml", replace(read("clamped.yaml", String), "CSV output interval: 1.0e-5" => "CSV output interval: 0")
+    )
 
     sim_restart = Norma.run("clamped.yaml")
 

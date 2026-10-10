@@ -46,15 +46,15 @@ end
 
 # List of all test files (ordered)
 const indexed_test_files = [
-    (1,  "minitensor.jl"),
-    (2,  "interpolation.jl"),
-    (3,  "constitutive.jl"),
-    (4,  "single-static-solid-cube.jl"),
-    (5,  "single-static-solid-neumann-bc.jl"),
-    (6,  "single-static-solid-robin-bc.jl"),
-    (7,  "single-implicit-dynamic-solid-cube.jl"),
-    (8,  "single-implicit-dynamic-solid-sho.jl"),
-    (9,  "single-implicit-dynamic-solid-clamped.jl"),
+    (1, "minitensor.jl"),
+    (2, "interpolation.jl"),
+    (3, "constitutive.jl"),
+    (4, "single-static-solid-cube.jl"),
+    (5, "single-static-solid-neumann-bc.jl"),
+    (6, "single-static-solid-robin-bc.jl"),
+    (7, "single-implicit-dynamic-solid-cube.jl"),
+    (8, "single-implicit-dynamic-solid-sho.jl"),
+    (9, "single-implicit-dynamic-solid-clamped.jl"),
     (10, "single-explicit-dynamic-solid-cube.jl"),
     (11, "single-explicit-dynamic-solid-sho.jl"),
     (12, "single-explicit-dynamic-solid-clamped.jl"),
@@ -198,9 +198,44 @@ const standard_test_indices = [i for (i, _) in indexed_test_files if i ∉ nnopi
 # - 108      schwarz-ahead-nonoverlap-dynamic-notched-cylinder
 # - 114..116 in-memory restart cases
 const optional_test_indices = Int[
-    27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
-    52, 55, 78, 80, 81, 84, 85, 86, 87, 89, 90, 97, 98, 100, 102, 103, 108,
-    114, 115, 116,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    52,
+    55,
+    78,
+    80,
+    81,
+    84,
+    85,
+    86,
+    87,
+    89,
+    90,
+    97,
+    98,
+    100,
+    102,
+    103,
+    108,
+    114,
+    115,
+    116,
 ]
 
 # Quick test set (subset of all tests)
@@ -429,12 +464,13 @@ function log_test_summary_table(io, rows)
     return nothing
 end
 
-overall_passes, overall_fails, overall_errors, suite_failed, file_summaries =
-    run_test_suite(test_files_to_run)
+overall_passes, overall_fails, overall_errors, suite_failed, file_summaries = run_test_suite(test_files_to_run)
 
 elapsed_time = time() - start_time
 
-summary_rows = vcat([("Norma.jl Test Suite", overall_passes, overall_fails, overall_errors, elapsed_time)], file_summaries)
+summary_rows = vcat(
+    [("Norma.jl Test Suite", overall_passes, overall_fails, overall_errors, elapsed_time)], file_summaries
+)
 let io = Norma.NORMA_LOG_FILE[]
     if io !== nothing
         log_test_summary_table(io, summary_rows)

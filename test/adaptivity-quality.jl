@@ -33,15 +33,16 @@ function quality_model(mesh_file, block_name, output; size_field="0.214", surfac
     boundary = if surfaces
         Dict{String,Any}(
             "Surface" => [
-                Dict{String,Any}("side set" => "ss$(axis)$(sign)", "function" => "$axis $(sign == "-" ? "+" : "-") 1.0")
-                for axis in ("x", "y", "z") for sign in ("-", "+")
+                Dict{String,Any}(
+                    "side set" => "ss$(axis)$(sign)", "function" => "$axis $(sign == "-" ? "+" : "-") 1.0"
+                ) for axis in ("x", "y", "z") for sign in ("-", "+")
             ],
         )
     else
         Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-                (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+                (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
             ],
         )
     end
@@ -377,7 +378,16 @@ end
         chi0 = Norma.euler_characteristic(topology)
         sj0 = minimum(Norma.scaled_jacobians(topology.positions, topology.connectivity))
         options = Norma.AdaptivityOptions(
-            0.05, Inf, 0.15, 1.0e-8, 2, 4, 2, true, true, true;
+            0.05,
+            Inf,
+            0.15,
+            1.0e-8,
+            2,
+            4,
+            2,
+            true,
+            true,
+            true;
             size_by_length=true,
             shape_by_quality=quality,
             boundary_swaps=boundary,

@@ -134,8 +134,7 @@ using LinearAlgebra
     write("top-swap.yaml", top_yaml(swaps_block))
     write("top-restart.yaml", top_yaml(""))
 
-    final_displacement(sim) =
-        vcat((vec(Norma.full_order_displacement(s)) for s in sim.subsims)...)
+    final_displacement(sim) = vcat((vec(Norma.full_order_displacement(s)) for s in sim.subsims)...)
 
     # ── Run 1: scheduled swap ───────────────────────────────────────────────
     swap_sim = Norma.run("top-swap.yaml")
@@ -155,9 +154,9 @@ using LinearAlgebra
         # Using the outer `r.sim.controller` here instead fires one step early,
         # which shows up as a ~1e-4 disagreement that is a schedule difference,
         # not a mechanism difference.
-        Norma.march!(r; on_step = (r, _) ->
-            r.sim.subsims[1].controller.prev_time >= T_SWAP &&
-                Norma.switch!(r, 1, "sd1rom"))
+        Norma.march!(
+            r; on_step=(r, _) -> r.sim.subsims[1].controller.prev_time >= T_SWAP && Norma.switch!(r, 1, "sd1rom")
+        )
         Norma.displacement_vector(r)
     finally
         Norma.close_restart!(r)
@@ -171,9 +170,18 @@ using LinearAlgebra
     # ── Clean up ────────────────────────────────────────────────────────────
     # The swap path renames the replacement's output mesh with a phase suffix
     # (sd1rom-phase2.e), so sweep by pattern rather than by a fixed list.
-    for f in ("sd1fom.yaml", "sd2fom.yaml", "sd1rom.yaml",
-              "top-swap.yaml", "top-restart.yaml",
-              "sd1fom.e", "sd2fom.e", "sd1rom.e", ROMFILE, MESH...)
+    for f in (
+        "sd1fom.yaml",
+        "sd2fom.yaml",
+        "sd1rom.yaml",
+        "top-swap.yaml",
+        "top-restart.yaml",
+        "sd1fom.e",
+        "sd2fom.e",
+        "sd1rom.e",
+        ROMFILE,
+        MESH...,
+    )
         rm(f; force=true)
     end
     for f in readdir()

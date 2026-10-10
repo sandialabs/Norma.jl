@@ -29,8 +29,13 @@ using YAML
 using LinearAlgebra
 
 function run_windowed_cantilever(example; controller_dt=5.0e-7, aitken=false)
-    files = ["cantilever-multi.yaml", "cantilever-clamped.yaml", "cantilever-free.yaml",
-             "cantilever-clamped.g", "cantilever-free.g"]
+    files = [
+        "cantilever-multi.yaml",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+    ]
     for f in files
         cp("$example/$f", f; force=true)
     end

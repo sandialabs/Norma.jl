@@ -10,7 +10,8 @@
 # dispatched on the concrete type in ext/NormaPyTorchExt.jl and stays strictly
 # more specific than the OpInfModel/CouplingSchwarz fallback, so this reparenting
 # does not change method resolution for it.
-mutable struct SolidMechanicsOpInfOverlapSchwarzBoundaryCondition <: SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsOpInfOverlapSchwarzBoundaryCondition <:
+               SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_node_indices::Vector{Int64}
     coupled_nodes_indices::Vector{Vector{Int64}}

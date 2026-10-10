@@ -457,7 +457,6 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::F
     return nodal_force_component
 end
 
-
 function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float64)
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
@@ -470,7 +469,7 @@ function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float6
         dXdξ = dNdξₚ * nodal_coord'
         j = norm(cross(dXdξ[1, :], dXdξ[2, :]))
         wₚ = w[point]
-        nodal_stiffness_component += Nₚ*Nₚ' * j * wₚ
+        nodal_stiffness_component += Nₚ * Nₚ' * j * wₚ
     end
     return nodal_stiffness_component
 end
@@ -630,21 +629,19 @@ function closest_point_projection(nodes::SMatrix{3,N,Float64}, x::SVector{3,Floa
         dydξ = dN * nodes'
         yx = y - x
         residual = dydξ * yx
-        ddyddξyx = SMatrix{2,2,Float64,4}(
-            ntuple(m -> begin
-                i = (m - 1) % 2 + 1
-                j = (m - 1) ÷ 2 + 1
-                total = 0.0
-                @inbounds for k in 1:3
-                    row = 0.0
-                    for l in 1:N
-                        row += ddN[i, j, l] * nodes[k, l]
-                    end
-                    total += row * yx[k]
+        ddyddξyx = SMatrix{2,2,Float64,4}(ntuple(m -> begin
+            i = (m - 1) % 2 + 1
+            j = (m - 1) ÷ 2 + 1
+            total = 0.0
+            @inbounds for k in 1:3
+                row = 0.0
+                for l in 1:N
+                    row += ddN[i, j, l] * nodes[k, l]
                 end
-                total
-            end, Val(4)),
-        )
+                total += row * yx[k]
+            end
+            total
+        end, Val(4)))
         hessian = ddyddξyx + dydξ * dydξ'
         δ = -(hessian \ residual)
         ξ = ξ + δ
@@ -776,8 +773,9 @@ function project_point_to_containing_facet(point::SVector{3,Float64}, search::Si
         y, ξ, distance, normal = closest_point_projection(nodes, Vector(point))
         return y, ξ, nodes, search.facet_node_indices[nearest], normal, distance
     end
-    return Vector(best_point), Vector(best_ξ), search.facet_coords[best_facet], search.facet_node_indices[best_facet],
-        Vector(best_normal), best_distance
+    return Vector(best_point),
+    Vector(best_ξ), search.facet_coords[best_facet], search.facet_node_indices[best_facet], Vector(best_normal),
+    best_distance
 end
 
 # Containing-facet projection for interface transfer assembly. The
@@ -822,8 +820,7 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
         # which the unclamped Newton projection can diverge.
         margin = node_gap + 0.5 * norm([maximum(face_nodes[i, :]) - minimum(face_nodes[i, :]) for i in 1:3])
         outside = any(
-            point[i] < minimum(face_nodes[i, :]) - margin || point[i] > maximum(face_nodes[i, :]) + margin for
-            i in 1:3
+            point[i] < minimum(face_nodes[i, :]) - margin || point[i] > maximum(face_nodes[i, :]) + margin for i in 1:3
         )
         outside && continue
         # strict=false reports a diverging Newton iteration as an infinite
@@ -835,8 +832,9 @@ function project_point_to_containing_facet(point::Vector{Float64}, model::SolidM
         key = (overshoot ≤ inside_tol ? 0.0 : overshoot, abs(distance))
         if key < best_key
             best_key = key
-            best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance =
-                new_point, ξ, face_nodes, face_node_indices, normal, distance
+            best_point, best_ξ, best_nodes, best_indices, best_normal, best_distance = new_point,
+            ξ, face_nodes, face_node_indices, normal,
+            distance
             found = true
         end
     end
@@ -990,13 +988,13 @@ function get_overlap_rectangular_projection_matrix(
             dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
             dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
             dst_int_point_coord = dst_side_coordinates * dst_Nₚ
-            src_node_indices, ξ, found = find_point_in_mesh(
-                dst_int_point_coord, src_model, src_block_id, tol
-            )
+            src_node_indices, ξ, found = find_point_in_mesh(dst_int_point_coord, src_model, src_block_id, tol)
             if found == false
                 norma_abortf(
                     "Weak overlap projector: could not find point (%.4e, %.4e, %.4e) in source mesh",
-                    dst_int_point_coord[1], dst_int_point_coord[2], dst_int_point_coord[3],
+                    dst_int_point_coord[1],
+                    dst_int_point_coord[2],
+                    dst_int_point_coord[3],
                 )
             end
             src_Nₚ = interpolate(src_element_type, ξ)[1]

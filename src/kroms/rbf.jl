@@ -8,44 +8,28 @@ function evaluate_rbf_interpolant(interpolant::RBFKernelInterpolant, y::Vector{F
     return interpolant.coefficients*val, interpolant.coefficients*jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::GaussianRBFKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::GaussianRBFKernel, X::Matrix{Float64}, y::Vector{Float64})
     val = exp.(-rbf.shape^2*compute_squared_distances(X, y))
     deriv_over_r = -2.0*val
     jac = compute_rbf_jacobian(rbf.shape, deriv_over_r, X, y)
     return val, jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::InverseQuadraticRBFKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::InverseQuadraticRBFKernel, X::Matrix{Float64}, y::Vector{Float64})
     val = 1.0 ./ (1.0 .+ rbf.shape^2*compute_squared_distances(X, y))
     deriv_over_r = -2.0 * val .^ 2
     jac = compute_rbf_jacobian(rbf.shape, deriv_over_r, X, y)
     return val, jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::InverseMultiquadricRBFKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::InverseMultiquadricRBFKernel, X::Matrix{Float64}, y::Vector{Float64})
     val = 1.0 ./ sqrt.(1.0 .+ rbf.shape^2*compute_squared_distances(X, y))
     deriv_over_r = -1.0*val .^ 3
     jac = compute_rbf_jacobian(rbf.shape, deriv_over_r, X, y)
     return val, jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::ThinPlateSplineRBFKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::ThinPlateSplineRBFKernel, X::Matrix{Float64}, y::Vector{Float64})
     shapeTimesDists2 = rbf.shape^2*compute_squared_distances(X, y)
     logr = log.(sqrt.(shapeTimesDists2))
 
@@ -58,11 +42,7 @@ function evaluate_kernel_with_jacobian(
     return val, jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::BasicMaternKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::BasicMaternKernel, X::Matrix{Float64}, y::Vector{Float64})
     shapeTimesDists = rbf.shape*compute_distances(X, y)
     val = exp.(-shapeTimesDists)
 
@@ -73,11 +53,7 @@ function evaluate_kernel_with_jacobian(
     return val, jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::LinearMaternKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::LinearMaternKernel, X::Matrix{Float64}, y::Vector{Float64})
     shapeTimesDists = rbf.shape*compute_distances(X, y)
     expMinusr = exp.(-shapeTimesDists)
     val = (1.0 .+ shapeTimesDists) .* expMinusr
@@ -86,11 +62,7 @@ function evaluate_kernel_with_jacobian(
     return val, jac
 end
 
-function evaluate_kernel_with_jacobian(
-    rbf::QuadraticMaternKernel,
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function evaluate_kernel_with_jacobian(rbf::QuadraticMaternKernel, X::Matrix{Float64}, y::Vector{Float64})
     shapeTimesDists2 = rbf.shape^2*compute_squared_distances(X, y)
     shapeTimesDists = sqrt.(shapeTimesDists2)
     expMinusr = exp.(-shapeTimesDists)
@@ -103,20 +75,12 @@ function evaluate_kernel_with_jacobian(
     return val, jac
 end
 
-function compute_rbf_jacobian(
-    shape::Float64,
-    deriv_over_r::Vector{Float64},
-    X::Matrix{Float64},
-    y::Vector{Float64},
-)
+function compute_rbf_jacobian(shape::Float64, deriv_over_r::Vector{Float64}, X::Matrix{Float64}, y::Vector{Float64})
     return (-shape^2*deriv_over_r) .* transpose(X .- y)
 end
 
 # Compute distance matrix/vector --------------------------------------------------
-function compute_distances(
-    X::Union{Matrix{Float64},Vector{Float64}},
-    Y::Union{Matrix{Float64},Vector{Float64}},
-)
+function compute_distances(X::Union{Matrix{Float64},Vector{Float64}}, Y::Union{Matrix{Float64},Vector{Float64}})
     return sqrt.(compute_squared_distances(X, Y))
 end
 
@@ -159,7 +123,7 @@ function fd_jac(f, x::Vector{Float64}, h::Float64)
     nf = size(fx)[1]
     nx = size(x)[1]
     jac = zeros(nf, nx)
-    for i = 1:nx
+    for i in 1:nx
         ei = zeros(nx)
         ei[i] += h
         jac[:, i] += (f(x+ei)-fx)/h
@@ -198,16 +162,15 @@ end
 function _test_fd_jac_for_decreasing_h(f, x, true_jac)
     println("   h         jac error")
     println("----------------------")
-    for i = 1:8
+    for i in 1:8
         h = 10.0^(-1.0*i)
         approx_jac = fd_jac(f, x, h)
         error = frobenius_norm(approx_jac-true_jac)
 
         @printf("%1.1e      %1.3e\n", h, error)
     end
-    println()
+    return println()
 end
-
 
 function test_fd_jac()
     println("f(x) = x^2")
@@ -215,7 +178,7 @@ function test_fd_jac()
     dfdx(x) = diagm(2*x)
     x = ones(2)
 
-    _test_fd_jac_for_decreasing_h(f, x, dfdx(x))
+    return _test_fd_jac_for_decreasing_h(f, x, dfdx(x))
 end
 
 # test_rbf()

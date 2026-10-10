@@ -117,8 +117,7 @@ using LinearAlgebra
     write("sd1alt.yaml", subdomain_yaml(1, "alt"))     # second FOM variant of sd1
     write("top.yaml", top_yaml)
 
-    final_displacement(sim) =
-        vcat((vec(Norma.full_order_displacement(s)) for s in sim.subsims)...)
+    final_displacement(sim) = vcat((vec(Norma.full_order_displacement(s)) for s in sim.subsims)...)
 
     # ── Run ─────────────────────────────────────────────────────────────────
     reference = final_displacement(Norma.run("top.yaml"))
@@ -126,7 +125,7 @@ using LinearAlgebra
     r = Norma.InMemoryRestart("top.yaml")
     restarted = try
         Norma.register_variant!(r, 1, "sd1alt", "sd1alt.yaml")
-        Norma.march!(r; on_step = function (r, step)
+        Norma.march!(r; on_step=function (r, step)
             # Alternate between the two FOM variants. Both discretize the same
             # problem, so every one of these is a no-op physically -- and must
             # be a no-op numerically.
@@ -145,8 +144,7 @@ using LinearAlgebra
     failed = r.sim.failed
 
     # ── Clean up ────────────────────────────────────────────────────────────
-    for f in ("sd1fom.yaml", "sd2fom.yaml", "sd1alt.yaml", "top.yaml",
-              "sd1fom.e", "sd2fom.e", "sd1alt.e", MESH...)
+    for f in ("sd1fom.yaml", "sd2fom.yaml", "sd1alt.yaml", "top.yaml", "sd1fom.e", "sd2fom.e", "sd1alt.e", MESH...)
         rm(f; force=true)
     end
 

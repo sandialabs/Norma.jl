@@ -37,17 +37,13 @@
     cp("$example_dir/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("$example_dir/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("$example_dir/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp(
-        "$example_dir/cubic-opinf-operator.npz",
-        "cubic-opinf-operator.npz";
-        force=true,
-    )
+    cp("$example_dir/cubic-opinf-operator.npz", "cubic-opinf-operator.npz"; force=true)
     cp("$example_dir/../cuboid-1.g", "../cuboid-1.g"; force=true)
     cp("$example_dir/../cuboid-2.g", "../cuboid-2.g"; force=true)
 
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
-    model_fine   = subsims[1].model   # SolidMechanics (Newmark FOM)
+    model_fine = subsims[1].model   # SolidMechanics (Newmark FOM)
     model_coarse = subsims[2].model   # CubicOpInfRom  (central-difference ROM)
 
     rm("cuboids.yaml"; force=true)
@@ -96,23 +92,83 @@
     # cuboid-1 (FOM): Poisson contraction in x/y; z pushed up by Schwarz BC
     @test min_disp_x_cuboid1 ≈ -0.09963335485003638 atol = 1.0e-06
     @test min_disp_y_cuboid1 ≈ -0.0996333548497787 atol = 1.0e-06
-    @test max_disp_z_cuboid1 ≈  0.4631814697915979  atol = 1.0e-06
+    @test max_disp_z_cuboid1 ≈ 0.4631814697915979 atol = 1.0e-06
 
     # cuboid-2 (ROM, fom_model): top face prescribed; z at top = 1.0 exactly
     @test min_disp_x_cuboid2 ≈ -0.10049724583237696 atol = 1.0e-06
     @test min_disp_y_cuboid2 ≈ -0.10049724583207455 atol = 1.0e-06
-    @test max_disp_z_cuboid2 ≈  0.6545084971874737  atol = 1.0e-08
+    @test max_disp_z_cuboid2 ≈ 0.6545084971874737 atol = 1.0e-08
 
     # ── stress regression ─────────────────────────────────────────────────────
-    @test avg_stress_cuboid1 ≈
-        [-1.751875303889186e6 -1.751875303835476e6 4.0429941602257884e8 -862764.4472962726 -862764.4473393018 -62184.75716192514] atol =
-        1.0e1
-    @test avg_stress_cuboid2 ≈
-        [-3.8406015879428186e7 -3.8406015879277125e7 3.314821056368871e8 -929789.9728815008 -929789.9729223091 -19449.452565336964] atol =
-        1.0e1
+    @test avg_stress_cuboid1 ≈ [
+        -1.751875303889186e6 -1.751875303835476e6 4.0429941602257884e8 -862764.4472962726 -862764.4473393018 -62184.75716192514
+    ] atol = 1.0e1
+    @test avg_stress_cuboid2 ≈ [
+        -3.8406015879428186e7 -3.8406015879277125e7 3.314821056368871e8 -929789.9728815008 -929789.9729223091 -19449.452565336964
+    ] atol = 1.0e1
 
     # ── Schwarz convergence history ───────────────────────────────────────────
     # Overlap coupling converges well within the 16-iteration cap.
-    @test sim.controller.schwarz_iters ≈
-        [2, 5, 6, 6, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 9, 9] atol = 0
+    @test sim.controller.schwarz_iters ≈ [
+        2,
+        5,
+        6,
+        6,
+        7,
+        7,
+        7,
+        7,
+        7,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+    ] atol = 0
 end

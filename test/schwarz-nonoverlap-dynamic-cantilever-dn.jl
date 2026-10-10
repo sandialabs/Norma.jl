@@ -27,8 +27,7 @@ end
 # Run the DN Schwarz cantilever for a given number of steps using the
 # specified multi-domain driver YAML.
 function run_cantilever_dn(num_steps, driver)
-    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml",
-              "cantilever-clamped.g", "cantilever-free.g"]
+    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml", "cantilever-clamped.g", "cantilever-free.g"]
         cp("$cantilever_dn_example/$f", f; force=true)
     end
     params = YAML.load_file(driver; dicttype=Norma.Parameters)
@@ -36,9 +35,15 @@ function run_cantilever_dn(num_steps, driver)
     params["final time"] = num_steps * dt
     params["name"] = driver
     sim = Norma.run(params)
-    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml",
-              "cantilever-clamped.g", "cantilever-free.g",
-              "cantilever-clamped.e", "cantilever-free.e"]
+    for f in [
+        driver,
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+    ]
         rm(f; force=true)
     end
     return sim

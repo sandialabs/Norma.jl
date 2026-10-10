@@ -11,7 +11,7 @@ using Exodus
 # for the 'both' recovery mode (names like sigma_xx_cons_n), or the empty
 # string (default) for single-type recovery (names like sigma_xx_n).  The
 # returned dictionary is always keyed by the bare "sigma_*_n" component name.
-function _read_recovered_stress(exo_path::String, qualifier::String = "")
+function _read_recovered_stress(exo_path::String, qualifier::String="")
     exo = ExodusDatabase(exo_path, "r")
     last_step = Exodus.read_number_of_time_steps(exo)
     components = Dict{String,Vector{Float64}}()
@@ -27,7 +27,9 @@ end
 @testset "Recovery — lumped, linear elastic, uniaxial cube" begin
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     open("cube.yaml", "w") do io
-        write(io, """
+        write(
+            io,
+            """
 type: single
 input mesh file: cube.g
 output mesh file: cube.e
@@ -72,7 +74,8 @@ solver:
   absolute tolerance: 1.0e-08
   linear solver relative tolerance: 1.0e-14
   linear solver absolute tolerance: 1.0e-08
-""")
+""",
+        )
     end
     Norma.run("cube.yaml")
     σ = _read_recovered_stress("cube.e")
@@ -89,7 +92,9 @@ end
 @testset "Recovery — consistent, linear elastic, uniaxial cube" begin
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     open("cube.yaml", "w") do io
-        write(io, """
+        write(
+            io,
+            """
 type: single
 input mesh file: cube.g
 output mesh file: cube.e
@@ -134,7 +139,8 @@ solver:
   absolute tolerance: 1.0e-08
   linear solver relative tolerance: 1.0e-14
   linear solver absolute tolerance: 1.0e-08
-""")
+""",
+        )
     end
     Norma.run("cube.yaml")
     σ = _read_recovered_stress("cube.e")
@@ -153,7 +159,9 @@ end
 @testset "Recovery — both (lumped + consistent), linear elastic, uniaxial cube" begin
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     open("cube.yaml", "w") do io
-        write(io, """
+        write(
+            io,
+            """
 type: single
 input mesh file: cube.g
 output mesh file: cube.e
@@ -198,7 +206,8 @@ solver:
   absolute tolerance: 1.0e-08
   linear solver relative tolerance: 1.0e-14
   linear solver absolute tolerance: 1.0e-08
-""")
+""",
+        )
     end
     Norma.run("cube.yaml")
     σ_l = _read_recovered_stress("cube.e", "lump")
@@ -220,7 +229,9 @@ end
 @testset "Recovery — internal variables (J2, eqps)" begin
     cp("../examples/materials/j2/cube.g", "cube.g"; force=true)
     open("cube.yaml", "w") do io
-        write(io, """
+        write(
+            io,
+            """
 type: single
 input mesh file: cube.g
 output mesh file: cube.e
@@ -268,7 +279,8 @@ solver:
   absolute tolerance: 1.0e-06
   linear solver relative tolerance: 1.0e-10
   linear solver absolute tolerance: 1.0e-06
-""")
+""",
+        )
     end
     Norma.run("cube.yaml")
     exo = ExodusDatabase("cube.e", "r")
@@ -289,7 +301,9 @@ end
 @testset "Recovery — von Mises stress and deformation gradient (J2 cube)" begin
     cp("../examples/materials/j2/cube.g", "cube.g"; force=true)
     open("cube.yaml", "w") do io
-        write(io, """
+        write(
+            io,
+            """
 type: single
 input mesh file: cube.g
 output mesh file: cube.e
@@ -338,7 +352,8 @@ solver:
   absolute tolerance: 1.0e-06
   linear solver relative tolerance: 1.0e-10
   linear solver absolute tolerance: 1.0e-06
-""")
+""",
+        )
     end
     Norma.run("cube.yaml")
     exo = ExodusDatabase("cube.e", "r")

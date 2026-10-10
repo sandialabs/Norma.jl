@@ -28,8 +28,14 @@ function write_brick(file::AbstractString, x0::Real, len::Real, h::Real, block_n
     element(i, j, k) = 1 + i + nx * (j + ny * k)
     for k in 0:(nz - 1), j in 0:(ny - 1), i in 0:(nx - 1)
         connectivity[:, element(i, j, k)] = [
-            node(i, j, k), node(i + 1, j, k), node(i + 1, j + 1, k), node(i, j + 1, k),
-            node(i, j, k + 1), node(i + 1, j, k + 1), node(i + 1, j + 1, k + 1), node(i, j + 1, k + 1),
+            node(i, j, k),
+            node(i + 1, j, k),
+            node(i + 1, j + 1, k),
+            node(i, j + 1, k),
+            node(i, j, k + 1),
+            node(i + 1, j, k + 1),
+            node(i + 1, j + 1, k + 1),
+            node(i, j + 1, k + 1),
         ]
     end
     init = Exodus.Initialization{Int32}(Int32(3), Int32(num_nodes), Int32(num_elements), Int32(1), Int32(2), Int32(2))

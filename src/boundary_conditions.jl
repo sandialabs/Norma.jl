@@ -4,7 +4,6 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-
 using Exodus
 
 @variables t x y z
@@ -47,8 +46,15 @@ function SolidMechanicsDirichletBoundaryCondition(input_mesh::ExodusDatabase, bc
     acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsDirichletBoundaryCondition(
-        node_set_name, offset, node_set_id, node_set_node_indices, disp_fun, velo_fun, acce_fun,
-        !is_static_prescription(velo_num), Float64[],
+        node_set_name,
+        offset,
+        node_set_id,
+        node_set_node_indices,
+        disp_fun,
+        velo_fun,
+        acce_fun,
+        !is_static_prescription(velo_num),
+        Float64[],
     )
 end
 
@@ -73,7 +79,15 @@ function SolidMechanicsSideSetDirichletBoundaryCondition(input_mesh::ExodusDatab
     acce_fun = eval(build_function(acce_num, [t, x, y, z]; expression=Val(false)))
 
     return SolidMechanicsSideSetDirichletBoundaryCondition(
-        side_set_name, offset, side_set_id, node_indices, disp_fun, velo_fun, acce_fun, !is_static_prescription(velo_num), Float64[]
+        side_set_name,
+        offset,
+        side_set_id,
+        node_indices,
+        disp_fun,
+        velo_fun,
+        acce_fun,
+        !is_static_prescription(velo_num),
+        Float64[],
     )
 end
 
@@ -168,8 +182,9 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
     tol = 1.0e-16
     if (abs(robin_parameter) < tol)
         norma_abort(
-                "The robin parameter is close to zero.  Robin BC is equivalent " *
-                "to Neumann BC. Use Neumann BC in input file.")
+            "The robin parameter is close to zero.  Robin BC is equivalent " *
+            "to Neumann BC. Use Neumann BC in input file.",
+        )
     end
     side_set_id = side_set_id_from_name(side_set_name, input_mesh)
     num_nodes_per_side, side_set_node_indices = Exodus.read_side_set_node_list(input_mesh, side_set_id)
@@ -183,11 +198,9 @@ function SolidMechanicsRobinBoundaryCondition(input_mesh::ExodusDatabase, bc_par
 
     #We want to set traction + robin_parameter * disp = traction_fun
     return SolidMechanicsRobinBoundaryCondition(
-        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices,
-        traction_fun, robin_parameter
+        side_set_name, offset, side_set_id, num_nodes_per_side, side_set_node_indices, traction_fun, robin_parameter
     )
 end
-
 
 function SolidMechanicsOverlapSchwarzBoundaryCondition(
     coupled_block_name::String,
@@ -231,14 +244,8 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     overlap_coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
     overlap_interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
     if !isempty(compute_overlap_l2_error)
-        overlap_node_indices,
-        overlap_coupled_nodes_indices,
-        overlap_interpolation_function_values = build_overlap_l2_error_map(
-            coupled_block_id,
-            element_type,
-            tol,
-            coupled_subsim,
-            subsim,
+        overlap_node_indices, overlap_coupled_nodes_indices, overlap_interpolation_function_values = build_overlap_l2_error_map(
+            coupled_block_id, element_type, tol, coupled_subsim, subsim
         )
     end
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
@@ -414,11 +421,21 @@ function SMCouplingSchwarzBC(
         use_weak = get(bc_params, "weak", false)
         compute_overlap_l2_error = get(bc_params, "compute overlap L2 relative error", "")
         if !isempty(compute_overlap_l2_error) && compute_overlap_l2_error ∉ ("disp", "velo", "acce")
-            norma_abort("Invalid value for 'compute overlap L2 relative error': \"$(compute_overlap_l2_error)\". Valid options are \"disp\", \"velo\", and \"acce\".")
+            norma_abort(
+                "Invalid value for 'compute overlap L2 relative error': \"$(compute_overlap_l2_error)\". Valid options are \"disp\", \"velo\", and \"acce\".",
+            )
         end
         SolidMechanicsOverlapSchwarzBoundaryCondition(
-            coupled_block_name, tol, side_set_name, side_set_id, side_set_node_indices,
-            num_nodes_sides, coupled_subsim, subsim, use_weak, compute_overlap_l2_error
+            coupled_block_name,
+            tol,
+            side_set_name,
+            side_set_id,
+            side_set_node_indices,
+            num_nodes_sides,
+            coupled_subsim,
+            subsim,
+            use_weak,
+            compute_overlap_l2_error,
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -461,9 +478,7 @@ function SMCouplingSchwarzBC(
         end
         direct_solve = interface_solve == "direct"
         if direct_solve && !constrained
-            norma_abort(
-                "`interface solve: direct` on side set \"$(side_set_name)\" requires `constrained: true`.",
-            )
+            norma_abort("`interface solve: direct` on side set \"$(side_set_name)\" requires `constrained: true`.")
         end
         if constrained && swap_bcs
             norma_abort(
@@ -539,7 +554,10 @@ function apply_dirichlet_values!(model::SolidMechanics, node_indices::Vector{Int
             resize!(cache, length(node_indices))
             for (k, node_index) in enumerate(node_indices)
                 txzy = (
-                    model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
+                    model.time,
+                    model.reference[1, node_index],
+                    model.reference[2, node_index],
+                    model.reference[3, node_index],
                 )
                 cache[k] = bc.disp_fun(txzy)
             end
@@ -553,7 +571,9 @@ function apply_dirichlet_values!(model::SolidMechanics, node_indices::Vector{Int
         return nothing
     end
     for node_index in node_indices
-        txzy = (model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index])
+        txzy = (
+            model.time, model.reference[1, node_index], model.reference[2, node_index], model.reference[3, node_index]
+        )
         disp_val = bc.disp_fun(txzy)
         velo_val = bc.velo_fun(txzy)
         acce_val = bc.acce_fun(txzy)
@@ -566,11 +586,11 @@ function apply_dirichlet_values!(model::SolidMechanics, node_indices::Vector{Int
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsDirichletBoundaryCondition)
-    apply_dirichlet_values!(model, bc.node_set_node_indices, bc)
+    return apply_dirichlet_values!(model, bc.node_set_node_indices, bc)
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsSideSetDirichletBoundaryCondition)
-    apply_dirichlet_values!(model, bc.node_indices, bc)
+    return apply_dirichlet_values!(model, bc.node_indices, bc)
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannRobinBoundaryCondition)
@@ -781,9 +801,7 @@ function return_to_surface!(model::SolidMechanics)
             x .-= permutedims(A) * ((A * permutedims(A)) \ g)
         end
         if !converged
-            norma_logf(
-                4, :warning, "return_to_surface: node %d did not reach the surface tolerance", node_index
-            )
+            norma_logf(4, :warning, "return_to_surface: node %d did not reach the surface tolerance", node_index)
         end
         model.displacement[:, node_index] = x - model.reference[:, node_index]
     end
@@ -826,12 +844,8 @@ function assert_no_exact_surface_bcs(model::SolidMechanics, solver_desc::String)
     return nothing
 end
 
-
 function collect_overlap_candidate_nodes(
-    coupled_block_id::Int64,
-    tol::Float64,
-    coupled_subsim::Simulation,
-    subsim::Simulation,
+    coupled_block_id::Int64, tol::Float64, coupled_subsim::Simulation, subsim::Simulation
 )
     dst_model = get_fom_model(subsim)
     dst_mesh = dst_model.mesh
@@ -850,7 +864,9 @@ function collect_overlap_candidate_nodes(
             node_found = false
             if !centroid_found
                 for node_index in node_indices
-                    _, _, node_found = find_point_in_mesh(dst_model.reference[:, node_index], coupled_subsim.model, coupled_block_id, tol)
+                    _, _, node_found = find_point_in_mesh(
+                        dst_model.reference[:, node_index], coupled_subsim.model, coupled_block_id, tol
+                    )
                     node_found && break
                 end
             end
@@ -863,11 +879,7 @@ function collect_overlap_candidate_nodes(
 end
 
 function build_overlap_l2_error_map(
-    coupled_block_id::Int64,
-    element_type::ElementType,
-    tol::Float64,
-    coupled_subsim::Simulation,
-    subsim::Simulation,
+    coupled_block_id::Int64, element_type::ElementType, tol::Float64, coupled_subsim::Simulation, subsim::Simulation
 )
     dst_model = get_fom_model(subsim)
     overlap_node_indices = collect_overlap_candidate_nodes(coupled_block_id, tol, coupled_subsim, subsim)
@@ -906,7 +918,9 @@ function compute_overlap_l2_error!(bc::SolidMechanicsOverlapSchwarzBoundaryCondi
         dst_field = dst_model.acceleration
         src_field = src_model.acceleration
     else
-        error("Invalid value for compute_overlap_l2_error: \"$(bc.compute_overlap_l2_error)\". Valid options are \"disp\", \"velo\", and \"acce\".")
+        error(
+            "Invalid value for compute_overlap_l2_error: \"$(bc.compute_overlap_l2_error)\". Valid options are \"disp\", \"velo\", and \"acce\".",
+        )
     end
 
     diff_sq = 0.0

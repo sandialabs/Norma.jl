@@ -95,7 +95,10 @@ function Newmark(params::Parameters, model::Model)
             0,
             :setup,
             "HHT-α dissipation: α = %.4g, overriding γ = %.4g, β = %.4g (ρ∞ = %.3f)",
-            hht_alpha, γ, β, (1.0 - hht_alpha) / (1.0 + hht_alpha),
+            hht_alpha,
+            γ,
+            β,
+            (1.0 - hht_alpha) / (1.0 + hht_alpha),
         )
     end
     num_dof = length(model.free_dofs)
@@ -350,7 +353,9 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
     return nothing
 end
 
-function initialize(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics; trust_schwarz::Bool=false)
+function initialize(
+    integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics; trust_schwarz::Bool=false
+)
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
     free = model.free_dofs
     set_time_step(integrator, model)

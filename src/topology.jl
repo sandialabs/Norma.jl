@@ -372,7 +372,6 @@ function remove_node!(topology::MeshTopology, n::Int)
     return topology
 end
 
-
 # Update the side sets for the split of edge (a, b) by node m: every face
 # that contains the edge is replaced by its two halves.
 function split_sets!(topology::MeshTopology, a::Int, b::Int, m::Int)

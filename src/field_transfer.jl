@@ -27,8 +27,7 @@ function transfer_field(
     n_dst_nodes = size(dst_model.reference, 2)
     out = zeros(C, n_dst_nodes)
 
-    src_block_ids = src_blocks === nothing ?
-        [Int(b.id) for b in Exodus.read_sets(src_model.mesh, Block)] : src_blocks
+    src_block_ids = src_blocks === nothing ? [Int(b.id) for b in Exodus.read_sets(src_model.mesh, Block)] : src_blocks
 
     src_element_types = Dict{Int,ElementType}()
     for bid in src_block_ids
@@ -73,7 +72,9 @@ function transfer_field(
                 if !found
                     norma_abortf(
                         "transfer_field: destination QP at (%.4e, %.4e, %.4e) not found in any source block",
-                        point_buf[1], point_buf[2], point_buf[3],
+                        point_buf[1],
+                        point_buf[2],
+                        point_buf[3],
                     )
                 end
                 src_et = src_element_types[src_bid_found]
@@ -122,11 +123,7 @@ function _transfer_qp_internal_variables!(dst::SolidMechanics, src::SolidMechani
     return nothing
 end
 
-function _sample_nodal_at_dst_qps!(
-    dst::SolidMechanics,
-    nodal_iv::AbstractMatrix{Float64},
-    common_list::Vector{String},
-)
+function _sample_nodal_at_dst_qps!(dst::SolidMechanics, nodal_iv::AbstractMatrix{Float64}, common_list::Vector{String})
     input_mesh = dst.mesh
     blocks = Exodus.read_sets(input_mesh, Block)
     for (block_index, block) in enumerate(blocks)

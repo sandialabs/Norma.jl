@@ -11,10 +11,7 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::RB
     val, LHS_nonlinear = evaluate_rbf_interpolant(model.interpolant, solver.solution)
     LHS_linear = I / (dt * dt * beta)
 
-    RHS =
-        model.forcing +
-        model.reduced_boundary_forcing +
-        1.0 / (dt * dt * beta) .* integrator.disp_pre
+    RHS = model.forcing + model.reduced_boundary_forcing + 1.0 / (dt * dt * beta) .* integrator.disp_pre
 
     residual = RHS - LHS_linear * solver.solution - val
     solver.hessian[:, :] = LHS_linear + LHS_nonlinear

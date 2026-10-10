@@ -17,17 +17,17 @@ cd(@__DIR__)
 
 # ---- the two inputs ----
 # Only sd1 has a fitted operator here, so SUBDOMAIN = 2 needs one built first.
-const SUBDOMAIN  = 1          # which subdomain switches: 1 = sd1, 2 = sd2
+const SUBDOMAIN = 1          # which subdomain switches: 1 = sd1, 2 = sd2
 const ROM_WINDOW = (40, 80)   # it runs ROM over these steps, FOM outside them
 
-const T0     = 0.0
+const T0 = 0.0
 const TFINAL = 4.0e-4
-const NSTEP  = 128
-const DT     = (TFINAL - T0) / NSTEP
+const NSTEP = 128
+const DT = (TFINAL - T0) / NSTEP
 
-const MESH    = ("../clamped-smaller-1.g", "../clamped-larger-2.g")
-const BLOCK   = ("coarse", "fine")
-const ZCLAMP  = ("nsz-", "nsz+")   # z-clamped end of each subdomain
+const MESH = ("../clamped-smaller-1.g", "../clamped-larger-2.g")
+const BLOCK = ("coarse", "fine")
+const ZCLAMP = ("nsz-", "nsz+")   # z-clamped end of each subdomain
 const SIDESET = ("ssz+", "ssz-")   # Schwarz overlap face of each subdomain
 const ROMFILE = "linear-opinf-operator-$SUBDOMAIN-M10.npz"
 
@@ -46,8 +46,7 @@ initial conditions:
 "The variants differ only in the `model:` block, so they discretize the same
 problem and their states are mutually transferable."
 function subdomain_yaml(i::Int, kind::Symbol)
-    model = kind === :rom ? "  type: linear opinf rom\n  model-file: $ROMFILE" :
-                            "  type: solid mechanics"
+    model = kind === :rom ? "  type: linear opinf rom\n  model-file: $ROMFILE" : "  type: solid mechanics"
     return """
     type: single
     input mesh file: $(MESH[i])
@@ -102,13 +101,20 @@ relative tolerance: 1.0e-12
 absolute tolerance: 1.0e-08
 """
 
-isfile(ROMFILE) || error("no ROM operator $ROMFILE for sd$SUBDOMAIN; " *
-                         "this example ships one for sd1 only")
+isfile(ROMFILE) || error("no ROM operator $ROMFILE for sd$SUBDOMAIN; " * "this example ships one for sd1 only")
 
 # Everything this script writes; cleared on entry, removed on exit.
-const GENERATED = ["sd1fom.yaml", "sd2fom.yaml", "sd$(SUBDOMAIN)rom.yaml", "top.yaml",
-                   "sd1fom.e", "sd2fom.e", "sd$(SUBDOMAIN)rom.e",
-                   "restart_example1.log", "top.log"]
+const GENERATED = [
+    "sd1fom.yaml",
+    "sd2fom.yaml",
+    "sd$(SUBDOMAIN)rom.yaml",
+    "top.yaml",
+    "sd1fom.e",
+    "sd2fom.e",
+    "sd$(SUBDOMAIN)rom.e",
+    "restart_example1.log",
+    "top.log",
+]
 
 foreach(f -> rm(f; force=true), GENERATED)
 write("sd1fom.yaml", subdomain_yaml(1, :fom))
@@ -130,8 +136,8 @@ Norma.register_variant!(r, SUBDOMAIN, ROM_NAME, "sd$(SUBDOMAIN)rom.yaml")
 
 # The subdomains overlap, so average onto a shared z grid for output.
 zs = [s.model.reference[3, :] for s in r.sim.subsims]
-zgrid = sort(unique(round.(vcat(zs...), digits=9)))
-zslot = [[searchsortedfirst(zgrid, round(z, digits=9)) for z in zs[i]] for i in eachindex(zs)]
+zgrid = sort(unique(round.(vcat(zs...); digits=9)))
+zslot = [[searchsortedfirst(zgrid, round(z; digits=9)) for z in zs[i]] for i in eachindex(zs)]
 
 "Full-order displacement of every subdomain, averaged onto `zgrid`."
 function profile(r)
@@ -151,19 +157,20 @@ frames = Vector{Vector{Float64}}()
 modes = String[]
 
 redirect_stdout(log) do
-    Norma.march!(r; on_step = function (r, step)
-        # Decided live, one step at a time. A fixed window is just the simplest
-        # thing to put in the hook; an error indicator or policy would work too.
-        Norma.switch!(r, SUBDOMAIN, A <= step <= B ? ROM_NAME : FOM_NAME)
-        push!(frames, profile(r))
-        push!(modes, Norma.active_variant(r, SUBDOMAIN) == ROM_NAME ? "ROM" : "FOM")
-    end)
+    return Norma.march!(
+        r; on_step=function (r, step)
+            # Decided live, one step at a time. A fixed window is just the simplest
+            # thing to put in the hook; an error indicator or policy would work too.
+            Norma.switch!(r, SUBDOMAIN, A <= step <= B ? ROM_NAME : FOM_NAME)
+            push!(frames, profile(r))
+            return push!(modes, Norma.active_variant(r, SUBDOMAIN) == ROM_NAME ? "ROM" : "FOM")
+        end
+    )
 end
 
 writedlm("out_zgrid.csv", zgrid, ',')
 writedlm("out_field.csv", reduce(hcat, frames)', ',')
-writedlm("out_modes.csv",
-         vcat(["step" "mode"], hcat(1:length(modes), modes)), ',')
+writedlm("out_modes.csv", vcat(["step" "mode"], hcat(1:length(modes), modes)), ',')
 Norma.close_restart!(r)
 close(log)
 
@@ -174,6 +181,5 @@ foreach(f -> rm(f; force=true), filter(f -> endswith(f, ".yaml") || endswith(f, 
 for h in r.history
     @printf("  switch at step %3d: %s -> %s\n", h.step, h.from, h.to)
 end
-@printf("wrote out_field.csv (%d steps x %d z-points), out_zgrid.csv, out_modes.csv\n",
-        length(frames), length(zgrid))
+@printf("wrote out_field.csv (%d steps x %d z-points), out_zgrid.csv, out_modes.csv\n", length(frames), length(zgrid))
 @printf("now run:  python3 plot_restart.py\n")

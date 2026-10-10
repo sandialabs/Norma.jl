@@ -77,8 +77,7 @@ end
 
 function slot_of(r::InMemoryRestart, name::AbstractString)
     key = String(name)
-    haskey(r.sim.handle_by_name, key) ||
-        norma_abort("In-memory restart: unknown subdomain '$key'")
+    haskey(r.sim.handle_by_name, key) || norma_abort("In-memory restart: unknown subdomain '$key'")
     return r.sim.handle_by_name[key].id
 end
 
@@ -111,8 +110,7 @@ function register_variant!(r::InMemoryRestart, target, name::AbstractString, yam
     key = String(name)
     haskey(r.variants[slot], key) &&
         norma_abort("In-memory restart: variant '$key' is already registered for slot $slot")
-    isfile(yaml_file) ||
-        norma_abort("In-memory restart: variant input file not found: $yaml_file")
+    isfile(yaml_file) || norma_abort("In-memory restart: variant input file not found: $yaml_file")
 
     # Throwaway plan: `build_replacement_subsim` only reads `replacement_file`.
     plan = SwapPlan(r.sim.subsims[slot].name, TimeSwapCriterion(0.0), String(yaml_file), false)
@@ -162,9 +160,12 @@ solved at it. `march!` calls its hook exactly there.
 function switch!(r::InMemoryRestart, target, name::AbstractString)
     slot = slot_of(r, target)
     key = String(name)
-    haskey(r.variants[slot], key) ||
-        norma_abort("In-memory restart: no variant '$key' registered for slot $slot " *
-                    "(have: " * join(sort(collect(keys(r.variants[slot]))), ", ") * ")")
+    haskey(r.variants[slot], key) || norma_abort(
+        "In-memory restart: no variant '$key' registered for slot $slot " *
+        "(have: " *
+        join(sort(collect(keys(r.variants[slot]))), ", ") *
+        ")",
+    )
     sim = r.sim
     old = sim.subsims[slot]
     new = r.variants[slot][key]
@@ -196,8 +197,16 @@ function switch!(r::InMemoryRestart, target, name::AbstractString)
     from = r.active[slot]
     r.active[slot] = key
     push!(r.history, (step=sim.controller.stop, slot=slot, from=from, to=key))
-    norma_logf(0, :restart, "Step %d: slot %d switched %s -> %s at t = %.6e",
-               sim.controller.stop, slot, from, key, sim.controller.time)
+    norma_logf(
+        0,
+        :restart,
+        "Step %d: slot %d switched %s -> %s at t = %.6e",
+        sim.controller.stop,
+        slot,
+        from,
+        key,
+        sim.controller.time,
+    )
     return true
 end
 
@@ -268,8 +277,9 @@ Full-order displacements of every subdomain, concatenated in slot order. Length
 and node ordering do not depend on which variants are active, which makes it
 usable as a comparison vector between differently-switched runs.
 """
-displacement_vector(r::InMemoryRestart) =
-    vcat((vec(full_order_displacement(r.sim.subsims[i])) for i in 1:length(r.sim.subsims))...)
+function displacement_vector(r::InMemoryRestart)
+    return vcat((vec(full_order_displacement(r.sim.subsims[i])) for i in 1:length(r.sim.subsims))...)
+end
 
 """
     close_restart!(r::InMemoryRestart)
@@ -285,8 +295,7 @@ function close_restart!(r::InMemoryRestart)
         try
             finalize_writing(subsim)
         catch e
-            norma_logf(0, :warning, "In-memory restart: closing '%s' failed: %s",
-                       subsim.name, sprint(showerror, e))
+            norma_logf(0, :warning, "In-memory restart: closing '%s' failed: %s", subsim.name, sprint(showerror, e))
         end
     end
     r.owns_log && close_log_file()

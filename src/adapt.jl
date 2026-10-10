@@ -19,7 +19,7 @@ function AdaptivityOptions(params::Parameters)
     shape_criterion = get(params, "shape criterion", "energy")
     if !(shape_criterion in ("energy", "scaled Jacobian"))
         norma_abort(
-            "\"shape criterion\" in \"adaptivity\" must be \"energy\" or \"scaled Jacobian\"; got \"$shape_criterion\"",
+            "\"shape criterion\" in \"adaptivity\" must be \"energy\" or \"scaled Jacobian\"; got \"$shape_criterion\""
         )
     end
     return AdaptivityOptions(
@@ -407,9 +407,7 @@ end
 # unvisited element that contains the last node reached; and the nodes
 # reached, one more than the elements.  Returns nothing when the walk ends
 # before it has visited every element.
-function walk_edge_elements(
-    elements::AbstractVector{Int}, pairs::Vector{Tuple{Int,Int}}, start::Int, first_node::Int
-)
+function walk_edge_elements(elements::AbstractVector{Int}, pairs::Vector{Tuple{Int,Int}}, start::Int, first_node::Int)
     n = length(elements)
     used = falses(n)
     used[start] = true
@@ -619,7 +617,7 @@ function edge_swap_from_evaluation(
     all(topology.element_alive[e] for e in best.elements) || return nothing
     best.connectivity === nothing && return nothing
     if chords_exist(topology, best.ring_nodes, best.triangles, created) ||
-       !faces_are_new(topology, best.elements, best.connectivity, created)
+        !faces_are_new(topology, best.elements, best.connectivity, created)
         return try_edge_swap(model, topology, a, b, options; created)
     end
     return evaluation.proposal
@@ -639,7 +637,6 @@ function configuration_score(
     all(isfinite, energies) || return Inf
     return sum(energies)
 end
-
 
 # Elements around a boundary edge (a, b) as an open chain from one boundary
 # face to the other, with the chain nodes p_1, ..., p_n such that element i
@@ -864,7 +861,7 @@ function try_edge_collapse(
         new_connectivity,
         block,
         options;
-        require_decrease=!by_length,
+        require_decrease=(!by_length),
         removed_node=b,
         surviving_node=a,
     )
@@ -959,12 +956,7 @@ end
 # those faces and the node sets common to both ends of a boundary edge, is
 # relaxed locally, and the result is submitted to the acceptance test.
 function try_edge_split(
-    model::SolidMechanics,
-    topology::MeshTopology,
-    a::Int,
-    b::Int,
-    options::AdaptivityOptions;
-    by_length::Bool=false,
+    model::SolidMechanics, topology::MeshTopology, a::Int, b::Int, options::AdaptivityOptions; by_length::Bool=false
 )
     (topology.node_alive[a] && topology.node_alive[b]) || return nothing
     ring = edge_elements(topology, a, b)
@@ -1007,8 +999,9 @@ function try_edge_split(
         # since a relaxation could move it off the boundary.
         energy_after = split_cavity_energy(model, topology, block, connectivity, position, metric)
     else
-        position, energy_after =
-            relax_split_node(model, topology, block, connectivity, position, constraints, norm(xb - xa), metric)
+        position, energy_after = relax_split_node(
+            model, topology, block, connectivity, position, constraints, norm(xb - xa), metric
+        )
     end
     isfinite(energy_after) || return nothing
     energy_before = sum(element_energies(model, block, topology.connectivity[:, ring], topology.positions))
@@ -1033,7 +1026,7 @@ function try_edge_split(
         energy_before,
         energy_after,
         options;
-        require_decrease=!by_length,
+        require_decrease=(!by_length),
     ) || return nothing
     split = SplitNode(position, node_sets, side_sets, (a, b), node_metric)
     return CavityProposal(collect(ring), connectivity, block, energy_before, energy_after, 0, 0, split, nothing)
@@ -1447,12 +1440,12 @@ function size_operators!(
     collapses = splits = NO_OPERATOR_RESULT
     if options.collapses
         collapses = run_operator!(memory, model, topology, options) do
-            collapse_pass!(model, topology, options, shape; memory)
+            return collapse_pass!(model, topology, options, shape; memory)
         end
     end
     if options.splits
         splits = run_operator!(memory, model, topology, options) do
-            split_pass!(model, topology, options, shape; memory)
+            return split_pass!(model, topology, options, shape; memory)
         end
     end
     return collapses, splits
@@ -1560,9 +1553,10 @@ function run_adaptive(params::Parameters)
     for iteration in 1:options.outer_iterations
         build_start = time()
         topology = build_topology(model)
-        energy_before = sum(energy_densities(model, topology) .* ideal_element_volumes(
-            model, 1, topology.connectivity, topology.positions
-        ))
+        energy_before = sum(
+            energy_densities(model, topology) .*
+            ideal_element_volumes(model, 1, topology.connectivity, topology.positions),
+        )
         time_build = time() - build_start
         times.build += time_build
         passes_before = times.passes
@@ -1571,8 +1565,13 @@ function run_adaptive(params::Parameters)
         observer = TOPOLOGY_PHASE_OBSERVER[]
         observer === nothing || observer(model, topology, accepted, decrease)
         norma_logf(
-            0, :info, "Adaptivity iteration %d: %d operations accepted, energy %.6e -> %.6e",
-            iteration, accepted, energy_before, energy_before - decrease,
+            0,
+            :info,
+            "Adaptivity iteration %d: %d operations accepted, energy %.6e -> %.6e",
+            iteration,
+            accepted,
+            energy_before,
+            energy_before - decrease,
         )
         time_write = 0.0
         if accepted > 0

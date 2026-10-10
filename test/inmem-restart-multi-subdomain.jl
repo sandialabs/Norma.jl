@@ -65,26 +65,38 @@ using LinearAlgebra
 
     # (label, mesh sources, blocks, ROM operator, switching slot, IC)
     cases = [
-        ("2sd",
-         ["$clamped_dir/clamped-smaller-1.g", "$clamped_dir/clamped-larger-2.g"],
-         ["coarse", "fine"],
-         ["$rom_dir/linear-opinf-operator-1-M10.npz"],
-         1, ic_travelling),
-        ("3sd",
-         ["$clamped_dir/clamped-3sd-$i.g" for i in 1:3],
-         ["subdomain_1", "subdomain_2", "subdomain_3"],
-         ["$rom3_dir/linear-opinf-operator-M30-2.npz"],
-         2, ic_from_rest),
-        ("4sd",
-         ["$mesh_dir/clamped-4sd-$i.g" for i in 1:4],
-         ["subdomain_$i" for i in 1:4],
-         ["$rom_dir/linear-opinf-operator-4sd-2-M10.npz"],
-         2, ic_travelling),
-        ("5sd",
-         ["$mesh_dir/clamped-5sd-$i.g" for i in 1:5],
-         ["subdomain_$i" for i in 1:5],
-         ["$rom_dir/linear-opinf-operator-5sd-3-M10.npz"],
-         3, ic_travelling),
+        (
+            "2sd",
+            ["$clamped_dir/clamped-smaller-1.g", "$clamped_dir/clamped-larger-2.g"],
+            ["coarse", "fine"],
+            ["$rom_dir/linear-opinf-operator-1-M10.npz"],
+            1,
+            ic_travelling,
+        ),
+        (
+            "3sd",
+            ["$clamped_dir/clamped-3sd-$i.g" for i in 1:3],
+            ["subdomain_1", "subdomain_2", "subdomain_3"],
+            ["$rom3_dir/linear-opinf-operator-M30-2.npz"],
+            2,
+            ic_from_rest,
+        ),
+        (
+            "4sd",
+            ["$mesh_dir/clamped-4sd-$i.g" for i in 1:4],
+            ["subdomain_$i" for i in 1:4],
+            ["$rom_dir/linear-opinf-operator-4sd-2-M10.npz"],
+            2,
+            ic_travelling,
+        ),
+        (
+            "5sd",
+            ["$mesh_dir/clamped-5sd-$i.g" for i in 1:5],
+            ["subdomain_$i" for i in 1:5],
+            ["$rom_dir/linear-opinf-operator-5sd-3-M10.npz"],
+            3,
+            ic_travelling,
+        ),
     ]
 
     """
@@ -93,19 +105,18 @@ using LinearAlgebra
     two overlaps, which is the wiring a 2-subdomain case never produces.
     """
     function subdomain_yaml(i, n, meshes, blocks, romfile, ic)
-        dir = [ "    - {node set: nsx-, component: x, function: \"0.0\"}",
-                "    - {node set: nsx+, component: x, function: \"0.0\"}",
-                "    - {node set: nsy-, component: y, function: \"0.0\"}",
-                "    - {node set: nsy+, component: y, function: \"0.0\"}" ]
+        dir = [
+            "    - {node set: nsx-, component: x, function: \"0.0\"}",
+            "    - {node set: nsx+, component: x, function: \"0.0\"}",
+            "    - {node set: nsy-, component: y, function: \"0.0\"}",
+            "    - {node set: nsy+, component: y, function: \"0.0\"}",
+        ]
         i == 1 && push!(dir, "    - {node set: nsz-, component: z, function: \"0.0\"}")
         i == n && push!(dir, "    - {node set: nsz+, component: z, function: \"0.0\"}")
         ov = String[]
-        i > 1 && push!(ov, "    - side set: ssz-\n      source: sd$(i-1)fom\n" *
-                           "      source block: $(blocks[i-1])")
-        i < n && push!(ov, "    - side set: ssz+\n      source: sd$(i+1)fom\n" *
-                           "      source block: $(blocks[i+1])")
-        model = romfile === nothing ? "  type: solid mechanics" :
-                "  type: linear opinf rom\n  model-file: $romfile"
+        i > 1 && push!(ov, "    - side set: ssz-\n      source: sd$(i-1)fom\n" * "      source block: $(blocks[i-1])")
+        i < n && push!(ov, "    - side set: ssz+\n      source: sd$(i+1)fom\n" * "      source block: $(blocks[i+1])")
+        model = romfile === nothing ? "  type: solid mechanics" : "  type: linear opinf rom\n  model-file: $romfile"
         tag = romfile === nothing ? "fom" : "rom"
         return """
         type: single
@@ -179,8 +190,7 @@ using LinearAlgebra
         r = Norma.InMemoryRestart("top.yaml")
         switched = try
             Norma.register_variant!(r, slot, "sd$(slot)rom", "sd$(slot)rom.yaml")
-            Norma.march!(r; on_step = (r, k) ->
-                Norma.switch!(r, slot, a <= k <= b ? "sd$(slot)rom" : "sd$(slot)fom"))
+            Norma.march!(r; on_step=(r, k) -> Norma.switch!(r, slot, a <= k <= b ? "sd$(slot)rom" : "sd$(slot)fom"))
             Norma.displacement_vector(r)
         finally
             Norma.close_restart!(r)

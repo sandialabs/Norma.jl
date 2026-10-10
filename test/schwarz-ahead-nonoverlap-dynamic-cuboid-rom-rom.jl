@@ -12,8 +12,16 @@ using YAML
     cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-1.g", "../cuboid-1.g"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-2.g", "../cuboid-2.g"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/opinf-operator-1.npz", "opinf-operator-1.npz"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/opinf-operator-2.npz", "opinf-operator-2.npz"; force=true)
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/opinf-operator-1.npz",
+        "opinf-operator-1.npz";
+        force=true,
+    )
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-linear-elastic-rom-rom/opinf-operator-2.npz",
+        "opinf-operator-2.npz";
+        force=true,
+    )
     input_file = "cuboids.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = 0.0
@@ -49,13 +57,114 @@ using YAML
     @test max_disp_z_cuboid1 ≈ 0.500446746523087 atol = 5e-4
     @test min_disp_x_cuboid2 ≈ -0.16663911525238287 atol = 1e-4
     @test min_disp_y_cuboid2 ≈ -0.16663725362018011 atol = 1e-4
-    @test max_disp_z_cuboid2 ≈ 1.0  atol = 1e-8
+    @test max_disp_z_cuboid2 ≈ 1.0 atol = 1e-8
 
-    @test avg_stress_cuboid1 ≈
-        [2245.400177897187 2245.4001779129417 6.666659250453845e8 3993.050095004339 3993.0500949967573 464.60386729278815] atol =
-        1.0e1
-    @test avg_stress_cuboid2 ≈
-        [9069.694713138975 9069.694713116623 6.66673065816829e8 -525.5622254480454 -525.5622254220823 1099.5710128726375] atol =
-        1.0e1
-    @test sim.controller.schwarz_iters ≈ [7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 7, 7] atol = 0
+    @test avg_stress_cuboid1 ≈ [
+        2245.400177897187 2245.4001779129417 6.666659250453845e8 3993.050095004339 3993.0500949967573 464.60386729278815
+    ] atol = 1.0e1
+    @test avg_stress_cuboid2 ≈ [
+        9069.694713138975 9069.694713116623 6.66673065816829e8 -525.5622254480454 -525.5622254220823 1099.5710128726375
+    ] atol = 1.0e1
+    @test sim.controller.schwarz_iters ≈ [
+        7,
+        7,
+        7,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        7,
+        7,
+        7,
+    ] atol = 0
 end

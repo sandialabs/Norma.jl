@@ -99,17 +99,23 @@ function reference_energy_volume(x)
     X = a * Y
     return Norma.strain_energy(material, tet_gradient(X, x)) * abs(tet_volume(X))
 end
-reference_energy(sim, conn, positions) = sum(
-    (sim === metric_sim ? reference_energy_metric : reference_energy_volume)(positions[:, conn[:, e]]) for
-    e in 1:size(conn, 2)
-)
+function reference_energy(sim, conn, positions)
+    return sum(
+        (sim === metric_sim ? reference_energy_metric : reference_energy_volume)(positions[:, conn[:, e]]) for
+        e in 1:size(conn, 2)
+    )
+end
 
 # Cavity of an interior edge: the edge from a to b along z, four ring nodes
 # around it, and the four tetrahedra that share the edge.
 a_node, b_node = 1, 2
 loop_positions = hcat(
-    [0.0, 0.0, -0.5h], [0.05h, -0.02h, 0.55h],
-    [0.9h, 0.0, 0.1h], [0.0, 0.7h, -0.1h], [-0.8h, 0.1h, 0.0], [0.1h, -1.1h, 0.05h],
+    [0.0, 0.0, -0.5h],
+    [0.05h, -0.02h, 0.55h],
+    [0.9h, 0.0, 0.1h],
+    [0.0, 0.7h, -0.1h],
+    [-0.8h, 0.1h, 0.0],
+    [0.1h, -1.1h, 0.05h],
 )
 ring = [3, 4, 5, 6]
 loop_conn = orient!(hcat([[a_node, b_node, ring[i], ring[mod1(i + 1, 4)]] for i in 1:4]...), loop_positions)

@@ -27,7 +27,9 @@ function _make_transfer_model(mesh_path::String, scratch_name::String, npts_over
     yaml_path = scratch_name * ".yaml"
     cp(mesh_path, scratch_name * ".g"; force=true)
     open(yaml_path, "w") do io
-        write(io, """
+        return write(
+            io,
+            """
 type: single
 input mesh file: $(scratch_name).g
 output mesh file: $(scratch_name).e
@@ -58,7 +60,8 @@ solver:
   absolute tolerance: 1.0e-08
   linear solver relative tolerance: 1.0e-14
   linear solver absolute tolerance: 1.0e-08
-""")
+""",
+        )
     end
     return Norma.create_simulation(yaml_path).model
 end
@@ -81,10 +84,10 @@ end
 
 @testset "Volumetric Field Transfer — linear in any basis" begin
     sources = (
-        (:hex8_27, "../examples/single/static-solid/cube/standard/cube.g",                       nothing),
-        (:hex8_8,  "../examples/single/implicit-dynamic-solid/pressure-bc-expand/cube.g",        nothing),
-        (:tet4,    "../examples/element-types/tet4/cube/cube.g",                                 nothing),
-        (:tet10,   "../examples/element-types/tet10/cube/cube.g",                                14),
+        (:hex8_27, "../examples/single/static-solid/cube/standard/cube.g", nothing),
+        (:hex8_8, "../examples/single/implicit-dynamic-solid/pressure-bc-expand/cube.g", nothing),
+        (:tet4, "../examples/element-types/tet4/cube/cube.g", nothing),
+        (:tet10, "../examples/element-types/tet10/cube/cube.g", 14),
     )
     models = Dict{Symbol,Norma.SolidMechanics}()
     scratch_files = String[]

@@ -17,7 +17,7 @@ using LinearAlgebra
 # `Norma.coupled_subsim_of` and `Norma.SolidMechanics` below resolve. The
 # `import Norma: ...` list only brings the individual names into scope, not the
 # `Norma` module, so both forms are needed.
-import Norma
+using Norma: Norma
 import Norma:
     load_torch_models,
     apply_bc,
@@ -94,7 +94,7 @@ function apply_bc(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfDirichlet
         reduced_forcing = torch_tensor_vector(reduced_forcing)
         model.reduced_boundary_forcing[:] += reduced_forcing
     end
-    model.reduced_boundary_forcing[:] = model.reduced_boundary_forcing[:] ./ ensemble_size
+    return model.reduced_boundary_forcing[:] = model.reduced_boundary_forcing[:] ./ ensemble_size
 end
 
 function apply_bc_detail(model::NeuralNetworkOpInfRom, bc::SolidMechanicsOpInfOverlapSchwarzBoundaryCondition)
@@ -157,7 +157,7 @@ function evaluate(integrator::RomNewmark, solver::RomHessianMinimizer, model::Ne
     f = zeros(num_dof)
     model_inputs = py"setup_inputs"(solver.solution)
     for i in 1:ensemble_size
-        ft, Kt = model.nn_model[i].forward(model_inputs, return_jacobian=true)
+        ft, Kt = model.nn_model[i].forward(model_inputs; return_jacobian=true)
         f += torch_tensor_vector(ft)
         stiffness += torch_tensor_matrix(Kt)
     end

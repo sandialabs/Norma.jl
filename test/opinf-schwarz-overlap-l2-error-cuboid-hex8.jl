@@ -6,14 +6,7 @@
 
 @testset "Opinf Schwarz Overlap L2 Displacement Error Dynamic Cuboid Hex8 Same Step" begin
     example_dir = "../examples/ahead/overlap/cuboid/dynamic-linear-opinf-rom-overlap-l2-error"
-    input_files = (
-        "cuboid-1.yaml",
-        "cuboid-2.yaml",
-        "cuboids.yaml",
-        "opinf-operator.npz",
-        "cuboid-1.g",
-        "cuboid-2.g",
-    )
+    input_files = ("cuboid-1.yaml", "cuboid-2.yaml", "cuboids.yaml", "opinf-operator.npz", "cuboid-1.g", "cuboid-2.g")
 
     for file in input_files
         cp(joinpath(example_dir, file), file; force=true)
@@ -22,12 +15,12 @@
     try
         sim = Norma.create_simulation("cuboids.yaml")
         bc_fine = only([
-            bc for bc in sim.subsims[1].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         bc_coarse = only([
-            bc for bc in sim.subsims[2].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         @test bc_fine.compute_overlap_l2_error == "disp"
         @test bc_coarse.compute_overlap_l2_error == "disp"
@@ -41,12 +34,12 @@
 
         sim = Norma.run("cuboids.yaml")
         bc_fine = only([
-            bc for bc in sim.subsims[1].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         bc_coarse = only([
-            bc for bc in sim.subsims[2].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
@@ -75,35 +68,32 @@ end
 
 @testset "Opinf Schwarz Overlap L2 Velocity Error Dynamic Cuboid Hex8 Same Step" begin
     example_dir = "../examples/ahead/overlap/cuboid/dynamic-linear-opinf-rom-overlap-l2-error"
-    input_files = (
-        "cuboid-1.yaml",
-        "cuboid-2.yaml",
-        "cuboids.yaml",
-        "opinf-operator.npz",
-        "cuboid-1.g",
-        "cuboid-2.g",
-    )
+    input_files = ("cuboid-1.yaml", "cuboid-2.yaml", "cuboids.yaml", "opinf-operator.npz", "cuboid-1.g", "cuboid-2.g")
 
     for file in input_files
         cp(joinpath(example_dir, file), file; force=true)
     end
-        
+
     for fname in ("cuboid-1.yaml", "cuboid-2.yaml")
-        write(fname, replace(read(fname, String),
-        "compute overlap L2 relative error: disp" =>
-        "compute overlap L2 relative error: velo"))
+        write(
+            fname,
+            replace(
+                read(fname, String),
+                "compute overlap L2 relative error: disp" => "compute overlap L2 relative error: velo",
+            ),
+        )
     end
 
     try
         sim = Norma.create_simulation("cuboids.yaml")
 
         bc_fine = only([
-            bc for bc in sim.subsims[1].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         bc_coarse = only([
-            bc for bc in sim.subsims[2].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         @test bc_fine.compute_overlap_l2_error == "velo"
         @test bc_coarse.compute_overlap_l2_error == "velo"
@@ -117,12 +107,12 @@ end
 
         sim = Norma.run("cuboids.yaml")
         bc_fine = only([
-            bc for bc in sim.subsims[1].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         bc_coarse = only([
-            bc for bc in sim.subsims[2].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
@@ -149,38 +139,34 @@ end
     end
 end
 
-
 @testset "Opinf Schwarz Overlap L2 Acceleration Error Dynamic Cuboid Hex8 Same Step" begin
     example_dir = "../examples/ahead/overlap/cuboid/dynamic-linear-opinf-rom-overlap-l2-error"
-    input_files = (
-        "cuboid-1.yaml",
-        "cuboid-2.yaml",
-        "cuboids.yaml",
-        "opinf-operator.npz",
-        "cuboid-1.g",
-        "cuboid-2.g",
-    )
+    input_files = ("cuboid-1.yaml", "cuboid-2.yaml", "cuboids.yaml", "opinf-operator.npz", "cuboid-1.g", "cuboid-2.g")
 
     for file in input_files
         cp(joinpath(example_dir, file), file; force=true)
     end
-        
+
     for fname in ("cuboid-1.yaml", "cuboid-2.yaml")
-        write(fname, replace(read(fname, String),
-        "compute overlap L2 relative error: disp" =>
-        "compute overlap L2 relative error: acce"))
+        write(
+            fname,
+            replace(
+                read(fname, String),
+                "compute overlap L2 relative error: disp" => "compute overlap L2 relative error: acce",
+            ),
+        )
     end
 
     try
         sim = Norma.create_simulation("cuboids.yaml")
 
         bc_fine = only([
-            bc for bc in sim.subsims[1].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         bc_coarse = only([
-            bc for bc in sim.subsims[2].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         @test bc_fine.compute_overlap_l2_error == "acce"
         @test bc_coarse.compute_overlap_l2_error == "acce"
@@ -194,12 +180,12 @@ end
 
         sim = Norma.run("cuboids.yaml")
         bc_fine = only([
-            bc for bc in sim.subsims[1].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         bc_coarse = only([
-            bc for bc in sim.subsims[2].model.boundary_conditions if
-            bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+            bc for
+            bc in sim.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
         ])
         @test isfinite(bc_fine.overlap_l2_error)
         @test isfinite(bc_coarse.overlap_l2_error)
@@ -225,4 +211,3 @@ end
         end
     end
 end
-

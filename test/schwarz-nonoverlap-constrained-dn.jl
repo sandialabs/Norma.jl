@@ -99,8 +99,15 @@ function run_constrained_dn(
         params["relaxation"] = relaxation
         params["aitken N0 parameter"] = 1
     end
-    files = ["cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
-             "cantilever-clamped.yaml", "cantilever-free.yaml", "constrained-dn-energy.csv"]
+    files = [
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "constrained-dn-energy.csv",
+    ]
     if initialize_only
         # The state at t = 0 after the coupled initial acceleration.
         sim = Norma.create_simulation(params)
@@ -117,8 +124,15 @@ function run_constrained_dn(
     rows = readlines("constrained-dn-energy.csv")
     header = split(rows[1], ",")
     data = [parse.(Float64, split(row, ",")) for row in rows[2:end]]
-    for f in ["cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
-              "cantilever-clamped.yaml", "cantilever-free.yaml", "constrained-dn-energy.csv"]
+    for f in [
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "constrained-dn-energy.csv",
+    ]
         rm(f; force=true)
     end
     return sim, header, data
@@ -150,8 +164,8 @@ pseudo_drift(header, data) = energy_drift(header, data, "pseudo_energy_total")
     # One cross matrix: the Neumann force transfer is the transpose of the
     # Dirichlet projector, and W_D Π_D is the cross matrix seen from either side.
     @test bc_N.neumann_projector == transpose(bc_D.dirichlet_projector)
-    @test bc_D.square_projector * bc_D.dirichlet_projector ≈
-        transpose(bc_N.square_projector * bc_N.dirichlet_projector) rtol = 1.0e-12
+    @test bc_D.square_projector * bc_D.dirichlet_projector ≈ transpose(bc_N.square_projector * bc_N.dirichlet_projector) rtol =
+        1.0e-12
     # Force applied on the Neumann side against Π_Dᵀ r_D, r_D the Dirichlet
     # side's reaction -(M a + f_int - f_body - f_boundary) on its interface rows.
     model_D = free.model
@@ -212,8 +226,15 @@ end
 
 @testset "Constrained DN: Displacement Constraint Requires Newmark" begin
     @test_throws Exception run_constrained_dn(true; constraint="displacement", num_steps=1)
-    for f in ["cantilever-clamped.g", "cantilever-free.g", "cantilever-clamped.e", "cantilever-free.e",
-              "cantilever-clamped.yaml", "cantilever-free.yaml", "constrained-dn-energy.csv"]
+    for f in [
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "constrained-dn-energy.csv",
+    ]
         rm(f; force=true)
     end
 end

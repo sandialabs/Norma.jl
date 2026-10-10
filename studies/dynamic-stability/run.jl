@@ -27,15 +27,20 @@ function parse_arguments(args)
     while i <= length(args)
         arg = args[i]
         if arg == "--runs"
-            options["runs"] = abspath(args[i + 1]); i += 2
+            options["runs"] = abspath(args[i + 1])
+            i += 2
         elseif arg == "--jobs"
-            options["jobs"] = parse(Int, args[i + 1]); i += 2
+            options["jobs"] = parse(Int, args[i + 1])
+            i += 2
         elseif arg == "--threads"
-            options["threads"] = parse(Int, args[i + 1]); i += 2
+            options["threads"] = parse(Int, args[i + 1])
+            i += 2
         elseif arg == "--force"
-            options["force"] = true; i += 1
+            options["force"] = true
+            i += 1
         else
-            push!(selections, arg); i += 1
+            push!(selections, arg)
+            i += 1
         end
     end
     isempty(selections) && error("Give one or more tiers ($(join(first.(TIERS), ", "))), case names, or all")
@@ -81,7 +86,7 @@ function main(args)
         run(pipeline(ignorestatus(command); stdout=joinpath(dir, "run.log"), stderr=joinpath(dir, "run.log")))
         status = isfile(joinpath(dir, "status.txt")) ? split(readline(joinpath(dir, "status.txt")))[end] : "crashed"
         finished[] += 1
-        println("[$(finished[])/$(length(dirs))] $(basename(dir)): $status in $(round(Int, time() - start)) s")
+        return println("[$(finished[])/$(length(dirs))] $(basename(dir)): $status in $(round(Int, time() - start)) s")
     end
 end
 

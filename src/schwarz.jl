@@ -12,7 +12,7 @@ get_fom_model(sim::Simulation) = sim.model isa RomModel ? sim.model.fom_model : 
 # the stable handle, so that swapping a subsim in its parent slot is transparent
 # to every BC.
 coupled_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.coupled_handle.id]
-self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition)    = bc.parent.subsims[bc.self_handle.id]
+self_subsim_of(bc::SolidMechanicsSchwarzBoundaryCondition) = bc.parent.subsims[bc.self_handle.id]
 
 # The partner's coupling condition, read from the partner's own model: for a
 # reduced order partner that is the RomModel, not its full order model.
@@ -158,8 +158,7 @@ function relaxation_aitken_recursive_theta!(
         θ = controller.relaxation_parameter
         theta_slots[slot_k] = θ
         residual_slots[slot_k] = Float64[]
-        norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
-            relaxation_method_name(controller.relaxation_method), iter, θ)
+        norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e", relaxation_method_name(controller.relaxation_method), iter, θ)
         return θ
     end
     residual = interp_disp .- lambda_prev
@@ -177,8 +176,7 @@ function relaxation_aitken_recursive_theta!(
     end
     residual_slots[slot_k] = residual
     theta_slots[slot_k] = θ
-    norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
-        relaxation_method_name(controller.relaxation_method), iter, θ)
+    norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e", relaxation_method_name(controller.relaxation_method), iter, θ)
     return θ
 end
 
@@ -214,8 +212,10 @@ function relaxation_aitken_secant_theta!(
     # For iter < N0 use the input ρ^(1) = relaxation_parameter (paper's N0 idea).
     θ = controller.relaxation_parameter
     if iter >= controller.aitken_N0 &&
-       !isempty(prev_residual) && length(prev_residual) == length(residual) &&
-       !isempty(prev_lambda) && length(prev_lambda) == length(lambda_prev)
+        !isempty(prev_residual) &&
+        length(prev_residual) == length(residual) &&
+        !isempty(prev_lambda) &&
+        length(prev_lambda) == length(lambda_prev)
         δ = residual .- prev_residual                     # δ^(n)
         d = lambda_prev .- prev_lambda                    # d^(n) = g^(n) - g^(n-1)
         δ_sq = dot(δ, δ)
@@ -237,8 +237,7 @@ function relaxation_aitken_secant_theta!(
     end
     residual_slots[slot_k] = residual
     lambda_slots[slot_k] = copy(lambda_prev)
-    norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e",
-        relaxation_method_name(controller.relaxation_method), iter, θ)
+    norma_logf(1, :schwarz, "%s θ[iter=%d] = %.4e", relaxation_method_name(controller.relaxation_method), iter, θ)
     return θ
 end
 
@@ -437,9 +436,11 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         else
             theta = controller.relaxation_parameter
             if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
-                theta = controller.relaxation_method === :aitken_secant ?
-                    relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g) :
+                theta = if controller.relaxation_method === :aitken_secant
+                    relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g)
+                else
                     relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, rhs, g)
+                end
             end
             frozen_relaxation_update!(controller, theta)
             datum = (1 - theta) .* g .+ theta .* rhs
@@ -623,9 +624,7 @@ end
 # as the Dirichlet side this is the r = 1 multirate scheme of Connors, Owen,
 # Kuberry, and Bochev (2024) and the scheme of Prakash and Hjelmstad (2004),
 # whose interface terms cancel and which conserves the pseudo-energy Ẽ (coupling note).
-function check_constrained_integrators(
-    sim_1::SingleDomainSimulation, sim_2::SingleDomainSimulation, constraint::Symbol
-)
+function check_constrained_integrators(sim_1::SingleDomainSimulation, sim_2::SingleDomainSimulation, constraint::Symbol)
     for sim_k in (sim_1, sim_2)
         integrator = sim_k.integrator
         if !(integrator isa Newmark || integrator isa CentralDifference)
@@ -649,8 +648,7 @@ function check_constrained_integrators(
         end
         i_1 = sim_1.integrator
         i_2 = sim_2.integrator
-        same_newmark =
-            i_1 isa Newmark && i_2 isa Newmark && i_1.β == i_2.β && i_1.γ == i_2.γ && i_1.β > 0.0
+        same_newmark = i_1 isa Newmark && i_2 isa Newmark && i_1.β == i_2.β && i_1.γ == i_2.γ && i_1.β > 0.0
         if !same_newmark
             norma_abort(
                 "`constraint: displacement` requires both members of the pair to be Newmark " *
@@ -673,9 +671,7 @@ function check_direct_interface_solve(
 )
     bc.direct_solve || partner.direct_solve || return nothing
     if bc.direct_solve != partner.direct_solve
-        norma_abort(
-            "`interface solve: direct` must be set on both sides of the pair '$(bc.name)'/'$(partner.name)'.",
-        )
+        norma_abort("`interface solve: direct` must be set on both sides of the pair '$(bc.name)'/'$(partner.name)'.")
     end
     explicit = sim_1.integrator isa CentralDifference && sim_2.integrator isa CentralDifference
     equal = isapprox(sim_1.integrator.time_step, sim_2.integrator.time_step; rtol=1.0e-12)
@@ -690,8 +686,9 @@ function check_direct_interface_solve(
 end
 
 # True for the Dirichlet-Neumann condition with the constrained exchange.
-is_constrained_dn(bc::SolidMechanicsBoundaryCondition) =
-    bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.constrained
+function is_constrained_dn(bc::SolidMechanicsBoundaryCondition)
+    return bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.constrained
+end
 
 # True for a constrained pair solved by the direct interface solve.
 is_direct_dn(bc::SolidMechanicsBoundaryCondition) = is_constrained_dn(bc) && bc.direct_solve
@@ -783,10 +780,14 @@ function direct_interface_factor(bc::SolidMechanicsNonOverlapSchwarzBoundaryCond
             push!(factors, F)
         end
         norma_logf(
-            0, :setup, "Direct interface solve '%s': %d interface nodes, three factorizations in %.2f s.",
-            bc.name, size(P, 1), time() - t0,
+            0,
+            :setup,
+            "Direct interface solve '%s': %d interface nodes, three factorizations in %.2f s.",
+            bc.name,
+            size(P, 1),
+            time() - t0,
         )
-        DirectInterfaceFactor(factors, d_inverse_mass, n_inverse_mass)
+        return DirectInterfaceFactor(factors, d_inverse_mass, n_inverse_mass)
     end
 end
 
@@ -878,8 +879,7 @@ function direct_interface_stop!(sim::MultiDomainSimulation)
         advance_time(subsim)
         # The step is clipped to land on the stop, so it differs from the nominal
         # step by the rounding of the accumulated time.
-        if !isapprox(integrator.time_step, controller.time_step; rtol=1.0e-6) ||
-           !stop_subcyle(subsim)
+        if !isapprox(integrator.time_step, controller.time_step; rtol=1.0e-6) || !stop_subcyle(subsim)
             norma_abort(
                 "`interface solve: direct` needs one step per stop, but subdomain '$(subsim.name)' took a step of " *
                 "$(integrator.time_step) for the stop of $(controller.time_step) (the explicit stable step can " *
@@ -919,8 +919,13 @@ function direct_initial_acceleration!(bc::SolidMechanicsNonOverlapSchwarzBoundar
     apply_direct_interface_force!(bc, λ, 0.0)
     r = dn_interface_residuals(d_model, bc)
     norma_logf(
-        0, :acceleration, "Direct initial acceleration %s/%s: acceleration jump %.2e, force residual %.2e",
-        r.dirichlet_name, r.neumann_name, r.acceleration_jump, r.force_residual,
+        0,
+        :acceleration,
+        "Direct initial acceleration %s/%s: acceleration jump %.2e, force residual %.2e",
+        r.dirichlet_name,
+        r.neumann_name,
+        r.acceleration_jump,
+        r.force_residual,
     )
     return nothing
 end
@@ -1037,9 +1042,7 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
         force_residual = dn_force_residual(W_N, P, r_D, reshape(f_N, 3, :))
     end
-    return DNInterfaceResiduals(
-        self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms
-    )
+    return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms)
 end
 
 # Residuals of every DN pair of a multidomain simulation, one entry per pair,
@@ -1097,8 +1100,10 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
         u_N = interpolate(n_times, controller.disp_hist[n_id], t)
         r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], nodal(v_N)[:, n_map])
         r_u, rms_u = dn_one_sided_jump(W_D, P, nodal(controller.disp_hist[d_id][k])[:, d_map], nodal(u_N)[:, n_map])
-        jv = max(jv, r_v); jv_rms = max(jv_rms, rms_v)
-        ju = max(ju, r_u); ju_rms = max(ju_rms, rms_u)
+        jv = max(jv, r_v)
+        jv_rms = max(jv_rms, rms_v)
+        ju = max(ju, r_u)
+        ju_rms = max(ju_rms, rms_u)
     end
     force_residual = 0.0
     found = false
@@ -1113,9 +1118,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
         force_residual = max(force_residual, dn_force_residual(W_N, P, r_D, nodal(f_N)))
     end
     found || (force_residual = NaN)
-    return DNInterfaceResiduals(
-        self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, NaN, NaN
-    )
+    return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, NaN, NaN)
 end
 
 # Interface impulse residual of a constrained pair over the stop just
@@ -1156,8 +1159,9 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
     (length(entries) >= 2 && abs(entries[1][1] - t_start) <= tol_t) || return nan
     impulse_N = zeros(3, size(P, 2))
     for k in 2:length(entries)
-        impulse_N .+= 0.5 * (entries[k][1] - entries[k - 1][1]) .* (reshape(entries[k - 1][2], 3, :) .+
-                                                                     reshape(entries[k][2], 3, :))
+        impulse_N .+=
+            0.5 * (entries[k][1] - entries[k - 1][1]) .*
+            (reshape(entries[k - 1][2], 3, :) .+ reshape(entries[k][2], 3, :))
     end
     transferred = project_components(transpose(P), impulse_D)
     residual = impulse_N .- transferred
@@ -1251,7 +1255,9 @@ function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSch
         coupled_node_indices = bc.coupled_nodes_indices[i]
         N = bc.interpolation_function_values[i]
 
-        model.displacement[:, node_index] = (coupled_reference[:, coupled_node_indices] + coupled_displacement[:, coupled_node_indices]) * N - model.reference[:, node_index]
+        model.displacement[:, node_index] =
+            (coupled_reference[:, coupled_node_indices] + coupled_displacement[:, coupled_node_indices]) * N -
+            model.reference[:, node_index]
         model.velocity[:, node_index] = velocity[:, coupled_node_indices] * N
         model.acceleration[:, node_index] = acceleration[:, coupled_node_indices] * N
 
@@ -1428,9 +1434,9 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         return nothing
     end
 
-    coupled_subsim     = coupled_subsim_of(bc)
+    coupled_subsim = coupled_subsim_of(bc)
     coupled_integrator = coupled_subsim.integrator
-    coupled_model      = coupled_subsim.model
+    coupled_model = coupled_subsim.model
 
     # Save current state (copy data, not reference — aliased integrators share memory with model)
     # For coupled RomModel, these are reduced states
@@ -1453,10 +1459,11 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     ∂Ω_f_hist = controller.∂Ω_f_hist[coupled_index]
 
     # Interpolate or use fallback
-    use_predictor = bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition &&
-    controller.use_interface_predictor &&
-    controller.iteration_number == 0 &&
-    !isempty(controller.predictor_disp[coupled_index])
+    use_predictor =
+        bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition &&
+        controller.use_interface_predictor &&
+        controller.iteration_number == 0 &&
+        !isempty(controller.predictor_disp[coupled_index])
     if !isempty(time_hist)
         # Piecewise-linear interpolation of the partner trajectory between
         # the stop-start anchor and the partner's substep snapshots. For a
@@ -1482,8 +1489,11 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_disp = controller.predictor_disp[coupled_index]
         interp_velo = controller.predictor_velo[coupled_index]
         interp_acce = controller.predictor_acce[coupled_index]
-        interp_∂Ω_f = !isempty(controller.predictor_∂Ω_f[coupled_index]) ?
-            controller.predictor_∂Ω_f[coupled_index] : controller.stop_∂Ω_f[coupled_index]
+        interp_∂Ω_f = if !isempty(controller.predictor_∂Ω_f[coupled_index])
+            controller.predictor_∂Ω_f[coupled_index]
+        else
+            controller.stop_∂Ω_f[coupled_index]
+        end
     elseif !isempty(controller.stop_disp[coupled_index])
         interp_disp = controller.stop_disp[coupled_index]
         interp_velo = controller.stop_velo[coupled_index]
@@ -1495,7 +1505,6 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_acce = zeros(coupled_num_dofs)
         interp_∂Ω_f = zeros(size(saved_∂Ω_f))
     end
-
 
     # Assign interpolated force
     set_internal_force!(coupled_model, interp_∂Ω_f)
@@ -1671,9 +1680,10 @@ function contact_weak_dbc(model::SolidMechanics, bc::SolidMechanicsContactSchwar
                     "surfaces normal to x; use friction type: tied, or orient the contact along x.",
                 )
             end
-            @inbounds model.displacement[:, i_global] = transfer_normal_component(
-                nodal_curr[:, i_local], model.reference[:, i_global] + model.displacement[:, i_global], normal
-            ) - model.reference[:, i_global]
+            @inbounds model.displacement[:, i_global] =
+                transfer_normal_component(
+                    nodal_curr[:, i_local], model.reference[:, i_global] + model.displacement[:, i_global], normal
+                ) - model.reference[:, i_global]
             @inbounds model.velocity[:, i_global] = transfer_normal_component(
                 nodal_velo[:, i_local], model.velocity[:, i_global], normal
             )
@@ -1766,7 +1776,9 @@ function cached_rectangular_projection(
 end
 
 function compute_neumann_projector(
-    dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition; cache::RectangularProjectionCache=RectangularProjectionCache()
+    dst_model::Model,
+    dst_bc::SolidMechanicsSchwarzBoundaryCondition;
+    cache::RectangularProjectionCache=RectangularProjectionCache(),
 )
     src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
@@ -1792,7 +1804,9 @@ function compute_neumann_projector(
 end
 
 function compute_dirichlet_projector(
-    dst_model::Model, dst_bc::SolidMechanicsSchwarzBoundaryCondition; cache::RectangularProjectionCache=RectangularProjectionCache()
+    dst_model::Model,
+    dst_bc::SolidMechanicsSchwarzBoundaryCondition;
+    cache::RectangularProjectionCache=RectangularProjectionCache(),
 )
     src_model = coupled_subsim_of(dst_bc).model
     src_bc_index = dst_bc.coupled_bc_index
@@ -1902,7 +1916,13 @@ function set_id_from_name(name::String, mesh::ExodusDatabase, ::Type{T}) where {
     names = Exodus.read_names(mesh, T)
     idx = findfirst(==(name), names)
     if idx === nothing
-        type_str = T === NodeSet ? "node set" : T === SideSet ? "side set" : "block"
+        type_str = if T === NodeSet
+            "node set"
+        elseif T === SideSet
+            "side set"
+        else
+            "block"
+        end
         norma_abort("$type_str $name cannot be found in mesh")
     end
     return Int64(Exodus.read_ids(mesh, T)[idx])
@@ -1955,7 +1975,9 @@ function _create_bcs(subsim::SingleDomainSimulation)
                 elseif haskey(bc_setting_params, "node set")
                     boundary_condition = SolidMechanicsDirichletBoundaryCondition(input_mesh, bc_setting_params)
                 else
-                    norma_abort("A Dirichlet boundary condition requires either a \"node set\" or a \"side set\" entry.")
+                    norma_abort(
+                        "A Dirichlet boundary condition requires either a \"node set\" or a \"side set\" entry."
+                    )
                 end
                 push!(boundary_conditions, boundary_condition)
             elseif bc_type == "OpInf Dirichlet"
@@ -1992,7 +2014,9 @@ function _create_bcs(subsim::SingleDomainSimulation)
                 sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
-                boundary_condition = SMOpInfCouplingSchwarzBC(subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params)
+                boundary_condition = SMOpInfCouplingSchwarzBC(
+                    subsim, coupled_subsim, input_mesh, bc_type, bc_setting_params
+                )
                 push!(boundary_conditions, boundary_condition)
             else
                 norma_abort("Unknown boundary condition type : $bc_type")
@@ -2116,9 +2140,11 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
         if coupled_bc_name == coupled_bc.name && coupled_bc isa SolidMechanicsSchwarzBoundaryCondition
             if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition &&
-               coupled_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
+                coupled_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                 if bc.is_dirichlet == coupled_bc.is_dirichlet
-                    norma_abort("Nonoverlap Schwarz BCs must specify different default BC types (Dirichlet vs Neumann).")
+                    norma_abort(
+                        "Nonoverlap Schwarz BCs must specify different default BC types (Dirichlet vs Neumann)."
+                    )
                 end
             end
             coupled_bc.is_dirichlet = !bc.is_dirichlet
@@ -2128,4 +2154,3 @@ function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     end
     return nothing
 end
-

@@ -36,17 +36,13 @@
     cp("$example_dir/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("$example_dir/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
     cp("$example_dir/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp(
-        "$example_dir/quadratic-opinf-operator.npz",
-        "quadratic-opinf-operator.npz";
-        force=true,
-    )
+    cp("$example_dir/quadratic-opinf-operator.npz", "quadratic-opinf-operator.npz"; force=true)
     cp("$example_dir/../cuboid-1.g", "../cuboid-1.g"; force=true)
     cp("$example_dir/../cuboid-2.g", "../cuboid-2.g"; force=true)
 
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
-    model_fine   = subsims[1].model   # SolidMechanics  (Newmark FOM)
+    model_fine = subsims[1].model   # SolidMechanics  (Newmark FOM)
     model_coarse = subsims[2].model   # QuadraticOpInfRom (central-difference ROM)
 
     rm("cuboids.yaml"; force=true)
@@ -93,25 +89,125 @@
 
     # ── displacement regression ───────────────────────────────────────────────
     # cuboid-1 (FOM): Poisson contraction in x/y; z pushed up by Schwarz BC
-    @test min_disp_x_cuboid1 ≈ -0.11926950567829919  atol = 1.0e-06
+    @test min_disp_x_cuboid1 ≈ -0.11926950567829919 atol = 1.0e-06
     @test min_disp_y_cuboid1 ≈ -0.11926950567794792 atol = 1.0e-06
-    @test max_disp_z_cuboid1 ≈  0.6065838584133116 atol = 1.0e-06
+    @test max_disp_z_cuboid1 ≈ 0.6065838584133116 atol = 1.0e-06
 
     # cuboid-2 (ROM, fom_model): top face prescribed; z at top = 1.0 exactly
     @test min_disp_x_cuboid2 ≈ -0.11986552696734587 atol = 1.0e-06
     @test min_disp_y_cuboid2 ≈ -0.11986552696693364 atol = 1.0e-06
-    @test max_disp_z_cuboid2 ≈  1.0                  atol = 1.0e-08
+    @test max_disp_z_cuboid2 ≈ 1.0 atol = 1.0e-08
 
     # ── stress regression ─────────────────────────────────────────────────────
-    @test avg_stress_cuboid1 ≈
-        [-1.1863325261022714e6 -1.186332526035554e6 5.0812693386426896e8 -607310.0290748979 -607310.0291353256 -42857.96730489226] atol =
-        1.0e1
-    @test avg_stress_cuboid2 ≈
-        [3.191982793806081e6 3.191982793961093e6 5.287770940238085e8 -661354.8217173232 -661354.821773954 -14387.794002634266] atol =
-        1.0e1
+    @test avg_stress_cuboid1 ≈ [
+        -1.1863325261022714e6 -1.186332526035554e6 5.0812693386426896e8 -607310.0290748979 -607310.0291353256 -42857.96730489226
+    ] atol = 1.0e1
+    @test avg_stress_cuboid2 ≈ [
+        3.191982793806081e6 3.191982793961093e6 5.287770940238085e8 -661354.8217173232 -661354.821773954 -14387.794002634266
+    ] atol = 1.0e1
 
     # ── Schwarz convergence history ───────────────────────────────────────────
     # Overlap coupling converges well within the 16-iteration cap.
-    @test sim.controller.schwarz_iters ≈
-        [2, 5, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 8, 6, 8, 9, 9, 9, 9, 9] atol = 0
+    @test sim.controller.schwarz_iters ≈ [
+        2,
+        5,
+        6,
+        7,
+        7,
+        7,
+        7,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        8,
+        6,
+        8,
+        9,
+        9,
+        9,
+        9,
+        9,
+    ] atol = 0
 end

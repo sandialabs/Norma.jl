@@ -40,15 +40,15 @@
     az(i) = integrator.acceleration[3 * i]
 
     # τ/Δt = 100, CFL = 0.5: errors ≲ 0.03% throughout the bar after 1 m of travel.
-    @test uz(i_peak)  ≈ u_amp       rtol = 1.0e-06
-    @test abs(vz(i_peak))  < 1.0e-03 * v_amp
-    @test az(i_peak)  ≈ -a_amp      rtol = 1.0e-03
+    @test uz(i_peak) ≈ u_amp rtol = 1.0e-06
+    @test abs(vz(i_peak)) < 1.0e-03 * v_amp
+    @test az(i_peak) ≈ -a_amp rtol = 1.0e-03
 
-    @test uz(i_lead)  ≈ u_eta1      rtol = 1.0e-03
-    @test vz(i_lead)  ≈ +v_amp      rtol = 1.0e-03
-    @test abs(az(i_lead))  < 1.0e-03 * a_amp
+    @test uz(i_lead) ≈ u_eta1 rtol = 1.0e-03
+    @test vz(i_lead) ≈ +v_amp rtol = 1.0e-03
+    @test abs(az(i_lead)) < 1.0e-03 * a_amp
 
-    @test uz(i_trail) ≈ u_eta1      rtol = 1.0e-03
-    @test vz(i_trail) ≈ -v_amp      rtol = 1.0e-03
+    @test uz(i_trail) ≈ u_eta1 rtol = 1.0e-03
+    @test vz(i_trail) ≈ -v_amp rtol = 1.0e-03
     @test abs(az(i_trail)) < 1.0e-03 * a_amp
 end

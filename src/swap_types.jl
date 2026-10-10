@@ -43,10 +43,11 @@ mutable struct StressRecoverySwapCriterion <: SwapCriterion
 end
 
 # Convenience constructor: the recovery-operator cache starts empty.
-StressRecoverySwapCriterion(tolerance::Float64, direction::Symbol) =
-    StressRecoverySwapCriterion(
+function StressRecoverySwapCriterion(tolerance::Float64, direction::Symbol)
+    return StressRecoverySwapCriterion(
         tolerance, direction, IdDict{SolidMechanics,Tuple{LumpedRecovery,ConsistentRecovery}}()
     )
+end
 
 # Trigger a swap based on the Schwarz overlap L2 displacement error: the L2
 # norm of the displacement mismatch between subdomains at the overlapping

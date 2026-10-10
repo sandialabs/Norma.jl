@@ -756,7 +756,11 @@ function report_unconverged_solve(
             :warning,
             "Solver did not converge in %d iterations: |R| = %.2e > %.2e and |R|/|R0| = %.2e > %.2e; " *
             "treating the step as failed.",
-            iterations, solver.absolute_error, solver.absolute_tolerance, solver.relative_error, solver.relative_tolerance,
+            iterations,
+            solver.absolute_error,
+            solver.absolute_tolerance,
+            solver.relative_error,
+            solver.relative_tolerance,
         )
         solver.failed = true
         model.failed = true
@@ -765,7 +769,11 @@ function report_unconverged_solve(
             0,
             :warning,
             "Solver did not converge in %d iterations: |R| = %.2e > %.2e and |R|/|R0| = %.2e > %.2e; continuing.",
-            iterations, solver.absolute_error, solver.absolute_tolerance, solver.relative_error, solver.relative_tolerance,
+            iterations,
+            solver.absolute_error,
+            solver.absolute_tolerance,
+            solver.relative_error,
+            solver.relative_tolerance,
         )
     end
     return nothing
@@ -866,8 +874,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     # Only needed when this subdomain sends Neumann data (i.e., applies Dirichlet).
     if is_rom_model
         needs_force = any(
-            bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.is_dirichlet,
-            model.boundary_conditions,
+            bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.is_dirichlet, model.boundary_conditions
         )
         if needs_force
             model.fom_model.time = model.time

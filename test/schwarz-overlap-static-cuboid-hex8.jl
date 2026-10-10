@@ -192,10 +192,12 @@ end
 
     sim_default = Norma.create_simulation("cuboids.yaml")
     bc_default_1 = only([
-        bc for bc in sim_default.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+        bc for bc in sim_default.subsims[1].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
     bc_default_2 = only([
-        bc for bc in sim_default.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+        bc for bc in sim_default.subsims[2].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
     @test bc_default_1.compute_overlap_l2_error == ""
     @test bc_default_2.compute_overlap_l2_error == ""
@@ -223,17 +225,18 @@ end
     write(
         "cuboid-2.yaml",
         replace(
-            cuboid_2_text,
-            "source block: fine" => "source block: fine\n      compute overlap L2 relative error: disp",
+            cuboid_2_text, "source block: fine" => "source block: fine\n      compute overlap L2 relative error: disp"
         ),
     )
 
     sim_enabled = Norma.create_simulation("cuboids.yaml")
     bc_enabled_1 = only([
-        bc for bc in sim_enabled.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+        bc for bc in sim_enabled.subsims[1].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
     bc_enabled_2 = only([
-        bc for bc in sim_enabled.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+        bc for bc in sim_enabled.subsims[2].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
     @test bc_enabled_1.compute_overlap_l2_error == "disp"
     @test bc_enabled_2.compute_overlap_l2_error == "disp"
@@ -257,10 +260,12 @@ end
     end
     sim_enabled = sim_enabled_ref[]
     bc_enabled_1 = only([
-        bc for bc in sim_enabled.subsims[1].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+        bc for bc in sim_enabled.subsims[1].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
     bc_enabled_2 = only([
-        bc for bc in sim_enabled.subsims[2].model.boundary_conditions if bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
+        bc for bc in sim_enabled.subsims[2].model.boundary_conditions if
+        bc isa Norma.SolidMechanicsOverlapSchwarzBoundaryCondition
     ])
     @test isfinite(bc_enabled_1.overlap_l2_error)
     @test isfinite(bc_enabled_2.overlap_l2_error)

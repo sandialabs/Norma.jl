@@ -61,10 +61,17 @@ using YAML
     cp("../examples/ahead/overlap/clamped/clamped-3sd-2.g", "../clamped-3sd-2.g"; force=true)
     cp("../examples/ahead/overlap/clamped/clamped-3sd-3.g", "../clamped-3sd-3.g"; force=true)
 
-    for f in ("clamped-fom-1.yaml", "clamped-fom-2.yaml", "clamped-fom-3.yaml",
-              "clamped-rom-1.yaml", "clamped-rom-2.yaml", "clamped-rom-3.yaml",
-              "linear-opinf-operator-M30-1.npz", "linear-opinf-operator-M30-2.npz",
-              "linear-opinf-operator-M30-3.npz")
+    for f in (
+        "clamped-fom-1.yaml",
+        "clamped-fom-2.yaml",
+        "clamped-fom-3.yaml",
+        "clamped-rom-1.yaml",
+        "clamped-rom-2.yaml",
+        "clamped-rom-3.yaml",
+        "linear-opinf-operator-M30-1.npz",
+        "linear-opinf-operator-M30-2.npz",
+        "linear-opinf-operator-M30-3.npz",
+    )
         cp("$example_dir/$f", f; force=true)
     end
 
@@ -127,15 +134,30 @@ using YAML
     sim = Norma.run(params)
 
     # ── Clean up ────────────────────────────────────────────────────────────
-    for f in ("clamped-fom-1.yaml", "clamped-fom-2.yaml", "clamped-fom-3.yaml",
-              "clamped-rom-1.yaml", "clamped-rom-2.yaml", "clamped-rom-3.yaml",
-              "clamped-swap-round-trip.yaml",
-              "linear-opinf-operator-M30-1.npz", "linear-opinf-operator-M30-2.npz",
-              "linear-opinf-operator-M30-3.npz",
-              "../clamped-3sd-1.g", "../clamped-3sd-2.g", "../clamped-3sd-3.g",
-              "clamped-3sd-1.e", "clamped-3sd-fom-2.e", "clamped-3sd-3.e",
-              "clamped-3sd-1-phase2.e", "clamped-3sd-rom-2.e", "clamped-3sd-3-phase2.e",
-              "clamped-3sd-1-phase3.e", "clamped-3sd-fom-2-phase2.e", "clamped-3sd-3-phase3.e")
+    for f in (
+        "clamped-fom-1.yaml",
+        "clamped-fom-2.yaml",
+        "clamped-fom-3.yaml",
+        "clamped-rom-1.yaml",
+        "clamped-rom-2.yaml",
+        "clamped-rom-3.yaml",
+        "clamped-swap-round-trip.yaml",
+        "linear-opinf-operator-M30-1.npz",
+        "linear-opinf-operator-M30-2.npz",
+        "linear-opinf-operator-M30-3.npz",
+        "../clamped-3sd-1.g",
+        "../clamped-3sd-2.g",
+        "../clamped-3sd-3.g",
+        "clamped-3sd-1.e",
+        "clamped-3sd-fom-2.e",
+        "clamped-3sd-3.e",
+        "clamped-3sd-1-phase2.e",
+        "clamped-3sd-rom-2.e",
+        "clamped-3sd-3-phase2.e",
+        "clamped-3sd-1-phase3.e",
+        "clamped-3sd-fom-2-phase2.e",
+        "clamped-3sd-3-phase3.e",
+    )
         rm(f; force=true)
     end
     for f in filter(f -> startswith(f, "clamped-") && endswith(f, ".csv"), readdir())
@@ -227,13 +249,17 @@ using YAML
                     (z[i] + c * (T - t) - b) * exp(-(z[i] + c * (T - t) - b)^2 / 2 / s^2)
                 )
             acce_z[i] =
-                0.5 * a * (
+                0.5 *
+                a *
+                (
                     -c^2 / s^2 * exp(-0.5 * (z[i] - c * t - b)^2 / s^2) +
                     c^2 / s^4 * (z[i] - c * t - b)^2 * exp(-0.5 * (z[i] - c * t - b)^2 / s^2) -
                     c^2 / s^2 * exp(-0.5 * (z[i] + c * t - b)^2 / s^2) +
                     c^2 / s^4 * (z[i] + c * t - b)^2 * exp(-0.5 * (z[i] + c * t - b)^2 / s^2)
                 ) -
-                0.5 * a * (
+                0.5 *
+                a *
+                (
                     -c^2 / s^2 * exp(-0.5 * (z[i] - c * (T - t) - b)^2 / s^2) +
                     c^2 / s^4 * (z[i] - c * (T - t) - b)^2 * exp(-0.5 * (z[i] - c * (T - t) - b)^2 / s^2) -
                     c^2 / s^2 * exp(-0.5 * (z[i] + c * (T - t) - b)^2 / s^2) +

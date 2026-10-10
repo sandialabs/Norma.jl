@@ -58,7 +58,9 @@ using Exodus
     )
     # CSV output isn't used by this test (only the Exodus checkpoint and the
     # final in-memory model state are), so turn it off to save I/O.
-    write("clamped.yaml", replace(read("clamped.yaml", String), "CSV output interval: 1.0e-5" => "CSV output interval: 0"))
+    write(
+        "clamped.yaml", replace(read("clamped.yaml", String), "CSV output interval: 1.0e-5" => "CSV output interval: 0")
+    )
     cp(
         "../examples/ahead/overlap/clamped/dynamic-linear-elastic-single-gaussian-opinf-fom/clamped-1.yaml",
         "clamped-1.yaml";

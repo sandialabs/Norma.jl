@@ -56,11 +56,11 @@ using YAML
 
     sim = Norma.run("notched-cylinder-j2-elastic-to-plastic-swap.yaml")
 
-    rm("notched-cylinder-j2-elastic-to-plastic-swap.yaml";        force=true)
+    rm("notched-cylinder-j2-elastic-to-plastic-swap.yaml"; force=true)
     rm("notched-cylinder-j2-elastic-to-plastic-swap-phase2.yaml"; force=true)
-    rm("../notched-cylinder-coarse.g";                            force=true)
-    rm("../notched-cylinder-coarse-2.g";                          force=true)
-    rm("notched-cylinder-coarse-j2-elastic-to-plastic-swap.e";        force=true)
+    rm("../notched-cylinder-coarse.g"; force=true)
+    rm("../notched-cylinder-coarse-2.g"; force=true)
+    rm("notched-cylinder-coarse-j2-elastic-to-plastic-swap.e"; force=true)
     rm("notched-cylinder-coarse-j2-elastic-to-plastic-swap-phase2.e"; force=true)
 
     # ── Swap fired ──────────────────────────────────────────────────────────
@@ -80,8 +80,7 @@ using YAML
     max_vm = 0.0
     for blk in sim.model.stress, el in blk, qp in el
         σ_vm = sqrt(
-            0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) +
-            3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2),
+            0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) + 3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2)
         )
         max_vm = max(max_vm, σ_vm)
     end
@@ -93,7 +92,7 @@ using YAML
     # minor platform-to-platform floating-point differences while still catching
     # meaningful regressions.
     avg_stress = average_components(sim.model.stress)
-    avg_disp   = average_components(sim.integrator.displacement)
+    avg_disp = average_components(sim.integrator.displacement)
 
     # Average axial (z) stress is the dominant component.
     @test avg_stress[3] ≈ 1.6488216849331063e8 rtol = 1.0e-1   # tension in z

@@ -18,9 +18,7 @@ using YAML
         cp("../examples/ahead/single/cuboid/cuboid-hex.g", "cuboid-hex-inplace.g"; force=true)
         original_bytes = read("cuboid-hex-inplace.g")
 
-        doc = YAML.load_file(
-            "../examples/ahead/single/cuboid/dynamic/cuboid.yaml"; dicttype=Norma.Parameters
-        )
+        doc = YAML.load_file("../examples/ahead/single/cuboid/dynamic/cuboid.yaml"; dicttype=Norma.Parameters)
         doc["name"] = "restart-inplace-non-restart"
         doc["input mesh file"] = "cuboid-hex-inplace.g"
         doc["output mesh file"] = "cuboid-hex-inplace.g"
@@ -45,9 +43,7 @@ using YAML
         )
         original_bytes = read("cuboid-restart-inplace.e")
 
-        doc = YAML.load_file(
-            "../examples/ahead/single/cuboid/dynamic-restart/cuboid.yaml"; dicttype=Norma.Parameters
-        )
+        doc = YAML.load_file("../examples/ahead/single/cuboid/dynamic-restart/cuboid.yaml"; dicttype=Norma.Parameters)
         doc["name"] = "restart-inplace-restart"
         doc["input mesh file"] = "cuboid-restart-inplace.e"
         doc["output mesh file"] = "cuboid-restart-inplace.e"
@@ -69,9 +65,7 @@ using YAML
         cp("../examples/ahead/single/cuboid/cuboid-hex.g", "cuboid-hex-inplace2.g"; force=true)
         original_bytes = read("cuboid-hex-inplace2.g")
 
-        doc = YAML.load_file(
-            "../examples/ahead/single/cuboid/dynamic/cuboid.yaml"; dicttype=Norma.Parameters
-        )
+        doc = YAML.load_file("../examples/ahead/single/cuboid/dynamic/cuboid.yaml"; dicttype=Norma.Parameters)
         doc["name"] = "restart-inplace-relative"
         doc["input mesh file"] = "cuboid-hex-inplace2.g"
         doc["output mesh file"] = "./cuboid-hex-inplace2.g"

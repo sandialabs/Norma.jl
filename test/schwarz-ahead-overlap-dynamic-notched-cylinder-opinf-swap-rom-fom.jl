@@ -70,21 +70,21 @@
 
 @testset "Schwarz AHeaD Overlap Dynamic Notched Cylinder OpInf ROM-to-FOM Swap" begin
     example_dir = "../examples/ahead/overlap/notched-cylinder/dynamic-opinf-swap-rom-fom"
-    mesh_dir    = "../examples/ahead/overlap/notched-cylinder"
+    mesh_dir = "../examples/ahead/overlap/notched-cylinder"
 
     # ── Stage input files ──────────────────────────────────────────────────
     # YAML files are copied to the test working directory; mesh files are
     # expected one level up (as specified by "input mesh file: ../…" in the
     # sub-domain YAMLs), matching the convention used by
     # schwarz-ahead-overlap-dynamic-notched-cylinder-j2-swap-fom.jl.
-    cp("$example_dir/notched-cylinder.yaml",         "notched-cylinder.yaml";         force=true)
-    cp("$example_dir/notched-cylinder-rom-1.yaml",    "notched-cylinder-rom-1.yaml";   force=true)
-    cp("$example_dir/notched-cylinder-fom-1.yaml",    "notched-cylinder-fom-1.yaml";   force=true)
-    cp("$example_dir/notched-cylinder-rom-2.yaml",    "notched-cylinder-rom-2.yaml";   force=true)
+    cp("$example_dir/notched-cylinder.yaml", "notched-cylinder.yaml"; force=true)
+    cp("$example_dir/notched-cylinder-rom-1.yaml", "notched-cylinder-rom-1.yaml"; force=true)
+    cp("$example_dir/notched-cylinder-fom-1.yaml", "notched-cylinder-fom-1.yaml"; force=true)
+    cp("$example_dir/notched-cylinder-rom-2.yaml", "notched-cylinder-rom-2.yaml"; force=true)
     cp("$example_dir/linear-opinf-operator-M3-1.npz", "linear-opinf-operator-M3-1.npz"; force=true)
     cp("$example_dir/linear-opinf-operator-M3-2.npz", "linear-opinf-operator-M3-2.npz"; force=true)
-    cp("$mesh_dir/notched-cylinder-1-coarse.g",       "../notched-cylinder-1-coarse.g"; force=true)
-    cp("$mesh_dir/notched-cylinder-2-coarse.g",       "../notched-cylinder-2-coarse.g"; force=true)
+    cp("$mesh_dir/notched-cylinder-1-coarse.g", "../notched-cylinder-1-coarse.g"; force=true)
+    cp("$mesh_dir/notched-cylinder-2-coarse.g", "../notched-cylinder-2-coarse.g"; force=true)
 
     # ── Run ────────────────────────────────────────────────────────────────
     # Run the published example exactly as-is: no time-shortening or CSV
@@ -92,15 +92,15 @@
     sim = Norma.run("notched-cylinder.yaml")
 
     # ── Cleanup ────────────────────────────────────────────────────────────
-    rm("notched-cylinder.yaml";          force=true)
-    rm("notched-cylinder-rom-1.yaml";    force=true)
-    rm("notched-cylinder-fom-1.yaml";    force=true)
-    rm("notched-cylinder-rom-2.yaml";    force=true)
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-rom-1.yaml"; force=true)
+    rm("notched-cylinder-fom-1.yaml"; force=true)
+    rm("notched-cylinder-rom-2.yaml"; force=true)
     rm("linear-opinf-operator-M3-1.npz"; force=true)
     rm("linear-opinf-operator-M3-2.npz"; force=true)
     rm("../notched-cylinder-1-coarse.g"; force=true)
     rm("../notched-cylinder-2-coarse.g"; force=true)
-    rm("notched-cylinder-1.e";           force=true)
+    rm("notched-cylinder-1.e"; force=true)
     # The swap's replacement (notched-cylinder-fom-1.yaml) reuses domain 1's
     # original "output mesh file" (notched-cylinder-1.e), already written
     # before the swap; uniquify_swap_output! detects the collision and
@@ -109,14 +109,14 @@
     # "notched-cylinder-1-phase2.e" — note this is independent of the
     # replacement YAML's own filename, which is reflected in the subsim's
     # *name* instead (see the assertion below).
-    rm("notched-cylinder-1-phase2.e";    force=true)
-    rm("notched-cylinder-2.e";           force=true)
+    rm("notched-cylinder-1-phase2.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
     subsims = sim.subsims
     subsim_1 = subsims[1]
     subsim_2 = subsims[2]
-    model_1  = subsim_1.model
-    model_2  = subsim_2.model
+    model_1 = subsim_1.model
+    model_2 = subsim_2.model
 
     # ── Swap fired ─────────────────────────────────────────────────────────
     @test length(sim.swaps) == 1

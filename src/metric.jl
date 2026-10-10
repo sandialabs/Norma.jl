@@ -13,13 +13,11 @@
 
 # The unit regular tetrahedron of the smoothing rules, with edges of unit
 # length; the ideal element is this shape scaled by the target size.
-const UNIT_TETRAHEDRON = SMatrix{3,4,Float64,12}(
-    0.5 / sqrt(2.0) * [
-        1 -1 -1 1
-        1 -1 1 -1
-        1 1 -1 -1
-    ],
-)
+const UNIT_TETRAHEDRON = SMatrix{3,4,Float64,12}(0.5 / sqrt(2.0) * [
+    1 -1 -1 1
+    1 -1 1 -1
+    1 1 -1 -1
+])
 
 # Order of the six components of a symmetric tensor in the input and the
 # output: M_xx, M_yy, M_zz, M_xy, M_yz, M_zx.
@@ -120,8 +118,9 @@ function principal_of_tensor(M::SMatrix{3,3,Float64,9}, reference::SMatrix{3,3,F
     best_R = SMatrix{3,3,Float64,9}(I)
     best_h = SVector{3,Float64}(1.0, 1.0, 1.0)
     h = SVector{3,Float64}(1.0 / sqrt(λ[1]), 1.0 / sqrt(λ[2]), 1.0 / sqrt(λ[3]))
-    for perm in ((1, 2, 3), (1, 3, 2), (2, 1, 3), (2, 3, 1), (3, 1, 2), (3, 2, 1)), s1 in (1.0, -1.0),
-        s2 in (1.0, -1.0), s3 in (1.0, -1.0)
+    for perm in ((1, 2, 3), (1, 3, 2), (2, 1, 3), (2, 3, 1), (3, 1, 2), (3, 2, 1)),
+        s1 in (1.0, -1.0), s2 in (1.0, -1.0),
+        s3 in (1.0, -1.0)
 
         R = SMatrix{3,3,Float64,9}(hcat(s1 * V[:, perm[1]], s2 * V[:, perm[2]], s3 * V[:, perm[3]]))
         det(R) > 0.0 || continue
@@ -349,8 +348,9 @@ function create_metric_field(smooth_reference::String, params, mesh::Union{Exodu
     num_nodes = length(values[1])
     tensors = Vector{SMatrix{3,3,Float64,9}}(undef, num_nodes)
     for n in 1:num_nodes
-        tensors[n] = symmetric_from_components(SVector{6,Float64}(values[1][n], values[2][n], values[3][n],
-            values[4][n], values[5][n], values[6][n]))
+        tensors[n] = symmetric_from_components(
+            SVector{6,Float64}(values[1][n], values[2][n], values[3][n], values[4][n], values[5][n], values[6][n])
+        )
     end
     interpolation = get(params, "interpolation", "principal")
     if interpolation == "principal"
@@ -514,8 +514,10 @@ function nodal_metric_output(model::SolidMechanics, positions::AbstractMatrix{Fl
     elseif source isa NodalPrincipalMetric
         return exp.(Matrix(source.log_sizes)), Matrix(source.rotation)
     end
-    tensors = [exp_symmetric(symmetric_from_components(SVector{6,Float64}(ntuple(i -> source.log_tensor[i, n], 6))))
-               for n in 1:num_nodes]
+    tensors = [
+        exp_symmetric(symmetric_from_components(SVector{6,Float64}(ntuple(i -> source.log_tensor[i, n], 6)))) for
+        n in 1:num_nodes
+    ]
     sizes, rotation, _ = principal_of_nodal_tensors(tensors, node_neighbors(model))
     return sizes, rotation
 end
@@ -538,8 +540,11 @@ function nodal_metric_tensors(model::SolidMechanics, positions::AbstractMatrix{F
     target = zeros(6, num_nodes)
     for n in 1:num_nodes
         h = SVector{3,Float64}(sizes[1, n], sizes[2, n], sizes[3, n])
-        R = rotation === nothing ? SMatrix{3,3,Float64,9}(I) :
+        R = if rotation === nothing
+            SMatrix{3,3,Float64,9}(I)
+        else
             rt_of_rv(SVector{3,Float64}(rotation[1, n], rotation[2, n], rotation[3, n]))
+        end
         metric[:, n] = components_from_symmetric(metric_tensor(h, R))
         target[:, n] = components_from_symmetric(SMatrix{3,3,Float64,9}(R * Diagonal(h) * R'))
     end

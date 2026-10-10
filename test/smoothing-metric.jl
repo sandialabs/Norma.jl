@@ -111,7 +111,8 @@ end
     # A rotation about the axis of transverse isotropy of the metric (the
     # principal direction of the small size) leaves the energy at zero.
     Qa =
-        Norma.rt_of_rv(SVector(0.0, 0.0, θ)) * Norma.rt_of_rv(SVector(0.9, 0.0, 0.0)) *
+        Norma.rt_of_rv(SVector(0.0, 0.0, θ)) *
+        Norma.rt_of_rv(SVector(0.9, 0.0, 0.0)) *
         Norma.rt_of_rv(SVector(0.0, 0.0, -θ))
     @test energy(Qa * X) ≈ 0.0 atol = 1.0e-12
     # The energy does not depend on the factor chosen for M: Q F_M gives the
@@ -236,8 +237,8 @@ cube_params = Dict{String,Any}(
         Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0),
     "boundary conditions" => Dict{String,Any}(
         "Dirichlet" => [
-            Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-            (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+            Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+            (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
         ],
     ),
     "solver" => Dict{String,Any}(

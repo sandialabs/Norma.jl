@@ -154,7 +154,8 @@ mutable struct SolidMechanicsOverlapSchwarzBoundaryCondition <: SolidMechanicsOv
     coupled_handle::DomainHandle
 end
 
-mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <: SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
+               SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
@@ -204,7 +205,8 @@ end
 # assembled from the traction and displacement of the partner. Each side
 # transfers the partner fields with its own Dirichlet and Neumann projectors,
 # so the two sides of an interface may use different values of α.
-mutable struct SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition <: SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition
+mutable struct SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition <:
+               SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition
     name::String
     side_set_id::Int64
     side_set_node_indices::Vector{Int64}
@@ -221,6 +223,5 @@ mutable struct SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition <: SolidMec
     self_handle::DomainHandle
     coupled_handle::DomainHandle
 end
-
 
 include("opinf/opinf_ics_bcs_types.jl")

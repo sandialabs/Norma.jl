@@ -13,8 +13,12 @@
 
     # Select the Aitken secant (non-recursive, paper eq. 9) instead of the
     # Aitken-recursive Irons-Tuck form.
-    write("cuboids-aitken-secant.yaml", replace(read("cuboids-aitken-secant.yaml", String),
-        "relaxation: aitken recursive" => "relaxation: aitken secant"))
+    write(
+        "cuboids-aitken-secant.yaml",
+        replace(
+            read("cuboids-aitken-secant.yaml", String), "relaxation: aitken recursive" => "relaxation: aitken secant"
+        ),
+    )
 
     sim = Norma.run("cuboids-aitken-secant.yaml")
     subsims = sim.subsims

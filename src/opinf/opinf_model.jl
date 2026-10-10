@@ -43,10 +43,8 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     basis = NPZ.npzread(basis_file)
     basis = basis["basis"]
     ensemble_size = params["model"]["ensemble-size"]
-    model = load_torch_models([
-        opinf_model_directory * "/stiffness-" * string(i - 1) * ".pt" for i in 1:ensemble_size
-    ])
-    num_dofs_per_node,num_nodes_basis,reduced_dim = size(basis)
+    model = load_torch_models([opinf_model_directory * "/stiffness-" * string(i - 1) * ".pt" for i in 1:ensemble_size])
+    num_dofs_per_node, num_nodes_basis, reduced_dim = size(basis)
     num_dofs = reduced_dim
 
     time = 0.0
@@ -57,7 +55,7 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
     reduced_boundary_forcing = zeros(num_dofs)
     free_dofs = trues(num_dofs)
     boundary_conditions = Vector{BoundaryCondition}()
-    NeuralNetworkOpInfRom(
+    return NeuralNetworkOpInfRom(
         model,
         basis,
         reduced_state,
@@ -71,7 +69,6 @@ function NeuralNetworkOpInfRom(params::Dict{String,Any})
         reference,
     )
 end
-
 
 function LinearOpInfRom(params::Parameters)
     params["mesh smoothing"] = false

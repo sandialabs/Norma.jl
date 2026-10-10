@@ -25,8 +25,7 @@
     g(ξ) = exp(-ξ^2 / (2 * s^2))
     u_ref(z) = (α / 2) * (g(z - ct) + g(z + ct))
     v_ref(z) = (α * c / (2 * s^2)) * ((z - ct) * g(z - ct) - (z + ct) * g(z + ct))
-    a_ref(z) = (α * c^2 / (2 * s^4)) *
-               (((z - ct)^2 - s^2) * g(z - ct) + ((z + ct)^2 - s^2) * g(z + ct))
+    a_ref(z) = (α * c^2 / (2 * s^4)) * (((z - ct)^2 - s^2) * g(z - ct) + ((z + ct)^2 - s^2) * g(z + ct))
 
     z_nodes = model.reference[3, :]
     u_field = u_ref.(z_nodes)

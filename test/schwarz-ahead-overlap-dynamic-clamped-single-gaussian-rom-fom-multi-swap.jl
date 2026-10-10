@@ -92,21 +92,9 @@ _Phi_pp(x) = _odd_periodic(x, _exact_fpp, xm -> -_exact_fpp(2 * EXACT_L - xm))
 # Continuous antiderivative of Psi (the odd-periodic extension of the
 # velocity IC's profile), used to evaluate the d'Alembert integral term
 # in closed form.
-_H(x) = _odd_periodic(
-    x,
-    xm -> EXACT_C * _exact_f(xm),
-    xm -> EXACT_C * _exact_f(2 * EXACT_L - xm),
-)
-_Psi(x) = _odd_periodic(
-    x,
-    xm -> EXACT_C * _exact_fprime(xm),
-    xm -> -EXACT_C * _exact_fprime(2 * EXACT_L - xm),
-)
-_Psi_prime(x) = _odd_periodic(
-    x,
-    xm -> EXACT_C * _exact_fpp(xm),
-    xm -> EXACT_C * _exact_fpp(2 * EXACT_L - xm),
-)
+_H(x) = _odd_periodic(x, xm -> EXACT_C * _exact_f(xm), xm -> EXACT_C * _exact_f(2 * EXACT_L - xm))
+_Psi(x) = _odd_periodic(x, xm -> EXACT_C * _exact_fprime(xm), xm -> -EXACT_C * _exact_fprime(2 * EXACT_L - xm))
+_Psi_prime(x) = _odd_periodic(x, xm -> EXACT_C * _exact_fpp(xm), xm -> EXACT_C * _exact_fpp(2 * EXACT_L - xm))
 
 function exact_disp(z, t)
     A = z .- EXACT_C * t
@@ -117,15 +105,13 @@ end
 function exact_velo(z, t)
     A = z .- EXACT_C * t
     B = z .+ EXACT_C * t
-    return 0.5 * EXACT_C .* (_Phi_prime.(B) .- _Phi_prime.(A)) .+
-           0.5 .* (_Psi.(B) .+ _Psi.(A))
+    return 0.5 * EXACT_C .* (_Phi_prime.(B) .- _Phi_prime.(A)) .+ 0.5 .* (_Psi.(B) .+ _Psi.(A))
 end
 
 function exact_acce(z, t)
     A = z .- EXACT_C * t
     B = z .+ EXACT_C * t
-    return 0.5 * EXACT_C^2 .* (_Phi_pp.(B) .+ _Phi_pp.(A)) .+
-           0.5 * EXACT_C .* (_Psi_prime.(B) .- _Psi_prime.(A))
+    return 0.5 * EXACT_C^2 .* (_Phi_pp.(B) .+ _Phi_pp.(A)) .+ 0.5 * EXACT_C .* (_Psi_prime.(B) .- _Psi_prime.(A))
 end
 
 """
@@ -145,24 +131,16 @@ exact_solution(z, t) = (exact_disp(z, t), exact_velo(z, t), exact_acce(z, t))
     # ../clamped-larger-2.g (relative to the test working directory), so the
     # meshes are copied one directory above, matching the convention used by
     # the other ahead/overlap/clamped tests.
-    cp("$example_dir/../clamped-smaller-1.g", "../clamped-smaller-1.g"; force = true)
-    cp("$example_dir/../clamped-larger-2.g", "../clamped-larger-2.g"; force = true)
+    cp("$example_dir/../clamped-smaller-1.g", "../clamped-smaller-1.g"; force=true)
+    cp("$example_dir/../clamped-larger-2.g", "../clamped-larger-2.g"; force=true)
 
-    cp("$example_dir/clamped-rom-1.yaml", "clamped-rom-1.yaml"; force = true)
-    cp("$example_dir/clamped-fom-1.yaml", "clamped-fom-1.yaml"; force = true)
-    cp("$example_dir/clamped-fom-2.yaml", "clamped-fom-2.yaml"; force = true)
-    cp("$example_dir/clamped-rom-2.yaml", "clamped-rom-2.yaml"; force = true)
-    cp("$example_dir/clamped-swap.yaml", "clamped-swap.yaml"; force = true)
-    cp(
-        "$example_dir/linear-opinf-operator-1-M10.npz",
-        "linear-opinf-operator-1-M10.npz";
-        force = true,
-    )
-    cp(
-        "$example_dir/linear-opinf-operator-2-M20.npz",
-        "linear-opinf-operator-2-M20.npz";
-        force = true,
-    )
+    cp("$example_dir/clamped-rom-1.yaml", "clamped-rom-1.yaml"; force=true)
+    cp("$example_dir/clamped-fom-1.yaml", "clamped-fom-1.yaml"; force=true)
+    cp("$example_dir/clamped-fom-2.yaml", "clamped-fom-2.yaml"; force=true)
+    cp("$example_dir/clamped-rom-2.yaml", "clamped-rom-2.yaml"; force=true)
+    cp("$example_dir/clamped-swap.yaml", "clamped-swap.yaml"; force=true)
+    cp("$example_dir/linear-opinf-operator-1-M10.npz", "linear-opinf-operator-1-M10.npz"; force=true)
+    cp("$example_dir/linear-opinf-operator-2-M20.npz", "linear-opinf-operator-2-M20.npz"; force=true)
 
     # This test runs the FULL original final time (1.0e-3), exercising all
     # four swap plans. CSV output is disabled in-memory (the YAML file on
@@ -196,30 +174,30 @@ exact_solution(z, t) = (exact_disp(z, t), exact_velo(z, t), exact_acce(z, t))
     # ever be written, no collision would ever occur, and every handle
     # name checked below would stay at its un-suffixed base name instead.
     input_file = "clamped-swap.yaml"
-    params = YAML.load_file(input_file; dicttype = Dict{String,Any})
+    params = YAML.load_file(input_file; dicttype=Dict{String,Any})
     params["name"] = input_file
     params["CSV output interval"] = 0
 
     sim = Norma.run(params)
 
     # ── Clean up ────────────────────────────────────────────────────────────
-    rm("clamped-rom-1.yaml"; force = true)
-    rm("clamped-fom-1.yaml"; force = true)
-    rm("clamped-fom-2.yaml"; force = true)
-    rm("clamped-rom-2.yaml"; force = true)
-    rm("clamped-swap.yaml"; force = true)
-    rm("linear-opinf-operator-1-M10.npz"; force = true)
-    rm("linear-opinf-operator-2-M20.npz"; force = true)
-    rm("../clamped-smaller-1.g"; force = true)
-    rm("../clamped-larger-2.g"; force = true)
-    rm("clamped-1.e"; force = true)
-    rm("clamped-1-phase2.e"; force = true)
-    rm("clamped-1-phase3.e"; force = true)
-    rm("clamped-2.e"; force = true)
-    rm("clamped-2-phase2.e"; force = true)
-    rm("clamped-2-phase3.e"; force = true)
+    rm("clamped-rom-1.yaml"; force=true)
+    rm("clamped-fom-1.yaml"; force=true)
+    rm("clamped-fom-2.yaml"; force=true)
+    rm("clamped-rom-2.yaml"; force=true)
+    rm("clamped-swap.yaml"; force=true)
+    rm("linear-opinf-operator-1-M10.npz"; force=true)
+    rm("linear-opinf-operator-2-M20.npz"; force=true)
+    rm("../clamped-smaller-1.g"; force=true)
+    rm("../clamped-larger-2.g"; force=true)
+    rm("clamped-1.e"; force=true)
+    rm("clamped-1-phase2.e"; force=true)
+    rm("clamped-1-phase3.e"; force=true)
+    rm("clamped-2.e"; force=true)
+    rm("clamped-2-phase2.e"; force=true)
+    rm("clamped-2-phase3.e"; force=true)
     for f in filter(f -> startswith(f, "clamped-") && endswith(f, ".csv"), readdir())
-        rm(f; force = true)
+        rm(f; force=true)
     end
 
     # ── Completion ──────────────────────────────────────────────────────────

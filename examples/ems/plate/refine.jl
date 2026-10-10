@@ -22,7 +22,12 @@ for stage in 1:stages
     global mesh = "plate-stage-$stage.g"
     Norma.write_topology(topology, mesh)
     Norma.norma_logf(
-        0, :info, "Stage %d mesh %s: %d nodes, %d elements", stage, mesh,
-        Norma.num_alive_nodes(topology), Norma.num_alive_elements(topology),
+        0,
+        :info,
+        "Stage %d mesh %s: %d nodes, %d elements",
+        stage,
+        mesh,
+        Norma.num_alive_nodes(topology),
+        Norma.num_alive_elements(topology),
     )
 end

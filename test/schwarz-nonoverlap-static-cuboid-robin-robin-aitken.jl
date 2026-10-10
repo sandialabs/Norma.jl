@@ -31,8 +31,7 @@ function run_robin_robin(relaxation; overrides=Dict{String,Any}(), expect_abort=
     else
         sim = Norma.run(params)
     end
-    for f in ["cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml",
-              "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e"]
+    for f in ["cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e"]
         rm(f; force=true)
     end
     return sim
@@ -92,12 +91,14 @@ end
     @test sim.controller.relative_error > sim.controller.relative_tolerance
 
     # Setting the default explicitly aborts as well.
-    run_robin_robin(nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "abort")),
-                    expect_abort=true)
+    run_robin_robin(
+        nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "abort")), expect_abort=true
+    )
 
     # An unrecognized value is rejected rather than silently treated as `warn`.
-    run_robin_robin(nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "shrug")),
-                    expect_abort=true)
+    run_robin_robin(
+        nothing; overrides=merge(capped, Dict{String,Any}("unconverged step action" => "shrug")), expect_abort=true
+    )
 
     # A converged run is unaffected: no cap, no warning, no abort.
     sim_ok = run_robin_robin(nothing)

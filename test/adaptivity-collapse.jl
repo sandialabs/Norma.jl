@@ -41,8 +41,8 @@ function smoothing_model(mesh_file, block_name, output; size_field="0.214", surf
     else
         Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-                (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+                (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
             ],
         )
     end

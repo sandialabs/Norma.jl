@@ -43,16 +43,22 @@
     )
 
     tension_specimen_text = read("tension-specimen-j2-elastic-to-plastic-swap-phase2.yaml", String)
-    write("tension-specimen-j2-elastic-to-plastic-swap-phase2.yaml", replace(tension_specimen_text, "input mesh file: ../tension-specimen-coarse.g" => "input mesh file: ../tension-specimen-coarse-2.g"))
+    write(
+        "tension-specimen-j2-elastic-to-plastic-swap-phase2.yaml",
+        replace(
+            tension_specimen_text,
+            "input mesh file: ../tension-specimen-coarse.g" => "input mesh file: ../tension-specimen-coarse-2.g",
+        ),
+    )
 
     sim = Norma.run("tension-specimen-j2-elastic-to-plastic-swap.yaml")
 
-    rm("tension-specimen-j2-elastic-to-plastic-swap.yaml";        force=true)
+    rm("tension-specimen-j2-elastic-to-plastic-swap.yaml"; force=true)
     rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.yaml"; force=true)
-    rm("../tension-specimen-coarse.g";                            force=true)
-    rm("../tension-specimen-coarse-2.g";                          force=true)
-    rm("tension-specimen-j2-elastic-to-plastic-swap.e";           force=true)
-    rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.e";    force=true)
+    rm("../tension-specimen-coarse.g"; force=true)
+    rm("../tension-specimen-coarse-2.g"; force=true)
+    rm("tension-specimen-j2-elastic-to-plastic-swap.e"; force=true)
+    rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.e"; force=true)
 
     # ── Swap fired ──────────────────────────────────────────────────────────
     @test sim.name == "tension-specimen-j2-elastic-to-plastic-swap-phase2"
@@ -68,8 +74,7 @@
     max_vm = 0.0
     for blk in sim.model.stress, el in blk, qp in el
         σ_vm = sqrt(
-            0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) +
-            3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2),
+            0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) + 3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2)
         )
         max_vm = max(max_vm, σ_vm)
     end
@@ -77,7 +82,7 @@
     # Regression values regenerated 2026-08-28 after the J2 state-commit fix
     # (plastic state used to be committed on every residual assembly instead
     # of on step acceptance; see commit_state in simulation.jl).
-    @test max_vm ≈ 3.578036849895821e8  rtol = 1.0e-3
+    @test max_vm ≈ 3.578036849895821e8 rtol = 1.0e-3
 
     # Average y-displacement
     avg_disp = average_components(sim.integrator.displacement)

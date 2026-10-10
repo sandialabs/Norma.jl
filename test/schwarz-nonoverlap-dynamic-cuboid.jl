@@ -34,8 +34,7 @@ function run_schwarz(example_dir, input_filename, extra_params=Dict())
     params["name"] = input_filename
     merge!(params, extra_params)
     sim = Norma.run(params)
-    for f in [input_filename, "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g",
-              "cuboid-1.e", "cuboid-2.e"]
+    for f in [input_filename, "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e"]
         rm(f; force=true)
     end
     return sim

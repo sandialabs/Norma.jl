@@ -29,24 +29,24 @@
 
 @testset "Schwarz Overlap Static Cuboid Hex8 Overlap-L2-Error Swap (coarsen)" begin
     src = "../examples/overlap/static-same-step/cuboids-swap-overlap-l2/"
-    cp(src * "cuboids-coarsen.yaml",   "cuboids-coarsen.yaml";   force=true)
-    cp(src * "cuboid-1.yaml",          "cuboid-1.yaml";           force=true)
-    cp(src * "cuboid-1-phase2.yaml",   "cuboid-1-phase2.yaml";    force=true)
-    cp(src * "cuboid-2.yaml",          "cuboid-2.yaml";           force=true)
-    cp(src * "cuboid-1.g",             "cuboid-1.g";              force=true)
-    cp(src * "cuboid-2.g",             "cuboid-2.g";              force=true)
+    cp(src * "cuboids-coarsen.yaml", "cuboids-coarsen.yaml"; force=true)
+    cp(src * "cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp(src * "cuboid-1-phase2.yaml", "cuboid-1-phase2.yaml"; force=true)
+    cp(src * "cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp(src * "cuboid-1.g", "cuboid-1.g"; force=true)
+    cp(src * "cuboid-2.g", "cuboid-2.g"; force=true)
 
     sim = Norma.run("cuboids-coarsen.yaml")
 
-    rm("cuboids-coarsen.yaml";   force=true)
-    rm("cuboid-1.yaml";          force=true)
-    rm("cuboid-1-phase2.yaml";   force=true)
-    rm("cuboid-2.yaml";          force=true)
-    rm("cuboid-1.g";             force=true)
-    rm("cuboid-2.g";             force=true)
-    rm("cuboid-1.e";             force=true)
-    rm("cuboid-1-phase2.e";      force=true)
-    rm("cuboid-2.e";             force=true)
+    rm("cuboids-coarsen.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-1-phase2.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-1-phase2.e"; force=true)
+    rm("cuboid-2.e"; force=true)
 
     # Swap must have fired: slot 1 now holds the phase-2 replacement.
     @test sim.subsims[1].name == "cuboid-1-phase2"
@@ -76,24 +76,24 @@ end
 
 @testset "Schwarz Overlap Static Cuboid Hex8 Overlap-L2-Error Swap (refine)" begin
     src = "../examples/overlap/static-same-step/cuboids-swap-overlap-l2/"
-    cp(src * "cuboids-refine.yaml",    "cuboids-refine.yaml";     force=true)
-    cp(src * "cuboid-1.yaml",          "cuboid-1.yaml";           force=true)
-    cp(src * "cuboid-1-phase2.yaml",   "cuboid-1-phase2.yaml";    force=true)
-    cp(src * "cuboid-2.yaml",          "cuboid-2.yaml";           force=true)
-    cp(src * "cuboid-1.g",             "cuboid-1.g";              force=true)
-    cp(src * "cuboid-2.g",             "cuboid-2.g";              force=true)
+    cp(src * "cuboids-refine.yaml", "cuboids-refine.yaml"; force=true)
+    cp(src * "cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp(src * "cuboid-1-phase2.yaml", "cuboid-1-phase2.yaml"; force=true)
+    cp(src * "cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp(src * "cuboid-1.g", "cuboid-1.g"; force=true)
+    cp(src * "cuboid-2.g", "cuboid-2.g"; force=true)
 
     sim = Norma.run("cuboids-refine.yaml")
 
-    rm("cuboids-refine.yaml";    force=true)
-    rm("cuboid-1.yaml";          force=true)
-    rm("cuboid-1-phase2.yaml";   force=true)
-    rm("cuboid-2.yaml";          force=true)
-    rm("cuboid-1.g";             force=true)
-    rm("cuboid-2.g";             force=true)
-    rm("cuboid-1.e";             force=true)
-    rm("cuboid-1-phase2.e";      force=true)
-    rm("cuboid-2.e";             force=true)
+    rm("cuboids-refine.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-1-phase2.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-1-phase2.e"; force=true)
+    rm("cuboid-2.e"; force=true)
 
     # Swap must have fired on step 2.
     @test sim.subsims[1].name == "cuboid-1-phase2"

@@ -39,11 +39,11 @@
 
     sim = Norma.run("tension-specimen-j2-elastic-to-plastic-swap.yaml")
 
-    rm("tension-specimen-j2-elastic-to-plastic-swap.yaml";        force=true)
+    rm("tension-specimen-j2-elastic-to-plastic-swap.yaml"; force=true)
     rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.yaml"; force=true)
-    rm("../tension-specimen-coarse.g";                            force=true)
-    rm("tension-specimen-j2-elastic-to-plastic-swap.e";           force=true)
-    rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.e";    force=true)
+    rm("../tension-specimen-coarse.g"; force=true)
+    rm("tension-specimen-j2-elastic-to-plastic-swap.e"; force=true)
+    rm("tension-specimen-j2-elastic-to-plastic-swap-phase2.e"; force=true)
 
     # ── Swap fired ──────────────────────────────────────────────────────────
     @test sim.name == "tension-specimen-j2-elastic-to-plastic-swap-phase2"
@@ -59,8 +59,7 @@
     max_vm = 0.0
     for blk in sim.model.stress, el in blk, qp in el
         σ_vm = sqrt(
-            0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) +
-            3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2),
+            0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) + 3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2)
         )
         max_vm = max(max_vm, σ_vm)
     end

@@ -5,7 +5,11 @@
 # top-level Norma.jl directory.
 @testset "Single Static Solid Cube Mid-Run Time Swap" begin
     cp("../examples/single/static-solid/cube-swap/standard/cube-t-swap.yaml", "cube-t-swap.yaml"; force=true)
-    cp("../examples/single/static-solid/cube-swap/standard/cube-t-swap-phase2.yaml", "cube-t-swap-phase2.yaml"; force=true)
+    cp(
+        "../examples/single/static-solid/cube-swap/standard/cube-t-swap-phase2.yaml",
+        "cube-t-swap-phase2.yaml";
+        force=true,
+    )
     cp("../examples/single/static-solid/cube-swap/standard/cube.g", "cube.g"; force=true)
     sim = Norma.run("cube-t-swap.yaml")
     rm("cube-t-swap.yaml"; force=true)

@@ -7,12 +7,28 @@
 using YAML
 
 @testset "Schwarz AHeaD Non-Overlap Dynamic Cuboid HEX8-HEX8 Quadratic ROM-FOM" begin
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/cuboids.yaml",
+        "cuboids.yaml";
+        force=true,
+    )
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/cuboid-1.yaml",
+        "cuboid-1.yaml";
+        force=true,
+    )
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/cuboid-2.yaml",
+        "cuboid-2.yaml";
+        force=true,
+    )
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-1.g", "../cuboid-1.g"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-2.g", "../cuboid-2.g"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/qopinf-operator-1.npz", "qopinf-operator-1.npz"; force=true)
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-fom/qopinf-operator-1.npz",
+        "qopinf-operator-1.npz";
+        force=true,
+    )
     input_file = "cuboids.yaml"
     params = YAML.load_file(input_file; dicttype=Norma.Parameters)
     params["initial time"] = 0.0
@@ -45,15 +61,15 @@ using YAML
     @test min_disp_x_cuboid1 ≈ -0.11889384695150929 atol = 1e-8
     @test min_disp_y_cuboid1 ≈ -0.11889384705205869 atol = 1e-8
     @test max_disp_z_cuboid1 ≈ 0.5000016248596132 atol = 1e-4
-    @test min_disp_x_cuboid2 ≈ -0.11889386700533924  atol = 1e-7
+    @test min_disp_x_cuboid2 ≈ -0.11889386700533924 atol = 1e-7
     @test min_disp_y_cuboid2 ≈ -0.11889386711134019 atol = 1e-7
-    @test max_disp_z_cuboid2 ≈ 1.0  atol = 1e-4
-    @test avg_stress_cuboid1 ≈
-        [437.89751864932106 438.00531869181015 5.210648754095795e8 -16.983304477843305 -17.544556690916306 5.673461482425322] atol =
-        1.0e1
-    @test avg_stress_cuboid2 ≈
-        [109.33375660144678 109.86672529857776 5.210641414825372e8 17.864402889957972 17.594121247470817 73.01888543796987] atol =
-        1.0e1
+    @test max_disp_z_cuboid2 ≈ 1.0 atol = 1e-4
+    @test avg_stress_cuboid1 ≈ [
+        437.89751864932106 438.00531869181015 5.210648754095795e8 -16.983304477843305 -17.544556690916306 5.673461482425322
+    ] atol = 1.0e1
+    @test avg_stress_cuboid2 ≈ [
+        109.33375660144678 109.86672529857776 5.210641414825372e8 17.864402889957972 17.594121247470817 73.01888543796987
+    ] atol = 1.0e1
     # The Schwarz iterations this case needs are nondeterministic at the last count: the
     # quadratic OpInf residual jitters at the 1.0e-12 relative tolerance, so a
     # stop lands on either side of the threshold depending on the platform.
@@ -61,7 +77,108 @@ using YAML
     # below and the totals span 1616 to 1619, so pin the profile with a band of
     # one rather than the exact vector.  This was hidden until the cap went from
     # 16 to 64, which clipped nearly every stop to a constant.
-    reference_iters = [13, 14, 15, 15, 16, 16, 17, 17, 17, 17, 18, 18, 17, 18, 18, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 19, 18, 18, 19, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 18, 17, 17, 17, 18, 16, 17, 16, 16, 16, 17, 16, 17, 16, 16, 17, 16, 16, 16, 16, 16, 16, 16, 17, 17, 17, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 14, 14, 14, 13, 13, 13, 12, 12, 12, 12, 11, 11, 10]
+    reference_iters = [
+        13,
+        14,
+        15,
+        15,
+        16,
+        16,
+        17,
+        17,
+        17,
+        17,
+        18,
+        18,
+        17,
+        18,
+        18,
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        18,
+        18,
+        18,
+        18,
+        19,
+        18,
+        18,
+        19,
+        18,
+        18,
+        18,
+        18,
+        18,
+        18,
+        18,
+        17,
+        18,
+        17,
+        17,
+        18,
+        17,
+        17,
+        17,
+        18,
+        16,
+        17,
+        16,
+        16,
+        16,
+        17,
+        16,
+        17,
+        16,
+        16,
+        17,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        17,
+        17,
+        17,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        14,
+        14,
+        14,
+        13,
+        13,
+        13,
+        12,
+        12,
+        12,
+        12,
+        11,
+        11,
+        10,
+    ]
     iters = sim.controller.schwarz_iters
     @test length(iters) == length(reference_iters)
     @test maximum(iters) < params["maximum iterations"]

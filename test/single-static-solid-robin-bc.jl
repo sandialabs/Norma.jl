@@ -23,7 +23,7 @@
     #   sigma_zz = E * eps_z = 1e9 * 5e-4 = 5e5
     @test avg_disp[1] ≈ -6.25e-05 rtol = 1.0e-06
     @test avg_disp[2] ≈ -6.25e-05 rtol = 1.0e-06
-    @test avg_disp[3] ≈  2.50e-04 rtol = 1.0e-06
+    @test avg_disp[3] ≈ 2.50e-04 rtol = 1.0e-06
     @test avg_stress[1] ≈ 0.0 atol = 1.0e-01
     @test avg_stress[2] ≈ 0.0 atol = 1.0e-01
     @test avg_stress[3] ≈ 5.0e+05 rtol = 1.0e-06

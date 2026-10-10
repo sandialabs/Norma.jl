@@ -33,10 +33,8 @@ function RomHessianMinimizer(params::Parameters, model::RomModel)
     # appropriate when the ROM system matrix is symmetric positive-definite and the
     # reduced dimension is large enough that a direct solve would be expensive.
     linear_solver = get(solver_params, "rom linear solver", "direct")
-    linear_solver in ("direct", "iterative") || norma_abortf(
-        "Unknown ROM linear solver '%s'. Valid options are 'direct' and 'iterative'.",
-        linear_solver,
-    )
+    linear_solver in ("direct", "iterative") ||
+        norma_abortf("Unknown ROM linear solver '%s'. Valid options are 'direct' and 'iterative'.", linear_solver)
     ls_backtrack_factor = get(solver_params, "line search backtrack factor", 0.5)
     ls_decrease_factor = get(solver_params, "line search decrease factor", 1.0e-04)
     ls_max_iters = get(solver_params, "line search maximum iterations", 16)
@@ -204,7 +202,9 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
         model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * integrator.displacement[:]
     if any(!isfinite, solver.solution)
         model.failed = true
-        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        norma_log(
+            0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence."
+        )
         return nothing
     end
     return nothing
@@ -218,12 +218,12 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     x = integrator.displacement
     H = model.opinf_rom["H"]
     xsqr = kron(x, x)
-    solver.solution[:] =
-        model.opinf_rom["f"] + model.reduced_boundary_forcing -
-        model.opinf_rom["K"] * x - H * xsqr
+    solver.solution[:] = model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * x - H * xsqr
     if any(!isfinite, solver.solution)
         model.failed = true
-        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        norma_log(
+            0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence."
+        )
         return nothing
     end
     return nothing
@@ -240,11 +240,12 @@ function evaluate(integrator::RomCentralDifference, solver::RomExplicitSolver, m
     G = model.opinf_rom["G"]
     xcub = kron(x, x, x)
     solver.solution[:] =
-        model.opinf_rom["f"] + model.reduced_boundary_forcing -
-        model.opinf_rom["K"] * x - H * xsqr - G * xcub
+        model.opinf_rom["f"] + model.reduced_boundary_forcing - model.opinf_rom["K"] * x - H * xsqr - G * xcub
     if any(!isfinite, solver.solution)
         model.failed = true
-        norma_log(0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence.")
+        norma_log(
+            0, :error, "Non-finite values detected in ROM explicit solution. This may indicate solution divergence."
+        )
         return nothing
     end
     return nothing

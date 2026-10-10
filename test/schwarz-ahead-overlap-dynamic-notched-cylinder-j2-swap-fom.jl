@@ -35,37 +35,37 @@ using YAML
 
 @testset "Schwarz AHeaD Overlap Dynamic Notched Cylinder J2 Elastic-to-Plastic Swap FOM" begin
     example_dir = "../examples/ahead/overlap/notched-cylinder/dynamic-j2-swap-fom"
-    mesh_dir    = "../examples/ahead/overlap/notched-cylinder"
+    mesh_dir = "../examples/ahead/overlap/notched-cylinder"
 
     # ── Stage input files ──────────────────────────────────────────────────
     # YAML files are copied to the test working directory; mesh files are
     # expected one level up (as specified by "input mesh file: ../…" in the
     # sub-domain YAMLs).
-    cp("$example_dir/notched-cylinder.yaml",          "notched-cylinder.yaml";          force=true)
-    cp("$example_dir/notched-cylinder-1.yaml",        "notched-cylinder-1.yaml";        force=true)
-    cp("$example_dir/notched-cylinder-2.yaml",        "notched-cylinder-2.yaml";        force=true)
+    cp("$example_dir/notched-cylinder.yaml", "notched-cylinder.yaml"; force=true)
+    cp("$example_dir/notched-cylinder-1.yaml", "notched-cylinder-1.yaml"; force=true)
+    cp("$example_dir/notched-cylinder-2.yaml", "notched-cylinder-2.yaml"; force=true)
     cp("$example_dir/notched-cylinder-1-phase2.yaml", "notched-cylinder-1-phase2.yaml"; force=true)
-    cp("$mesh_dir/notched-cylinder-1-coarse.g",       "../notched-cylinder-1-coarse.g"; force=true)
-    cp("$mesh_dir/notched-cylinder-2-coarse.g",       "../notched-cylinder-2-coarse.g"; force=true)
+    cp("$mesh_dir/notched-cylinder-1-coarse.g", "../notched-cylinder-1-coarse.g"; force=true)
+    cp("$mesh_dir/notched-cylinder-2-coarse.g", "../notched-cylinder-2-coarse.g"; force=true)
 
     # ── Run ────────────────────────────────────────────────────────────────
     sim = Norma.run("notched-cylinder.yaml")
 
     # ── Cleanup ────────────────────────────────────────────────────────────
-    rm("notched-cylinder.yaml";          force=true)
-    rm("notched-cylinder-1.yaml";        force=true)
-    rm("notched-cylinder-2.yaml";        force=true)
+    rm("notched-cylinder.yaml"; force=true)
+    rm("notched-cylinder-1.yaml"; force=true)
+    rm("notched-cylinder-2.yaml"; force=true)
     rm("notched-cylinder-1-phase2.yaml"; force=true)
     rm("../notched-cylinder-1-coarse.g"; force=true)
     rm("../notched-cylinder-2-coarse.g"; force=true)
-    rm("notched-cylinder-1.e";           force=true)
-    rm("notched-cylinder-1-phase2.e";    force=true)
-    rm("notched-cylinder-2.e";           force=true)
+    rm("notched-cylinder-1.e"; force=true)
+    rm("notched-cylinder-1-phase2.e"; force=true)
+    rm("notched-cylinder-2.e"; force=true)
 
     subsim_1 = sim.subsims[1]
     subsim_2 = sim.subsims[2]
-    model_1  = subsim_1.model
-    model_2  = subsim_2.model
+    model_1 = subsim_1.model
+    model_2 = subsim_2.model
 
     # ── Swap fired ─────────────────────────────────────────────────────────
     # After the criterion fires, slot 1 holds the phase-2 replacement.
@@ -87,8 +87,7 @@ using YAML
         mv = 0.0
         for blk in model.stress, el in blk, qp in el
             σ_vm = sqrt(
-                0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) +
-                3.0  * (qp[4]^2 + qp[5]^2 + qp[6]^2),
+                0.5 * ((qp[1] - qp[2])^2 + (qp[2] - qp[3])^2 + (qp[3] - qp[1])^2) + 3.0 * (qp[4]^2 + qp[5]^2 + qp[6]^2)
             )
             mv = max(mv, σ_vm)
         end

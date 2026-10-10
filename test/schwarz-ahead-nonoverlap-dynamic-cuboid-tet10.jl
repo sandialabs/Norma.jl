@@ -66,7 +66,7 @@ const tet10_example_subdir = "$tet10_example_dir/dynamic-tet10"
     subsims = sim.subsims
     # domains list: ["cuboid-2.yaml", "cuboid-1.yaml"]
     u_coarse = subsims[1].model.displacement  # cuboid-2: coarse, top, driven
-    u_fine   = subsims[2].model.displacement  # cuboid-1: fine, bottom, fixed
+    u_fine = subsims[2].model.displacement  # cuboid-1: fine, bottom, fixed
 
     # --- physics-based assertions -------------------------------------------
 

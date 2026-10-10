@@ -91,4 +91,3 @@ end
         @test coordinate_1 ≈ coordinate_2 atol = 5e-3
     end
 end
-

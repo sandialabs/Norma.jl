@@ -48,15 +48,15 @@
 
     # τ/Δt = 25 with Newmark (γ=0.5, β=0.25) gives ≲ 0.3% error in u, v, a after
     # the pulse traverses 1 m.  Tolerances below are 2-3× the observed errors.
-    @test uz(i_peak)  ≈ u_amp       rtol = 1.0e-04
-    @test abs(vz(i_peak))  < 0.01 * v_amp     # 1% of velocity amplitude
-    @test az(i_peak)  ≈ -a_amp      rtol = 2.0e-03
+    @test uz(i_peak) ≈ u_amp rtol = 1.0e-04
+    @test abs(vz(i_peak)) < 0.01 * v_amp     # 1% of velocity amplitude
+    @test az(i_peak) ≈ -a_amp rtol = 2.0e-03
 
-    @test uz(i_lead)  ≈ u_eta1      rtol = 5.0e-03
-    @test vz(i_lead)  ≈ +v_amp      rtol = 5.0e-03
-    @test abs(az(i_lead))  < 0.01 * a_amp     # 1% of acceleration amplitude
+    @test uz(i_lead) ≈ u_eta1 rtol = 5.0e-03
+    @test vz(i_lead) ≈ +v_amp rtol = 5.0e-03
+    @test abs(az(i_lead)) < 0.01 * a_amp     # 1% of acceleration amplitude
 
-    @test uz(i_trail) ≈ u_eta1      rtol = 5.0e-03
-    @test vz(i_trail) ≈ -v_amp      rtol = 5.0e-03
+    @test uz(i_trail) ≈ u_eta1 rtol = 5.0e-03
+    @test vz(i_trail) ≈ -v_amp rtol = 5.0e-03
     @test abs(az(i_trail)) < 0.01 * a_amp
 end

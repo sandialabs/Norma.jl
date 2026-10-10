@@ -66,10 +66,7 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::RomModel)
     velocity = integrator.velocity
     acceleration = integrator.acceleration
 
-    has_nonoverlap = any(
-        bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition,
-        model.boundary_conditions,
-    )
+    has_nonoverlap = any(bc -> bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition, model.boundary_conditions)
 
     # Re-construct full state only when we need internal force for nonoverlap output.
     if has_nonoverlap

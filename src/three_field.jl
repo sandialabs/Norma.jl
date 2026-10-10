@@ -82,7 +82,8 @@ function check_three_field_quadrature(order::Int, num_points::Int)
         "three-field pressure order $order needs a quadrature rule with more " *
         "than $m points to be a projection rather than interpolation; got " *
         "$num_points. The element would be identical to a displacement " *
-        "element. Use a richer rule (TETRA10 has 5- and 14-point rules).")
+        "element. Use a richer rule (TETRA10 has 5- and 14-point rules).",
+    )
     return nothing
 end
 
@@ -140,8 +141,7 @@ another discretization; only the volumetric strain is projected.  Written
 generically in the element type of `u_flat` so `ForwardDiff` can carry dual
 numbers through it.
 """
-function three_field_energy(material, order::Int, dN, ip_weights, ξ, X,
-                            u_flat::AbstractVector{T}) where {T}
+function three_field_energy(material, order::Int, dN, ip_weights, ξ, X, u_flat::AbstractVector{T}) where {T}
     num_nodes = size(X, 2)
     num_points = length(ip_weights)
     u = reshape(u_flat, 3, num_nodes)
@@ -198,13 +198,15 @@ three_field_supported(::Any) = false
 Energy, internal force and (optionally) stiffness of one element, all from the
 same energy function by automatic differentiation.
 """
-function three_field_element(material, order::Int, dN, ip_weights, ξ, X,
-                             u_flat::Vector{Float64}; need_tangent::Bool=true)
+function three_field_element(
+    material, order::Int, dN, ip_weights, ξ, X, u_flat::Vector{Float64}; need_tangent::Bool=true
+)
     check_three_field_quadrature(order, length(ip_weights))
     three_field_supported(material) || error(
         "three-field formulation requires a material whose stored energy splits " *
         "additively in the logarithmic strain measure; got $(typeof(material)). " *
-        "Hencky is supported.")
+        "Hencky is supported.",
+    )
     f = uu -> three_field_energy(material, order, dN, ip_weights, ξ, X, uu)
     energy = f(u_flat)
     force = ForwardDiff.gradient(f, u_flat)

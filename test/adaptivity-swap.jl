@@ -38,8 +38,8 @@ function smoothing_model(mesh_file, block_name, output; extra=Dict{String,Any}()
             Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0),
         "boundary conditions" => Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-                (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+                (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
             ],
         ),
         "solver" => Dict{String,Any}(
@@ -166,7 +166,7 @@ end
     @test times.swaps > 0.0
     @test times.swaps + times.collapses + times.splits <= times.passes <= phase_time
     @test Norma.adaptivity_time_report(90.5, Norma.AdaptivityTimes(60.0, 1.0, 2.0, 25.0, 20.0, 3.0, 2.0, 0.5)) ==
-          "Adaptivity Time = 1m 30.50s (smoothing 1m 0.00s, topology 27.00s, mesh write 0.50s, setup 1.00s)"
+        "Adaptivity Time = 1m 30.50s (smoothing 1m 0.00s, topology 27.00s, mesh write 0.50s, setup 1.00s)"
     @test Norma.num_alive_nodes(topology) == nn0
     @test Norma.euler_characteristic(topology) == chi0
     @test Set(Norma.boundary_faces(topology)) == boundary0
@@ -196,7 +196,10 @@ end
         "Exodus output interval" => 1.0,
         "CSV output interval" => 0,
         "adaptivity" => Dict{String,Any}(
-            "desired energy density" => 0.05, "adjacency layers" => 2, "maximum passes" => 5, "outer iterations" => 2
+            "desired energy density" => 0.05,
+            "adjacency layers" => 2,
+            "maximum passes" => 5,
+            "outer iterations" => 2,
         ),
         "model" => Dict{String,Any}(
             "type" => "mesh smoothing",
@@ -218,8 +221,8 @@ end
             Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 1.0, "time step" => 1.0),
         "boundary conditions" => Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-                (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+                (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
             ],
         ),
         "solver" => Dict{String,Any}(

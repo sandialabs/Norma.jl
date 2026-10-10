@@ -86,8 +86,7 @@ end
 # correction), in which case every weight is 1.
 function overlap_partners(subsim::SingleDomainSimulation)
     model = subsim.model
-    model isa SolidMechanics ||
-        norma_abort("Blended overlap energy is only implemented for SolidMechanics subdomains.")
+    model isa SolidMechanics || norma_abort("Blended overlap energy is only implemented for SolidMechanics subdomains.")
     partners = OverlapPartner[]
     for bc in model.boundary_conditions
         # Every overlapping coupling subtypes this abstract, so
@@ -160,10 +159,11 @@ function abort_degenerate_overlap(
     x::Vector{Float64}, model::SolidMechanics, partners::Vector{OverlapPartner}, h::Float64, label::String
 )
     d_own = minimum(distance_to_side_set_reference(x, model, p.own_side_set_id) for p in partners)
-    d_partner = sum(
-        point_in_model_reference(x, p.partner_model, p.tol) ?
-        distance_to_side_set_reference(x, p.partner_model, p.partner_side_set_id) : 0.0 for p in partners
-    )
+    d_partner = sum(if point_in_model_reference(x, p.partner_model, p.tol)
+        distance_to_side_set_reference(x, p.partner_model, p.partner_side_set_id)
+    else
+        0.0
+    end for p in partners)
     denom = d_own + d_partner
     return norma_abort(
         "Degenerate overlap in subdomain \"$label\" at reference point " *
@@ -184,10 +184,8 @@ end
 # subdomain.  Aborts on a degenerate overlap.
 function compute_arlequin_weights(subsim::SingleDomainSimulation)
     model = subsim.model
-    model isa SolidMechanics ||
-        norma_abort("Blended overlap energy is only implemented for SolidMechanics subdomains.")
-    model.mesh_smoothing &&
-        norma_abort("Blended overlap energy does not support mesh-smoothing (EMS) subdomains.")
+    model isa SolidMechanics || norma_abort("Blended overlap energy is only implemented for SolidMechanics subdomains.")
+    model.mesh_smoothing && norma_abort("Blended overlap energy does not support mesh-smoothing (EMS) subdomains.")
     partners = overlap_partners(subsim)
     # Build the search grids serially before the threaded classification: the
     # builders read the Exodus files and fill the caches, neither of which is
@@ -215,7 +213,9 @@ end
 
 # Function barrier on the block's static shape functions. The grids are read
 # only, so the elements are classified in parallel.
-function compute_block_arlequin_weights(model::SolidMechanics, block::ElementBlockData, partners::Vector{OverlapPartner})
+function compute_block_arlequin_weights(
+    model::SolidMechanics, block::ElementBlockData, partners::Vector{OverlapPartner}
+)
     N = block.N
     conn = block.connectivity
     num_points = block.num_points
@@ -269,8 +269,11 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
     integrator = subsim.integrator
     half_dt = 0.0
     if integrator isa CentralDifference
-        nominal_dt = integrator.minimum_time_step == integrator.maximum_time_step ?
-            integrator.maximum_time_step : integrator.time_step
+        nominal_dt = if integrator.minimum_time_step == integrator.maximum_time_step
+            integrator.maximum_time_step
+        else
+            integrator.time_step
+        end
         half_dt = 0.5 * nominal_dt
     end
     stored_tl = zeros(maxthreadid())
@@ -278,7 +281,16 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
     for (block_index, block) in enumerate(model.blocks)
         material = model.materials[block_index]
         blended_block_energy!(
-            stored_tl, kinetic_tl, model, block, block_index, material, material.ρ, aw.weights[block_index], dynamic, half_dt
+            stored_tl,
+            kinetic_tl,
+            model,
+            block,
+            block_index,
+            material,
+            material.ρ,
+            aw.weights[block_index],
+            dynamic,
+            half_dt,
         )
     end
     return sum(stored_tl), sum(kinetic_tl)
@@ -564,7 +576,7 @@ function write_blended_energy_csv(sim::MultiDomainSimulation)
         append!(row, pseudo)
         append!(row, [staggered_interface, staggered_interior])
         append!(row, jump_values)
-        println(io, join(row, ","))
+        return println(io, join(row, ","))
     end
     return nothing
 end

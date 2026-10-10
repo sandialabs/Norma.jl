@@ -48,9 +48,7 @@ mutable struct MeshTopology
 end
 
 function MeshTopology(positions::AbstractMatrix{Float64}, connectivity::AbstractMatrix{Int}, rest...)
-    return MeshTopology(
-        Matrix(positions), size(positions, 2), Matrix(connectivity), size(connectivity, 2), rest...
-    )
+    return MeshTopology(Matrix(positions), size(positions, 2), Matrix(connectivity), size(connectivity, 2), rest...)
 end
 
 function Base.getproperty(topology::MeshTopology, name::Symbol)

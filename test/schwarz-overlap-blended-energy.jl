@@ -47,7 +47,11 @@ end
 @testset "Overlap Blended Energy: Unit-Weight Kinetic Identity" begin
     cp("../examples/overlap/dynamic-same-step/cantilever/cantilever.yaml", "cantilever.yaml"; force=true)
     cp("../examples/overlap/dynamic-same-step/cantilever/cantilever-free.yaml", "cantilever-free.yaml"; force=true)
-    cp("../examples/overlap/dynamic-same-step/cantilever/cantilever-clamped.yaml", "cantilever-clamped.yaml"; force=true)
+    cp(
+        "../examples/overlap/dynamic-same-step/cantilever/cantilever-clamped.yaml",
+        "cantilever-clamped.yaml";
+        force=true,
+    )
     cp("../examples/overlap/dynamic-same-step/cantilever/cantilever-free.g", "cantilever-free.g"; force=true)
     cp("../examples/overlap/dynamic-same-step/cantilever/cantilever-clamped.g", "cantilever-clamped.g"; force=true)
     sim = Norma.create_simulation("cantilever.yaml")
@@ -122,9 +126,7 @@ end
     # Forcing the characteristic length huge makes the band width fall below the
     # degeneracy tolerance, which must be rejected outright, not regularized.
     Norma.NORMA_TEST_MODE[] = true
-    @test_throws Norma.NormaAbortException Norma.arlequin_weight(
-        overlap_point, model, partners, 1.0e12, subsim.name
-    )
+    @test_throws Norma.NormaAbortException Norma.arlequin_weight(overlap_point, model, partners, 1.0e12, subsim.name)
     Norma.NORMA_TEST_MODE[] = false
 
     for s in sim.subsims

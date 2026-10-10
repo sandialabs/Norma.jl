@@ -156,7 +156,9 @@ function correct(integrator::RomNewmark, solver::Solver, model::RomModel)
     return nothing
 end
 
-function initialize(integrator::RomCentralDifference, solver::RomExplicitSolver, model::RomModel; trust_schwarz::Bool=false)
+function initialize(
+    integrator::RomCentralDifference, solver::RomExplicitSolver, model::RomModel; trust_schwarz::Bool=false
+)
     # Compute initial accelerations
     initialize(integrator.fom_integrator, solver.fom_solver, model.fom_model; trust_schwarz=trust_schwarz)
     # project onto basis

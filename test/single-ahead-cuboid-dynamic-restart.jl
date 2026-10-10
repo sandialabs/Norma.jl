@@ -27,11 +27,7 @@
     rm("cuboid.e"; force=true)
 
     # ── Phase 2: restart run resuming from t = 0.1 -> 1.0 ───────────────────
-    cp(
-        "../examples/ahead/single/cuboid/dynamic-restart/cuboid-restart-in.e",
-        "cuboid-restart-in.e";
-        force=true,
-    )
+    cp("../examples/ahead/single/cuboid/dynamic-restart/cuboid-restart-in.e", "cuboid-restart-in.e"; force=true)
     cp("../examples/ahead/single/cuboid/dynamic-restart/cuboid.yaml", "cuboid-dynamic-restart.yaml"; force=true)
 
     sim_restart = Norma.run("cuboid-dynamic-restart.yaml")

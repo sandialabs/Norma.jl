@@ -116,7 +116,6 @@ using Logging
         end
     end
 
-
     @testset "Version Report" begin
         # The log records the commit of the source tree (issue #229).
         @test startswith(Norma.version_report_cached(), "commit ")
@@ -137,5 +136,4 @@ using Logging
             @test Norma.version_report(dir) == "commit $hash of 2026-10-08 12:00:00 +0000, with uncommitted changes"
         end
     end
-
 end

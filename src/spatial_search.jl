@@ -97,7 +97,11 @@ end
 # item is evaluated only when its box is closer than the best distance so
 # far, and an item binned in several cells is simply examined more than once.
 function box_grid_nearest(
-    grid::BoxGrid, p::SVector{3,Float64}, box_min::Vector{SVector{3,Float64}}, box_max::Vector{SVector{3,Float64}}, distance::F
+    grid::BoxGrid,
+    p::SVector{3,Float64},
+    box_min::Vector{SVector{3,Float64}},
+    box_max::Vector{SVector{3,Float64}},
+    distance::F,
 ) where {F}
     return box_grid_nearest_item(grid, p, box_min, box_max, distance)[1]
 end
@@ -105,7 +109,11 @@ end
 # As box_grid_nearest, also returning the index of the nearest item (0 if the
 # grid is empty).
 function box_grid_nearest_item(
-    grid::BoxGrid, p::SVector{3,Float64}, box_min::Vector{SVector{3,Float64}}, box_max::Vector{SVector{3,Float64}}, distance::F
+    grid::BoxGrid,
+    p::SVector{3,Float64},
+    box_min::Vector{SVector{3,Float64}},
+    box_max::Vector{SVector{3,Float64}},
+    distance::F,
 ) where {F}
     c = box_grid_cell(grid, p)
     best = Inf
@@ -238,4 +246,3 @@ function clamped_facet_distance(nodes::Matrix{Float64}, p::SVector{3,Float64})
     end
     return best
 end
-

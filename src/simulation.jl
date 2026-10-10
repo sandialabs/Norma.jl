@@ -7,7 +7,6 @@
 using Printf
 using YAML
 
-
 function load_input(input_file::String)
     norma_log(0, :setup, "Reading from " * input_file)
     params = YAML.load_file(input_file; dicttype=Parameters)
@@ -72,9 +71,7 @@ end
 function _validate_restart_index(index_value)
     if !(index_value isa Integer || (index_value isa AbstractFloat && isinteger(index_value)))
         norma_abortf(
-            "`restart: index:` must be an integer, got %s (a %s).",
-            string(index_value),
-            string(typeof(index_value)),
+            "`restart: index:` must be an integer, got %s (a %s).", string(index_value), string(typeof(index_value))
         )
     end
     return Int64(index_value)
@@ -141,8 +138,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     end
     # Negative indices count back from the last snapshot, Python-style:
     # -1 is the final snapshot, -2 the one before it, and so on.
-    restart_index =
-        requested_restart_index < 0 ? num_steps + requested_restart_index + 1 : requested_restart_index
+    restart_index = requested_restart_index < 0 ? num_steps + requested_restart_index + 1 : requested_restart_index
     if restart_index < 1 || restart_index > num_steps
         norma_abortf(
             "Restart index %d is out of range for mesh '%s', which has %d time step(s) " *
@@ -208,11 +204,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
         velocity[3, :] = velo_z
     else
         velocity .= 0.0
-        norma_log(
-            0,
-            :restart,
-            "Restart checkpoint has no velocity fields (quasistatic); using zero initial velocity.",
-        )
+        norma_log(0, :restart, "Restart checkpoint has no velocity fields (quasistatic); using zero initial velocity.")
     end
     # Override the initial time unconditionally: the restart snapshot's time is
     # the only initial time consistent with the restart displacement/velocity
@@ -232,12 +224,7 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
             restart_time,
         )
     end
-    params["restart_info"] = (
-        index=restart_index,
-        time=restart_time,
-        displacement=displacement,
-        velocity=velocity,
-    )
+    params["restart_info"] = (index=restart_index, time=restart_time, displacement=displacement, velocity=velocity)
     return nothing
 end
 
@@ -251,10 +238,7 @@ end
 function _material_models_used(model_params::Parameters)
     material_params = get(model_params, "material", Parameters())
     blocks = get(material_params, "blocks", Parameters())
-    return [
-        get(get(material_params, material_name, Parameters()), "model", "")
-        for material_name in values(blocks)
-    ]
+    return [get(get(material_params, material_name, Parameters()), "model", "") for material_name in values(blocks)]
 end
 
 # Resolve and validate restart for a multi-domain (Schwarz) simulation. Run
@@ -332,8 +316,7 @@ function process_multidomain_restart!(params::Parameters)
                 domain_path,
             )
         end
-        haskey(subparams, "input mesh file") ||
-            norma_abort("Subdomain '$domain_path' has no `input mesh file`.")
+        haskey(subparams, "input mesh file") || norma_abort("Subdomain '$domain_path' has no `input mesh file`.")
         input_mesh_file = subparams["input mesh file"]
         input_mesh = Exodus.ExodusDatabase(input_mesh_file, "r")
         domain_time = try
@@ -434,8 +417,8 @@ function warn_restart_with_nonoverlap_schwarz(sim::MultiDomainSimulation)
     # SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition abstract type that
     # the earlier concrete-type check never matched.
     has_nonoverlap = any(
-        any(bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition for bc in sub.model.boundary_conditions)
-        for sub in sim.subsims
+        any(bc isa SolidMechanicsNonOverlapCouplingSchwarzBoundaryCondition for bc in sub.model.boundary_conditions) for
+        sub in sim.subsims
     )
     if has_nonoverlap
         norma_log(
@@ -487,7 +470,10 @@ function create_simulation(params::Parameters)
             create_bcs(sim)
             initialize_storage(sim)
         catch
-            try; finalize_writing(sim); catch; end
+            try
+                finalize_writing(sim)
+            catch
+            end
             rethrow()
         end
         return sim
@@ -501,7 +487,10 @@ function create_simulation(params::Parameters)
             initialize_storage(sim)
         catch
             for subsim in sim.subsims
-                try; finalize_writing(subsim); catch; end
+                try
+                    finalize_writing(subsim)
+                catch
+                end
             end
             rethrow()
         end
@@ -568,7 +557,10 @@ function SingleDomainSimulation(params::Parameters)
     catch
         # Close the input handle so a subsequent simulation can re-open the
         # mesh files cleanly even if this construction failed mid-flight.
-        try; Exodus.close(input_mesh); catch; end
+        try
+            Exodus.close(input_mesh)
+        catch
+        end
         rethrow()
     end
     params["output_mesh"] = output_mesh
@@ -579,9 +571,15 @@ function SingleDomainSimulation(params::Parameters)
         norma_logf(0, :setup, "Mesh:   %d nodes, %d elements", n_nodes, n_elems)
         process_restart!(params, input_mesh, basename)
         controller = create_controller(params)
-        norma_logf(0, :setup, "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
-                   controller.initial_time, controller.final_time,
-                   controller.time_step, controller.num_stops - 1)
+        norma_logf(
+            0,
+            :setup,
+            "Time:   [%.2e, %.2e], Δt = %.2e, %d steps",
+            controller.initial_time,
+            controller.final_time,
+            controller.time_step,
+            controller.num_stops - 1,
+        )
         model = create_model(params)
         # The restart snapshot's displacement/velocity fields (if any) were
         # copied into model.displacement/model.velocity -- and, for a ROM
@@ -604,13 +602,21 @@ function SingleDomainSimulation(params::Parameters)
         norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
         failed = false
         swaps = parse_swap_plans(params)
-        sim = SingleDomainSimulation(basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps)
+        sim = SingleDomainSimulation(
+            basename, params, controller, integrator, solver, model, failed, nothing, nothing, swaps
+        )
         validate_swap_plans(sim)
         return sim
     catch
         # Close both Exodus handles on any failure after they were opened.
-        try; Exodus.close(input_mesh); catch; end
-        try; Exodus.close(output_mesh); catch; end
+        try
+            Exodus.close(input_mesh)
+        catch
+        end
+        try
+            Exodus.close(output_mesh)
+        catch
+        end
         rethrow()
     end
 end
@@ -634,8 +640,7 @@ _solver_name(s) = replace(string(typeof(s)), r"^.*\." => "")
 function log_dof_counts(model::SolidMechanics)
     n_dofs = length(model.free_dofs)
     n_free = count(model.free_dofs)
-    norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained",
-               n_dofs, n_free, n_dofs - n_free)
+    return norma_logf(0, :setup, "DOFs:   %d total, %d free, %d constrained", n_dofs, n_free, n_dofs - n_free)
 end
 
 log_dof_counts(::Model) = nothing
@@ -656,8 +661,7 @@ end
 function _log_materials(model::SolidMechanics, input_mesh)
     block_names = Exodus.read_names(input_mesh, Block)
     for (block_name, material) in zip(block_names, model.materials)
-        props = join((_format_material_field(f, getfield(material, f))
-                      for f in fieldnames(typeof(material))), ", ")
+        props = join((_format_material_field(f, getfield(material, f)) for f in fieldnames(typeof(material))), ", ")
         norma_log(0, :setup, "Block \"$block_name\": $(_material_name(material)) : $props")
     end
 end
@@ -708,7 +712,10 @@ function MultiDomainSimulation(params::Parameters)
         # Close any Exodus handles opened by already-constructed subsims so
         # the failure does not leak file descriptors into later simulations.
         for already in subsims
-            try; finalize_writing(already); catch; end
+            try
+                finalize_writing(already)
+            catch
+            end
         end
         rethrow()
     end
@@ -716,8 +723,7 @@ function MultiDomainSimulation(params::Parameters)
     swaps = parse_swap_plans(params)
     failed = false
     sim = MultiDomainSimulation(
-        basename, params, controller, num_domains, subsims,
-        handle_by_name, name_by_handle, swaps, failed,
+        basename, params, controller, num_domains, subsims, handle_by_name, name_by_handle, swaps, failed
     )
     for (i, subsim) in enumerate(sim.subsims)
         subsim.parent = sim
@@ -803,14 +809,27 @@ function SolidMultiDomainTimeController(params::Parameters)
     # Echo the effective relaxation settings once, so a misspelled or misplaced
     # YAML key (silently ignored, like all unrecognized keys) is visible at startup.
     if relaxation_method === :fixed
-        norma_logf(0, :schwarz, "Relaxation: %s, θ = %.4e",
-            relaxation_method_name(relaxation_method), relaxation_parameter)
+        norma_logf(
+            0, :schwarz, "Relaxation: %s, θ = %.4e", relaxation_method_name(relaxation_method), relaxation_parameter
+        )
     elseif relaxation_method === :anderson
-        norma_logf(0, :schwarz, "Relaxation: %s, mixing β = %.4e, depth = %d",
-            relaxation_method_name(relaxation_method), relaxation_parameter, anderson_depth)
+        norma_logf(
+            0,
+            :schwarz,
+            "Relaxation: %s, mixing β = %.4e, depth = %d",
+            relaxation_method_name(relaxation_method),
+            relaxation_parameter,
+            anderson_depth,
+        )
     else
-        norma_logf(0, :schwarz, "Relaxation: %s, θ₀ = %.4e, N0 = %d",
-            relaxation_method_name(relaxation_method), relaxation_parameter, aitken_N0)
+        norma_logf(
+            0,
+            :schwarz,
+            "Relaxation: %s, θ₀ = %.4e, N0 = %d",
+            relaxation_method_name(relaxation_method),
+            relaxation_parameter,
+            aitken_N0,
+        )
     end
     naive_stabilized = get(params, "naive stabilized", false)
     # Keyed per interface and filled on demand, as the interfaces are known to
@@ -1319,8 +1338,7 @@ function has_initial_interface_motion(subsim::SingleDomainSimulation)
         bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition || continue
         for i_global in bc.global_from_local_map
             for comp in 1:3
-                if model.displacement[comp, i_global] != 0.0 ||
-                    model.velocity[comp, i_global] != 0.0
+                if model.displacement[comp, i_global] != 0.0 || model.velocity[comp, i_global] != 0.0
                     return true
                 end
             end
@@ -1409,13 +1427,7 @@ function advance_time(sim::SingleDomainSimulation)
     # nominal step; the remainder is then taken by the next substep.
     stable = stable_time_step(integrator, sim.model)
     if time_step > stable
-        norma_logf(
-            0,
-            :warning,
-            "Δt = %.3e exceeds stable Δt = %.3e; using stable step.",
-            time_step,
-            stable,
-        )
+        norma_logf(0, :warning, "Δt = %.3e exceeds stable Δt = %.3e; using stable step.", time_step, stable)
         time_step = stable
     end
     next_time = time + time_step
@@ -1479,11 +1491,7 @@ function schwarz(sim::MultiDomainSimulation)
             # already had and returned the solution it already had. The small
             # update that follows measures the frozen blend, not the interface
             # residual, and must not be read as convergence.
-            norma_log(
-                0,
-                :schwarz,
-                "Relaxation factor near zero froze an interface iterate; update is not convergence.",
-            )
+            norma_log(0, :schwarz, "Relaxation factor near zero froze an interface iterate; update is not convergence.")
             sim.controller.converged = false
         end
         if iteration_number == 0
@@ -1512,13 +1520,7 @@ function schwarz(sim::MultiDomainSimulation)
             raw_status = sim.controller.converged ? "[CONVERGED]" : "[CONVERGING]"
             status = colored_status(raw_status)
             norma_logf(
-                0,
-                :schwarz,
-                "Criterion [%d] |ΔU| = %.2e : |ΔU|/|U| = %.2e : %s",
-                iteration_number,
-                ΔU,
-                Δu,
-                status,
+                0, :schwarz, "Criterion [%d] |ΔU| = %.2e : |ΔU|/|U| = %.2e : %s", iteration_number, ΔU, Δu, status
             )
             if stop_schwarz(sim, iteration_number + 1) == true
                 plural = iteration_number == 1 ? "" : "s"
@@ -1552,21 +1554,22 @@ function report_overlap_l2_errors(sim::MultiDomainSimulation)
     return nothing
 end
 
-function write_overlap_l2_error_screen(domain_name::String, side_set_name::String, field::String, overlap_l2_error::Float64)
-    field_label = field == "disp" ? "displacement" : field == "velo" ? "velocity" : "acceleration"
+function write_overlap_l2_error_screen(
+    domain_name::String, side_set_name::String, field::String, overlap_l2_error::Float64
+)
+    field_label = if field == "disp"
+        "displacement"
+    elseif field == "velo"
+        "velocity"
+    else
+        "acceleration"
+    end
     norma_logf(
-        0,
-        :summary,
-        "Overlap L2 %s error [%s:%s] = %.6e",
-        field_label,
-        domain_name,
-        side_set_name,
-        overlap_l2_error,
+        0, :summary, "Overlap L2 %s error [%s:%s] = %.6e", field_label, domain_name, side_set_name, overlap_l2_error
     )
     flush(stdout)
     return nothing
 end
-
 
 # Commit the per-QP material state of the accepted step: the trial states the
 # final residual assembly left in model.state become the converged state_old
@@ -1769,8 +1772,7 @@ function subcycle(sim::SingleDomainSimulation)
         advance_time(sim)
         advance_one_step(sim)
         if is_explicit && time() - t_last_log >= 1.0
-            norma_logf(4, :progress, "Time = %.2e : Δt = %.2e",
-                       sim.integrator.time, sim.integrator.time_step)
+            norma_logf(4, :progress, "Time = %.2e : Δt = %.2e", sim.integrator.time, sim.integrator.time_step)
             t_last_log = time()
         end
         if stop_subcyle(sim) == true
@@ -1956,8 +1958,11 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
             )
         end
         norma_logf(
-            0, :schwarz, "Constrained DN interface residual %.2e stalled above tolerance %.2e; accepting.",
-            max_measure, rtol,
+            0,
+            :schwarz,
+            "Constrained DN interface residual %.2e stalled above tolerance %.2e; accepting.",
+            max_measure,
+            rtol,
         )
         controller.converged = true
         reset_anderson_state!(controller)
@@ -2002,21 +2007,27 @@ function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::I
             "absolute tolerance %.2e, |ΔU|/|U| = %.2e against relative tolerance %.2e, and " *
             "`unconverged step action` is `abort` (the default). Raise `maximum iterations`, loosen the " *
             "tolerances, or change the relaxation.",
-            controller.stop, iteration_number, controller.absolute_error,
-            controller.absolute_tolerance, controller.relative_error, controller.relative_tolerance,
+            controller.stop,
+            iteration_number,
+            controller.absolute_error,
+            controller.absolute_tolerance,
+            controller.relative_error,
+            controller.relative_tolerance,
         )
     elseif action != "warn"
-        norma_abort(
-            "Unknown `unconverged step action: $(action)`. Valid values are `abort` (default) and `warn`.",
-        )
+        norma_abort("Unknown `unconverged step action: $(action)`. Valid values are `abort` (default) and `warn`.")
     end
     norma_logf(
         0,
         :warning,
         "Schwarz did not converge at stop %d in %d iterations: |ΔU| = %.2e > %.2e and " *
         "|ΔU|/|U| = %.2e > %.2e; continuing.",
-        controller.stop, iteration_number, controller.absolute_error,
-        controller.absolute_tolerance, controller.relative_error, controller.relative_tolerance,
+        controller.stop,
+        iteration_number,
+        controller.absolute_error,
+        controller.absolute_tolerance,
+        controller.relative_error,
+        controller.relative_tolerance,
     )
     return nothing
 end
@@ -2207,7 +2218,9 @@ function extract_interface_state(global_state::Vector{Float64}, bc::SolidMechani
     return local_mat
 end
 
-function write_interface_state!(global_state::Vector{Float64}, local_mat::Matrix{Float64}, bc::SolidMechanicsSchwarzBoundaryCondition)
+function write_interface_state!(
+    global_state::Vector{Float64}, local_mat::Matrix{Float64}, bc::SolidMechanicsSchwarzBoundaryCondition
+)
     for (li, gi) in enumerate(bc.global_from_local_map)
         @inbounds global_state[(3gi - 2):(3gi)] = local_mat[:, li]
     end
@@ -2252,9 +2265,13 @@ function compute_interface_predictor!(sim::MultiDomainSimulation)
                 isempty(controller.prev_stop_disp[dom_j]) && continue
 
                 u_k = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_k], subsim_k), bc_k)
-                u_k_prev = extract_interface_state(get_phys_state_for_predictor(controller.prev_stop_disp[dom_k], subsim_k), bc_k)
+                u_k_prev = extract_interface_state(
+                    get_phys_state_for_predictor(controller.prev_stop_disp[dom_k], subsim_k), bc_k
+                )
                 u_j = extract_interface_state(get_phys_state_for_predictor(controller.stop_disp[dom_j], subsim_j), bc_j)
-                u_j_prev = extract_interface_state(get_phys_state_for_predictor(controller.prev_stop_disp[dom_j], subsim_j), bc_j)
+                u_j_prev = extract_interface_state(
+                    get_phys_state_for_predictor(controller.prev_stop_disp[dom_j], subsim_j), bc_j
+                )
 
                 # Each domain extrapolates its own interface displacement independently.
                 # This correctly handles non-conforming meshes: domain k predicts its own
@@ -2377,7 +2394,7 @@ end
 
 function write_overlap_l2_error_csv(sim::MultiDomainSimulation, overlap_rows::Vector{Vector{Any}})
     isempty(overlap_rows) && return nothing
-    time         = sim.controller.time
+    time = sim.controller.time
     initial_time = sim.controller.initial_time
     csv_interval = Float64(get(sim.params, "CSV output interval", 0.0))
     if !_is_output_time(time, initial_time, csv_interval)

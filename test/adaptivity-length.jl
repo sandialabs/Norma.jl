@@ -41,8 +41,8 @@ function length_model(mesh_file, block_name, output; size_field="0.214", surface
     else
         Dict{String,Any}(
             "Dirichlet" => [
-                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for
-                (ns, c) in (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
+                Dict{String,Any}("node set" => ns, "component" => c, "function" => "0.0") for (ns, c) in
+                (("nsx-", "x"), ("nsx+", "x"), ("nsy-", "y"), ("nsy+", "y"), ("nsz-", "z"), ("nsz+", "z"))
             ],
         )
     end
@@ -87,7 +87,6 @@ function length_closed_boundary(topology)
     end
     return all(v == 2 for v in values(counts))
 end
-
 
 by_length(floor) = Norma.AdaptivityOptions(0.05, Inf, floor, 10.0, 2, 10, 2, true, true, true; size_by_length=true)
 
@@ -209,6 +208,8 @@ end
     @test fractions[true] > 0.7
     @test fractions[true] > fractions[false]
     @test counts[true] > counts[false]
-    println("edges inside the band: energy criterion $(fractions[false]), length criterion $(fractions[true]); ",
-        "elements $(counts[false]) and $(counts[true])")
+    println(
+        "edges inside the band: energy criterion $(fractions[false]), length criterion $(fractions[true]); ",
+        "elements $(counts[false]) and $(counts[true])",
+    )
 end

@@ -221,12 +221,8 @@ end
 # Names for each entry of the state vector, in storage order.
 # state[1:9] = vec(Fᵖ) column-major: Fp_11, Fp_21, Fp_31, Fp_12, ...
 # state[10]  = εᵖ (equivalent plastic strain)
-@inline internal_variable_names(::J2Plasticity) = [
-    "Fp_11", "Fp_21", "Fp_31",
-    "Fp_12", "Fp_22", "Fp_32",
-    "Fp_13", "Fp_23", "Fp_33",
-    "eqps",
-]
+@inline internal_variable_names(::J2Plasticity) =
+    ["Fp_11", "Fp_21", "Fp_31", "Fp_12", "Fp_22", "Fp_32", "Fp_13", "Fp_23", "Fp_33", "eqps"]
 
 const I3 = @SMatrix [
     1.0 0.0 0.0
@@ -523,18 +519,21 @@ function neohookean_tangent(κ::Float64, μ::Float64, F::SMatrix{3,3,Float64,9},
     t1 = 2.0 * trC / 9.0
     t2 = trC / 3.0
     return SArray{Tuple{3,3,3,3},Float64,4,81}(
-        ntuple(m -> begin
-            n = m - 1
-            i = n % 3 + 1
-            j = (n ÷ 3) % 3 + 1
-            k = (n ÷ 9) % 3 + 1
-            l = n ÷ 27 + 1
-            GkLGiJ = G[k, l] * G[i, j]
-            GiLGkJ = G[i, l] * G[k, j]
-            δ = (i == k && j == l) ? 1.0 : 0.0
-            κJ2 * GkLGiJ - c * GiLGkJ +
-            μa * (δ - two_thirds * (G[k, l] * F[i, j] + F[k, l] * G[i, j]) + t1 * GkLGiJ + t2 * GiLGkJ)
-        end, Val(81)),
+        ntuple(
+            m -> begin
+                n = m - 1
+                i = n % 3 + 1
+                j = (n ÷ 3) % 3 + 1
+                k = (n ÷ 9) % 3 + 1
+                l = n ÷ 27 + 1
+                GkLGiJ = G[k, l] * G[i, j]
+                GiLGkJ = G[i, l] * G[k, j]
+                δ = (i == k && j == l) ? 1.0 : 0.0
+                κJ2 * GkLGiJ - c * GiLGkJ +
+                μa * (δ - two_thirds * (G[k, l] * F[i, j] + F[k, l] * G[i, j]) + t1 * GkLGiJ + t2 * GiLGkJ)
+            end,
+            Val(81),
+        ),
     )
 end
 
@@ -753,27 +752,25 @@ end
 # Stress update (BOX 9.1)
 # ---------------------------------------------------------------------------
 
-function _sh_j2_stress(
-    material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64}
-)
-    κ  = material.κ
-    μ  = material.μ
+function _sh_j2_stress(material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
+    κ = material.κ
+    μ = material.μ
     σy = material.σy
-    K  = material.H
+    K = material.H
 
-    Fp_old   = SMatrix{3,3,Float64,9}(reshape(state_old[1:9], 3, 3))
-    α_n      = state_old[10]
+    Fp_old = SMatrix{3,3,Float64,9}(reshape(state_old[1:9], 3, 3))
+    α_n = state_old[10]
 
-    J    = det(F)
+    J = det(F)
     Jm23 = J^(-2.0/3.0)
 
     # Trial elastic left Cauchy-Green (isochoric)
-    Fe_tr     = F * inv(Fp_old)
+    Fe_tr = F * inv(Fp_old)
     be_bar_tr = Jm23 * (Fe_tr * Fe_tr')
     be_bar_tr = 0.5 * (be_bar_tr + be_bar_tr')  # enforce symmetry
 
     # Trial deviatoric Kirchhoff stress
-    s_trial      = μ * _dev(be_bar_tr)
+    s_trial = μ * _dev(be_bar_tr)
     s_trial_norm = norm(s_trial)
 
     # Effective shear modulus
@@ -784,32 +781,32 @@ function _sh_j2_stress(
 
     if f_trial ≤ 0.0
         # Elastic
-        s_new      = s_trial
+        s_new = s_trial
         be_bar_new = be_bar_tr
-        α_new      = α_n
-        Δγ         = 0.0
-        Fp_new     = Fp_old
+        α_new = α_n
+        Δγ = 0.0
+        Fp_new = Fp_old
     else
         # Radial return (BOX 9.1, step 4)
-        n  = s_trial / s_trial_norm
+        n = s_trial / s_trial_norm
         Δγ = f_trial / (2μ̄ + 2.0/3.0 * K)
 
         s_new = s_trial - 2μ̄ * Δγ * n
         α_new = α_n + sqrt(2.0/3.0) * Δγ
 
         # Update b̄ᵉ (eq 9.3.33)
-        Ie_bar     = tr(be_bar_tr) / 3.0
+        Ie_bar = tr(be_bar_tr) / 3.0
         be_bar_new = s_new / μ + Ie_bar * I3
 
         # Recover Fp_new from b̄ᵉ_new via polar decomposition
         be_tr_sqrt_inv = _matrix_power(be_bar_tr, -0.5)
-        Fe_tr_iso      = J^(-1.0/3.0) * Fe_tr
-        R_tr           = be_tr_sqrt_inv * Fe_tr_iso
+        Fe_tr_iso = J^(-1.0/3.0) * Fe_tr
+        R_tr = be_tr_sqrt_inv * Fe_tr_iso
 
-        be_new_sqrt    = _matrix_power(be_bar_new, 0.5)
-        Fe_new_iso     = be_new_sqrt * R_tr
-        Fe_new         = J^(1.0/3.0) * Fe_new_iso
-        Fp_new         = inv(Fe_new) * F
+        be_new_sqrt = _matrix_power(be_bar_new, 0.5)
+        Fe_new_iso = be_new_sqrt * R_tr
+        Fe_new = J^(1.0/3.0) * Fe_new_iso
+        Fp_new = inv(Fe_new) * F
     end
 
     # Kirchhoff stress: τ = J p 1 + s
@@ -824,7 +821,7 @@ function _sh_j2_stress(
 
     state_new = Vector{Float64}(undef, 10)
     state_new[1:9] = vec(Fp_new)
-    state_new[10]  = α_new
+    state_new[10] = α_new
 
     return W, P, state_new, s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n
 end
@@ -845,16 +842,23 @@ end
 # ---------------------------------------------------------------------------
 
 function _sh_j2_tangent(
-    material::J2Plasticity, F::SMatrix{3,3,Float64,9},
-    state_old::Vector{Float64}, P::SMatrix{3,3,Float64,9},
-    s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n
+    material::J2Plasticity,
+    F::SMatrix{3,3,Float64,9},
+    state_old::Vector{Float64},
+    P::SMatrix{3,3,Float64,9},
+    s_new,
+    be_bar_tr,
+    s_trial_norm,
+    μ̄,
+    Δγ,
+    α_n,
 )
-    κ  = material.κ
-    μ  = material.μ
+    κ = material.κ
+    μ = material.μ
     σy = material.σy
-    K  = material.H
+    K = material.H
 
-    J     = det(F)
+    J = det(F)
     F_inv = inv(F)
 
     # 2nd Piola-Kirchhoff: S = F⁻¹ P
@@ -864,14 +868,12 @@ function _sh_j2_tangent(
     # C = (JU')'·J · (1⊗1) − 2·J·U' · I_sym + C̄
     # For U(J) = κ/2(J-1)²:
     coeff_1x1 = κ * J * (2J - 1.0)
-    coeff_I   = 2.0 * κ * J * (J - 1.0)
+    coeff_I = 2.0 * κ * J * (J - 1.0)
 
     # Unit normal.  Both branches must yield the same concrete type; a bare
     # zeros(3,3) here widens n to a Union and sends every use below through a
     # dynamic dispatch.
-    n = s_trial_norm > 0.0 ?
-        SMatrix{3,3,Float64,9}(μ * _dev(be_bar_tr) / s_trial_norm) :
-        zero(SMatrix{3,3,Float64,9})
+    n = s_trial_norm > 0.0 ? SMatrix{3,3,Float64,9}(μ * _dev(be_bar_tr) / s_trial_norm) : zero(SMatrix{3,3,Float64,9})
 
     f_trial = s_trial_norm - sqrt(2.0/3.0) * (σy + K * α_n)
     plastic = f_trial > 0.0
@@ -898,27 +900,27 @@ function _sh_j2_tangent(
     # a heap zeros(3,3,3,3).
     CC_spatial = MArray{Tuple{3,3,3,3},Float64}(undef)
     for i in 1:3, j in 1:3, k in 1:3, l in 1:3
-        δij = Float64(i == j); δkl = Float64(k == l)
-        δik = Float64(i == k); δjl = Float64(j == l)
-        δil = Float64(i == l); δjk = Float64(j == k)
+        δij = Float64(i == j)
+        δkl = Float64(k == l)
+        δik = Float64(i == k)
+        δjl = Float64(j == l)
+        δil = Float64(i == l)
+        δjk = Float64(j == k)
         I_sym = 0.5 * (δik * δjl + δil * δjk)
 
         # C = (JU')'·J · (1⊗1) − 2·J·U' · I_sym,  for U(J) = κ/2 (J-1)²
         c = coeff_1x1 * δij * δkl - coeff_I * I_sym
 
         # C̄_trial = 2μ̄[I_sym - (1/3)1⊗1] - (2/3)‖s_trial‖[n⊗1 + 1⊗n]
-        c_dev = 2μ̄ * (I_sym - 1.0/3.0 * δij * δkl) -
-                2.0/3.0 * s_trial_norm * (n[i,j] * δkl + δij * n[k,l])
+        c_dev = 2μ̄ * (I_sym - 1.0/3.0 * δij * δkl) - 2.0/3.0 * s_trial_norm * (n[i, j] * δkl + δij * n[k, l])
 
         if plastic
-            c_dev_n2 = 0.5 * (n[i,j] * n_sq_dev[k,l] + n_sq_dev[i,j] * n[k,l])
-            c += (1.0 - β₁) * c_dev -
-                 2μ̄ * β₃ * n[i,j] * n[k,l] -
-                 2μ̄ * β₄ * c_dev_n2
+            c_dev_n2 = 0.5 * (n[i, j] * n_sq_dev[k, l] + n_sq_dev[i, j] * n[k, l])
+            c += (1.0 - β₁) * c_dev - 2μ̄ * β₃ * n[i, j] * n[k, l] - 2μ̄ * β₄ * c_dev_n2
         else
             c += c_dev
         end
-        CC_spatial[i,j,k,l] = c
+        CC_spatial[i, j, k, l] = c
     end
 
     # Pull-back: spatial → material,
@@ -931,33 +933,33 @@ function _sh_j2_tangent(
     for A in 1:3, b in 1:3, c in 1:3, d in 1:3
         v = 0.0
         for a in 1:3
-            v += F_inv[A,a] * CC_spatial[a,b,c,d]
+            v += F_inv[A, a] * CC_spatial[a, b, c, d]
         end
-        T1[A,b,c,d] = v
+        T1[A, b, c, d] = v
     end
     T2 = MArray{Tuple{3,3,3,3},Float64}(undef)
     for A in 1:3, B in 1:3, c in 1:3, d in 1:3
         v = 0.0
         for b in 1:3
-            v += F_inv[B,b] * T1[A,b,c,d]
+            v += F_inv[B, b] * T1[A, b, c, d]
         end
-        T2[A,B,c,d] = v
+        T2[A, B, c, d] = v
     end
     T3 = MArray{Tuple{3,3,3,3},Float64}(undef)
     for A in 1:3, B in 1:3, C in 1:3, d in 1:3
         v = 0.0
         for c in 1:3
-            v += F_inv[C,c] * T2[A,B,c,d]
+            v += F_inv[C, c] * T2[A, B, c, d]
         end
-        T3[A,B,C,d] = v
+        T3[A, B, C, d] = v
     end
     CC_mat = MArray{Tuple{3,3,3,3},Float64}(undef)
     for A in 1:3, B in 1:3, C in 1:3, D in 1:3
         v = 0.0
         for d in 1:3
-            v += F_inv[D,d] * T3[A,B,C,d]
+            v += F_inv[D, d] * T3[A, B, C, d]
         end
-        CC_mat[A,B,C,D] = v
+        CC_mat[A, B, C, D] = v
     end
 
     # convect_tangent: CC_mat + S → AA (∂P/∂F)
@@ -970,11 +972,11 @@ end
 # Top-level constitutive call
 # ---------------------------------------------------------------------------
 
-function constitutive(material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64}; need_tangent::Bool=true)
-    W, P, state_new, s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n =
-        _sh_j2_stress(material, F, state_old)
+function constitutive(
+    material::J2Plasticity, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64}; need_tangent::Bool=true
+)
+    W, P, state_new, s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n = _sh_j2_stress(material, F, state_old)
     need_tangent || return W, P, ZERO_TANGENT, state_new
-    AA = _sh_j2_tangent(material, F, state_old, P,
-                         s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n)
+    AA = _sh_j2_tangent(material, F, state_old, P, s_new, be_bar_tr, s_trial_norm, μ̄, Δγ, α_n)
     return W, P, AA, state_new
 end

@@ -70,7 +70,11 @@ end
 end
 
 @testset "Single Static Solid Cube Steepest Descent" begin
-    cp("../examples/single/static-solid/cube/standard/cube-steepest-descent.yaml", "cube-steepest-descent.yaml"; force=true)
+    cp(
+        "../examples/single/static-solid/cube/standard/cube-steepest-descent.yaml",
+        "cube-steepest-descent.yaml";
+        force=true,
+    )
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
     simulation = Norma.run("cube-steepest-descent.yaml")
     integrator = simulation.integrator

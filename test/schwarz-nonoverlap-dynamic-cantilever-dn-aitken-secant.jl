@@ -27,8 +27,7 @@ end
 # relaxation method.
 function run_cantilever_dn_secant(num_steps, relaxation)
     driver = "cantilever-multi-aitken.yaml"
-    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml",
-              "cantilever-clamped.g", "cantilever-free.g"]
+    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml", "cantilever-clamped.g", "cantilever-free.g"]
         cp("$cantilever_dn_secant_example/$f", f; force=true)
     end
     params = YAML.load_file(driver; dicttype=Norma.Parameters)
@@ -36,9 +35,15 @@ function run_cantilever_dn_secant(num_steps, relaxation)
     params["relaxation"] = relaxation
     params["name"] = driver
     sim = Norma.run(params)
-    for f in [driver, "cantilever-clamped.yaml", "cantilever-free.yaml",
-              "cantilever-clamped.g", "cantilever-free.g",
-              "cantilever-clamped.e", "cantilever-free.e"]
+    for f in [
+        driver,
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+    ]
         rm(f; force=true)
     end
     return sim

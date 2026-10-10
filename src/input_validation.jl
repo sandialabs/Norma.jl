@@ -253,14 +253,8 @@ const BC_ENTRY_KEYS = Dict(
         "constraint",
         "interface solve",
     ]),
-    "Schwarz RR nonoverlap" => Set([
-        "source",
-        "side set",
-        "source side set",
-        "source block",
-        "search tolerance",
-        "robin parameter",
-    ]),
+    "Schwarz RR nonoverlap" =>
+        Set(["source", "side set", "source side set", "source block", "search tolerance", "robin parameter"]),
     "OpInf Schwarz overlap" => Set([
         "source",
         "side set",

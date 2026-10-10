@@ -20,11 +20,7 @@ using YAML
     # single-ahead-cuboid-dynamic-restart.jl).
     @testset "Single-domain restart" begin
         cp("../examples/ahead/single/cuboid/cuboid-hex.g", "../cuboid-hex.g"; force=true)
-        cp(
-            "../examples/ahead/single/cuboid/dynamic-restart/cuboid-restart-in.e",
-            "cuboid-restart-in.e";
-            force=true,
-        )
+        cp("../examples/ahead/single/cuboid/dynamic-restart/cuboid-restart-in.e", "cuboid-restart-in.e"; force=true)
         yaml_path = "../examples/ahead/single/cuboid/dynamic-restart/cuboid.yaml"
 
         try

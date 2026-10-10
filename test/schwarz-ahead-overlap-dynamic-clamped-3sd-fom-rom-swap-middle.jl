@@ -197,13 +197,17 @@ using YAML
                 (z2[i] + c * (T - t) - b) * exp(-(z2[i] + c * (T - t) - b)^2 / 2 / s^2)
             )
         acce2_z_exact[i] =
-            0.5 * a * (
+            0.5 *
+            a *
+            (
                 -c^2 / s^2 * exp(-0.5 * (z2[i] - c * t - b)^2 / s^2) +
                 c^2 / s^4 * (z2[i] - c * t - b)^2 * exp(-0.5 * (z2[i] - c * t - b)^2 / s^2) -
                 c^2 / s^2 * exp(-0.5 * (z2[i] + c * t - b)^2 / s^2) +
                 c^2 / s^4 * (z2[i] + c * t - b)^2 * exp(-0.5 * (z2[i] + c * t - b)^2 / s^2)
             ) -
-            0.5 * a * (
+            0.5 *
+            a *
+            (
                 -c^2 / s^2 * exp(-0.5 * (z2[i] - c * (T - t) - b)^2 / s^2) +
                 c^2 / s^4 * (z2[i] - c * (T - t) - b)^2 * exp(-0.5 * (z2[i] - c * (T - t) - b)^2 / s^2) -
                 c^2 / s^2 * exp(-0.5 * (z2[i] + c * (T - t) - b)^2 / s^2) +
@@ -237,4 +241,3 @@ using YAML
     @test norm(disp2_x) ≈ 0.0 atol = 1.0e-8
     @test norm(disp2_y) ≈ 0.0 atol = 1.0e-8
 end
-

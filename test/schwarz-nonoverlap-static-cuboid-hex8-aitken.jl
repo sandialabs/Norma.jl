@@ -54,10 +54,14 @@ end
     cp(src * "cuboid-1.g", "cuboid-1.g"; force=true)
     cp(src * "cuboid-2.g", "cuboid-2.g"; force=true)
 
-    write("cuboids-aitken.yaml", replace(read("cuboids-aitken.yaml", String),
-    "relaxation: aitken recursive" =>
-    "relaxation: aitken recursive\nrelaxation parameter: 0.1\naitken N0 parameter: 2"))
-    
+    write(
+        "cuboids-aitken.yaml",
+        replace(
+            read("cuboids-aitken.yaml", String),
+            "relaxation: aitken recursive" => "relaxation: aitken recursive\nrelaxation parameter: 0.1\naitken N0 parameter: 2",
+        ),
+    )
+
     sim = Norma.run("cuboids-aitken.yaml")
     subsims = sim.subsims
     model_fine = subsims[1].model
@@ -82,7 +86,8 @@ end
     zero_iterate = zeros(3)
     for iter in 0:1
         @test Norma.relaxation_aitken_recursive_theta!(
-            sim.controller, fresh_key, 1, iter, zero_iterate, zero_iterate) == 0.1
+            sim.controller, fresh_key, 1, iter, zero_iterate, zero_iterate
+        ) == 0.1
     end
 
     # Aitken must reach the same physical solution as classical relaxation.

@@ -107,9 +107,9 @@ end
 
 format(x) = (x === nothing || isnan(x)) ? "" : @sprintf("%.4g", x)
 finite(v) = filter(!isnan, v)
-max_deviation(v) = (f = finite(v); isempty(f) ? NaN : maximum(abs.(f ./ f[1] .- 1)))
-last_finite(v) = (f = finite(v); isempty(f) ? NaN : f[end])
-max_finite(v) = (f = finite(v); isempty(f) ? NaN : maximum(f))
+max_deviation(v) = (f=finite(v); isempty(f) ? NaN : maximum(abs.(f ./ f[1] .- 1)))
+last_finite(v) = (f=finite(v); isempty(f) ? NaN : f[end])
+max_finite(v) = (f=finite(v); isempty(f) ? NaN : maximum(f))
 
 function summarize(dir)
     info = read_key_values(joinpath(dir, "case.txt"))
@@ -155,9 +155,34 @@ function summarize(dir)
 end
 
 const COLUMNS = [
-    "case", "coupling", "pair", "level", "ratio", "tolerance", "steps", "role", "solver", "dirichlet side",
-    "status", "outcome", "reached", "E/E0 1", "E/E0 2", "E/E0 3", "E/E0 4", "E/E0 max", "E/E0 min", "dE",
-    "dpseudo", "jump u", "jump v", "impulse", "iterations mean", "iterations max", "stops at limit", "wall time",
+    "case",
+    "coupling",
+    "pair",
+    "level",
+    "ratio",
+    "tolerance",
+    "steps",
+    "role",
+    "solver",
+    "dirichlet side",
+    "status",
+    "outcome",
+    "reached",
+    "E/E0 1",
+    "E/E0 2",
+    "E/E0 3",
+    "E/E0 4",
+    "E/E0 max",
+    "E/E0 min",
+    "dE",
+    "dpseudo",
+    "jump u",
+    "jump v",
+    "impulse",
+    "iterations mean",
+    "iterations max",
+    "stops at limit",
+    "wall time",
 ]
 
 function main(args)
@@ -180,10 +205,18 @@ function main(args)
     println("\nE/E0 at $times      dE       dpseudo  it")
     for row in rows
         ratios = join((@sprintf("%8s", row["E/E0 $k"]) for k in 1:4), " ")
-        @printf("  %-34s %-22s %s  %-8s %-8s %-5s %s\n", row["case"], row["outcome"], ratios, row["dE"], row["dpseudo"],
-            row["iterations mean"], row["status"] == "failed" ? "ended at " * row["reached"] * " s" : "")
+        @printf(
+            "  %-34s %-22s %s  %-8s %-8s %-5s %s\n",
+            row["case"],
+            row["outcome"],
+            ratios,
+            row["dE"],
+            row["dpseudo"],
+            row["iterations mean"],
+            row["status"] == "failed" ? "ended at " * row["reached"] * " s" : ""
+        )
     end
-    println("\n$(length(rows)) cases; summary written to $output")
+    return println("\n$(length(rows)) cases; summary written to $output")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

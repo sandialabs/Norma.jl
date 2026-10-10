@@ -4,49 +4,29 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 @testset "RBF Kernel ROM Schwarz Overlap Dynamic Cuboid Hex8 Same Step" begin
-    cp(
-        "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-1.yaml",
-        "cuboid-1.yaml";
-        force = true,
-    )
-    cp(
-        "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-2.yaml",
-        "cuboid-2.yaml";
-        force = true,
-    )
-    cp(
-        "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboids.yaml",
-        "cuboids.yaml";
-        force = true,
-    )
+    cp("../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
+    cp("../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp("../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboids.yaml", "cuboids.yaml"; force=true)
     cp(
         "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/linear-matern-kernel-rom-2.npz",
         "linear-matern-kernel-rom-2.npz";
-        force = true,
+        force=true,
     )
-    cp(
-        "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-1.g",
-        "cuboid-1.g";
-        force = true,
-    )
-    cp(
-        "../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-2.g",
-        "cuboid-2.g";
-        force = true,
-    )
+    cp("../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-1.g", "cuboid-1.g"; force=true)
+    cp("../examples/ahead/overlap/cuboid/dynamic-rbf-kernel-rom/cuboid-2.g", "cuboid-2.g"; force=true)
     sim = Norma.run("cuboids.yaml")
     subsims = sim.subsims
     model_fine = subsims[1].model
     model_coarse = subsims[2].model
-    rm("cuboids.yaml"; force = true)
-    rm("cuboid-1.yaml"; force = true)
-    rm("cuboid-2.yaml"; force = true)
-    rm("cuboid-1.g"; force = true)
-    rm("cuboid-2.g"; force = true)
-    rm("cuboid-1.e"; force = true)
-    rm("cuboid-2.e"; force = true)
-    rm("linear-matern-kernel-rom-2.npz"; force = true)
-    
+    rm("cuboids.yaml"; force=true)
+    rm("cuboid-1.yaml"; force=true)
+    rm("cuboid-2.yaml"; force=true)
+    rm("cuboid-1.g"; force=true)
+    rm("cuboid-2.g"; force=true)
+    rm("cuboid-1.e"; force=true)
+    rm("cuboid-2.e"; force=true)
+    rm("linear-matern-kernel-rom-2.npz"; force=true)
+
     @test model_coarse.reduced_state[1] ≈ -0.04401322123736658 rtol = 1.0e-06
     @test model_coarse.reduced_state[2] ≈ -0.003034562618537815 rtol = 1.0e-06
 end

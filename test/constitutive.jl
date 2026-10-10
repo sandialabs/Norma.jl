@@ -179,8 +179,8 @@ end
     θ = π / 4
     R = SMatrix{3,3,Float64,9}([
         cos(θ) -sin(θ) 0.0
-        sin(θ)  cos(θ) 0.0
-        0.0     0.0    1.0
+        sin(θ) cos(θ) 0.0
+        0.0 0.0 1.0
     ])
     U = SMatrix{3,3,Float64,9}([
         1.20 0.05 0.00
@@ -198,10 +198,7 @@ end
     end
 
     params = Norma.Parameters("elastic modulus" => 1.0e9, "Poisson's ratio" => 0.3, "density" => 1.0)
-    for mat in (
-        Norma.SaintVenant_Kirchhoff(params),
-        Norma.Neohookean(params),
-    )
+    for mat in (Norma.SaintVenant_Kirchhoff(params), Norma.Neohookean(params))
         σ_U = cauchy(mat, F_stretch)
         σ_RU = cauchy(mat, F_combined)
         @test σ_RU ≈ R * σ_U * R' atol = 1.0e-08 * norm(σ_U)
@@ -217,8 +214,11 @@ end
     σy = 1.0e9
     H = 20.0e9
     params = Norma.Parameters(
-        "elastic modulus" => E, "Poisson's ratio" => ν,
-        "density" => 7800.0, "yield stress" => σy, "hardening modulus" => H
+        "elastic modulus" => E,
+        "Poisson's ratio" => ν,
+        "density" => 7800.0,
+        "yield stress" => σy,
+        "hardening modulus" => H,
     )
     mat = Norma.J2Plasticity(params)
     F = @SMatrix [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
@@ -238,8 +238,11 @@ end
     H = 0.0   # perfect plasticity
     μ = E / (2 * (1 + ν))
     params = Norma.Parameters(
-        "elastic modulus" => E, "Poisson's ratio" => ν,
-        "density" => 7800.0, "yield stress" => σy, "hardening modulus" => H
+        "elastic modulus" => E,
+        "Poisson's ratio" => ν,
+        "density" => 7800.0,
+        "yield stress" => σy,
+        "hardening modulus" => H,
     )
     mat = Norma.J2Plasticity(params)
     state0 = Norma.initial_state(mat)
@@ -280,8 +283,11 @@ end
     # is O(1e-4) of the tangent norm.  Newton stays fast; asymptotic convergence
     # is not fully quadratic on steps that yield.
     params = Norma.Parameters(
-        "elastic modulus" => 200.0e9, "Poisson's ratio" => 0.3,
-        "density" => 7800.0, "yield stress" => 250.0e6, "hardening modulus" => 20.0e9,
+        "elastic modulus" => 200.0e9,
+        "Poisson's ratio" => 0.3,
+        "density" => 7800.0,
+        "yield stress" => 250.0e6,
+        "hardening modulus" => 20.0e9,
     )
     mat = Norma.J2Plasticity(params)
     state0 = Norma.initial_state(mat)
@@ -360,8 +366,9 @@ end
         ICxIC = Norma.ox(IC, IC)
         ICoIC = Norma.odot(IC, IC)
         μJ2n = 2.0 * μ * Jm23 / 3.0
-        CC = κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC) .+
-             μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- Norma.oxI(IC) .- Norma.Iox(IC))
+        CC =
+            κ .* (J2 .* ICxIC .- (J2 - 1.0) .* ICoIC) .+
+            μJ2n .* (trC .* (ICxIC ./ 3 .+ ICoIC) .- Norma.oxI(IC) .- Norma.Iox(IC))
         AA_convected = Norma.convect_tangent(CC, S, F)
         @test maximum(abs.(AA .- AA_convected)) ≤ 1.0e-10 * maximum(abs.(AA_convected))
     end

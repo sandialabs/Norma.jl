@@ -21,9 +21,21 @@ using YAML
 # rollback on Linux/Julia 1.12), so run completion alone must not be relied
 # on to cover the rollback path.
 @testset "Schwarz AHeaD Non-Overlap Dynamic Cuboid HEX8-HEX8 Quadratic ROM-ROM" begin
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboids.yaml", "cuboids.yaml"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
-    cp("../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboids.yaml",
+        "cuboids.yaml";
+        force=true,
+    )
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboid-1.yaml",
+        "cuboid-1.yaml";
+        force=true,
+    )
+    cp(
+        "../examples/ahead/nonoverlap/cuboid/dynamic-neohookean-quadratic-rom-rom/cuboid-2.yaml",
+        "cuboid-2.yaml";
+        force=true,
+    )
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-1.g", "../cuboid-1.g"; force=true)
     cp("../examples/ahead/nonoverlap/cuboid/cuboid-2.g", "../cuboid-2.g"; force=true)
     cp(

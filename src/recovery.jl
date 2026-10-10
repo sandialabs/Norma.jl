@@ -344,10 +344,7 @@ function _assemble_l2_rhs_internal_variables!(
 end
 
 @inline function von_mises_from_voigt(σ)
-    return sqrt(
-        0.5 * ((σ[1] - σ[2])^2 + (σ[2] - σ[3])^2 + (σ[3] - σ[1])^2) +
-        3.0 * (σ[4]^2 + σ[5]^2 + σ[6]^2),
-    )
+    return sqrt(0.5 * ((σ[1] - σ[2])^2 + (σ[2] - σ[3])^2 + (σ[3] - σ[1])^2) + 3.0 * (σ[4]^2 + σ[5]^2 + σ[6]^2))
 end
 
 function _assemble_l2_rhs_von_mises!(nodal::Matrix{Float64}, model::SolidMechanics)

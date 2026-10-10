@@ -15,8 +15,16 @@
 @testset "Single Static Solid Cube Mid-Run Time Swap (cross-mesh)" begin
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube-hex8.g"; force=true)
     cp("../examples/element-types/tet4/cube/cube.g", "cube-tet4.g"; force=true)
-    cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-hex8-t-swap.yaml", "cube-hex8-t-swap.yaml"; force=true)
-    cp("../examples/single/static-solid/cube-swap/cross-mesh/cube-tet4-t-swap.yaml", "cube-tet4-t-swap.yaml"; force=true)
+    cp(
+        "../examples/single/static-solid/cube-swap/cross-mesh/cube-hex8-t-swap.yaml",
+        "cube-hex8-t-swap.yaml";
+        force=true,
+    )
+    cp(
+        "../examples/single/static-solid/cube-swap/cross-mesh/cube-tet4-t-swap.yaml",
+        "cube-tet4-t-swap.yaml";
+        force=true,
+    )
     sim = Norma.run("cube-hex8-t-swap.yaml")
     rm("cube-hex8-t-swap.yaml"; force=true)
     rm("cube-tet4-t-swap.yaml"; force=true)

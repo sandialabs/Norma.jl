@@ -32,14 +32,17 @@
             "material" => Dict{String,Any}(
                 "blocks" => Dict{String,Any}("awful" => "elastic"),
                 "elastic" => Dict{String,Any}(
-                    "model" => "seth-hill", "m" => 2, "n" => 2,
-                    "bulk modulus" => 1.0e3, "shear modulus" => 1.0e3, "density" => 1.0e3,
+                    "model" => "seth-hill",
+                    "m" => 2,
+                    "n" => 2,
+                    "bulk modulus" => 1.0e3,
+                    "shear modulus" => 1.0e3,
+                    "density" => 1.0e3,
                 ),
             ),
         ),
-        "time integrator" => Dict{String,Any}(
-            "type" => "quasi static", "initial time" => 0.0, "final time" => 2.0, "time step" => 1.0
-        ),
+        "time integrator" =>
+            Dict{String,Any}("type" => "quasi static", "initial time" => 0.0, "final time" => 2.0, "time step" => 1.0),
         "boundary conditions" => Dict{String,Any}(
             "Dirichlet" => [
                 Dict{String,Any}("node set" => "nsx-", "component" => "x", "function" => "0.0"),
@@ -51,11 +54,17 @@
             ],
         ),
         "solver" => Dict{String,Any}(
-            "type" => "steepest descent", "step" => "lbfgs", "memory" => 10,
-            "minimum iterations" => 1, "maximum iterations" => 1024,
-            "absolute tolerance" => 1.0e-8, "relative tolerance" => 1.0e-12,
-            "step length" => 1.0e-3, "use line search" => true,
-            "line search backtrack factor" => 0.5, "line search decrease factor" => 1.0e-4,
+            "type" => "steepest descent",
+            "step" => "lbfgs",
+            "memory" => 10,
+            "minimum iterations" => 1,
+            "maximum iterations" => 1024,
+            "absolute tolerance" => 1.0e-8,
+            "relative tolerance" => 1.0e-12,
+            "step length" => 1.0e-3,
+            "use line search" => true,
+            "line search backtrack factor" => 0.5,
+            "line search decrease factor" => 1.0e-4,
             "line search maximum iterations" => 16,
             "energy stagnation window" => 10,
             "energy stagnation tolerance" => 1.0e-6,

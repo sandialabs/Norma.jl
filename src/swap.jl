@@ -20,10 +20,7 @@ function SwapPlan(params::Parameters)
     # `subsim` is required for multi-domain swaps (selects which subsim to
     # replace) and absent for single-domain swaps (there is no choice).
     return SwapPlan(
-        get(params, "subsim", nothing),
-        create_swap_criterion(params["criterion"]),
-        params["replacement"],
-        false,
+        get(params, "subsim", nothing), create_swap_criterion(params["criterion"]), params["replacement"], false
     )
 end
 
@@ -39,9 +36,8 @@ function create_swap_criterion(params::Parameters)
             "or 'coarsen' to swap when it falls below the tolerance",
         )
         direction = Symbol(params["direction"])
-        direction in (:refine, :coarsen) || norma_abort(
-            "Unknown stress recovery swap direction: '$direction' (expected 'refine' or 'coarsen')",
-        )
+        direction in (:refine, :coarsen) ||
+            norma_abort("Unknown stress recovery swap direction: '$direction' (expected 'refine' or 'coarsen')")
         return StressRecoverySwapCriterion(tolerance, direction)
     elseif criterion_type == "elastic to plastic transition"
         tolerance = Float64(get(params, "tolerance", 0.05))
@@ -58,9 +54,8 @@ function create_swap_criterion(params::Parameters)
             "or 'coarsen' to swap when it falls below the tolerance",
         )
         direction = Symbol(params["direction"])
-        direction in (:refine, :coarsen) || norma_abort(
-            "Unknown overlap L2 error swap direction: '$direction' (expected 'refine' or 'coarsen')",
-        )
+        direction in (:refine, :coarsen) ||
+            norma_abort("Unknown overlap L2 error swap direction: '$direction' (expected 'refine' or 'coarsen')")
         return SchwarzOverlapL2SwapCriterion(tolerance, direction)
     else
         norma_abort("Unknown swap criterion type: $criterion_type")
@@ -110,10 +105,8 @@ function validate_swap_plans(sim::MultiDomainSimulation)
     for plan in sim.swaps
         plan.subsim_name === nothing &&
             norma_abort("Multi-domain swap plan must specify `subsim:` to select the subsim to replace")
-        plan.subsim_name ∈ known_names ||
-            norma_abort("Swap plan references unknown subsim: $(plan.subsim_name)")
-        isfile(plan.replacement_file) ||
-            norma_abort("Swap replacement file not found: $(plan.replacement_file)")
+        plan.subsim_name ∈ known_names || norma_abort("Swap plan references unknown subsim: $(plan.subsim_name)")
+        isfile(plan.replacement_file) || norma_abort("Swap replacement file not found: $(plan.replacement_file)")
     end
     return nothing
 end
@@ -124,8 +117,7 @@ function validate_swap_plans(sim::SingleDomainSimulation)
     for plan in sim.swaps
         plan.subsim_name === nothing ||
             norma_abort("Single-domain swap plan must not specify `subsim:` (there is no choice of target)")
-        isfile(plan.replacement_file) ||
-            norma_abort("Swap replacement file not found: $(plan.replacement_file)")
+        isfile(plan.replacement_file) || norma_abort("Swap replacement file not found: $(plan.replacement_file)")
         validate_swap_criterion(plan.criterion, sim)
     end
     return nothing
@@ -135,12 +127,7 @@ end
 # SolidMechanics (FOM) is always supported and does not need to be listed here.
 # Any RomModel subtype NOT in this list causes an early abort with a clear
 # message, rather than a cryptic MethodError at the moment the swap fires.
-const _SWAP_SUPPORTED_ROM_TYPES = Union{
-    LinearOpInfRom,
-    QuadraticOpInfRom,
-    CubicOpInfRom,
-    RBFKernelROM,
-}
+const _SWAP_SUPPORTED_ROM_TYPES = Union{LinearOpInfRom,QuadraticOpInfRom,CubicOpInfRom,RBFKernelROM}
 
 # FOM models are always swap-compatible; nothing to check.
 _assert_rom_swap_supported(::SolidMechanics, ::String) = nothing
@@ -151,7 +138,7 @@ _assert_rom_swap_supported(::_SWAP_SUPPORTED_ROM_TYPES, ::String) = nothing
 # Catch-all: any other RomModel (including NeuralNetworkOpInfRom and any
 # future subtype without a copy_model_state! overload) aborts here.
 function _assert_rom_swap_supported(model::RomModel, context::String)
-    norma_abortf(
+    return norma_abortf(
         "%s uses a %s, which does not support mid-run swapping.  " *
         "Swap state transfer is implemented for: LinearOpInfRom, QuadraticOpInfRom, " *
         "CubicOpInfRom, RBFKernelROM.  To add support for a new ROM type, implement " *
@@ -159,7 +146,8 @@ function _assert_rom_swap_supported(model::RomModel, context::String)
         "copy_model_state!(dst::SolidMechanics, src::<YourRomType>), and " *
         "copy_model_state!(dst::<YourRomType>, src::<YourRomType>) in swap.jl, " *
         "then add <YourRomType> to _SWAP_SUPPORTED_ROM_TYPES.",
-        context, typeof(model),
+        context,
+        typeof(model),
     )
 end
 
@@ -175,7 +163,7 @@ validate_swap_criterion(::SwapCriterion, ::Simulation) = nothing
 # Schwarz interface at all, so the criterion can never produce a meaningful
 # value there.
 function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, ::SingleDomainSimulation)
-    norma_abort(
+    return norma_abort(
         "SchwarzOverlapL2SwapCriterion is only valid for overlapping Schwarz multi-domain " *
         "simulations.  It cannot be used with a monolithic (single-domain) formulation, " *
         "non-overlapping Schwarz, or Schwarz contact.",
@@ -193,9 +181,8 @@ end
 # which runs after the MultiDomainSimulation constructor returns.
 function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, sim::MultiDomainSimulation)
     has_overlap_bc = any(
-        any(bc isa SolidMechanicsOverlapSchwarzBoundaryCondition
-            for bc in sub.model.boundary_conditions)
-        for sub in sim.subsims
+        any(bc isa SolidMechanicsOverlapSchwarzBoundaryCondition for bc in sub.model.boundary_conditions) for
+        sub in sim.subsims
     )
     if !has_overlap_bc
         norma_abort(
@@ -205,10 +192,7 @@ function validate_swap_criterion(::SchwarzOverlapL2SwapCriterion, sim::MultiDoma
             "Schwarz contact formulations.",
         )
     end
-    has_l2_flag = any(
-        any(stores_overlap_l2_error(bc) for bc in sub.model.boundary_conditions)
-        for sub in sim.subsims
-    )
+    has_l2_flag = any(any(stores_overlap_l2_error(bc) for bc in sub.model.boundary_conditions) for sub in sim.subsims)
     if !has_l2_flag
         norma_abort(
             "SchwarzOverlapL2SwapCriterion requires 'compute overlap L2 relative error: disp|velo|acce' on at " *
@@ -326,18 +310,22 @@ function _stress_recovery_criterion_met(c::StressRecoverySwapCriterion, model::S
     end
     difference = _recovered_stress_difference(lumped, consistent, model)
     fired = c.direction === :refine ? difference > c.tolerance : difference < c.tolerance
-    norma_logf(1, :swap,
+    norma_logf(
+        1,
+        :swap,
         "StressRecoverySwapCriterion: relative lumped/consistent stress difference %.3e, tolerance %.3e, direction %s → %s",
-        difference, c.tolerance, c.direction, fired ? "swap" : "no swap")
+        difference,
+        c.tolerance,
+        c.direction,
+        fired ? "swap" : "no swap",
+    )
     return fired
 end
 
 # Function barrier: receiving the concrete LumpedRecovery / ConsistentRecovery
 # types as arguments makes the projection and norm fully type-stable, even
 # though the criterion's IdDict cache stores them with abstract element types.
-function _recovered_stress_difference(
-    lumped::LumpedRecovery, consistent::ConsistentRecovery, model::SolidMechanics
-)
+function _recovered_stress_difference(lumped::LumpedRecovery, consistent::ConsistentRecovery, model::SolidMechanics)
     # Assemble the shared L2 RHS once, copy it, then project each copy with
     # its respective mass operator.  The RHS copy is cheap (6 × n_nodes).
     n_nodes = size(model.reference, 2)
@@ -355,13 +343,13 @@ end
 # field is reported as zero difference rather than 0/0.
 function _rel_frob_diff(A::Matrix{Float64}, B::Matrix{Float64})
     diff_sq = 0.0
-    a_sq    = 0.0
-    b_sq    = 0.0
+    a_sq = 0.0
+    b_sq = 0.0
     @inbounds for i in eachindex(A)
-        d        = A[i] - B[i]
+        d = A[i] - B[i]
         diff_sq += d * d
-        a_sq    += A[i] * A[i]
-        b_sq    += B[i] * B[i]
+        a_sq += A[i] * A[i]
+        b_sq += B[i] * B[i]
     end
     ref = max(sqrt(a_sq), sqrt(b_sq))
     ref < eps(Float64) && return 0.0
@@ -428,7 +416,8 @@ function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransit
     # If the model has no J2 blocks at all the criterion degrades gracefully.
     if !any_j2_block
         norma_log(
-            1, :swap,
+            1,
+            :swap,
             "ElasticToPlasticTransitionSwapCriterion: no J2Plasticity blocks found in model; criterion will not fire",
         )
         return false
@@ -436,9 +425,11 @@ function _elastic_to_plastic_transition_criterion_met(c::ElasticToPlasticTransit
     # Swap fires when at least one QP has exceeded the upper yield band edge.
     fired = found_above_band
     norma_logf(
-        1, :swap,
+        1,
+        :swap,
         "ElasticToPlasticTransitionSwapCriterion: yield-band check (tolerance %.2f%%) → %s",
-        100.0 * c.tolerance, fired ? "swap (QP(s) above yield band)" : "no swap (all QPs within or below yield band)",
+        100.0 * c.tolerance,
+        fired ? "swap (QP(s) above yield band)" : "no swap (all QPs within or below yield band)",
     )
     return fired
 end
@@ -477,7 +468,8 @@ function _overlap_l2_criterion_met(c::SchwarzOverlapL2SwapCriterion, boundary_co
     end
     if !found_any
         norma_log(
-            1, :swap,
+            1,
+            :swap,
             "SchwarzOverlapL2SwapCriterion: no boundary conditions with 'compute overlap L2 relative error: disp|velo|acce' " *
             "found; criterion will not fire — add 'compute overlap L2 relative error: disp' (or 'velo' or 'acce') to the " *
             "relevant Schwarz overlap boundary condition",
@@ -486,9 +478,13 @@ function _overlap_l2_criterion_met(c::SchwarzOverlapL2SwapCriterion, boundary_co
     end
     fired = c.direction === :refine ? max_error > c.tolerance : max_error < c.tolerance
     norma_logf(
-        1, :swap,
+        1,
+        :swap,
         "SchwarzOverlapL2SwapCriterion: max overlap L2 error %.6e, tolerance %.6e, direction %s → %s",
-        max_error, c.tolerance, c.direction, fired ? "swap" : "no swap",
+        max_error,
+        c.tolerance,
+        c.direction,
+        fired ? "swap" : "no swap",
     )
     return fired
 end
@@ -564,9 +560,7 @@ function uniquify_swap_output!(subparams::Parameters)
     new_output = string(base, "-phase", n, ext)
     subparams["output mesh file"] = new_output
     subparams["name"] = string(subparams["name"], "-phase", n)
-    norma_logf(0, :swap,
-               "Output file '%s' already exists; writing to '%s' instead",
-               output_file, new_output)
+    norma_logf(0, :swap, "Output file '%s' already exists; writing to '%s' instead", output_file, new_output)
     return nothing
 end
 
@@ -576,8 +570,7 @@ end
 
 function apply_swap!(sim::MultiDomainSimulation, slot::Int64, plan::SwapPlan)
     old = sim.subsims[slot]
-    norma_logf(0, :swap, "Swapping subsim %s → %s at t = %.6e",
-               old.name, plan.replacement_file, sim.controller.time)
+    norma_logf(0, :swap, "Swapping subsim %s → %s at t = %.6e", old.name, plan.replacement_file, sim.controller.time)
 
     new = build_replacement_subsim(sim, slot, plan)
     transfer_state!(new, old, sim.controller)
@@ -802,8 +795,9 @@ end
 # reference to `sim` stays valid because we only mutate fields, not the
 # object identity.
 function apply_single_domain_swap!(sim::SingleDomainSimulation, plan::SwapPlan)
-    norma_logf(0, :swap, "Swapping single-domain sim %s → %s at t = %.6e",
-               sim.name, plan.replacement_file, sim.controller.time)
+    norma_logf(
+        0, :swap, "Swapping single-domain sim %s → %s at t = %.6e", sim.name, plan.replacement_file, sim.controller.time
+    )
 
     new = build_replacement_single_domain_sim(sim, plan)
     transfer_state!(new, sim, sim.controller)
@@ -863,7 +857,7 @@ copy_model_state!(::Model, ::Model) = nothing
 # parse time, but this guards against future code paths that bypass validation.
 function copy_model_state!(dst::Model, src::RomModel)
     src isa _SWAP_SUPPORTED_ROM_TYPES && return _copy_model_state_dispatch!(dst, src)
-    error(
+    return error(
         "copy_model_state!: no state-transfer implementation for source ROM type $(typeof(src)).  " *
         "Add copy_model_state! overloads and register the type in _SWAP_SUPPORTED_ROM_TYPES.",
     )
@@ -871,7 +865,7 @@ end
 
 function copy_model_state!(dst::RomModel, src::Model)
     dst isa _SWAP_SUPPORTED_ROM_TYPES && return _copy_model_state_dispatch!(dst, src)
-    error(
+    return error(
         "copy_model_state!: no state-transfer implementation for destination ROM type $(typeof(dst)).  " *
         "Add copy_model_state! overloads and register the type in _SWAP_SUPPORTED_ROM_TYPES.",
     )
@@ -881,7 +875,7 @@ end
 # supported.  Forwards to the concrete overloads defined further below.
 _copy_model_state_dispatch!(dst::OpInfModel, src::SolidMechanics) = copy_model_state!(dst, src)
 _copy_model_state_dispatch!(dst::SolidMechanics, src::OpInfModel) = copy_model_state!(dst, src)
-_copy_model_state_dispatch!(dst::OpInfModel, src::OpInfModel)     = copy_model_state!(dst, src)
+_copy_model_state_dispatch!(dst::OpInfModel, src::OpInfModel) = copy_model_state!(dst, src)
 # Fallback for any other combination (e.g. two different non-SolidMechanics FOMs).
 _copy_model_state_dispatch!(::Model, ::Model) = nothing
 
@@ -923,7 +917,7 @@ end
 # acceleration buffers.
 function _copy_model_state_l2!(dst::SolidMechanics, src::SolidMechanics)
     dst.displacement .= transfer_field(src, src.displacement, dst)
-    dst.velocity     .= transfer_field(src, src.velocity,     dst)
+    dst.velocity .= transfer_field(src, src.velocity, dst)
     dst.acceleration .= transfer_field(src, src.acceleration, dst)
     _transfer_qp_internal_variables!(dst, src)
     dst.time = src.time
@@ -956,7 +950,6 @@ function _has_ivs_to_transfer(dst::SolidMechanics, src::SolidMechanics)
     return !isempty(intersect(Set(src_names), Set(dst_names)))
 end
 
-
 # Build a consistent recovery on demand if the user didn't enable one.  The
 # freshly-built recovery_data lives on the model afterward; output buffers
 # stay empty so the swap does not silently enable nodal output the user did
@@ -964,9 +957,7 @@ end
 function _ensure_recovery_for_swap!(model::SolidMechanics)
     if model.recovery_data isa NoRecovery
         norma_log(0, :swap, "Building consistent recovery on demand for state transfer")
-        model.recovery_data = build_recovery_data(
-            :consistent, model.mesh, model.reference, model.num_int_pts,
-        )
+        model.recovery_data = build_recovery_data(:consistent, model.mesh, model.reference, model.num_int_pts)
     end
     return nothing
 end
@@ -1076,7 +1067,7 @@ end
 # before this function is called.
 function _project_fom_to_rom!(rom::OpInfModel)
     basis = rom.basis                   # (n_var, n_node_basis, n_mode)
-    fom   = rom.fom_model
+    fom = rom.fom_model
     _, _, n_mode = size(basis)
 
     u = fom.displacement  # (n_var, n_nodes_fom)
@@ -1117,14 +1108,12 @@ function _project_fom_to_rom!(rom::OpInfModel)
         end
     end
 
-    rom.reduced_state    .= q̂_u
+    rom.reduced_state .= q̂_u
     rom.reduced_velocity .= q̂_v
     # Sync the ROM's time from its shadow FOM.
-    rom.time              = fom.time
+    rom.time = fom.time
 
-    norma_logf(1, :swap,
-        "_project_fom_to_rom!: projected %d FOM DOFs onto %d ROM modes",
-        3 * n_nodes_fom, n_mode)
+    norma_logf(1, :swap, "_project_fom_to_rom!: projected %d FOM DOFs onto %d ROM modes", 3 * n_nodes_fom, n_mode)
     return nothing
 end
 
@@ -1157,11 +1146,12 @@ function _sync_integrator_from_model!(integrator::TimeIntegrator, model::OpInfMo
             "_sync_integrator_from_model!: integrator displacement length %d does not " *
             "match ROM reduced_state length %d after swap.  Check that the replacement " *
             "ROM input file uses the same reduced dimension as the source model.",
-            length(integrator.displacement), n,
+            length(integrator.displacement),
+            n,
         )
     end
     integrator.displacement .= model.reduced_state
-    integrator.velocity     .= model.reduced_velocity
+    integrator.velocity .= model.reduced_velocity
     # Project the shadow FOM's acceleration onto the new ROM basis, the same
     # way initialize() seeds the integrator's acceleration on the very first
     # time step.  copy_model_state! has already brought model.fom_model.
@@ -1175,7 +1165,7 @@ function _sync_integrator_from_model!(integrator::TimeIntegrator, model::OpInfMo
     # transient right at the swap time, even though correct() will eventually
     # recompute a consistent acceleration once the solve converges.
     basis = model.basis
-    fom   = model.fom_model
+    fom = model.fom_model
     n_var, _, n_mode = size(basis)
     n_nodes_fom = size(fom.acceleration, 2)
     fill!(integrator.acceleration, 0.0)

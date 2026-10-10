@@ -35,15 +35,20 @@ function parse_arguments(args)
     while i <= length(args)
         arg = args[i]
         if arg == "--runs"
-            options["runs"] = abspath(args[i + 1]); i += 2
+            options["runs"] = abspath(args[i + 1])
+            i += 2
         elseif arg == "--final-time"
-            options["final time"] = parse(Float64, args[i + 1]); i += 2
+            options["final time"] = parse(Float64, args[i + 1])
+            i += 2
         elseif arg == "--exodus-interval"
-            options["exodus interval"] = parse(Float64, args[i + 1]); i += 2
+            options["exodus interval"] = parse(Float64, args[i + 1])
+            i += 2
         elseif arg == "--list"
-            options["list"] = true; i += 1
+            options["list"] = true
+            i += 1
         else
-            push!(selections, arg); i += 1
+            push!(selections, arg)
+            i += 1
         end
     end
     isempty(selections) && error("Give one or more tiers ($(join(first.(TIERS), ", "))) or case names")
@@ -243,20 +248,23 @@ function write_case(c::Case, options)
     end
     write(joinpath(dir, "run.yaml"), run_input(c, domains, final_time, options["exodus interval"]))
     write_beam_meshes(c, dir)
-    write(joinpath(dir, "case.txt"), """
-        name: $(case_name(c))
-        coupling: $(c.coupling)
-        pair: $(c.pair)
-        level: $(c.level)
-        ratio: $(c.ratio)
-        tolerance: $(num(c.tolerance))
-        steps: $(c.steps)
-        role: $(c.role)
-        solver: $(c.solver)
-        dirichlet side: $(c.coupling == "mono" ? "" : dirichlet_domain(c))
-        time step: $(num(BEAM.time_step / c.level))
-        final time: $(num(final_time))
-        """)
+    write(
+        joinpath(dir, "case.txt"),
+        """
+name: $(case_name(c))
+coupling: $(c.coupling)
+pair: $(c.pair)
+level: $(c.level)
+ratio: $(c.ratio)
+tolerance: $(num(c.tolerance))
+steps: $(c.steps)
+role: $(c.role)
+solver: $(c.solver)
+dirichlet side: $(c.coupling == "mono" ? "" : dirichlet_domain(c))
+time step: $(num(BEAM.time_step / c.level))
+final time: $(num(final_time))
+""",
+    )
     return dir, true
 end
 
@@ -266,7 +274,7 @@ function main(args)
     if options["list"]
         foreach(c -> println(case_name(c)), cases)
         println("$(length(cases)) cases")
-        return
+        return nothing
     end
     written = 0
     for c in cases
@@ -274,7 +282,7 @@ function main(args)
         println("  ", basename(dir), fresh ? "" : "  (completed, kept)")
         written += fresh
     end
-    println("$written cases written under $(options["runs"]) ($(length(cases) - written) completed and kept)")
+    return println("$written cases written under $(options["runs"]) ($(length(cases) - written) completed and kept)")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

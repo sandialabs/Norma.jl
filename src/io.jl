@@ -53,8 +53,28 @@ function initialize_writing(sim::SingleDomainSimulation)
         if solid_model.recovery_data isa BothRecovery
             if size(solid_model.lumped_recovered_stress, 1) > 0
                 num_node_vars += 12
-                append!(node_var_names, ["sigma_xx_cons_n", "sigma_yy_cons_n", "sigma_zz_cons_n", "sigma_yz_cons_n", "sigma_xz_cons_n", "sigma_xy_cons_n"])
-                append!(node_var_names, ["sigma_xx_lump_n", "sigma_yy_lump_n", "sigma_zz_lump_n", "sigma_yz_lump_n", "sigma_xz_lump_n", "sigma_xy_lump_n"])
+                append!(
+                    node_var_names,
+                    [
+                        "sigma_xx_cons_n",
+                        "sigma_yy_cons_n",
+                        "sigma_zz_cons_n",
+                        "sigma_yz_cons_n",
+                        "sigma_xz_cons_n",
+                        "sigma_xy_cons_n",
+                    ],
+                )
+                append!(
+                    node_var_names,
+                    [
+                        "sigma_xx_lump_n",
+                        "sigma_yy_lump_n",
+                        "sigma_zz_lump_n",
+                        "sigma_yz_lump_n",
+                        "sigma_xz_lump_n",
+                        "sigma_xy_lump_n",
+                    ],
+                )
             end
             if size(solid_model.lumped_recovered_von_mises, 1) > 0
                 num_node_vars += 2
@@ -74,7 +94,9 @@ function initialize_writing(sim::SingleDomainSimulation)
         else
             if size(solid_model.recovered_stress, 1) > 0
                 num_node_vars += 6
-                append!(node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"])
+                append!(
+                    node_var_names, ["sigma_xx_n", "sigma_yy_n", "sigma_zz_n", "sigma_yz_n", "sigma_xz_n", "sigma_xy_n"]
+                )
             end
             if size(solid_model.recovered_von_mises, 1) > 0
                 num_node_vars += 1
@@ -181,13 +203,13 @@ function writedlm_nodal_array(filename::String, nodal_array::Matrix{Float64})
 end
 
 function get_umax(model::SolidMechanics)
-  u_max = maximum(abs, model.displacement)
-  return u_max
+    u_max = maximum(abs, model.displacement)
+    return u_max
 end
 
 function get_umax(model::RomModel)
-  u_max = maximum(abs, model.fom_model.displacement)
-  return u_max
+    u_max = maximum(abs, model.fom_model.displacement)
+    return u_max
 end
 
 function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
@@ -200,10 +222,10 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
     is_explicit = sim.integrator isa ExplicitDynamicTimeIntegrator
     dt_default = params["time integrator"]["time step"]
     exodus_interval = Float64(get(params, "Exodus output interval", dt_default))
-    csv_interval    = Float64(get(params, "CSV output interval", 0.0))
+    csv_interval = Float64(get(params, "CSV output interval", 0.0))
     initial_time = sim.controller.initial_time
     is_exodus_step = _is_output_time(time, initial_time, exodus_interval)
-    is_csv_step    = _is_output_time(time, initial_time, csv_interval)
+    is_csv_step = _is_output_time(time, initial_time, csv_interval)
     is_output_step = is_exodus_step || is_csv_step
 
     # For explicit dynamics, only print at output steps (suppresses per-step noise).
@@ -214,14 +236,30 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
             digits = max(0, Int64(ceil(log10(num_steps))) - 2)
             u_max = get_umax(model)
             if is_output_step && wall_time > 0.01
-                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : |U|_max = %.2e : wall = %s",
-                           stop, num_steps, percent, time, u_max, format_time(wall_time))
+                norma_logf(
+                    0,
+                    :stop,
+                    "[%d/%d, %.$(digits)f%%] : Time = %.2e : |U|_max = %.2e : wall = %s",
+                    stop,
+                    num_steps,
+                    percent,
+                    time,
+                    u_max,
+                    format_time(wall_time),
+                )
             elseif wall_time > 0.01
-                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
-                           stop, num_steps, percent, time, format_time(wall_time))
+                norma_logf(
+                    0,
+                    :stop,
+                    "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
+                    stop,
+                    num_steps,
+                    percent,
+                    time,
+                    format_time(wall_time),
+                )
             else
-                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e",
-                           stop, num_steps, percent, time)
+                norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e", stop, num_steps, percent, time)
             end
         end
     end
@@ -246,11 +284,18 @@ function write_stop(sim::MultiDomainSimulation; wall_time::Float64=0.0)
     percent = 100 * stop / num_steps
     digits = max(0, Int64(ceil(log10(num_steps))) - 2)
     if wall_time > 0.01
-        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
-                   stop, num_steps, percent, time, format_time(wall_time))
+        norma_logf(
+            0,
+            :stop,
+            "[%d/%d, %.$(digits)f%%] : Time = %.2e : wall = %s",
+            stop,
+            num_steps,
+            percent,
+            time,
+            format_time(wall_time),
+        )
     else
-        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e",
-                   stop, num_steps, percent, time)
+        norma_logf(0, :stop, "[%d/%d, %.$(digits)f%%] : Time = %.2e", stop, num_steps, percent, time)
     end
     for subsim in sim.subsims
         write_stop(subsim)
@@ -304,7 +349,11 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             disp_filename = prefix * node_set_name * "-" * offset_name * "-disp" * index_string * ".csv"
             velo_filename = prefix * node_set_name * "-" * offset_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * node_set_name * "-" * offset_name * "-acce" * index_string * ".csv"
-            writedlm(curr_filename, model.reference[bc.offset, bc.node_set_node_indices] + model.displacement[bc.offset, bc.node_set_node_indices])
+            writedlm(
+                curr_filename,
+                model.reference[bc.offset, bc.node_set_node_indices] +
+                model.displacement[bc.offset, bc.node_set_node_indices],
+            )
             writedlm(velo_filename, model.velocity[bc.offset, bc.node_set_node_indices])
             writedlm(acce_filename, model.acceleration[bc.offset, bc.node_set_node_indices])
             writedlm(disp_filename, model.displacement[bc.offset, bc.node_set_node_indices])
@@ -318,7 +367,9 @@ function write_sideset_stop_csv(sim::SingleDomainSimulation, model::SolidMechani
             velo_filename = prefix * side_set_name * "-velo" * index_string * ".csv"
             acce_filename = prefix * side_set_name * "-acce" * index_string * ".csv"
             unique_indices = unique(bc.side_set_node_indices)
-            writedlm_nodal_array(curr_filename, model.reference[:, unique_indices] .+ model.displacement[:, unique_indices])
+            writedlm_nodal_array(
+                curr_filename, model.reference[:, unique_indices] .+ model.displacement[:, unique_indices]
+            )
             writedlm_nodal_array(velo_filename, model.velocity[:, unique_indices])
             writedlm_nodal_array(acce_filename, model.acceleration[:, unique_indices])
             writedlm_nodal_array(disp_filename, model.displacement[:, unique_indices])
@@ -367,9 +418,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     # Energetic mesh smoothing size field, sampled at each node's current
     # position X = reference + displacement (see initialize_writing).
     if model isa SolidMechanics && model.mesh_smoothing == true && model.size_field !== nothing
-        size_vals = [
-            model.size_field((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)
-        ]
+        size_vals = [model.size_field((time, refe_x[n], refe_y[n], refe_z[n])) for n in 1:length(refe_x)]
         Exodus.write_values(output_mesh, NodalVariable, time_index, "size", size_vals)
     end
     if model isa SolidMechanics && model.mesh_smoothing == true && model.metric_field !== nothing
@@ -428,8 +477,20 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             end
             if size(model.lumped_recovered_von_mises, 1) > 0
                 recover_von_mises_stress!(model)
-                Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_stress_cons_n", model.consistent_recovered_von_mises[1, :])
-                Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_stress_lump_n", model.lumped_recovered_von_mises[1, :])
+                Exodus.write_values(
+                    output_mesh,
+                    NodalVariable,
+                    time_index,
+                    "von_mises_stress_cons_n",
+                    model.consistent_recovered_von_mises[1, :],
+                )
+                Exodus.write_values(
+                    output_mesh,
+                    NodalVariable,
+                    time_index,
+                    "von_mises_stress_lump_n",
+                    model.lumped_recovered_von_mises[1, :],
+                )
             end
             if size(model.lumped_recovered_F, 1) > 0
                 recover_deformation_gradient!(model)
@@ -463,14 +524,16 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
             end
             if size(model.recovered_von_mises, 1) > 0
                 recover_von_mises_stress!(model)
-                Exodus.write_values(output_mesh, NodalVariable, time_index, "von_mises_stress_n", model.recovered_von_mises[1, :])
+                Exodus.write_values(
+                    output_mesh, NodalVariable, time_index, "von_mises_stress_n", model.recovered_von_mises[1, :]
+                )
             end
             if size(model.recovered_F, 1) > 0
                 recover_deformation_gradient!(model)
                 nodal_F = model.recovered_F
-                for (c, name) in enumerate(
-                    ("F_xx_n", "F_yx_n", "F_zx_n", "F_xy_n", "F_yy_n", "F_zy_n", "F_xz_n", "F_yz_n", "F_zz_n"),
-                )
+                for (c, name) in enumerate((
+                    "F_xx_n", "F_yx_n", "F_zx_n", "F_xy_n", "F_yy_n", "F_zy_n", "F_xz_n", "F_yz_n", "F_zz_n"
+                ),)
                     Exodus.write_values(output_mesh, NodalVariable, time_index, name, nodal_F[c, :])
                 end
             end
@@ -537,7 +600,12 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 output_mesh, ElementVariable, time_index, Int64(block_id), "stress_xy" * ip_str, stress_xy[:, point]
             )
             Exodus.write_values(
-                output_mesh, ElementVariable, time_index, Int64(block_id), "von_mises_stress" * ip_str, von_mises[:, point]
+                output_mesh,
+                ElementVariable,
+                time_index,
+                Int64(block_id),
+                "von_mises_stress" * ip_str,
+                von_mises[:, point],
             )
             for iv_name in all_iv_names
                 iv_idx = findfirst(==(iv_name), mat_iv_names)
@@ -546,9 +614,7 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
                 else
                     values = zeros(num_block_elements)
                 end
-                Exodus.write_values(
-                    output_mesh, ElementVariable, time_index, Int64(block_id), iv_name * ip_str, values
-                )
+                Exodus.write_values(output_mesh, ElementVariable, time_index, Int64(block_id), iv_name * ip_str, values)
             end
         end
         Exodus.write_values(
@@ -556,7 +622,11 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
         )
         if model isa SolidMechanics && model.mesh_smoothing == true
             Exodus.write_values(
-                output_mesh, ElementVariable, time_index, Int64(block_id), "energy_density",
+                output_mesh,
+                ElementVariable,
+                time_index,
+                Int64(block_id),
+                "energy_density",
                 block_stored_energy ./ ideal_volumes(model, block_index),
             )
         end

@@ -13,9 +13,7 @@
 # Hessian of the energy the residual comes from.
 
 @testset "Three-Field Element" begin
-    hencky() = Norma.Hencky(
-        Dict{String,Any}("elastic modulus" => 1.0e9, "Poisson's ratio" => 0.3, "density" => 1000.0)
-    )
+    hencky() = Norma.Hencky(Dict{String,Any}("elastic modulus" => 1.0e9, "Poisson's ratio" => 0.3, "density" => 1000.0))
 
     "A straight-edged reference TETRA10, mid-side nodes at edge midpoints."
     function tet10_reference()
@@ -46,11 +44,12 @@
     material = hencky()
 
     # A field with genuinely varying J, so the projection has something to do.
-    nonaffine = 1.0e-3 * [
-        sin(3.1 * X[1, i] + 1.7 * X[2, i]) * (j == 1) +
-        cos(2.3 * X[3, i]) * (j == 2) +
-        X[1, i] * X[2, i] * (j == 3) for i in 1:10 for j in 1:3
-    ]
+    nonaffine =
+        1.0e-3 * [
+            sin(3.1 * X[1, i] + 1.7 * X[2, i]) * (j == 1) +
+            cos(2.3 * X[3, i]) * (j == 2) +
+            X[1, i] * X[2, i] * (j == 3) for i in 1:10 for j in 1:3
+        ]
 
     @testset "affine fields are reproduced exactly" begin
         # Under an affine motion F is constant, so J is constant, so the
@@ -106,8 +105,10 @@
 
             h = 1.0e-7
             for i in (1, 7, 19, 30)
-                up = copy(nonaffine); up[i] += h
-                um = copy(nonaffine); um[i] -= h
+                up = copy(nonaffine)
+                up[i] += h
+                um = copy(nonaffine)
+                um[i] -= h
                 Ep = Norma.three_field_energy(material, order, dN, w, ξ, X, up)
                 Em = Norma.three_field_energy(material, order, dN, w, ξ, X, um)
                 @test (Ep - Em) / (2h) ≈ R[i] rtol = 1.0e-5
