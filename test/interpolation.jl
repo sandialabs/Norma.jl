@@ -4,6 +4,8 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+using StaticArrays
+
 @testset "Barycentric Shape Functions" begin
     @testset "D=2, N=3 (tri3)" begin
         ξ = @SVector [1 / 3, 1 / 3]
