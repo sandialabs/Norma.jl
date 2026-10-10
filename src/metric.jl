@@ -145,19 +145,29 @@ function metric_factor(h::AbstractVector{Float64}, R::AbstractMatrix{Float64})
     return SMatrix{3,3,Float64,9}(Diagonal(SVector{3,Float64}(1.0 / h[1], 1.0 / h[2], 1.0 / h[3]))) * R'
 end
 
-# Nodes adjacent to every node through the elements of a model.
-function node_neighbors(model::SolidMechanics)
-    num_nodes = size(model.reference, 2)
+# Nodes adjacent to every node through the elements of the given blocks,
+# each block a connectivity matrix with one column per element.
+function node_neighbors(num_nodes::Int, connectivities)
     neighbors = [Int[] for _ in 1:num_nodes]
-    for block in model.blocks
-        connectivity = block.connectivity
+    for connectivity in connectivities
         for e in 1:size(connectivity, 2), i in 1:size(connectivity, 1), j in 1:size(connectivity, 1)
             i == j && continue
-            a, b = connectivity[i, e], connectivity[j, e]
+            a, b = Int(connectivity[i, e]), Int(connectivity[j, e])
             b in neighbors[a] || push!(neighbors[a], b)
         end
     end
     return neighbors
+end
+
+# Node adjacency of a model, from the connectivity of its blocks.
+function node_neighbors(model::SolidMechanics)
+    return node_neighbors(size(model.reference, 2), (block.connectivity for block in model.blocks))
+end
+
+# Node adjacency of the input mesh, from the connectivity of its blocks.
+function node_neighbors(mesh::ExodusDatabase, num_nodes::Int)
+    connectivities = (permutedims(get_block_connectivity(mesh, block.id)) for block in Exodus.read_sets(mesh, Block))
+    return node_neighbors(num_nodes, connectivities)
 end
 
 # Sizes (3 × n) and rotation vectors (3 × n) of tensors given at the nodes,
@@ -344,7 +354,7 @@ function create_metric_field(smooth_reference::String, params, mesh::Union{Exodu
     end
     interpolation = get(params, "interpolation", "principal")
     if interpolation == "principal"
-        neighbors = node_neighbors_from_mesh(mesh, num_nodes)
+        neighbors = node_neighbors(mesh, num_nodes)
         sizes, rotations, jumps = principal_of_nodal_tensors(tensors, neighbors)
         if jumps > 0
             norma_logf(
@@ -370,21 +380,6 @@ function create_metric_field(smooth_reference::String, params, mesh::Union{Exodu
     return norma_abort(
         "\"interpolation\" in \"metric field\" must be \"principal\" or \"log-Euclidean\"; got \"$interpolation\""
     )
-end
-
-# Node adjacency of the input mesh, from the connectivity of its blocks.
-function node_neighbors_from_mesh(mesh::ExodusDatabase, num_nodes::Int)
-    neighbors = [Int[] for _ in 1:num_nodes]
-    for block in Exodus.read_sets(mesh, Block)
-        raw = get_block_connectivity(mesh, block.id)
-        connectivity = reshape(Int.(vec(raw)), (size(raw, 2), size(raw, 1)))
-        for e in 1:size(connectivity, 2), i in 1:size(connectivity, 1), j in 1:size(connectivity, 1)
-            i == j && continue
-            a, b = Int(connectivity[i, e]), Int(connectivity[j, e])
-            b in neighbors[a] || push!(neighbors[a], b)
-        end
-    end
-    return neighbors
 end
 
 # Sizes and rotation of the metric on one element: for the function sources
