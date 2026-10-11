@@ -907,7 +907,65 @@ function SolidMultiDomainTimeController(params::Parameters)
         prev_stop_disp,
         prev_stop_∂Ω_f,
         false,   # relaxation_frozen, set per Schwarz iteration
+        parse_inexact_newton(params),
+        NaN,     # interface_residual, set per Schwarz iteration
     )
+end
+
+function parse_inexact_newton(params::Parameters)
+    haskey(params, "inexact Newton") || return nothing
+    block = params["inexact Newton"]
+    block isa AbstractDict || norma_abort("`inexact Newton` must be a block of keys.")
+    forcing_factor = Float64(get(block, "forcing factor", 0.1))
+    minimum_tolerance = Float64(get(block, "minimum tolerance", 1.0e-12))
+    maximum_tolerance = Float64(get(block, "maximum tolerance", 1.0e-2))
+    tight_final_solve = Bool(get(block, "tight final solve", true))
+    if !(forcing_factor > 0.0 && 0.0 < minimum_tolerance ≤ maximum_tolerance)
+        norma_abortf(
+            "`inexact Newton` requires forcing factor > 0 and 0 < minimum tolerance ≤ maximum tolerance; " *
+            "got %.2e, %.2e, %.2e.",
+            forcing_factor,
+            minimum_tolerance,
+            maximum_tolerance,
+        )
+    end
+    norma_logf(
+        0,
+        :schwarz,
+        "Inexact Newton: forcing factor = %.2e, tolerance in [%.2e, %.2e], tight final solve = %s",
+        forcing_factor,
+        minimum_tolerance,
+        maximum_tolerance,
+        string(tight_final_solve),
+    )
+    return InexactNewtonSettings(forcing_factor, minimum_tolerance, maximum_tolerance, tight_final_solve)
+end
+
+# Relative Newton tolerance of the subdomain solves at Schwarz iteration
+# `iteration_number` (counted from 0) of a stop; `previous_residual` is the
+# relative Schwarz residual of the previous Schwarz iteration.
+function inexact_newton_tolerance(settings::InexactNewtonSettings, iteration_number::Int64, previous_residual::Float64)
+    iteration_number == 0 && return settings.maximum_tolerance
+    isnan(previous_residual) && return settings.maximum_tolerance
+    return clamp(settings.forcing_factor * previous_residual, settings.minimum_tolerance, settings.maximum_tolerance)
+end
+
+function set_newton_tolerance!(sim::MultiDomainSimulation, tolerance::Float64)
+    for subsim in sim.subsims
+        subsim.solver isa HessianMinimizer && (subsim.solver.relative_tolerance = tolerance)
+    end
+    return nothing
+end
+
+# The relative Schwarz residual the convergence test uses: the constrained
+# interface residual when every coupling is a constrained pair, the relative
+# displacement update when there is no constrained pair, and the larger of
+# the two otherwise.
+function relative_schwarz_residual(sim::MultiDomainSimulation)
+    interface_residual = sim.controller.interface_residual
+    isnan(interface_residual) && return sim.controller.relative_error
+    only_constrained_couplings(sim) && return interface_residual
+    return max(interface_residual, sim.controller.relative_error)
 end
 
 function SolidSingleDomainTimeController(params::Parameters)
@@ -1477,13 +1535,34 @@ function schwarz(sim::MultiDomainSimulation)
     end
 
     constrained_stall = (Inf, 0)
+    inexact = sim.controller.inexact_newton
+    previous_residual = NaN
+    floor_forced = false
     while true
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
         # Recorded by the coupling BCs as they apply their relaxation factors.
         sim.controller.relaxation_frozen = false
+        newton_tolerance = NaN
+        if inexact !== nothing
+            newton_tolerance = if floor_forced
+                inexact.minimum_tolerance
+            else
+                inexact_newton_tolerance(inexact, iteration_number, previous_residual)
+            end
+            set_newton_tolerance!(sim, newton_tolerance)
+            norma_logf(0, :schwarz, "Newton tolerance [%d] = %.2e", iteration_number, newton_tolerance)
+        end
+        newton_iterations_before = NEWTON_ITERATION_COUNT[]
         set_initial_subcycle_time(sim)
         subcycle(sim)
+        norma_logf(
+            0,
+            :schwarz,
+            "Newton iterations [%d] = %d",
+            iteration_number,
+            NEWTON_ITERATION_COUNT[] - newton_iterations_before,
+        )
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
         constrained_converged, constrained_stall = apply_constrained_dn_criterion!(sim, constrained_stall)
         if sim.controller.converged && sim.controller.relaxation_frozen
@@ -1494,6 +1573,24 @@ function schwarz(sim::MultiDomainSimulation)
             # residual, and must not be read as convergence.
             norma_log(0, :schwarz, "Relaxation factor near zero froze an interface iterate; update is not convergence.")
             sim.controller.converged = false
+        end
+        # Under `tight final solve`, an iterate whose subdomain solves used a
+        # Newton tolerance above the floor is not accepted as converged; the
+        # iteration continues with the tolerance at the floor.
+        tight_pending = inexact !== nothing && inexact.tight_final_solve && newton_tolerance > inexact.minimum_tolerance
+        if inexact !== nothing
+            previous_residual = relative_schwarz_residual(sim)
+        end
+        if sim.controller.converged && tight_pending && iteration_number > 0
+            norma_logf(
+                0,
+                :schwarz,
+                "Converged with Newton tolerance %.2e above the floor %.2e; repeating with the floor.",
+                newton_tolerance,
+                inexact.minimum_tolerance,
+            )
+            sim.controller.converged = false
+            floor_forced = true
         end
         if iteration_number == 0
             # Initial Schwarz pass: there is no prior iterate to compare against,
@@ -1512,7 +1609,7 @@ function schwarz(sim::MultiDomainSimulation)
             # Early exit: if the initial absolute update already meets the absolute
             # tolerance, no further Schwarz iterations are needed. The relative test
             # still cannot be applied on iteration 0 (no prior iterate).
-            if ΔU ≤ sim.controller.absolute_tolerance && constrained_converged
+            if ΔU ≤ sim.controller.absolute_tolerance && constrained_converged && !tight_pending
                 norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
                 sim.controller.schwarz_iters[sim.controller.stop] = 0
                 break
@@ -1888,6 +1985,7 @@ const STALL_ITERATIONS = 3
 function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tuple{Float64,Int})
     controller = sim.controller
     sides = dn_dirichlet_sides(sim)
+    controller.interface_residual = NaN
     isempty(sides) && return true, stall
     rtol = controller.relative_tolerance
     # The controller's absolute tolerance is a displacement; it is not used here.
@@ -1927,6 +2025,7 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
         all_constrained_converged &= jump_ok && force_ok
         max_measure = max(max_measure, jump, isnan(r.force_residual) ? Inf : r.force_residual)
     end
+    controller.interface_residual = has_constrained ? max_measure : NaN
     has_constrained || return true, stall
     displacement_converged = controller.converged
     if all_constrained_converged

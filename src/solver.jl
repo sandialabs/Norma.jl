@@ -750,6 +750,7 @@ function report_unconverged_solve(
     if solver.converged == true || solver.failed == true || model.failed == true || solver.absolute_error == 0.0
         return nothing
     end
+    UNCONVERGED_SOLVE_COUNT[] += 1
     if solver.unconverged_action == "fail"
         norma_logf(
             0,
@@ -793,6 +794,22 @@ function notify_solve_observer(model::Model, iteration_number::Int64)
     return nothing
 end
 
+# Counters of the Newton work of a run, over all subdomains: the number of
+# Newton iterations (one assembly and one linear solve each) of the implicit
+# solves, the number of such solves, and the number of solves that ended
+# without meeting either tolerance. Reset at the start of a run and reported
+# at its end.
+const NEWTON_ITERATION_COUNT = Ref(0)
+const NEWTON_SOLVE_COUNT = Ref(0)
+const UNCONVERGED_SOLVE_COUNT = Ref(0)
+
+function reset_newton_counters!()
+    NEWTON_ITERATION_COUNT[] = 0
+    NEWTON_SOLVE_COUNT[] = 0
+    UNCONVERGED_SOLVE_COUNT[] = 0
+    return nothing
+end
+
 function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     is_rom_model = model isa RomModel
     if is_rom_model == false
@@ -830,8 +847,10 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     step_type = solver.step
     reset_step!(step_type)  # clear any per-solve state (e.g. L-BFGS curvature history)
     reset_energy_stagnation!(solver)
+    is_explicit_dynamic || (NEWTON_SOLVE_COUNT[] += 1)
     while true
         step = compute_step(integrator, model, solver, step_type)
+        is_explicit_dynamic || (NEWTON_ITERATION_COUNT[] += 1)
         solver.solution[model.free_dofs] += step
         correct(integrator, solver, model)
         evaluate(integrator, solver, model)

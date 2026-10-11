@@ -15,6 +15,21 @@ abstract type MultiDomainTimeController <: TimeController end
 # both of them blend and overwrite a single shared iterate.
 const RelaxationKey = Tuple{Int64,Int64,Int64}
 
+# Inexact Newton control of the subdomain solves of a Schwarz iteration (the
+# optional `inexact Newton` block of a multidomain input). Before the solves of
+# Schwarz iteration k of a stop, the relative Newton tolerance of every
+# implicit subdomain is set to clamp(η r_{k-1}, floor, ceiling), with r_{k-1}
+# the relative Schwarz residual of the previous Schwarz iteration of the stop,
+# and to the ceiling at the first Schwarz iteration of the stop. With
+# `tight_final_solve`, convergence is accepted only at a Schwarz iteration
+# whose Newton tolerance was the floor.
+struct InexactNewtonSettings
+    forcing_factor::Float64
+    minimum_tolerance::Float64
+    maximum_tolerance::Float64
+    tight_final_solve::Bool
+end
+
 mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     minimum_iterations::Int64
     maximum_iterations::Int64
@@ -88,6 +103,11 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     # behind is invisible to the displacement-based criterion. Cleared at the
     # start of each Schwarz iteration; see `frozen_relaxation_update!`.
     relaxation_frozen::Bool
+    # Inexact Newton settings, or nothing when the block is absent.
+    inexact_newton::Union{Nothing,InexactNewtonSettings}
+    # Largest constrained interface residual (velocity or displacement jump,
+    # force residual) of the last Schwarz iteration; NaN without constrained pairs.
+    interface_residual::Float64
 end
 
 mutable struct SolidSingleDomainTimeController <: SingleTimeController

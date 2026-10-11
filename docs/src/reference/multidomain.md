@@ -57,6 +57,26 @@ it stopped at against both tolerances. Under the default it says so and the run
 continues, which is the historical behavior made visible; `abort` stops the run
 instead, for cases where an unconverged interface must not be carried forward.
 
+### Inexact Newton control of the subdomain solves
+
+The optional block `inexact Newton` sets the relative Newton tolerance of every
+implicit subdomain (`Hessian minimizer`) before the subdomain solves of each
+Schwarz iteration, replacing the `relative tolerance` of the subdomain
+`solver` blocks. At Schwarz iteration k ≥ 1 of a stop the tolerance is
+clamp(η r_{k−1}, floor, ceiling), where r_{k−1} is the relative Schwarz
+residual of the previous Schwarz iteration of that stop: the larger of the
+interface jump and the force residual for constrained Dirichlet–Neumann pairs,
+the relative change of u + Δt v otherwise. At the first Schwarz iteration of a
+stop (k = 0) it is the ceiling. The tolerance and the number of Newton
+iterations of every Schwarz iteration are logged with the Schwarz criterion.
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `forcing factor` | no | `0.1` | factor η > 0 between the previous relative Schwarz residual and the relative Newton tolerance |
+| `minimum tolerance` | no | `1.0e-12` | floor of the relative Newton tolerance |
+| `maximum tolerance` | no | `1.0e-2` | ceiling of the relative Newton tolerance, used at the first Schwarz iteration of a stop |
+| `tight final solve` | no | `true` | accept Schwarz convergence only at a Schwarz iteration whose Newton tolerance was the floor; a convergence reached above the floor is rejected and the Schwarz iteration continues with the tolerance at the floor for the rest of the stop |
+
 ### Relaxation and acceleration
 
 | Key | Required | Default | Meaning |

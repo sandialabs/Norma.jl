@@ -105,6 +105,7 @@ const TOP_LEVEL_MULTI_KEYS = Set([
     "stalled interface jump action",
     "constraint absolute tolerance",
     "unconverged step action",
+    "inexact Newton",
     "blended energy output",
     "Exodus output interval",
     "CSV output interval",
@@ -114,6 +115,8 @@ const TOP_LEVEL_MULTI_KEYS = Set([
 ])
 
 const RESTART_KEYS = Set(["index"])
+
+const INEXACT_NEWTON_KEYS = Set(["forcing factor", "minimum tolerance", "maximum tolerance", "tight final solve"])
 
 const TIME_INTEGRATOR_COMMON_KEYS = Set([
     "type",
@@ -402,6 +405,12 @@ function validate_restart!(messages::Vector{String}, params::Parameters, file::S
     return warn_unknown_keys!(messages, restart_params, RESTART_KEYS, "restart", file)
 end
 
+function validate_inexact_newton!(messages::Vector{String}, params::Parameters, file::String)
+    block = get(params, "inexact Newton", nothing)
+    block isa AbstractDict || return messages
+    return warn_unknown_keys!(messages, block, INEXACT_NEWTON_KEYS, "inexact Newton", file)
+end
+
 function validate_adaptivity!(messages::Vector{String}, params::Parameters, file::String)
     adaptivity = get(params, "adaptivity", nothing)
     adaptivity isa AbstractDict || return messages
@@ -435,6 +444,7 @@ function validate_input_parameters(params::Parameters, file::AbstractString)
     simulation_type = get(params, "type", "")
     if simulation_type == "multi"
         warn_unknown_keys!(messages, params, TOP_LEVEL_MULTI_KEYS, "the top level", file_name)
+        validate_inexact_newton!(messages, params, file_name)
         validate_restart!(messages, params, file_name)
         validate_swaps!(messages, params, file_name)
     else

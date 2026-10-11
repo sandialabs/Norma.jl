@@ -80,6 +80,7 @@ end
 
 function run(sim::Simulation)
     start_time = time()
+    reset_newton_counters!()
     norma_log(0, :info, "Threads: " * thread_report())
     try
         evolve(sim)
@@ -94,6 +95,14 @@ function run(sim::Simulation)
     end
     elapsed_time = time() - start_time
     norma_log(0, :done, "Simulation Complete")
+    norma_logf(
+        0,
+        :summary,
+        "Newton iterations = %d in %d solves, %d unconverged",
+        NEWTON_ITERATION_COUNT[],
+        NEWTON_SOLVE_COUNT[],
+        UNCONVERGED_SOLVE_COUNT[],
+    )
     norma_log(0, :time, "Run Time = " * format_time(elapsed_time))
     norma_log(0, :norma, "END SIMULATION")
     return sim
