@@ -20,11 +20,25 @@ function coupled_bc_of(bc::SolidMechanicsSchwarzBoundaryCondition)
     return coupled_subsim_of(bc).model.boundary_conditions[bc.coupled_bc_index]
 end
 
-# Floor on ‖δ‖² guarding the division when successive residuals are essentially
-# identical (a stale residual direction). This is numerical safety only; the
-# Aitken factor itself is left unclamped so it is free to take the large or
-# negative excursions that accelerate convergence.
-const AITKEN_DELTA_SQ_FLOOR = 1.0e-20
+# Relative floor of the differences that enter an Aitken factor. A difference
+# δ of two successive residuals, or d of two successive iterates, is resolved
+# when ‖δ‖ > AITKEN_RELATIVE_FLOOR ‖x‖, with x the current interface iterate;
+# below that, ‖δ‖ is at most 45 unit roundoffs times ‖x‖, δ carries no secant
+# information, and the factor falls back to the input relaxation parameter
+# (secant form) or to the previous factor (recursive form). The
+# Aitken factor itself is not clamped. The floor was absolute, 1e-20 on ‖δ‖²,
+# until October 2026: on the matrix inclusion at 5% strain it was reached at
+# interface differences of about 1e-10 m, and the fallback factor 0.5, at which
+# that Dirichlet-Neumann iteration diverges, then prevented convergence below a
+# relative tolerance of about 1e-10.
+const AITKEN_RELATIVE_FLOOR = 1.0e-14
+
+# True when a squared difference norm `difference_sq` is resolved relative to the
+# squared norm `iterate_sq` of the iterate (see AITKEN_RELATIVE_FLOOR). A zero
+# difference is never resolved, also when the iterate is zero.
+function aitken_resolved(difference_sq::Float64, iterate_sq::Float64)
+    return difference_sq > AITKEN_RELATIVE_FLOOR^2 * iterate_sq
+end
 
 # A relaxation factor at or below this magnitude leaves the interface iterate
 # unchanged to working precision. Every subdomain then re-solves against the
@@ -168,7 +182,7 @@ function relaxation_aitken_recursive_theta!(
     if !isempty(prev_residual) && length(prev_residual) == length(residual)
         δ = residual .- prev_residual
         δ_sq = dot(δ, δ)
-        if δ_sq > AITKEN_DELTA_SQ_FLOOR
+        if aitken_resolved(δ_sq, dot(lambda_prev, lambda_prev))
             θ = -θ_prev * dot(prev_residual, δ) / δ_sq
         else
             θ = θ_prev
@@ -227,11 +241,15 @@ function relaxation_aitken_secant_theta!(
         # so r = 0, the written iterate equals the incoming one whatever θ is,
         # and the next Schwarz iteration finds g^(n) == g^(n-1). Fall back to the input
         # theta; the iteration after that has two genuine iterates to differentiate.
-        if δ_sq > AITKEN_DELTA_SQ_FLOOR && dot(d, d) > AITKEN_DELTA_SQ_FLOOR
+        # The test is relative to the iterate (AITKEN_RELATIVE_FLOOR), so that
+        # differences far below the size of the iterate but far above its
+        # rounding error still give a factor.
+        iterate_sq = dot(lambda_prev, lambda_prev)
+        if aitken_resolved(δ_sq, iterate_sq) && aitken_resolved(dot(d, d), iterate_sq)
             # Pure Aitken-secant factor, paper eq. (9): no value clamp, so the factor is
             # free to take the large/negative excursions that accelerate (or
-            # damp) convergence. The δ_sq floor above is kept only to guard the
-            # division when successive residuals are essentially identical.
+            # damp) convergence. The floor above only guards the division when
+            # successive residuals are equal to the rounding error of the iterate.
             θ = -dot(d, δ) / δ_sq
         end
     end

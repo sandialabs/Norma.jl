@@ -1279,7 +1279,8 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
                         δ = residual .- previous_residual[k]
                         d = previous[k] .- previous_iterate[k]
                         δ_sq = sum(abs2, δ)
-                        if δ_sq > AITKEN_DELTA_SQ_FLOOR && sum(abs2, d) > AITKEN_DELTA_SQ_FLOOR
+                        iterate_sq = sum(abs2, previous[k])
+                        if aitken_resolved(δ_sq, iterate_sq) && aitken_resolved(sum(abs2, d), iterate_sq)
                             θ_k = -sum(d .* δ) / δ_sq
                         end
                     end

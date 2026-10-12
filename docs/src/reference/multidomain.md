@@ -84,6 +84,22 @@ It is the factor applied for Schwarz iterations below `aitken N0 parameter`,
 and the fallback whenever an adaptive factor cannot be formed, which includes
 the first iterations of every step before two iterates exist to compare.
 
+An adaptive factor cannot be formed either when the difference of two
+successive interface iterates, or of two successive interface residuals, is
+not resolved: its norm is at most 1e-14 times the norm of the current
+interface iterate, which is 45 times the unit roundoff of double precision
+arithmetic (2.2e-16). The secant
+form then applies `relaxation parameter` and the recursive form keeps its
+previous factor. Before October 2026 this floor was absolute (1e-20 on the
+squared norm of the difference). On
+`examples/nonoverlap/static-same-step/matrix-inclusion` at 5% strain in 10
+load steps, with `relaxation parameter: 0.5` and a relative tolerance of
+1e-12, the absolute floor was reached at interface differences of about
+1e-10 m, the fallback factor 0.5 made the iteration diverge by a factor of
+1.33 per Schwarz iteration, and every load step ended at the limit of 128
+Schwarz iterations. With the relative floor the same run converges in 26 to
+33 Schwarz iterations per load step.
+
 Aitken acceleration is applied only to stops with a single substep, that is
 when the controller `time step` equals the relaxed subdomain's time step. A
 windowed stop couples all of its time slots in one Schwarz iteration, where the adaptive
