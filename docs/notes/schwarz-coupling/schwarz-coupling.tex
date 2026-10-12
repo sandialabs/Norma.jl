@@ -919,6 +919,99 @@ decomposed, direct & $2.5\times 10^{-7}$ & $0.999995$ & $0.999993$
 \end{tabular}
 \end{table}
 
+\subsection{Inexact subdomain solves}
+\label{sec:inexact}
+
+Every Schwarz iteration solves each subdomain to the Newton tolerance of
+its solver, although only the converged Schwarz iterate is used. Inexact
+Schwarz solves the subdomains loosely and relies on the Schwarz iteration,
+stopped at a tight $\epsilon$, for the accuracy. Its effect was measured on
+the beam of Section~\ref{sec:norma} with a neohookean material of the same
+moduli, so that Newton takes more than one iteration per solve: two
+trapezoidal subdomains, the constrained exchange with Anderson
+acceleration, $\epsilon = 10^{-12}$, $10^4$ stops of $1\,\mu$s on the
+mesh of level $1$ ($180$ elements) and $2\times 10^4$ stops of
+$0.5\,\mu$s on the mesh of level $2$ ($1440$ elements). The reference
+run has the relative Newton tolerance $10^{-12}$; the error of a run is
+$\lVert u - u_{\mathrm{ref}} \rVert_2 / \lVert u_{\mathrm{ref}} \rVert_2$
+over all nodes at $10$\,ms. Table~\ref{tab:inexact} gives the Newton
+iterations of each run relative to the reference, the Schwarz iterations per
+stop, and the error, for constant Newton tolerances, for one Newton
+iteration per solve carried forward unconverged, and for a forcing term
+that sets the Newton tolerance of Schwarz iteration $k$ to
+$\min(\max(\eta\, r_{k-1}, 10^{-12}), 10^{-2})$, with $r_{k-1}$ the
+relative Schwarz residual of the previous iteration of the stop and
+$10^{-2}$ at the first.
+
+\begin{table}[htbp]
+\centering
+\caption{Neohookean beam, two trapezoidal subdomains, constrained exchange,
+$\epsilon = 10^{-12}$, $10$\,ms: Newton iterations relative to the
+reference (Newton tolerance $10^{-12}$), Schwarz iterations per stop, and
+the relative displacement error against the reference at $10$\,ms, on the
+meshes of levels $1$ and $2$.}
+\label{tab:inexact}
+\begin{tabular}{lllllll}
+\hline
+Newton setting & \multicolumn{3}{l}{level $1$, $10^4$ stops}
+  & \multicolumn{3}{l}{level $2$, $2\times 10^4$ stops} \\
+ & Newton & Schwarz & error & Newton & Schwarz & error \\
+\hline
+tolerance $10^{-10}$ & $0.930$ & $7.97$ & $1.7\times 10^{-10}$ & & & \\
+tolerance $10^{-6}$ & $0.667$ & $7.97$ & $6.0\times 10^{-9}$
+  & $0.670$ & $7.93$ & $3.1\times 10^{-9}$ \\
+tolerance $10^{-4}$ & $0.663$ & $7.97$ & $1.7\times 10^{-5}$
+  & $0.640$ & $7.93$ & $4.8\times 10^{-5}$ \\
+one Newton iteration & $0.334$ & $7.97$ & $5.3\times 10^{-3}$
+  & $0.335$ & $7.93$ & $3.9\times 10^{-3}$ \\
+forcing term, $\eta = 0.01$ & $0.735$ & $8.52$ & $1.4\times 10^{-12}$
+  & $0.717$ & $8.27$ & $1.8\times 10^{-12}$ \\
+forcing term, $\eta = 0.1$ & $0.841$ & $10.18$ & $3.4\times 10^{-12}$
+  & $0.826$ & $9.98$ & $2.5\times 10^{-12}$ \\
+\hline
+\end{tabular}
+\end{table}
+
+A constant Newton tolerance does not change the Schwarz iteration count,
+and its error equals the Newton error, not the Schwarz stopping error. The
+reason is the structure of the iteration: every Schwarz iteration restarts
+the subdomain solves from the state at the start of the stop, not from the
+previous Schwarz iterate, so with a fixed Newton setting each Schwarz
+iteration applies the same map and the iteration converges to the fixed
+point of that map, which carries the Newton error. The Schwarz criterion
+measures the change between iterates and does not see it: with one Newton
+iteration per solve the iteration meets $\epsilon = 10^{-12}$ in $8$
+iterations per stop and the result is wrong by $0.5\%$. The forcing term
+removes the error at $0.72$ to $0.74$ of the Newton iterations of the
+reference. The larger factor, $\eta = 0.1$, raises the Schwarz count by
+$26$ to $28\%$ and loses most of the saving. A tight final solve, which
+accepts Schwarz convergence only at an iteration whose Newton tolerance was
+$10^{-12}$, was triggered at $50$ of the $10^4$ stops with $\eta = 0.01$
+and did not reduce the error. On a machine with no other load the wall time
+of the level $1$ runs relative to the reference ($1081$\,s on $4$ threads)
+is $0.49$ for one Newton iteration per solve, $0.74$ for the tolerance
+$10^{-4}$, and $0.81$ for $\eta = 0.01$, within $2.4\%$ of the ratios of
+residual and tangent assemblies. The energy of the neohookean beam under
+the trapezoidal rule falls by $5.0\%$ over the $10$\,ms at both levels,
+identically in the monolithic run; the loss is divided by $3.6$ to $3.9$
+at each halving of the step on a fixed mesh, so it is the second-order
+error of the integrator at the Courant number the levels share, and the
+energy is not a measure of the coupling for this material.
+
+On a static problem the picture differs. For a neohookean inclusion in a
+neohookean matrix (\code{examples/nonoverlap/static-same-step/matrix-inclusion}
+at $5\%$ strain in $10$ load steps, the classical exchange with Aitken
+secant relaxation, $\epsilon = 10^{-12}$) Newton tolerances from $10^{-6}$
+to $10^{-10}$ save $15\%$ of the Newton iterations at an error of
+$3\times 10^{-13}$, whereas $10^{-4}$ and looser raise the Schwarz count
+from $36$ to $84$ or more per load step and reach the cap of $128$, and the
+forcing term with $\eta = 0.1$ saves $24\%$ at an error of
+$6\times 10^{-13}$. The classical form of inexact Schwarz, in which each
+subdomain solve starts from its previous Schwarz iterate so that one
+Newton iteration per Schwarz iteration converges to the solution of the
+coupled problem, has not been implemented; it requires the predictor state
+of the integrator to be carried across Schwarz iterations.
+
 \subsection{The classical exchange}
 \label{sec:baseline}
 
@@ -953,13 +1046,21 @@ constrained problem and could serve as a solver of it.
 \label{sec:open}
 
 \begin{enumerate}[label=(\roman*),itemsep=2pt]
-\item \emph{Inexact Schwarz iteration.} Every iterated run stops at a
+\item \emph{Schwarz stopping error.} Every iterated run stops at a
   tolerance, and the stopping error accumulates: the conserved quantity
   drifts by about $10^{-10}$ over $10^4$ stops at $\epsilon = 10^{-12}$, and
   by about $10^{-9}$ with the fine-step side as the Dirichlet side. How the
   drift scales with $\epsilon$ and with the number of windows, and whether
   the criterion \eqref{eq:stopping} needs refinement, has not been
   measured.
+\item \emph{Warm start of the subdomain solves.} Each Schwarz iteration
+  restarts the subdomain solves from the state at the start of the stop
+  (Section~\ref{sec:inexact}), which bounds the saving of inexact
+  subdomain solves at a fixed accuracy to the fraction of Newton
+  iterations beyond the second. Starting each solve from the previous
+  Schwarz iterate would let one Newton iteration per Schwarz iteration
+  converge to the coupled solution; its effect on the Schwarz count and on
+  the pseudo-energy identity has not been measured.
 \item \emph{Mixed pair with an explicit coarse-step side.} The coarse-step
   side must be the Dirichlet side and an explicit Dirichlet side has a gain
   down to $-13$; Anderson acceleration converges at equal steps in this
@@ -993,7 +1094,11 @@ Anderson acceleration and $1$ otherwise), or
 \code{relaxation: aitken recursive}; \code{constraint absolute tolerance}
 sets an absolute floor in the units of the constrained quantity (default
 $0$), and \code{stalled interface jump action} selects what a stalled stop
-does. \code{blended energy output: true} writes, per stop, the energy $E$
+does. The block \code{inexact Newton} (\code{forcing factor}, default
+$0.01$; \code{minimum tolerance}, $10^{-12}$; \code{maximum tolerance},
+$10^{-2}$; \code{tight final solve}, false) sets the Newton tolerance of
+the implicit subdomains from the previous Schwarz residual as in
+Section~\ref{sec:inexact}. \code{blended energy output: true} writes, per stop, the energy $E$
 (\code{total\_energy}), the pseudo-energy $\tilde{E}$
 (\code{pseudo\_energy\_total} and per subdomain; NaN for nonlinear
 materials), the interface displacement and velocity jumps, and, for
@@ -1019,7 +1124,12 @@ The equal-step, subcycled, gain, and solver measurements were made on
 sirius between September 30 and October 1, 2026, at the commits that
 introduced each feature (\code{9b09793c} through \code{570557c5}); the
 figures and the neohookean time-step measurements are reruns of October 2,
-2026 at commit \code{08b0d866}.
+2026 at commit \code{08b0d866}. The inexact subdomain solve measurements
+(Section~\ref{sec:inexact}) were made on sirius (level $1$, the inclusion)
+and rigel (level $2$) on October 11 and 12, 2026, at commit
+\code{9428ecbd} with the \code{inexact Newton} control of commit
+\code{106800d9}; their data are in
+\code{\textasciitilde/Projects/Norma-Schwarz-Coupling/inexact-2026-10}.
 
 \begin{thebibliography}{99}
 
