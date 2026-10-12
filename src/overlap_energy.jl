@@ -261,7 +261,10 @@ end
 # The strain-energy density W is recomputed from the deformation gradient with
 # the same kinematics and constitutive model as evaluate(), so with unit weights
 # stored reduces to model.strain_energy and kinetic to 0.5 vᵀ M v (consistent
-# mass) to machine precision.
+# mass) to machine precision. For central difference the kinetic energy is the
+# product ½ v_{n-½}ᵀ M_L v_{n+½} of the half-step velocities, ½ vᵀ M_L v -
+# (Δt²/8) aᵀ M_L a, which the scheme conserves exactly on a linear problem. It
+# can be negative: for a body released at rest it is -(Δt²/8) aᵀ M_L a at t = 0.
 function blended_subdomain_energy(subsim::SingleDomainSimulation)
     model = subsim.model
     aw = get_arlequin_weights(subsim)

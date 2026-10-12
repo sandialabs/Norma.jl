@@ -140,6 +140,20 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in m and m/s |
 | `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (N s), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
 
+For a central difference subdomain, `kinetic_energy` is the product
+½ v_{n−½}ᵀ M_L v_{n+½} of the two half-step velocities around the stop n,
+with M_L the lumped mass matrix, which equals ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a
+for the velocity v and acceleration a at the stop. With this kinetic energy
+central difference conserves E exactly on a linear problem without loads. The
+product is not a quadratic form of one velocity and can be negative. For a
+body released at rest it is −(Δt²/8) aᵀ M_L a at t = 0, so E(0) is below
+the initial stored energy. Measured on the linear elastic cantilever of
+`studies/dynamic-stability` (case `beam_mono_E_L1`, Δt = 1 µs, 10 ms): the
+stored energy at t = 0 is 1506.28 J, the kinetic energy −10.68 J, and
+|E(t)/E(0) − 1| at most 1.0e-14. The kinetic energy ½ vᵀ M_L v of the
+velocity at the stop gives E(0) equal to the stored energy, but E then varies
+by 0.62% over the same run, so it is not written.
+
 Ẽ is the pseudo-energy, the Newmark discrete energy of the differentiated equation of motion
 M ȧ + K v = ḟ (Prakash and Hjelmstad 2004, Eqs. (56)–(58) and (71)),
 Ẽ = ½ aᵀ A a + ½ vᵀ K v with A = M + (Δt²/2)(2β − γ) K, evaluated as
