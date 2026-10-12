@@ -664,6 +664,16 @@ $1{:}0.75$ the projector onto the coarse side reproduces constants only to
 $1.2\times 10^{-2}$; the exchange is unaffected because only $\Pi_D$, whose
 error is $7\times 10^{-16}$, enters it.
 
+The iteration counts of Table~\ref{tab:equal} were measured with the stopping
+rule of September 30, 2026, which also accepted a stop when the root mean
+square jump of the constrained velocity fell below the controller's absolute
+tolerance divided by the step. Without this floor, removed on October 1,
+2026 (commit \code{d96ab13f}), the conforming II pair with the inputs of
+\code{studies/dynamic-stability} (case \code{beam\_no-cd\_II\_L1\_r100\_fixed},
+absolute tolerance $10^{-15}$) takes $8.85$ Schwarz iterations per stop
+(maximum $10$) instead of $7.97$ (maximum $8$) with the floor, with
+$\delta E = 7.3\times 10^{-13}$ and $\delta\tilde{E} = 1.3\times 10^{-12}$.
+
 Table~\ref{tab:dn-gain} gives the gain \eqref{eq:gain} on which the role
 rules of Sec.~\ref{sec:roles} rest.
 
