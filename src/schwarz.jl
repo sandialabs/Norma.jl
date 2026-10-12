@@ -534,6 +534,18 @@ function compute_robin_schwarz_projectors!(
     return nothing
 end
 
+# Store the boundary mass matrix W of one side of a Dirichlet-Neumann pair
+# together with its Cholesky factorization. W is symmetric positive definite and
+# does not change during a run. The interface force residual evaluates the W⁻¹
+# norm at every Schwarz iteration and at every stop of the energy output; before
+# the factorization was stored, each evaluation factored the dense matrix anew,
+# six times per residual.
+function set_square_projector!(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, W::Matrix{Float64})
+    bc.square_projector = W
+    bc.square_factor = cholesky(Symmetric(W))
+    return nothing
+end
+
 # Transfer operators of a constrained Dirichlet-Neumann pair, built from one
 # cross mass matrix B_mn = ∫_Γ φ¹_m φ²_n dS, with φ¹ and φ² the trace shape
 # functions of the two sides: Π₁ = W₁⁻¹ B, Π₂ = W₂⁻¹ Bᵀ, and each side's force transfer is the
@@ -577,12 +589,12 @@ function compute_constrained_dn_projectors!(
     else
         Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
     end
-    P1 = W1 \ B
-    P2 = W2 \ Matrix(transpose(B))
-    dst_bc.square_projector = W1
+    set_square_projector!(dst_bc, W1)
+    set_square_projector!(src_bc, W2)
+    P1 = dst_bc.square_factor \ B
+    P2 = src_bc.square_factor \ Matrix(transpose(B))
     dst_bc.dirichlet_projector = P1
     dst_bc.neumann_projector = Matrix(transpose(P2))
-    src_bc.square_projector = W2
     src_bc.dirichlet_projector = P2
     src_bc.neumann_projector = Matrix(transpose(P1))
     pu_error = max(maximum(abs.(P1 * ones(n2) .- 1.0)), maximum(abs.(P2 * ones(n1) .- 1.0)))
@@ -968,11 +980,12 @@ function weighted_norm(W::AbstractMatrix{Float64}, x::Matrix{Float64})
     return sqrt(max(total, 0.0))
 end
 
-function inverse_weighted_norm(W::AbstractMatrix{Float64}, x::Matrix{Float64})
+# ‖x‖_{W⁻¹}, with W given by its Cholesky factorization.
+function inverse_weighted_norm(W_factor::Cholesky{Float64,Matrix{Float64}}, x::Matrix{Float64})
     total = 0.0
     for comp in axes(x, 1)
         xc = x[comp, :]
-        total += dot(xc, W \ xc)
+        total += dot(xc, W_factor \ xc)
     end
     return sqrt(max(total, 0.0))
 end
@@ -988,13 +1001,17 @@ function project_components(A::AbstractMatrix{Float64}, q::AbstractMatrix{Float6
 end
 
 # Relative difference, in the norm of W_N⁻¹, between the reaction r_D of the
-# Dirichlet side transferred by Pᵀ and the force `applied` to the Neumann side.
+# Dirichlet side transferred by Pᵀ and the force `applied` to the Neumann side,
+# with W_N given by its Cholesky factorization.
 function dn_force_residual(
-    W_N::AbstractMatrix{Float64}, P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64}
+    W_N_factor::Cholesky{Float64,Matrix{Float64}},
+    P::AbstractMatrix{Float64},
+    r_D::AbstractMatrix{Float64},
+    applied::Matrix{Float64},
 )
     transferred = project_components(transpose(P), r_D)
-    scale = inverse_weighted_norm(W_N, transferred)
-    difference = inverse_weighted_norm(W_N, transferred - applied)
+    scale = inverse_weighted_norm(W_N_factor, transferred)
+    difference = inverse_weighted_norm(W_N_factor, transferred - applied)
     return scale > 0.0 ? difference / scale : difference
 end
 
@@ -1032,23 +1049,27 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
     # without the transferred force and the square projector the residual needs.
     if n_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
         f_N = n_bc.transferred_force
-        W_N = n_bc.square_projector
+        W_N_factor = n_bc.square_factor
     else
         f_N = Float64[]
-        W_N = zeros(0, 0)
+        W_N_factor = nothing
     end
-    if !isempty(f_N) && size(W_N, 1) == length(n_map) && length(model.internal_force) == length(model.displacement)
+    if !isempty(f_N) &&
+        W_N_factor !== nothing &&
+        size(W_N_factor, 1) == length(n_map) &&
+        length(model.internal_force) == length(model.displacement)
         r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
-        force_residual = dn_force_residual(W_N, P, r_D, reshape(f_N, 3, :))
+        force_residual = dn_force_residual(W_N_factor, P, r_D, reshape(f_N, 3, :))
     end
     return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms)
 end
 
-# Residuals of every DN pair of a multidomain simulation, one entry per pair,
-# in the order of the subdomains that hold the Dirichlet side.
-function dn_interface_residuals(sim::MultiDomainSimulation)
-    residuals = Tuple{SolidMechanicsNonOverlapSchwarzBoundaryCondition,DNInterfaceResiduals}[]
+# The Dirichlet side of every DN pair of a multidomain simulation whose
+# projectors are built, with the full order model of that side, in the order of
+# the subdomains that hold it.
+function dn_dirichlet_sides(sim::MultiDomainSimulation)
+    sides = Tuple{SolidMechanics,SolidMechanicsNonOverlapSchwarzBoundaryCondition}[]
     for subsim in sim.subsims
         # The conditions belong to subsim.model (a RomModel for a reduced order
         # subdomain); the fields to its full order model.
@@ -1059,10 +1080,16 @@ function dn_interface_residuals(sim::MultiDomainSimulation)
             bc.is_dirichlet || continue
             size(bc.dirichlet_projector, 1) > 0 || continue
             size(bc.square_projector, 1) > 0 || continue
-            push!(residuals, (bc, dn_interface_residuals(model, bc)))
+            push!(sides, (model, bc))
         end
     end
-    return residuals
+    return sides
+end
+
+# Residuals of every DN pair of a multidomain simulation, one entry per pair,
+# in the order of the subdomains that hold the Dirichlet side.
+function dn_interface_residuals(sim::MultiDomainSimulation)
+    return [(bc, dn_interface_residuals(model, bc)) for (model, bc) in dn_dirichlet_sides(sim)]
 end
 
 # Residuals of a constrained pair at every substep of the stop, from the
@@ -1107,7 +1134,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
     end
     force_residual = 0.0
     found = false
-    W_N = n_bc.square_projector
+    W_N_factor = n_bc.square_factor
     for (t, f_N) in n_bc.transferred_force_history
         t > t_start + tol_t || continue
         found = true
@@ -1115,7 +1142,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
         f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t)
         r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
         r_D = nodal(extract_local_vector(bc, r_global, 3))
-        force_residual = max(force_residual, dn_force_residual(W_N, P, r_D, nodal(f_N)))
+        force_residual = max(force_residual, dn_force_residual(W_N_factor, P, r_D, nodal(f_N)))
     end
     found || (force_residual = NaN)
     return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, NaN, NaN)
@@ -1142,7 +1169,8 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
     tol_t = 1.0e-12 * max(1.0, abs(controller.time))
     d_model = get_fom_model(self_subsim_of(bc))
     P = bc.dirichlet_projector
-    W_N = n_bc.square_projector
+    W_N_factor = n_bc.square_factor
+    W_N_factor === nothing && return nan
     length(d_times) >= 2 || return nan
     # Dirichlet side: reaction at each of its snapshots, trapezoid in time.
     function reaction(k)
@@ -1166,8 +1194,8 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
     transferred = project_components(transpose(P), impulse_D)
     residual = impulse_N .- transferred
     net = vec(sum(residual; dims=2))
-    scale = inverse_weighted_norm(W_N, transferred)
-    relative = scale > 0.0 ? inverse_weighted_norm(W_N, residual) / scale : NaN
+    scale = inverse_weighted_norm(W_N_factor, transferred)
+    relative = scale > 0.0 ? inverse_weighted_norm(W_N_factor, residual) / scale : NaN
     return net, relative
 end
 

@@ -387,6 +387,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         dirichlet_projector,
         neumann_projector,
         square_projector,
+        nothing,
         is_dirichlet,
         swap_bcs,
         constrained,

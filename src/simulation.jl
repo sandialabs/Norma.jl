@@ -1886,8 +1886,8 @@ const STALL_ITERATIONS = 3
 # iteration.
 function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tuple{Float64,Int})
     controller = sim.controller
-    residuals = dn_interface_residuals(sim)
-    isempty(residuals) && return true, stall
+    sides = dn_dirichlet_sides(sim)
+    isempty(sides) && return true, stall
     rtol = controller.relative_tolerance
     # The controller's absolute tolerance is a displacement; it is not used here.
     # The constrained criterion is relative unless `constraint absolute
@@ -1897,10 +1897,11 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
     has_constrained = false
     all_constrained_converged = true
     max_measure = 0.0
-    for (bc, r_end) in residuals
+    for (model, bc) in sides
         # Constrained pairs are measured at every substep of the stop; at equal
-        # steps this is the end of the stop.
-        r = bc.constrained ? dn_substep_residuals(sim, bc) : r_end
+        # steps this is the end of the stop. The residual of a pair is evaluated
+        # once per Schwarz iteration.
+        r = bc.constrained ? dn_substep_residuals(sim, bc) : dn_interface_residuals(model, bc)
         norma_logf(
             0,
             :schwarz,
@@ -2132,7 +2133,7 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 compute_neumann_projector(subsim.model, bc; cache=cache)
                 if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
                     fom_model = get_fom_model(subsim)
-                    bc.square_projector = get_square_projection_matrix(fom_model, bc)
+                    set_square_projector!(bc, get_square_projection_matrix(fom_model, bc))
                 end
             end
         end

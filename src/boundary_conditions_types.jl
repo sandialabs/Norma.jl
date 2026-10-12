@@ -167,6 +167,12 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
     dirichlet_projector::Matrix{Float64}
     neumann_projector::Matrix{Float64}
     square_projector::Matrix{Float64}
+    # Cholesky factorization of square_projector, the boundary mass matrix W of
+    # this side, which is symmetric positive definite and constant during a run.
+    # It is computed once with the projectors (set_square_projector! in
+    # schwarz.jl) and used for every solve with W, among them the W⁻¹ norm of
+    # the interface force residual. `nothing` until the projectors are built.
+    square_factor::Union{Nothing,Cholesky{Float64,Matrix{Float64}}}
     is_dirichlet::Bool
     swap_bcs::Bool
     # Constrained exchange (input key `constrained`): the Dirichlet side imposes
