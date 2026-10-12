@@ -72,10 +72,23 @@ iterations of every Schwarz iteration are logged with the Schwarz criterion.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
-| `forcing factor` | no | `0.1` | factor η > 0 between the previous relative Schwarz residual and the relative Newton tolerance |
+| `forcing factor` | no | `0.01` | factor η > 0 between the previous relative Schwarz residual and the relative Newton tolerance |
 | `minimum tolerance` | no | `1.0e-12` | floor of the relative Newton tolerance |
 | `maximum tolerance` | no | `1.0e-2` | ceiling of the relative Newton tolerance, used at the first Schwarz iteration of a stop |
-| `tight final solve` | no | `true` | accept Schwarz convergence only at a Schwarz iteration whose Newton tolerance was the floor; a convergence reached above the floor is rejected and the Schwarz iteration continues with the tolerance at the floor for the rest of the stop |
+| `tight final solve` | no | `false` | accept Schwarz convergence only at a Schwarz iteration whose Newton tolerance was the floor; a convergence reached above the floor is rejected and the Schwarz iteration continues with the tolerance at the floor for the rest of the stop |
+
+The defaults come from the inexact Schwarz study of October 2026 on the
+neohookean cantilever of `studies/dynamic-stability` (two implicit subdomains,
+constrained exchange, Schwarz relative tolerance 1e-12, 10 000 stops): with
+η = 0.01 and no tight final solve the run needed 0.735 of the Newton
+iterations of the run with the constant Newton tolerance 1e-12, at a relative
+displacement error of 1.4e-12 against that run at the final time, whereas the
+constant Newton tolerance 1e-6 needed 0.667 at an error of 6.0e-9 (0.717 and
+1.8e-12 for η = 0.01 on the mesh with 8 times the elements and 20 000 stops).
+Every Schwarz iteration restarts the subdomain solves from the state at the
+start of the stop, not from the previous Schwarz iterate, so a constant Newton
+tolerance looser than the Schwarz tolerance leaves an error of the size of the
+Newton error, which the Schwarz criterion does not detect.
 
 ### Relaxation and acceleration
 

@@ -916,10 +916,10 @@ function parse_inexact_newton(params::Parameters)
     haskey(params, "inexact Newton") || return nothing
     block = params["inexact Newton"]
     block isa AbstractDict || norma_abort("`inexact Newton` must be a block of keys.")
-    forcing_factor = Float64(get(block, "forcing factor", 0.1))
+    forcing_factor = Float64(get(block, "forcing factor", 0.01))
     minimum_tolerance = Float64(get(block, "minimum tolerance", 1.0e-12))
     maximum_tolerance = Float64(get(block, "maximum tolerance", 1.0e-2))
-    tight_final_solve = Bool(get(block, "tight final solve", true))
+    tight_final_solve = Bool(get(block, "tight final solve", false))
     if !(forcing_factor > 0.0 && 0.0 < minimum_tolerance ≤ maximum_tolerance)
         norma_abortf(
             "`inexact Newton` requires forcing factor > 0 and 0 < minimum tolerance ≤ maximum tolerance; " *
