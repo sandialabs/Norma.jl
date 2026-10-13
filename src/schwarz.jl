@@ -1171,7 +1171,7 @@ end
 # over its substeps, from the start of the stop, minus Π_Dᵀ times the
 # trapezoid-in-time sum of the Dirichlet side's reaction over its own
 # substeps, from its stop-start anchor. Returns the sum of the residual over
-# the interface nodes per component (the net impulse error, N s) and the
+# the interface nodes per component (the net impulse error, in units of force times time) and the
 # residual in the W_N⁻¹ norm relative to the transferred impulse. At the fixed
 # point of the exchange the residual vanishes when the force applied on the
 # Neumann side is linear in time between the shared end reactions (Connors et

@@ -106,6 +106,19 @@ solver:
 - Every reference page links to a canonical file under `examples/` that
   exercises the feature.
 
+## Units
+
+Norma assumes no system of units. The mesh coordinates, the material
+constants, the times, the function expressions, and every dimensional
+tolerance must be given in one consistent system, and the output is in that
+system. The examples, and the measurements quoted in this reference, use SI
+units (m, kg, s, N, Pa, J). Where a key has dimensions, its table states them as
+a quantity (a displacement, a velocity, an energy), not as a unit. Relative
+tolerances, factors, and the `search tolerance` (in parametric coordinates) are
+dimensionless. One dimensional key has a default: the `penalty` coefficient of
+a [surface condition](boundary-conditions.md), `1.0e6`, whose meaning depends
+on the system of units and on the level-set function; set it for the problem.
+
 ## Keyword validation
 
 Every loaded input file is checked against the set of keys Norma actually

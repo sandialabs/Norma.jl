@@ -377,7 +377,7 @@ function total_blended_energy(sim::MultiDomainSimulation)
 end
 
 # ---------------------------------------------------------------------------
-# Pseudo-energy: the energy functional applied to the velocity and the acceleration (J/s^2).
+# Pseudo-energy: the energy functional applied to the velocity and the acceleration (energy per time squared).
 #
 # Differentiating the linear equation of motion M ü + K u = f in time gives
 # M a' + K v = f', whose Newmark discrete energy (Prakash and Hjelmstad 2004,

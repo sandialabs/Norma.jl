@@ -48,7 +48,7 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
 | `absolute tolerance` | yes | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds |
 | `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Constrained pairs use their own interface criterion instead (see `constrained`) |
-| `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (m/s or m); the controller's `absolute tolerance` does not apply to constrained pairs |
+| `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (velocity or displacement); the controller's `absolute tolerance` does not apply to constrained pairs |
 | `unconverged step action` | no | `abort` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `abort` the run, or `warn` and continue with the last iterate |
 | `stalled interface jump action` | no | `warn` | what to do when the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
 
@@ -166,12 +166,12 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 |---|---|
 | `time` | time of the stop |
 | `stored_energy`, `kinetic_energy`, `total_energy` | blended energy E: strain energy, kinetic energy (the staggered form ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for central difference subdomains), and their sum |
-| `pseudo_energy_total` | Ẽ, the pseudo-energy: the sum over subdomains of the energy functional applied to the velocity and the acceleration, in J/s² |
+| `pseudo_energy_total` | Ẽ, the pseudo-energy: the sum over subdomains of the energy functional applied to the velocity and the acceleration, in units of energy per time squared |
 | `pseudo_energy_<subdomain>` | Ẽ of one subdomain, one column per subdomain in the order of `domains` |
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
 | `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`) |
-| `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in m and m/s |
-| `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (N s), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
+| `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in units of displacement and of velocity |
+| `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (in units of force times time), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
 
 For a central difference subdomain, `kinetic_energy` is the product
 ½ v_{n−½}ᵀ M_L v_{n+½} of the two half-step velocities around the stop n,
@@ -213,7 +213,7 @@ these keys:
 | `side set` | yes | — | this subdomain's coupling surface |
 | `source side set` | for non-overlapping | `""` | the partner's coupling surface |
 | `source block` | for overlapping | `""` | the partner element block searched for the overlap |
-| `search tolerance` | no | `1.0e-6` | geometric search tolerance for locating partner points |
+| `search tolerance` | no | `1.0e-6` | tolerance, in the parametric coordinates of a partner element, for accepting a point as inside it (dimensionless) |
 
 ### `Schwarz overlap`
 
@@ -311,8 +311,8 @@ meshes, the fixed factor is equivalent. A pair converges when the jump of its co
 quantity and the force residual are both at or below `relative tolerance`, or
 when the root mean square jump over the interface is at or below
 `constraint absolute tolerance` (a top-level key in the units of the
-constrained quantity, m/s for the velocity and m for the displacement
-constraint; default 0, which leaves the relative test alone); when every
+constrained quantity, velocity for the velocity constraint and displacement
+for the displacement constraint; default 0, which leaves the relative test alone); when every
 Schwarz coupling is constrained this replaces the displacement criterion,
 otherwise both must hold. A residual that stays above the tolerance while the
 displacement update has converged and has not fallen 5% below its smallest

@@ -1990,8 +1990,8 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
     rtol = controller.relative_tolerance
     # The controller's absolute tolerance is a displacement; it is not used here.
     # The constrained criterion is relative unless `constraint absolute
-    # tolerance` is given, in the units of the constrained quantity (m/s for the
-    # velocity constraint, m for the displacement constraint).
+    # tolerance` is given, in the units of the constrained quantity (velocity for
+    # the velocity constraint, displacement for the displacement constraint).
     catol = Float64(get(sim.params, "constraint absolute tolerance", 0.0))
     has_constrained = false
     all_constrained_converged = true
