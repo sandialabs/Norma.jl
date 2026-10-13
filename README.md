@@ -111,7 +111,7 @@ algorithms, with an emphasis on extensibility and experimentation:
 - **Elements:** BAR2; TRI3, TRI6, QUAD4; TETRA4, TETRA10, HEX8; with Gauss,
   Dunavant, and Keast quadrature.
 - **Multidomain coupling:** overlapping and non-overlapping Schwarz, the
-  constrained Dirichlet–Neumann exchange for dynamics, subcycled
+  matching Dirichlet–Neumann exchange for dynamics, subcycled
   multi-time-step coupling, and Schwarz contact.
 - **Boundary conditions:** Dirichlet, Neumann traction and follower pressure,
   Robin, and inclined-surface (roller) support.

@@ -38,8 +38,7 @@ boundary conditions:
       source side set: ssx-
       default BC type: Neumann
       swap BC types: false
-      constrained: true
-      constraint: velocity
+      matching: velocity
 solver:
   type: Hessian minimizer
   step: full Newton

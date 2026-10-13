@@ -584,13 +584,13 @@ function compute_constrained_dn_projectors!(
     dst_sim = self_subsim_of(dst_bc)
     src_sim = coupled_subsim_of(dst_bc)
     if !(dst_sim.model isa SolidMechanics) || !(src_sim.model isa SolidMechanics)
-        norma_abort("`constrained: true` requires full order (solid mechanics) models on both sides of the pair.")
+        norma_abort("`matching` requires full order (solid mechanics) models on both sides of the pair.")
     end
     src_model = src_sim.model
     src_bc = coupled_bc_of(dst_bc)
     if !(src_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition) || !src_bc.constrained
         norma_abort(
-            "`constrained: true` must be set on BOTH sides of a Schwarz DN nonoverlap pair " *
+            "`matching` must be set on BOTH sides of a Schwarz DN nonoverlap pair " *
             "(missing on the side coupled to '$(dst_bc.name)').",
         )
     end
@@ -619,7 +619,7 @@ function compute_constrained_dn_projectors!(
     norma_logf(
         0,
         :info,
-        "Constrained DN interface '%s'/'%s': %s constraint, partition-of-unity error %.2e.",
+        "Matching DN interface '%s'/'%s': %s matching, partition-of-unity error %.2e.",
         dst_bc.name,
         src_bc.name,
         String(constraint),
@@ -628,20 +628,18 @@ function compute_constrained_dn_projectors!(
     return nothing
 end
 
-# The constraint of a pair: the value named on either side, which must agree
-# when both name it; velocity when neither does.
+# The matched quantity of a pair, the value of `matching`, which both sides
+# give and which must agree.
 function resolve_constraint(
     bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, partner::SolidMechanicsNonOverlapSchwarzBoundaryCondition
 )
-    if bc.constraint != :unset && partner.constraint != :unset && bc.constraint != partner.constraint
+    if bc.constraint != partner.constraint
         norma_abort(
-            "The sides '$(bc.name)' and '$(partner.name)' of a constrained DN pair name different " *
-            "constraints ($(bc.constraint) and $(partner.constraint)); a pair has one constraint.",
+            "The sides '$(bc.name)' and '$(partner.name)' of a matching DN pair give different " *
+            "values of `matching` ($(bc.constraint) and $(partner.constraint)); a pair has one matched quantity.",
         )
     end
-    bc.constraint != :unset && return bc.constraint
-    partner.constraint != :unset && return partner.constraint
-    return :velocity
+    return bc.constraint
 end
 
 # The displacement constraint derives the velocity and the acceleration of the
@@ -659,12 +657,12 @@ function check_constrained_integrators(sim_1::SingleDomainSimulation, sim_2::Sin
         integrator = sim_k.integrator
         if !(integrator isa Newmark || integrator isa CentralDifference)
             norma_abort(
-                "`constrained: true` requires Newmark or central difference integrators; " *
+                "`matching` requires Newmark or central difference integrators; " *
                 "subdomain '$(sim_k.name)' uses $(typeof(integrator)).",
             )
         end
         if integrator isa Newmark && integrator.hht_alpha > 0.0
-            norma_abort("`constrained: true` does not support HHT-α (subdomain '$(sim_k.name)').")
+            norma_abort("`matching` does not support HHT-α (subdomain '$(sim_k.name)').")
         end
     end
     if constraint == :displacement
@@ -672,8 +670,8 @@ function check_constrained_integrators(sim_1::SingleDomainSimulation, sim_2::Sin
         Δt_2 = sim_2.integrator.time_step
         if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
             norma_abort(
-                "`constraint: displacement` is implemented for equal time steps; subdomains " *
-                "'$(sim_1.name)' and '$(sim_2.name)' use $(Δt_1) and $(Δt_2). Use `constraint: velocity`.",
+                "`matching: displacement` is implemented for equal time steps; subdomains " *
+                "'$(sim_1.name)' and '$(sim_2.name)' use $(Δt_1) and $(Δt_2). Use `matching: velocity`.",
             )
         end
         i_1 = sim_1.integrator
@@ -681,9 +679,9 @@ function check_constrained_integrators(sim_1::SingleDomainSimulation, sim_2::Sin
         same_newmark = i_1 isa Newmark && i_2 isa Newmark && i_1.β == i_2.β && i_1.γ == i_2.γ && i_1.β > 0.0
         if !same_newmark
             norma_abort(
-                "`constraint: displacement` requires both members of the pair to be Newmark " *
+                "`matching: displacement` requires both members of the pair to be Newmark " *
                 "integrators with the same β > 0, γ, and time step; subdomains '$(sim_1.name)' " *
-                "and '$(sim_2.name)' do not satisfy this. Use `constraint: velocity`.",
+                "and '$(sim_2.name)' do not satisfy this. Use `matching: velocity`.",
             )
         end
     end
@@ -707,8 +705,8 @@ function check_direct_interface_solve(
     equal = isapprox(sim_1.integrator.time_step, sim_2.integrator.time_step; rtol=1.0e-12)
     if !explicit || !equal || bc.constraint != :velocity
         norma_abort(
-            "`interface solve: direct` is implemented for a constrained pair of two central difference " *
-            "subdomains at equal time steps under the velocity constraint; subdomains '$(sim_1.name)' and " *
+            "`interface solve: direct` is implemented for a matching pair of two central difference " *
+            "subdomains at equal time steps under `matching: velocity`; subdomains '$(sim_1.name)' and " *
             "'$(sim_2.name)' do not satisfy this. Use `interface solve: iterative`.",
         )
     end
@@ -1227,7 +1225,7 @@ function check_constrained_time_steps(bc::SolidMechanicsNonOverlapSchwarzBoundar
     Δt_N = n_sim.integrator.time_step
     if !isapprox(Δt_D, Δt_N; rtol=1.0e-12)
         norma_abort(
-            "`constraint: displacement` is implemented for equal time steps, but subdomains " *
+            "`matching: displacement` is implemented for equal time steps, but subdomains " *
             "'$(d_sim.name)' and '$(n_sim.name)' took steps $(Δt_D) and $(Δt_N) " *
             "(the explicit stable step can shorten the requested step; raise CFL or lower the step).",
         )

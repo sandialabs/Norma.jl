@@ -200,7 +200,7 @@ and the open questions.
 ## Beyond the matrix
 
 Natural next experiments, each a change of one fixed setting in a separate
-runs directory: the displacement constraint (`constraint: displacement`,
+runs directory: displacement matching (`matching: displacement`,
 trapezoidal Newmark pairs only), other step ratios (2:1, 8:1), the mixed
 pairs at ratio 0.5 with subcycling, the Anderson depth and mixing parameter,
 and the nested cylinders (`examples/jmp/concentric-cylinders` and its linear

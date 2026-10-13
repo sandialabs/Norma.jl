@@ -162,8 +162,7 @@ function coupling_condition(c::Case, domain)
         """
     c.coupling == "no-dn" && return text
     text *= """
-              constrained: true
-              constraint: velocity
+              matching: velocity
         """
     c.solver == "direct" && (text *= "      interface solve: direct\n")
     return text
@@ -186,7 +185,7 @@ function subdomain_input(c::Case, domain, kind::Char)
 end
 
 # Relaxation of the Schwarz iteration.  The baseline keeps recursive Aitken,
-# the setting of the repository examples.  For the constrained exchange the
+# the setting of the repository examples.  For the matching exchange the
 # solver is a factor: Anderson acceleration (depth 10, mixing 0.5) is the
 # default and converges in every case measured; recursive Aitken converges
 # everywhere but needs more iterations where the best factor is far from
@@ -199,9 +198,10 @@ function relaxation(c::Case)
     return "relaxation parameter: 0.5\n"
 end
 
-# Schwarz tolerances: the constrained criterion is relative, on the
-# interface velocity jump and the force residual, with no absolute floor;
-# the baseline keeps the displacement criterion of the examples.
+# Schwarz tolerances: the matching criterion is relative (`matching relative
+# tolerance`), on the interface velocity jump and the force residual, with no
+# absolute floor; the baseline keeps the displacement criterion of the
+# examples.
 function tolerances(c::Case)
     c.coupling == "no-dn" && return (BEAM.baseline_relative_tolerance, BEAM.baseline_absolute_tolerance)
     return (c.tolerance, 1.0e-15)
@@ -225,6 +225,7 @@ function run_input(c::Case, domains, final_time, exodus_interval)
         absolute tolerance: $(num(absolute))
         """
     c.coupling == "mono" && return text
+    c.coupling == "no-cd" && (text *= "matching relative tolerance: $(num(relative))\n")
     return text * relaxation(c) * "stalled interface jump action: warn\n"
 end
 

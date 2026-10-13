@@ -7,7 +7,7 @@
 # Input keyword validation, in the fashion of Carina's input_parsing.jl.
 #
 # Norma reads its YAML input with plain Dict lookups, so an unrecognized key
-# is silently ignored: `constrainted: true` leaves the constrained exchange off,
+# is silently ignored: `matchng: velocity` leaves the matching exchange off,
 # `relaxation type: classical` sets nothing, and the run proceeds with
 # defaults the user believes were overridden. Every loaded input file is
 # therefore walked against the known-key sets below, and any key that no
@@ -103,7 +103,8 @@ const TOP_LEVEL_MULTI_KEYS = Set([
     "naive stabilized",
     "interface predictor",
     "stalled interface jump action",
-    "constraint absolute tolerance",
+    "matching relative tolerance",
+    "matching absolute tolerance",
     "unconverged step action",
     "inexact Newton",
     "blended energy output",
@@ -252,8 +253,7 @@ const BC_ENTRY_KEYS = Dict(
         "search tolerance",
         "default BC type",
         "swap BC types",
-        "constrained",
-        "constraint",
+        "matching",
         "interface solve",
     ]),
     "Schwarz RR nonoverlap" =>

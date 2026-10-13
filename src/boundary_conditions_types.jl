@@ -175,16 +175,16 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
     square_factor::Union{Nothing,Cholesky{Float64,Matrix{Float64}}}
     is_dirichlet::Bool
     swap_bcs::Bool
-    # Constrained exchange (input key `constrained`): the Dirichlet side imposes
-    # one interface quantity, the projected velocity or displacement of the
-    # partner (`constraint`), and derives the other two kinematic fields from
-    # its own Newmark relations; the Neumann side receives the d'Alembert
-    # reaction of the Dirichlet side through the transpose of the Dirichlet
-    # projector, and both transfer operators are built from one cross mass
-    # matrix. The fixed point of the Schwarz iteration is then the constrained
-    # problem of Gravouil and Combescure (2001). `constraint` is :velocity or
-    # :displacement once the pair is resolved, :unset while neither side of the
-    # pair has named it.
+    # Matching exchange (input key `matching`): the Dirichlet side imposes one
+    # interface quantity, the projected velocity or displacement of the
+    # partner, and derives the other two kinematic fields from its own Newmark
+    # relations; the Neumann side receives the d'Alembert reaction of the
+    # Dirichlet side through the transpose of the Dirichlet projector, and both
+    # transfer operators are built from one cross mass matrix. The fixed point
+    # of the Schwarz iteration is then the constrained problem of Gravouil and
+    # Combescure (2001), whose constraint is the matching. `constrained` is true
+    # for a matching pair; `constraint` is the matched quantity, :velocity or
+    # :displacement, and :unset for the standard exchange.
     constrained::Bool
     constraint::Symbol
     # Direct interface solve (input key `interface solve: direct`): for a

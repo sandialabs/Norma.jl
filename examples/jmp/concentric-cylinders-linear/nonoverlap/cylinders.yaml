@@ -3,7 +3,7 @@
 # schemes: three nested cylinders (core, filler, shell) of linear elastic
 # materials, fixed in z at the bottom face of the shell and moving at -5 m/s
 # in z. With linear elastic materials the pseudo-energy of the differentiated
-# system, which the constrained Dirichlet-Neumann exchange conserves, is
+# system, which the matching Dirichlet-Neumann exchange conserves, is
 # defined, so the energy output measures conservation and not only
 # boundedness. The speed is 5 m/s rather than the -35 m/s of the neohookean
 # example, which strains the filler beyond the range of a small-strain model.
@@ -20,11 +20,11 @@
 #
 # Nonoverlapping decomposition: the inner domain (core and inner filler,
 # the finer mesh) and the outer domain (outer filler and shell), coupled by
-# the constrained Dirichlet-Neumann exchange with the velocity constraint and
-# the inner side as the Dirichlet side. The constrained iteration stops on the
-# relative interface velocity jump and force residual (relative tolerance);
-# the absolute tolerance applies only to the displacement criterion, which
-# constrained pairs do not use.
+# the matching Dirichlet-Neumann exchange with velocity matching and the
+# inner side as the Dirichlet side. The Schwarz iteration stops on the
+# relative interface velocity jump and force residual (matching relative
+# tolerance); the relative and absolute tolerances apply only to the
+# displacement criterion, which matching pairs do not use.
 type: multi
 domains: ["inner.yaml", "outer.yaml"]
 blended energy output: true
@@ -37,4 +37,5 @@ minimum iterations: 1
 maximum iterations: 256
 relative tolerance: 1.0e-12
 absolute tolerance: 1.0e-04
+matching relative tolerance: 1.0e-12
 relaxation parameter: 0.5

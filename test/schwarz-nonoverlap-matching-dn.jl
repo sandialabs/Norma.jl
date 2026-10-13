@@ -4,7 +4,7 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Constrained Dirichlet-Neumann exchange (`constrained: true`) on the
+# Matching Dirichlet-Neumann exchange (`matching: velocity`) on the
 # conforming cantilever of examples/nonoverlap/dynamic-same-step/cantilever-dn.
 # The free subdomain is the Dirichlet side. Checked: the force transfer of the
 # Neumann side is the transpose of the Dirichlet projector; at convergence the
@@ -32,6 +32,7 @@ function constrained_dn_subdomain(
     own_dt::Float64=dt;
     swap_roles::Bool=false,
     interface_solve::String="iterative",
+    edit_bc=nothing,
 )
     sub = YAML.load_file("$constrained_dn_example/$name.yaml"; dicttype=Norma.Parameters)
     if explicit
@@ -50,9 +51,9 @@ function constrained_dn_subdomain(
     if swap_roles
         bc["default BC type"] = bc["default BC type"] == "Dirichlet" ? "Neumann" : "Dirichlet"
     end
-    bc["constrained"] = true
-    bc["constraint"] = constraint
+    bc["matching"] = constraint
     bc["interface solve"] = interface_solve
+    edit_bc === nothing || edit_bc(bc)
     YAML.write_file("$name.yaml", sub)
     return nothing
 end
@@ -69,16 +70,18 @@ function run_constrained_dn(
     mesh_dir=constrained_dn_example,
     initialize_only=false,
     relaxation=nothing,
+    edit_bc=nothing,
+    edit_params=nothing,
 )
     for f in ["cantilever-clamped.g", "cantilever-free.g"]
         cp("$mesh_dir/$f", f; force=true)
     end
     free_dt = dt / free_substeps
     constrained_dn_subdomain(
-        "cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet, interface_solve
+        "cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet, interface_solve, edit_bc
     )
     constrained_dn_subdomain(
-        "cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet, interface_solve
+        "cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet, interface_solve, edit_bc
     )
     params = Norma.Parameters(
         "type" => "multi",
@@ -92,6 +95,7 @@ function run_constrained_dn(
         "maximum iterations" => 64,
         "relative tolerance" => 1.0e-12,
         "absolute tolerance" => 1.0e-15,
+        "matching relative tolerance" => 1.0e-12,
         "relaxation parameter" => theta,
         "blended energy output" => true,
     )
@@ -99,6 +103,7 @@ function run_constrained_dn(
         params["relaxation"] = relaxation
         params["aitken N0 parameter"] = 1
     end
+    edit_params === nothing || edit_params(params)
     files = [
         "cantilever-clamped.g",
         "cantilever-free.g",
@@ -153,7 +158,7 @@ end
 
 pseudo_drift(header, data) = energy_drift(header, data, "pseudo_energy_total")
 
-@testset "Constrained DN: Operators, Reaction, Newmark Relations (II)" begin
+@testset "Matching DN: Operators, Reaction, Newmark Relations (II)" begin
     sim, header, data = run_constrained_dn(false; num_steps=5)
     @test sim.failed == false
     free, clamped = sim.subsims[1], sim.subsims[2]
@@ -196,14 +201,14 @@ pseudo_drift(header, data) = energy_drift(header, data, "pseudo_energy_total")
     end
 end
 
-@testset "Constrained DN: Pseudo-Energy Conservation (II)" begin
+@testset "Matching DN: Pseudo-Energy Conservation (II)" begin
     sim, header, data = run_constrained_dn(false)
     @test sim.failed == false
     @test length(data) == 51
     @test pseudo_drift(header, data) < 1.0e-10
 end
 
-@testset "Constrained DN: Pseudo-Energy Conservation (EE)" begin
+@testset "Matching DN: Pseudo-Energy Conservation (EE)" begin
     sim, header, data = run_constrained_dn(true)
     @test sim.failed == false
     @test length(data) == 51
@@ -224,7 +229,7 @@ end
     end
 end
 
-@testset "Constrained DN: Displacement Constraint Requires Newmark" begin
+@testset "Matching DN: Displacement Matching Requires Newmark" begin
     @test_throws Exception run_constrained_dn(true; constraint="displacement", num_steps=1)
     for f in [
         "cantilever-clamped.g",
@@ -239,14 +244,42 @@ end
     end
 end
 
-# Displacement constraint (`constraint: displacement`) on the trapezoidal pair.
+# The retired keys `constrained` and `constraint` abort instead of being
+# ignored, which would run the standard exchange; the top-level key
+# `matching relative tolerance` is required when a pair sets `matching`; the
+# retired top-level key `constraint absolute tolerance` aborts.
+@testset "Matching DN: Retired Keys and Required Tolerance" begin
+    cases = [
+        (edit_bc=bc -> (delete!(bc, "matching"); bc["constrained"]=true), edit_params=nothing),
+        (edit_bc=bc -> (bc["constraint"] = "velocity"), edit_params=nothing),
+        (edit_bc=nothing, edit_params=p -> delete!(p, "matching relative tolerance")),
+        (edit_bc=nothing, edit_params=p -> (p["constraint absolute tolerance"] = 1.0e-9)),
+        (edit_bc=nothing, edit_params=p -> (p["matching relative tolerance"] = -1.0)),
+    ]
+    for case in cases
+        @test_throws Exception run_constrained_dn(false; num_steps=1, case.edit_bc, case.edit_params)
+    end
+    for f in [
+        "cantilever-clamped.g",
+        "cantilever-free.g",
+        "cantilever-clamped.e",
+        "cantilever-free.e",
+        "cantilever-clamped.yaml",
+        "cantilever-free.yaml",
+        "constrained-dn-energy.csv",
+    ]
+        rm(f; force=true)
+    end
+end
+
+# Displacement matching (`matching: displacement`) on the trapezoidal pair.
 # The Dirichlet side imposes Π_D u_N and derives its interface velocity and
 # acceleration from its own Newmark relations. With the same Newmark parameters
 # and step on both sides and coupled initial data, these relations are linear in
-# (u, v, a), so the displacement constraint at every step is equivalent to the
-# velocity constraint: the two runs agree to the Schwarz tolerance, and Ẽ is
+# (u, v, a), so matching the displacement at every step is equivalent to
+# matching the velocity: the two runs agree to the Schwarz tolerance, and Ẽ is
 # conserved.
-@testset "Constrained DN: Displacement Constraint (II)" begin
+@testset "Matching DN: Displacement Matching (II)" begin
     sim, header, data = run_constrained_dn(false; constraint="displacement")
     @test sim.failed == false
     @test length(data) == 51
@@ -280,7 +313,7 @@ end
     end
 end
 
-@testset "Constrained DN: Coupled Initial Acceleration, First Step (II)" begin
+@testset "Matching DN: Coupled Initial Acceleration, First Step (II)" begin
     sim, header, data = run_constrained_dn(false; num_steps=2)
     @test sim.failed == false
     i_e1 = findfirst(==("total_energy"), header)
@@ -291,7 +324,7 @@ end
     @test r.acceleration_jump ≤ 1.0e-10
 end
 
-@testset "Constrained DN: Coupled Initial Acceleration, First Steps (EE)" begin
+@testset "Matching DN: Coupled Initial Acceleration, First Steps (EE)" begin
     sim, header, data = run_constrained_dn(true; num_steps=10)
     @test sim.failed == false
     i_pseudo = findfirst(==("pseudo_energy_total"), header)
@@ -322,7 +355,7 @@ function dn_bc_pair(sim)
 end
 
 for explicit in (false, true)
-    @testset "Constrained DN: Subcycled 4:1 ($(explicit ? "EE" : "II"))" begin
+    @testset "Matching DN: Subcycled 4:1 ($(explicit ? "EE" : "II"))" begin
         sim, header, data = run_constrained_dn(explicit; num_steps=20, free_substeps=4, clamped_dirichlet=true)
         @test sim.failed == false
         @test length(data) == 21
@@ -353,7 +386,7 @@ for explicit in (false, true)
         net, relative = Norma.dn_impulse_residual(sim, bc_D)
         @test relative ≤ 1.0e-10
     end
-    @testset "Constrained DN: Subcycled 4:1 ($(explicit ? "EE" : "II")), t = 0" begin
+    @testset "Matching DN: Subcycled 4:1 ($(explicit ? "EE" : "II")), t = 0" begin
         sim, _, _ = run_constrained_dn(explicit; free_substeps=4, clamped_dirichlet=true, initialize_only=true)
         r = Norma.dn_interface_residuals(sim)[1][2]
         @test r.force_residual ≤ 1.0e-11
@@ -367,7 +400,7 @@ end
 # and the 2:1 nonconforming meshes of the cantilever-dn-nonconforming example.
 const nonconforming_beam = "../examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming"
 for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconforming", nonconforming_beam))
-    @testset "Constrained DN: Direct Interface Solve, EE $label" begin
+    @testset "Matching DN: Direct Interface Solve, EE $label" begin
         runs = Dict{String,Any}()
         for solve in ("iterative", "direct")
             sim, header, data = run_constrained_dn(true; interface_solve=solve, mesh_dir)
@@ -399,7 +432,7 @@ end
 # first stop). At 1e-6 s the trace gives 8 iterations per stop, against 7 for
 # the fixed factor 0.5, which is near the optimum for this pair.
 for relaxation in ("aitken secant", "aitken recursive")
-    @testset "Constrained DN: $relaxation on the interface trace (II)" begin
+    @testset "Matching DN: $relaxation on the interface trace (II)" begin
         sim, header, data = run_constrained_dn(false; num_steps=10, relaxation)
         @test sim.failed == false
         iterations = sim.controller.schwarz_iters[1:10]
@@ -409,7 +442,7 @@ for relaxation in ("aitken secant", "aitken recursive")
 end
 
 # Anderson acceleration (`relaxation: anderson`) of the constrained datum.
-@testset "Constrained DN: Anderson acceleration (II)" begin
+@testset "Matching DN: Anderson acceleration (II)" begin
     sim, header, data = run_constrained_dn(false; num_steps=10, relaxation="anderson")
     @test sim.failed == false
     # The Aitken forms take at most 8 iterations per stop on this case.
@@ -466,7 +499,7 @@ function gmres_iterates(A::Matrix{Float64}, b::Vector{Float64}, x0::Vector{Float
     return iterates
 end
 
-@testset "Constrained DN: Anderson acceleration is GMRES on the interface map" begin
+@testset "Matching DN: Anderson acceleration is GMRES on the interface map" begin
     sim, _, _ = run_constrained_dn(false; initialize_only=true)
     free, clamped = sim.subsims[1], sim.subsims[2]
     bc_D, bc_N = dn_bc_of(free), dn_bc_of(clamped)

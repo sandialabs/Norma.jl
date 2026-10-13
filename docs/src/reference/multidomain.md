@@ -47,10 +47,11 @@ Each controller step performs Schwarz iterations until the interface converges.
 | `minimum iterations` | yes | — | minimum Schwarz iterations per step |
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
 | `absolute tolerance` | yes | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds |
-| `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Constrained pairs use their own interface criterion instead (see `constrained`) |
-| `constraint absolute tolerance` | no | `0` | absolute tolerance of the constrained Dirichlet–Neumann criterion on the root mean square interface jump, in the units of the constrained quantity (velocity or displacement); the controller's `absolute tolerance` does not apply to constrained pairs |
+| `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Matching pairs use their own interface criterion instead (see `matching relative tolerance`) |
+| `matching relative tolerance` | when a pair sets `matching` | — | relative tolerance of the matching Dirichlet–Neumann criterion, on the one-sided jump of the matched quantity and on the force residual (see `Schwarz DN nonoverlap`); the controller's `relative tolerance` does not apply to matching pairs |
+| `matching absolute tolerance` | no | `0` | absolute tolerance of the matching criterion on the root mean square interface jump, in the units of the matched quantity (velocity or displacement); the controller's `absolute tolerance` does not apply to matching pairs |
 | `unconverged step action` | no | `abort` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `abort` the run, or `warn` and continue with the last iterate |
-| `stalled interface jump action` | no | `warn` | what to do when the interface residual of a constrained Dirichlet–Neumann pair stops decreasing above `relative tolerance`: `warn` and accept the iterate, or `abort` |
+| `stalled interface jump action` | no | `warn` | what to do when the interface residual of a matching Dirichlet–Neumann pair stops decreasing above `matching relative tolerance`: `warn` and accept the iterate, or `abort` |
 
 A step that reaches `maximum iterations` without converging reports the errors
 it stopped at against both tolerances. Under the default it says so and the run
@@ -65,7 +66,7 @@ Schwarz iteration, replacing the `relative tolerance` of the subdomain
 `solver` blocks. At Schwarz iteration k ≥ 1 of a stop the tolerance is
 clamp(η r_{k−1}, floor, ceiling), where r_{k−1} is the relative Schwarz
 residual of the previous Schwarz iteration of that stop: the larger of the
-interface jump and the force residual for constrained Dirichlet–Neumann pairs,
+interface jump and the force residual for matching Dirichlet–Neumann pairs,
 the relative change of u + Δt v otherwise. At the first Schwarz iteration of a
 stop (k = 0) it is the ceiling. The tolerance and the number of Newton
 iterations of every Schwarz iteration are logged with the Schwarz criterion.
@@ -79,7 +80,7 @@ iterations of every Schwarz iteration are logged with the Schwarz criterion.
 
 The defaults come from the inexact Schwarz study of October 2026 on the
 neohookean cantilever of `studies/dynamic-stability` (two implicit subdomains,
-constrained exchange, Schwarz relative tolerance 1e-12, 10 000 stops): with
+matching exchange, matching relative tolerance 1e-12, 10 000 stops): with
 η = 0.01 and no tight final solve the run needed 0.735 of the Newton
 iterations of the run with the constant Newton tolerance 1e-12, at a relative
 displacement error of 1.4e-12 against that run at the final time, whereas the
@@ -104,7 +105,7 @@ Newton error, which the Schwarz criterion does not detect.
 Relaxation applies to the datum that a nonoverlap or contact coupling
 transmits: for `Schwarz DN nonoverlap` and `Schwarz contact` it is the
 kinematic datum of the Dirichlet side (the interface displacement, or for a
-constrained pair the constrained quantity); for `Schwarz RR nonoverlap` it is
+matching pair the matched quantity); for `Schwarz RR nonoverlap` it is
 the Robin datum of the subdomain listed later in `domains`, and only that
 datum: other loads on the interface nodes, such as Neumann or pressure
 conditions, are applied unrelaxed. `Schwarz overlap` is not relaxed; the
@@ -171,7 +172,7 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
 | `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`) |
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in units of displacement and of velocity |
-| `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | constrained pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (in units of force times time), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
+| `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | matching pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (in units of force times time), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
 
 For a central difference subdomain, `kinetic_energy` is the product
 ½ v_{n−½}ᵀ M_L v_{n+½} of the two half-step velocities around the stop n,
@@ -251,9 +252,33 @@ every relaxation parameter; use Aitken relaxation
 | `source side set` | yes | — | partner interface surface |
 | `default BC type` | no | `Dirichlet` | this side's role: `Dirichlet` or `Neumann` (the two sides must be opposite) |
 | `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles once per controller stop, before its Schwarz iteration |
-| `constrained` | no | `false` | constrained exchange: the Dirichlet side imposes one projected quantity and derives the other two kinematic fields from its own Newmark relations; the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides |
-| `constraint` | no | `velocity` | quantity imposed by the constrained exchange: `velocity` or `displacement`; one value per pair, which may be given on either side or on both (then equal) |
-| `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a constrained pair of two central difference subdomains at equal time steps under the velocity constraint, set on both sides |
+| `matching` | no | — | selects the matching exchange and its matched quantity, `velocity` or `displacement`: the Dirichlet side imposes the projected matched quantity of the Neumann side and derives the other two kinematic fields from its own Newmark relations, and the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides with the same value, and requires the top-level `matching relative tolerance`. Without it the pair uses the standard exchange, which imposes the projected displacement, velocity, and acceleration together. The keys `constrained` and `constraint`, which selected this exchange before October 2026, abort |
+| `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a pair with `matching: velocity` of two central difference subdomains at equal time steps, set on both sides |
+
+A matching pair sets `matching` on both sides and the controller file sets
+`matching relative tolerance`, as in
+`examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming/`:
+
+```yaml
+# cantilever-free.yaml (Dirichlet side)
+boundary conditions:
+  Schwarz DN nonoverlap:
+    - side set: ssx-
+      source: cantilever-clamped
+      source side set: ssx+
+      default BC type: Dirichlet
+      matching: velocity
+
+# cantilever-clamped.yaml (Neumann side): the same block with
+# side set ssx+, source cantilever-free, source side set ssx-,
+# default BC type Neumann, and matching: velocity
+
+# cantilever-multi.yaml (controller)
+relative tolerance: 1.0e-08          # displacement update criterion
+absolute tolerance: 2.54e-08         # displacement update criterion
+matching relative tolerance: 1.0e-08 # interface jump and force residual
+relaxation: anderson
+```
 
 **Interface residuals.** At every Schwarz iteration the log reports, for each
 Dirichlet–Neumann pair with Dirichlet side D and Neumann side N, the one-sided
@@ -263,9 +288,9 @@ matrix of the Dirichlet interface, ‖x‖²_W = Σ_c x_cᵀ W x_c over the thre
 components, and the force residual ‖Π_Dᵀ r_D − f_N‖_{W_N⁻¹} / ‖Π_Dᵀ r_D‖_{W_N⁻¹},
 with r_D = −(M a + f_int − f_body − f_boundary) on the interface rows of D and
 f_N the interface force applied on N in the same iteration. For the
-unconstrained exchange these values are reported only.
+standard exchange these values are reported only.
 
-**Constrained exchange.** With `constrained: true` both transfer operators are
+**Matching exchange.** With `matching` both transfer operators are
 built from one cross mass matrix B, integrated over the facets of the side
 with more interface nodes, Π_D = W_D⁻¹ B, and the Neumann side's force transfer
 is Π_Dᵀ. The Neumann side receives Π_Dᵀ r_D, the d'Alembert reaction of the
@@ -273,14 +298,14 @@ Dirichlet side, so the two interface rows add to the row of the undecomposed
 problem. The Dirichlet side computes from its state (u_n, v_n, a_n) at the
 start of the step u_pre = u_n + Δt v_n + (½ − β) Δt² a_n and
 v_pre = v_n + (1 − γ) Δt a_n (β = 0 for central difference) and imposes, with
-`constraint: velocity`, v = Π_D v_N, a = (v − v_pre)/(γ Δt),
-u = u_pre + β Δt² a, and with `constraint: displacement`, u = Π_D u_N,
+`matching: velocity`, v = Π_D v_N, a = (v − v_pre)/(γ Δt),
+u = u_pre + β Δt² a, and with `matching: displacement`, u = Π_D u_N,
 a = (u − u_pre)/(β Δt²), v = v_pre + γ Δt a. Relaxation acts on the
-constrained quantity only, and Aitken factors and Anderson coefficients are
+matched quantity only, and Aitken factors and Anderson coefficients are
 formed from its projected interface trace Π_D q_N, not from the partner's
 whole field. Anderson acceleration (`relaxation: anderson`, with the defaults
 `anderson depth: 10` and `relaxation parameter: 0.5`) is the recommended
-setting for constrained pairs. With x_k the datum the Dirichlet side used at
+setting for matching pairs. With x_k the datum the Dirichlet side used at
 Schwarz iteration k, f_k = G(x_k) − x_k the residual (G the partner datum the
 iteration returns), t_k the projected interface trace of f_k, and ΔX, ΔF, ΔT
 the differences of the last m + 1 iterates, it computes the coefficients
@@ -307,20 +332,19 @@ Dirichlet side a depth of 5 needed 54 to 69 iterations per stop. Recursive
 Aitken (`relaxation: aitken recursive`) converged in every case measured as
 well and is accepted by the stall rule at fewer stops than the secant form;
 where 0.5 is near the optimum, as for identical integrators on conforming
-meshes, the fixed factor is equivalent. A pair converges when the jump of its constrained
-quantity and the force residual are both at or below `relative tolerance`, or
-when the root mean square jump over the interface is at or below
-`constraint absolute tolerance` (a top-level key in the units of the
-constrained quantity, velocity for the velocity constraint and displacement
-for the displacement constraint; default 0, which leaves the relative test alone); when every
-Schwarz coupling is constrained this replaces the displacement criterion,
-otherwise both must hold. A residual that stays above the tolerance while the
+meshes, the fixed factor is equivalent. A pair converges when the jump of its matched
+quantity and the force residual are both at or below `matching relative
+tolerance`, or when the root mean square jump over the interface is at or
+below `matching absolute tolerance` (in the units of the matched quantity;
+default 0, which leaves the relative test alone); when every Schwarz coupling
+is a matching pair this replaces the displacement criterion, otherwise both
+must hold. A residual that stays above the tolerance while the
 displacement update has converged and has not fallen 5% below its smallest
 value for three consecutive such iterations is handled by `stalled interface
 jump action`; a single iteration without decrease, which Aitken factors
 produce, is not a stall.
 
-The velocity constraint admits different time steps on the two sides, as in
+Velocity matching admits different time steps on the two sides, as in
 Gravouil and Combescure (2001): the side with the finer step receives the
 partner's velocity (Dirichlet side) or reaction (Neumann side) interpolated
 linearly in time from the partner's substep history, the relaxation state is
@@ -345,14 +369,14 @@ fine side has no good choice: as the Dirichlet side the explicit member
 diverges. The
 run aborts with
 `swap BC types`, with HHT-α, with reduced order models, and with
-`constraint: displacement` unless both sides are Newmark with the same
+`matching: displacement` unless both sides are Newmark with the same
 β > 0, γ, and time step.
 
-**Direct interface solve.** For a constrained pair of two central difference
-subdomains at equal steps, `interface solve: direct` computes the interface
+**Direct interface solve.** For a pair with `matching: velocity` of two central
+difference subdomains at equal steps, `interface solve: direct` computes the interface
 force without iteration. With m_D and m_N the lumped masses of the interface
 rows and λ the force on the Dirichlet side (−Π_Dᵀ λ on the Neumann side), the
-velocity constraint at the end of the step gives, per component,
+matching of the velocities at the end of the step gives, per component,
 γ Δt (m_D⁻¹ + Π_D m_N⁻¹ Π_Dᵀ) λ = Π_D v_N,free − v_D,free, where v_free are the
 velocities of both sides advanced without interface force. The matrix is
 symmetric positive definite, of the size of the Dirichlet interface, and
@@ -360,12 +384,12 @@ factored once (dense Cholesky). Each stop advances both sides with free
 interface rows, solves for λ, and corrects the interface accelerations and
 velocities; the internal force is evaluated at the predictor displacement, so
 the solve is exact for nonlinear materials as well. The same matrix gives the
-initial interface force at t = 0 from the acceleration constraint. Every
+initial interface force at t = 0 from the matching of the accelerations. Every
 Schwarz coupling of the simulation must then be a direct pair, and each stop
 must be one step of each subdomain (the explicit stable step must not shorten
 it). Relaxation and the stopping tolerances do not apply.
 
-The initial acceleration of a constrained pair is found by a Schwarz
+The initial acceleration of a matching pair is found by a Schwarz
 iteration at t = 0: the Dirichlet side imposes the projected partner
 acceleration, the Neumann side receives the d'Alembert reaction, and each side
 recomputes its initial acceleration with the interface rows included. The
@@ -373,7 +397,7 @@ Dirichlet datum is relaxed with `relaxation parameter`, under Aitken
 relaxation with the secant factor of the iteration's own iterates, or under
 Anderson acceleration by the same scheme on its own iterates, and the
 iteration stops when the
-acceleration jump and the force residual are at or below `relative
+acceleration jump and the force residual are at or below `matching relative
 tolerance`. Without it the first step changes the conserved energy by up to 1%
 on the cantilever, and between two central difference subdomains the
 difference of the two interface accelerations alternates in sign at every
@@ -409,9 +433,9 @@ interface (issue #176; on the cantilever and nested-cylinders benchmarks of
 element inversion after exponential energy growth, on overlap and nonoverlap
 decompositions alike). It is intended for quasi-statics and for comparison
 against the classical Robin-Robin literature, and the run warns when it is used
-with a dynamic time integrator. For dynamics use the constrained
-Dirichlet-Neumann exchange: `Schwarz DN nonoverlap` with `constrained: true`
-and `constraint: velocity`, with `interface solve: direct` for two central
+with a dynamic time integrator. For dynamics use the matching
+Dirichlet-Neumann exchange: `Schwarz DN nonoverlap` with `matching: velocity`,
+with `interface solve: direct` for two central
 difference subdomains at equal steps and `relaxation: anderson` otherwise.
 
 | Key | Required | Default | Meaning |
@@ -470,9 +494,9 @@ restart:
 - Overlapping Schwarz: `examples/overlap/`
 - Overlapping Schwarz with J2 plasticity (circular laser weld, graded pair):
   `examples/overlap/static-same-step/clw/`
-- Non-overlapping Schwarz (Dirichlet-Neumann, constrained Dirichlet-Neumann,
+- Non-overlapping Schwarz (Dirichlet-Neumann, matching Dirichlet-Neumann,
   and Robin-Robin): `examples/nonoverlap/dynamic-same-step/`,
-  `examples/nonoverlap/static-same-step/`; the constrained exchange on 2:1
+  `examples/nonoverlap/static-same-step/`; the matching exchange on 2:1
   nonconforming meshes: `examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming/`
 - Contact: `examples/contact/`
 - Adaptive mesh swapping: `examples/adaptive-time-stepping/`,

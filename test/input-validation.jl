@@ -16,7 +16,7 @@ using YAML
         @test Norma.levenshtein_distance("abc", "abc") == 0
         @test Norma.levenshtein_distance("abc", "") == 3
         @test Norma.levenshtein_distance("kitten", "sitting") == 3
-        @test Norma.levenshtein_distance("constrainted", "constrained") == 1
+        @test Norma.levenshtein_distance("matchng", "matching") == 1
         # Non-ASCII keys must be measured per character, not per byte.
         @test Norma.levenshtein_distance("β", "γ") == 1
         @test Norma.levenshtein_distance("beta", "β") == 4
@@ -24,8 +24,8 @@ using YAML
     end
 
     @testset "Suggestions" begin
-        known = Set(["constrained", "robin parameter", "interface solve"])
-        @test Norma.suggest_key("constrainted", known) == "constrained"
+        known = Set(["matching", "robin parameter", "interface solve"])
+        @test Norma.suggest_key("matchng", known) == "matching"
         @test Norma.suggest_key("Robin Parameter", known) == "robin parameter"
         @test Norma.suggest_key("completely unrelated key name", known) == ""
     end
@@ -39,15 +39,15 @@ using YAML
                         "side set" => "ssz+",
                         "source" => "cuboid-2",
                         "source side set" => "ssz-",
-                        "constrainted" => true,
+                        "matchng" => "velocity",
                     ),
                 ],
             ),
         )
         messages = Norma.validate_input_parameters(params, "test.yaml")
         @test length(messages) == 1
-        @test occursin("constrainted", messages[1])
-        @test occursin("Did you mean \"constrained\"?", messages[1])
+        @test occursin("matchng", messages[1])
+        @test occursin("Did you mean \"matching\"?", messages[1])
     end
 
     @testset "Misspelled BC type key" begin

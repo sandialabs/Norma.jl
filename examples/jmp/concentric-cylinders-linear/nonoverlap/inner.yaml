@@ -3,7 +3,7 @@
 # schemes: three nested cylinders (core, filler, shell) of linear elastic
 # materials, fixed in z at the bottom face of the shell and moving at -5 m/s
 # in z. With linear elastic materials the pseudo-energy of the differentiated
-# system, which the constrained Dirichlet-Neumann exchange conserves, is
+# system, which the matching Dirichlet-Neumann exchange conserves, is
 # defined, so the energy output measures conservation and not only
 # boundedness. The speed is 5 m/s rather than the -35 m/s of the neohookean
 # example, which strains the filler beyond the range of a small-strain model.
@@ -53,8 +53,7 @@ boundary conditions:
       source: outer
       source side set: ssint
       default BC type: Dirichlet
-      constrained: true
-      constraint: velocity
+      matching: velocity
 solver:
   type: explicit solver
   step: explicit

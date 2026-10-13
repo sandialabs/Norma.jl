@@ -51,7 +51,7 @@ end
 const COUPLINGS = Dict(
     "mono" => "monolithic reference",
     "no-dn" => "Dirichlet-Neumann exchange (Schwarz DN nonoverlap), the baseline",
-    "no-cd" => "constrained Dirichlet-Neumann exchange (Schwarz DN nonoverlap, constrained: true)",
+    "no-cd" => "matching Dirichlet-Neumann exchange (Schwarz DN nonoverlap, matching: velocity)",
 )
 const PAIRS = ["II", "IE", "EI", "EE"]
 # The two pairs with one integrator on both sides anchor every factor; the

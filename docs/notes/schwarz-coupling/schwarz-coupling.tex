@@ -20,7 +20,7 @@
 \newtheorem{proposition}{Proposition}
 \emergencystretch=3em
 
-\title{The Constrained Dirichlet--Neumann Exchange\\
+\title{The Matching Dirichlet--Neumann Exchange\\
 for Schwarz Coupling in Solid Dynamics}
 \author{Alejandro Mota}
 \date{October 2026}
@@ -100,8 +100,13 @@ The classical Dirichlet--Neumann exchange satisfies the last three
 requirements but not the first: with implicit subdomains on the beam of
 Sec.~\ref{sec:verification} it inverts an element within $1$\,ms,
 and with explicit subdomains it conserves the energy only to $2$ to $4\%$
-(Sec.~\ref{sec:baseline}). The constrained exchange of this note satisfies
-all four.
+(Sec.~\ref{sec:baseline}). The exchange of this note satisfies all four.
+It is called the \emph{matching exchange}, because its Dirichlet side
+matches one kinematic quantity of the partner, the velocity or, for
+trapezoidal pairs, the displacement, and derives the other two from its
+own time integrator; the coupled problem it solves is the constrained
+problem of Sec.~\ref{sec:constrained}, whose constraint is that matching
+and whose multiplier is the interface force.
 
 \section{Setting and notation}
 \label{sec:setting}
@@ -219,7 +224,7 @@ and the velocity constraint at the end of every window,
   \label{eq:velocity-constraint}
 \end{equation}
 The interface force $~\lambda$ is the Lagrange multiplier of
-\eqref{eq:velocity-constraint}. On matching meshes $\Pi_D$ is the identity
+\eqref{eq:velocity-constraint}. On conforming meshes $\Pi_D$ is the identity
 on the interface nodes and the formulation is that of Gravouil and
 Combescure~\cite{GravouilCombescure2001}, a dual Schur formulation with
 velocity continuity. Prakash and Hjelmstad~\cite{PrakashHjelmstad2004}
@@ -410,7 +415,7 @@ relative force residual fall below a tolerance $\epsilon$:
 \end{equation}
 the force residual taken at every substep of the window. The norms are the
 discrete $L^2$ norms of the trace and of its dual. An absolute floor, if
-any, must be given in the units of the constrained quantity; a
+any, must be given in the units of the matched quantity; a
 displacement tolerance divided by the step is not a valid velocity floor
 (on the cylinders of Sec.~\ref{sec:verification} it amounts to $200$\,m/s
 and stops the iteration after one pass). A stop at which the residual
@@ -604,7 +609,7 @@ initial-acceleration solve.
 \subsection{Equal steps}
 
 Figure~\ref{fig:beam} shows the energy of the conforming beam for the
-classical and the constrained exchange. Table~\ref{tab:equal} gives the
+classical and the matching exchange. Table~\ref{tab:equal} gives the
 largest changes of $E$ and $\tilde{E}$ over $10$\,ms at a Schwarz tolerance
 of $10^{-12}$ with the coupled initial acceleration.
 
@@ -614,16 +619,16 @@ of $10^{-12}$ with the coupled initial acceleration.
 \caption{Energy of the conforming beam, stops of $1\,\mu$s, $10$\,ms: the
 monolithic reference, the classical Dirichlet--Neumann exchange (Schwarz
 tolerance $10^{-8}$ on the displacement update, recursive Aitken), and the
-constrained exchange (tolerance $10^{-12}$, Anderson acceleration). The
+matching exchange (tolerance $10^{-12}$, Anderson acceleration). The
 classical exchange inverts an element at $1.0$\,ms with implicit
-subdomains (cross); the constrained exchange coincides with the reference.}
+subdomains (cross); the matching exchange coincides with the reference.}
 \label{fig:beam}
 \end{figure}
 
 \begin{table}[htbp]
 \centering
 \footnotesize\setlength{\tabcolsep}{3pt}
-\caption{Constrained exchange on the beam at equal steps ($1\,\mu$s,
+\caption{Matching exchange on the beam at equal steps ($1\,\mu$s,
 $10$\,ms, tolerance $10^{-12}$, fixed relaxation $0.5$, coupled initial
 acceleration, velocity constraint unless marked $u$). $\delta E$ and
 $\delta\tilde{E}$ are the largest $\lvert E(t)/E(0) - 1\rvert$ and
@@ -666,7 +671,7 @@ error is $7\times 10^{-16}$, enters it.
 
 The iteration counts of Table~\ref{tab:equal} were measured with the stopping
 rule of September 30, 2026, which also accepted a stop when the root mean
-square jump of the constrained velocity fell below the controller's absolute
+square jump of the matched velocity fell below the controller's absolute
 tolerance divided by the step. Without this floor, removed on October 1,
 2026 (commit \code{d96ab13f}), the conforming II pair with the inputs of
 \code{studies/dynamic-stability} (case \code{beam\_no-cd\_II\_L1\_r100\_fixed},
@@ -889,7 +894,7 @@ modified energies.
 \centering
 \includegraphics[width=\textwidth]{figs/cylinders-time-step.pdf}
 \caption{Energy of the neohookean cylinders, $-35$\,m/s, $2$\,ms: the
-monolithic mesh and the decomposed mesh with the constrained exchange and
+monolithic mesh and the decomposed mesh with the matching exchange and
 the direct interface solve, each at two time steps.}
 \label{fig:cylinders}
 \end{figure}
@@ -928,7 +933,7 @@ Schwarz solves the subdomains loosely and relies on the Schwarz iteration,
 stopped at a tight $\epsilon$, for the accuracy. Its effect was measured on
 the beam of Section~\ref{sec:norma} with a neohookean material of the same
 moduli, so that Newton takes more than one iteration per solve: two
-trapezoidal subdomains, the constrained exchange with Anderson
+trapezoidal subdomains, the matching exchange with Anderson
 acceleration, $\epsilon = 10^{-12}$, $10^4$ stops of $1\,\mu$s on the
 mesh of level $1$ ($180$ elements) and $2\times 10^4$ stops of
 $0.5\,\mu$s on the mesh of level $2$ ($1440$ elements). The reference
@@ -945,7 +950,7 @@ $10^{-2}$ at the first.
 
 \begin{table}[htbp]
 \centering
-\caption{Neohookean beam, two trapezoidal subdomains, constrained exchange,
+\caption{Neohookean beam, two trapezoidal subdomains, matching exchange,
 $\epsilon = 10^{-12}$, $10$\,ms: Newton iterations relative to the
 reference (Newton tolerance $10^{-12}$), Schwarz iterations per stop, and
 the relative displacement error against the reference at $10$\,ms, on the
@@ -1025,7 +1030,7 @@ relative difference between the force it applies on the Neumann side and
 the transposed d'Alembert reaction of the Dirichlet side, measured in the
 $~W_N^{-1}$ norm at the end of every stop, has the median $0.83$ (maximum
 $4.2$) with explicit subdomains and $1.47$ (maximum $4.6$) with implicit
-ones; under the constrained exchange it is below $4\times 10^{-16}$. On the
+ones; under the matching exchange it is below $4\times 10^{-16}$. On the
 beam the classical exchange inverts an element within $1$\,ms with implicit
 subdomains on every mesh ratio and with $4{:}1$ steps, and with explicit
 subdomains the energy varies by $2.6$ to $4.3\%$ (Fig.~\ref{fig:beam}). On
@@ -1083,16 +1088,16 @@ constrained problem and could serve as a solver of it.
 \label{sec:norma}
 
 The exchange is a \code{Schwarz DN nonoverlap} condition with
-\code{constrained: true} on both sides of a pair and
-\code{constraint: velocity} (or \code{displacement} for trapezoidal pairs);
+\code{matching: velocity} (or \code{matching: displacement} for
+trapezoidal pairs) on both sides of a pair;
 \code{default BC type} assigns the Dirichlet and Neumann roles;
 \code{interface solve: direct} selects the direct solve for two explicit
 sides at equal steps. The top-level input sets the relative tolerance
-$\epsilon$, \code{relaxation: anderson} with \code{anderson depth} and
+$\epsilon$ (\code{matching relative tolerance}, required), \code{relaxation: anderson} with \code{anderson depth} and
 \code{relaxation parameter} (the mixing parameter $\beta$, default $0.5$ under
 Anderson acceleration and $1$ otherwise), or
-\code{relaxation: aitken recursive}; \code{constraint absolute tolerance}
-sets an absolute floor in the units of the constrained quantity (default
+\code{relaxation: aitken recursive}; \code{matching absolute tolerance}
+sets an absolute floor in the units of the matched quantity (default
 $0$), and \code{stalled interface jump action} selects what a stalled stop
 does. The block \code{inexact Newton} (\code{forcing factor}, default
 $0.01$; \code{minimum tolerance}, $10^{-12}$; \code{maximum tolerance},
@@ -1106,11 +1111,11 @@ subcycled pairs, the impulse residual \eqref{eq:impulse}. The keys are
 documented in \code{docs/src/reference/multidomain.md}. The implementation
 is in \code{src/schwarz.jl}, \code{src/simulation.jl}, and
 \code{src/overlap\_energy.jl}; tests 135 (pseudo-energy) and 136
-(constrained exchange, including the direct solve, subcycling, Aitken and
+(matching exchange, including the displacement matching, the direct solve, subcycling, Aitken and
 Anderson acceleration, and the equivalence of Anderson acceleration with
 GMRES on a probed interface map), and 137 (windowed stops). Examples:
 \code{examples/nonoverlap/dynamic-same-step/cantilever-dn} (the beam, from
-which test 136 builds its constrained pairs),
+which test 136 builds its matching pairs),
 \code{examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming}
 (the beam at mesh ratio $1{:}0.5$), and
 \code{examples/jmp/concentric-cylinders-linear}. The parameter study

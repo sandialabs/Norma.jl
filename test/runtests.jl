@@ -174,7 +174,7 @@ const indexed_test_files = [
     (133, "adaptivity-length.jl"),
     (134, "adaptivity-quality.jl"),
     (135, "pseudo-energy.jl"),
-    (136, "schwarz-nonoverlap-constrained-dn.jl"),
+    (136, "schwarz-nonoverlap-matching-dn.jl"),
     (137, "schwarz-nonoverlap-windowed-stops.jl"),
 ]
 

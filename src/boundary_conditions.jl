@@ -448,28 +448,30 @@ function SMCouplingSchwarzBC(
             norma_abort("Invalid string for 'default BC type'!  Valid options are 'Dirichlet' and 'Neumann'")
         end
         swap_bcs = get(bc_params, "swap BC types", false)
-        constrained = Bool(get(bc_params, "constrained", false))
-        constraint = if haskey(bc_params, "constraint")
-            constraint_name = String(bc_params["constraint"])
-            if constraint_name == "velocity"
+        for retired in ("constrained", "constraint")
+            haskey(bc_params, retired) && norma_abort(
+                "`$(retired)` on side set \"$(side_set_name)\" was retired. The matching exchange is " *
+                "selected by `matching: velocity` or `matching: displacement` on both sides of the pair.",
+            )
+        end
+        # `matching` selects the matching exchange and its matched quantity;
+        # without it the pair uses the standard exchange.
+        constraint = if haskey(bc_params, "matching")
+            matching_name = String(bc_params["matching"])
+            if matching_name == "velocity"
                 :velocity
-            elseif constraint_name == "displacement"
+            elseif matching_name == "displacement"
                 :displacement
             else
                 norma_abort(
-                    "Invalid `constraint: $(constraint_name)` on side set \"$(side_set_name)\". " *
+                    "Invalid `matching: $(matching_name)` on side set \"$(side_set_name)\". " *
                     "Valid values are `velocity` and `displacement`.",
                 )
             end
         else
             :unset
         end
-        if constraint != :unset && !constrained
-            norma_abort(
-                "`constraint` on side set \"$(side_set_name)\" requires `constrained: true`: the " *
-                "constraint selects the imposed quantity of the constrained exchange.",
-            )
-        end
+        constrained = constraint != :unset
         interface_solve = String(get(bc_params, "interface solve", "iterative"))
         if interface_solve ∉ ("iterative", "direct")
             norma_abort(
@@ -479,12 +481,12 @@ function SMCouplingSchwarzBC(
         end
         direct_solve = interface_solve == "direct"
         if direct_solve && !constrained
-            norma_abort("`interface solve: direct` on side set \"$(side_set_name)\" requires `constrained: true`.")
+            norma_abort("`interface solve: direct` on side set \"$(side_set_name)\" requires `matching`.")
         end
         if constrained && swap_bcs
             norma_abort(
-                "`constrained: true` on side set \"$(side_set_name)\" does not support " *
-                "`swap BC types: true`: the constrained exchange keeps the Dirichlet side fixed.",
+                "`matching` on side set \"$(side_set_name)\" does not support " *
+                "`swap BC types: true`: the matching exchange keeps the Dirichlet side fixed.",
             )
         end
         SolidMechanicsNonOverlapSchwarzBoundaryCondition(
@@ -509,8 +511,8 @@ function SMCouplingSchwarzBC(
         # interface in elastodynamics (issue #176: a growing interface mode,
         # with a lateral kink of the bar axis under pure torsion), so it is
         # intended for quasi-statics and for comparison studies. For dynamics the
-        # constrained Dirichlet-Neumann exchange (`Schwarz DN nonoverlap` with
-        # `constrained: true`) is recommended.
+        # matching Dirichlet-Neumann exchange (`Schwarz DN nonoverlap` with
+        # `matching: velocity`) is recommended.
         robin_parameter = Float64(get(bc_params, "robin parameter", 0.0))
         if robin_parameter <= 0.0
             norma_abort(
@@ -525,7 +527,7 @@ function SMCouplingSchwarzBC(
                 "`Schwarz RR nonoverlap` applies the classical Robin condition " *
                 "t + α W u = g, which is not absorbing and can inject energy at " *
                 "the interface in elastodynamics (issue #176). For dynamics " *
-                "prefer `Schwarz DN nonoverlap` with `constrained: true`.",
+                "prefer `Schwarz DN nonoverlap` with `matching: velocity`.",
             )
         end
         SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition(

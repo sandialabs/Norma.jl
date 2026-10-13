@@ -481,6 +481,7 @@ function create_simulation(params::Parameters)
         sim = MultiDomainSimulation(params)
         try
             create_bcs(sim)
+            validate_matching_tolerances(sim)
             validate_swap_criteria(sim)
             warn_restart_with_nonoverlap_schwarz(sim)
             reject_restart_with_contact(sim)
@@ -1294,7 +1295,7 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     isempty(pairs) && return nothing
     controller = sim.controller
     θ = controller.relaxation_parameter
-    rtol = controller.relative_tolerance
+    rtol = matching_relative_tolerance(sim)
     previous = Dict{Int,Matrix{Float64}}()
     # Under Anderson relaxation the imposed acceleration of each pair is updated
     # by anderson_step! on its own iterates. Under Aitken relaxation the factor
@@ -1310,7 +1311,7 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     anderson_depth = controller.anderson_depth
     previous_residual = Dict{Int,Matrix{Float64}}()
     previous_iterate = Dict{Int,Matrix{Float64}}()
-    norma_log(0, :acceleration, "Coupled initial acceleration of constrained DN pairs (θ = $(θ))")
+    norma_log(0, :acceleration, "Coupled initial acceleration of matching DN pairs (θ = $(θ))")
     for iteration in 1:controller.maximum_iterations
         for (subsim_index, subsim) in enumerate(sim.subsims)
             reset_history(controller, subsim_index)
@@ -1967,12 +1968,51 @@ end
 # below its smallest value that make a stall.
 const STALL_ITERATIONS = 3
 
+# The tolerances of the matching criterion. `matching relative tolerance` is
+# required when the simulation has a matching DN pair, so that the input states
+# the criterion of those pairs; `matching absolute tolerance` is optional
+# (default 0, the relative test alone) and is in the units of the matched
+# quantity. The retired top-level key `constraint absolute tolerance` aborts.
+function validate_matching_tolerances(sim::MultiDomainSimulation)
+    if haskey(sim.params, "constraint absolute tolerance")
+        norma_abort(
+            "`constraint absolute tolerance` was retired; use `matching absolute tolerance`, " *
+            "together with the required `matching relative tolerance`.",
+        )
+    end
+    has_matching = any(is_constrained_dn(bc) for subsim in sim.subsims for bc in subsim.model.boundary_conditions)
+    keys = ("matching relative tolerance", "matching absolute tolerance")
+    if has_matching
+        haskey(sim.params, keys[1]) || norma_abort(
+            "The simulation has a `Schwarz DN nonoverlap` pair with `matching`, which requires the " *
+            "top-level key `matching relative tolerance`.",
+        )
+        for key in keys
+            haskey(sim.params, key) || continue
+            value = sim.params[key]
+            value isa Real && value >= 0 || norma_abort("`$(key)` must be a nonnegative number, got $(repr(value)).")
+        end
+    else
+        for key in keys
+            haskey(sim.params, key) &&
+                norma_log(0, :warning, "`$(key)` is ignored: no `Schwarz DN nonoverlap` pair sets `matching`.")
+        end
+    end
+    return nothing
+end
+
+# NaN, which no residual meets, when the key is absent; validate_matching_tolerances
+# requires it whenever a matching pair exists.
+matching_relative_tolerance(sim::MultiDomainSimulation) = Float64(get(sim.params, "matching relative tolerance", NaN))
+
+matching_absolute_tolerance(sim::MultiDomainSimulation) = Float64(get(sim.params, "matching absolute tolerance", 0.0))
+
 # Interface residuals of the Dirichlet-Neumann pairs (dn_interface_residuals in
-# schwarz.jl), logged at every Schwarz iteration. For constrained pairs they are
+# schwarz.jl), logged at every Schwarz iteration. For matching pairs they are
 # also the stopping rule: such a pair has converged when the one-sided jump of
-# its constrained quantity and the interface force residual are both at or
-# below the relative tolerance (or the root mean square jump at or below
-# `constraint absolute tolerance`, when that key is given). When every
+# its matched quantity and the interface force residual are both at or below
+# `matching relative tolerance` (or the root mean square jump at or below
+# `matching absolute tolerance`, when that key is given). When every
 # Schwarz coupling of the simulation is a constrained DN pair this replaces the
 # displacement criterion; otherwise both must hold. The larger of the constrained
 # jump and the force residual, maximized over the constrained pairs, is stalled
@@ -1987,12 +2027,10 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
     sides = dn_dirichlet_sides(sim)
     controller.interface_residual = NaN
     isempty(sides) && return true, stall
-    rtol = controller.relative_tolerance
-    # The controller's absolute tolerance is a displacement; it is not used here.
-    # The constrained criterion is relative unless `constraint absolute
-    # tolerance` is given, in the units of the constrained quantity (velocity for
-    # the velocity constraint, displacement for the displacement constraint).
-    catol = Float64(get(sim.params, "constraint absolute tolerance", 0.0))
+    # The controller's tolerances apply to the displacement update; the matching
+    # criterion has its own.
+    rtol = matching_relative_tolerance(sim)
+    catol = matching_absolute_tolerance(sim)
     has_constrained = false
     all_constrained_converged = true
     max_measure = 0.0
@@ -2049,7 +2087,7 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
         stall_action = get(sim.params, "stalled interface jump action", "warn")
         if stall_action == "abort"
             norma_abort(
-                "Constrained DN interface residual $(max_measure) stalled above tolerance $(rtol) " *
+                "Matching DN interface residual $(max_measure) stalled above tolerance $(rtol) " *
                 "while the displacement update has converged, and `stalled interface jump action: abort` is set.",
             )
         elseif stall_action != "warn"
@@ -2061,7 +2099,7 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
         norma_logf(
             0,
             :schwarz,
-            "Constrained DN interface residual %.2e stalled above tolerance %.2e; accepting.",
+            "Matching DN interface residual %.2e stalled above tolerance %.2e; accepting.",
             max_measure,
             rtol,
         )
@@ -2098,7 +2136,7 @@ function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::I
         norma_log(
             0,
             :warning,
-            "Constrained DN pairs stop on the interface jump and force residual logged above; " *
+            "Matching DN pairs stop on the interface jump and force residual logged above; " *
             "the displacement update below is reported for reference.",
         )
     end

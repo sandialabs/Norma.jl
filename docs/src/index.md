@@ -92,7 +92,7 @@ Capabilities currently implemented:
 **Multidomain coupling — Schwarz alternating method**
 
 - Overlapping and non-overlapping (Dirichlet–Neumann) Schwarz
-- Robin–Robin Schwarz, and the constrained Dirichlet–Neumann exchange for
+- Robin–Robin Schwarz, and the matching Dirichlet–Neumann exchange for
   dynamics (see `docs/notes/schwarz-coupling`)
 - Multi-time-step (subcycled) coupling with time interpolation of the partner state
 - Frictionless and tied contact via Schwarz
