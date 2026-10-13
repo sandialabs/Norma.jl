@@ -239,6 +239,47 @@ end
     end
 end
 
+# Displacement constraint (`constraint: displacement`) on the trapezoidal pair.
+# The Dirichlet side imposes Π_D u_N and derives its interface velocity and
+# acceleration from its own Newmark relations. With the same Newmark parameters
+# and step on both sides and coupled initial data, these relations are linear in
+# (u, v, a), so the displacement constraint at every step is equivalent to the
+# velocity constraint: the two runs agree to the Schwarz tolerance, and Ẽ is
+# conserved.
+@testset "Constrained DN: Displacement Constraint (II)" begin
+    sim, header, data = run_constrained_dn(false; constraint="displacement")
+    @test sim.failed == false
+    @test length(data) == 51
+    bc_D, bc_N = dn_bc_of(sim.subsims[1]), dn_bc_of(sim.subsims[2])
+    @test bc_D.constraint == :displacement && bc_N.constraint == :displacement
+    r = Norma.dn_interface_residuals(sim)[1][2]
+    @test r.displacement_jump ≤ 1.0e-10
+    @test r.velocity_jump ≤ 1.0e-10
+    @test r.force_residual ≤ 1.0e-10
+    @test pseudo_drift(header, data) < 1.0e-10
+    # Newmark relations of the Dirichlet side over the last step.
+    integrator = sim.subsims[1].integrator
+    Δt = integrator.time_step
+    β, γ = integrator.β, integrator.γ
+    u_n = sim.controller.stop_disp[1]
+    v_n = sim.controller.stop_velo[1]
+    a_n = sim.controller.stop_acce[1]
+    for i_global in bc_D.global_from_local_map, comp in 1:3
+        k = 3 * (i_global - 1) + comp
+        a = integrator.acceleration[k]
+        @test integrator.displacement[k] ≈ u_n[k] + Δt * v_n[k] + (0.5 - β) * Δt^2 * a_n[k] + β * Δt^2 * a rtol =
+            1.0e-12 atol = 1.0e-15
+        @test integrator.velocity[k] ≈ v_n[k] + (1.0 - γ) * Δt * a_n[k] + γ * Δt * a rtol = 1.0e-12 atol = 1.0e-12
+    end
+    fields_u = [vcat(vec(s.model.displacement), vec(s.model.velocity)) for s in sim.subsims]
+    sim_v, _, _ = run_constrained_dn(false)
+    @test sim_v.failed == false
+    fields_v = [vcat(vec(s.model.displacement), vec(s.model.velocity)) for s in sim_v.subsims]
+    for (a, b) in zip(fields_u, fields_v)
+        @test norm(a - b) ≤ 1.0e-9 * norm(b)
+    end
+end
+
 @testset "Constrained DN: Coupled Initial Acceleration, First Step (II)" begin
     sim, header, data = run_constrained_dn(false; num_steps=2)
     @test sim.failed == false
