@@ -117,7 +117,7 @@ const TOP_LEVEL_MULTI_KEYS = Set([
 
 const RESTART_KEYS = Set(["index"])
 
-const INEXACT_NEWTON_KEYS = Set(["forcing factor", "minimum tolerance", "maximum tolerance", "tight final solve"])
+const INEXACT_NEWTON_KEYS = Set(["tolerance ratio", "minimum tolerance", "maximum tolerance", "tight final solve"])
 
 const TIME_INTEGRATOR_COMMON_KEYS = Set([
     "type",

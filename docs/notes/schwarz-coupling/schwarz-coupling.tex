@@ -945,8 +945,8 @@ $\lVert u - u_{\mathrm{ref}} \rVert_2 / \lVert u_{\mathrm{ref}} \rVert_2$
 over all nodes at $10$\,ms. Table~\ref{tab:inexact} gives the Newton
 iterations of each run relative to the reference, the Schwarz iterations per
 stop, and the error, for constant Newton tolerances, for one Newton
-iteration per solve carried forward unconverged, and for a forcing term
-that sets the Newton tolerance of Schwarz iteration $k$ to
+iteration per solve carried forward unconverged, and for a tolerance ratio
+$\eta$ that sets the Newton tolerance of Schwarz iteration $k$ to
 $\min(\max(\eta\, r_{k-1}, 10^{-12}), 10^{-2})$, with $r_{k-1}$ the
 relative Schwarz residual of the previous iteration of the stop and
 $10^{-2}$ at the first.
@@ -972,9 +972,9 @@ tolerance $10^{-4}$ & $0.663$ & $7.97$ & $1.7\times 10^{-5}$
   & $0.640$ & $7.93$ & $4.8\times 10^{-5}$ \\
 one Newton iteration & $0.334$ & $7.97$ & $5.3\times 10^{-3}$
   & $0.335$ & $7.93$ & $3.9\times 10^{-3}$ \\
-forcing term, $\eta = 0.01$ & $0.735$ & $8.52$ & $1.4\times 10^{-12}$
+tolerance ratio $\eta = 0.01$ & $0.735$ & $8.52$ & $1.4\times 10^{-12}$
   & $0.717$ & $8.27$ & $1.8\times 10^{-12}$ \\
-forcing term, $\eta = 0.1$ & $0.841$ & $10.18$ & $3.4\times 10^{-12}$
+tolerance ratio $\eta = 0.1$ & $0.841$ & $10.18$ & $3.4\times 10^{-12}$
   & $0.826$ & $9.98$ & $2.5\times 10^{-12}$ \\
 \hline
 \end{tabular}
@@ -989,8 +989,8 @@ iteration applies the same map and the iteration converges to the fixed
 point of that map, which carries the Newton error. The Schwarz criterion
 measures the change between iterates and does not see it: with one Newton
 iteration per solve the iteration meets $\epsilon = 10^{-12}$ in $8$
-iterations per stop and the result is wrong by $0.5\%$. The forcing term
-removes the error at $0.72$ to $0.74$ of the Newton iterations of the
+iterations per stop and the result is wrong by $0.5\%$. The tolerance
+ratio removes the error at $0.72$ to $0.74$ of the Newton iterations of the
 reference. The larger factor, $\eta = 0.1$, raises the Schwarz count by
 $26$ to $28\%$ and loses most of the saving. A tight final solve, which
 accepts Schwarz convergence only at an iteration whose Newton tolerance was
@@ -1013,7 +1013,7 @@ secant relaxation, $\epsilon = 10^{-12}$) Newton tolerances from $10^{-6}$
 to $10^{-10}$ save $15\%$ of the Newton iterations at an error of
 $3\times 10^{-13}$, whereas $10^{-4}$ and looser raise the Schwarz count
 from $36$ to $84$ or more per load step and reach the cap of $128$, and the
-forcing term with $\eta = 0.1$ saves $24\%$ at an error of
+tolerance ratio $\eta = 0.1$ saves $24\%$ at an error of
 $6\times 10^{-13}$. The classical form of inexact Schwarz, in which each
 subdomain solve starts from its previous Schwarz iterate so that one
 Newton iteration per Schwarz iteration converges to the solution of the
@@ -1105,7 +1105,7 @@ Anderson acceleration and $1$ otherwise), or
 \code{relaxation: aitken recursive}; \code{matching absolute tolerance}
 sets an absolute floor in the units of the matched quantity (default
 $0$), and \code{stalled interface jump action} selects what a stalled stop
-does. The block \code{inexact Newton} (\code{forcing factor}, default
+does. The block \code{inexact Newton} (\code{tolerance ratio}, default
 $0.01$; \code{minimum tolerance}, $10^{-12}$; \code{maximum tolerance},
 $10^{-2}$; \code{tight final solve}, false) sets the Newton tolerance of
 the implicit subdomains from the previous Schwarz residual as in

@@ -75,7 +75,7 @@ iterations of every Schwarz iteration are logged with the Schwarz criterion.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
-| `forcing factor` | no | `0.01` | factor η > 0 between the previous relative Schwarz residual and the relative Newton tolerance |
+| `tolerance ratio` | no | `0.01` | ratio η > 0 of the relative Newton tolerance to the previous relative Schwarz residual; a smaller η solves each subdomain more tightly relative to the Schwarz residual. The key `forcing factor`, which set η before October 2026, aborts |
 | `minimum tolerance` | no | `1.0e-12` | floor of the relative Newton tolerance |
 | `maximum tolerance` | no | `1.0e-2` | ceiling of the relative Newton tolerance, used at the first Schwarz iteration of a stop |
 | `tight final solve` | no | `false` | accept Schwarz convergence only at a Schwarz iteration whose Newton tolerance was the floor; a convergence reached above the floor is rejected and the Schwarz iteration continues with the tolerance at the floor for the rest of the stop |

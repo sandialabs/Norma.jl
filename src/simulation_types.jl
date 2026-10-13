@@ -24,7 +24,7 @@ const RelaxationKey = Tuple{Int64,Int64,Int64}
 # `tight_final_solve`, convergence is accepted only at a Schwarz iteration
 # whose Newton tolerance was the floor.
 struct InexactNewtonSettings
-    forcing_factor::Float64
+    tolerance_ratio::Float64
     minimum_tolerance::Float64
     maximum_tolerance::Float64
     tight_final_solve::Bool

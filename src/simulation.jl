@@ -919,15 +919,17 @@ function parse_inexact_newton(params::Parameters)
     haskey(params, "inexact Newton") || return nothing
     block = params["inexact Newton"]
     block isa AbstractDict || norma_abort("`inexact Newton` must be a block of keys.")
-    forcing_factor = Float64(get(block, "forcing factor", 0.01))
+    haskey(block, "forcing factor") &&
+        norma_abort("`forcing factor` in `inexact Newton` was retired; use `tolerance ratio`, with the same meaning.")
+    tolerance_ratio = Float64(get(block, "tolerance ratio", 0.01))
     minimum_tolerance = Float64(get(block, "minimum tolerance", 1.0e-12))
     maximum_tolerance = Float64(get(block, "maximum tolerance", 1.0e-2))
     tight_final_solve = Bool(get(block, "tight final solve", false))
-    if !(forcing_factor > 0.0 && 0.0 < minimum_tolerance ≤ maximum_tolerance)
+    if !(tolerance_ratio > 0.0 && 0.0 < minimum_tolerance ≤ maximum_tolerance)
         norma_abortf(
-            "`inexact Newton` requires forcing factor > 0 and 0 < minimum tolerance ≤ maximum tolerance; " *
+            "`inexact Newton` requires tolerance ratio > 0 and 0 < minimum tolerance ≤ maximum tolerance; " *
             "got %.2e, %.2e, %.2e.",
-            forcing_factor,
+            tolerance_ratio,
             minimum_tolerance,
             maximum_tolerance,
         )
@@ -935,13 +937,13 @@ function parse_inexact_newton(params::Parameters)
     norma_logf(
         0,
         :schwarz,
-        "Inexact Newton: forcing factor = %.2e, tolerance in [%.2e, %.2e], tight final solve = %s",
-        forcing_factor,
+        "Inexact Newton: tolerance ratio = %.2e, tolerance in [%.2e, %.2e], tight final solve = %s",
+        tolerance_ratio,
         minimum_tolerance,
         maximum_tolerance,
         string(tight_final_solve),
     )
-    return InexactNewtonSettings(forcing_factor, minimum_tolerance, maximum_tolerance, tight_final_solve)
+    return InexactNewtonSettings(tolerance_ratio, minimum_tolerance, maximum_tolerance, tight_final_solve)
 end
 
 # Relative Newton tolerance of the subdomain solves at Schwarz iteration
@@ -950,7 +952,7 @@ end
 function inexact_newton_tolerance(settings::InexactNewtonSettings, iteration_number::Int64, previous_residual::Float64)
     iteration_number == 0 && return settings.maximum_tolerance
     isnan(previous_residual) && return settings.maximum_tolerance
-    return clamp(settings.forcing_factor * previous_residual, settings.minimum_tolerance, settings.maximum_tolerance)
+    return clamp(settings.tolerance_ratio * previous_residual, settings.minimum_tolerance, settings.maximum_tolerance)
 end
 
 function set_newton_tolerance!(sim::MultiDomainSimulation, tolerance::Float64)

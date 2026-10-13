@@ -74,6 +74,22 @@ using YAML
         @test occursin("\"beta\"", messages[1])
     end
 
+    # `tolerance ratio` sets η of the inexact Newton tolerance clamp(η r, floor,
+    # ceiling); the retired key `forcing factor` aborts instead of being ignored,
+    # which would run with the default η.
+    @testset "Inexact Newton tolerance ratio" begin
+        block = Norma.Parameters("tolerance ratio" => 0.1)
+        settings = Norma.parse_inexact_newton(Norma.Parameters("inexact Newton" => block))
+        @test settings.tolerance_ratio == 0.1
+        @test Norma.inexact_newton_tolerance(settings, 0, NaN) == 1.0e-2
+        @test Norma.inexact_newton_tolerance(settings, 3, 1.0e-6) ≈ 1.0e-7
+        @test Norma.inexact_newton_tolerance(settings, 3, 1.0e-20) == 1.0e-12
+        retired = Norma.Parameters("inexact Newton" => Norma.Parameters("forcing factor" => 0.1))
+        @test_throws Exception Norma.parse_inexact_newton(retired)
+        params = Norma.Parameters("type" => "multi", "domains" => ["a.yaml"], "inexact Newton" => block)
+        @test isempty(Norma.validate_input_parameters(params, "test.yaml"))
+    end
+
     @testset "Newmark keys valid only for Newmark" begin
         params = Norma.Parameters(
             "type" => "single",
