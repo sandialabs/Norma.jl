@@ -10,6 +10,8 @@
   coupling and multiphysics, primarily in solid mechanics and heat
   conduction.
 
+**Documentation:** [https://sandialabs.github.io/Norma.jl/dev/](https://sandialabs.github.io/Norma.jl/dev/)
+
 ![Norma Contact Simulation](https://github.com/sandialabs/Norma.jl/blob/main/docs/assets/bars.gif)
 *Impact simulation of two bars using different time integrators and
 mesh types: the left bar uses hexahedral elements with an implicit
@@ -69,25 +71,26 @@ skip it.
 
 ## Documentation
 
-Full documentation lives in the [`docs/`](docs/) directory and is built with
-[Documenter.jl](https://documenter.juliadocs.org/). Build and view it locally
-with:
+The documentation is published at [https://sandialabs.github.io/Norma.jl/dev/](https://sandialabs.github.io/Norma.jl/dev/). It is rebuilt
+from the latest commit on `main` and covers:
+
+- [Installation](https://sandialabs.github.io/Norma.jl/dev/installation/)
+- [Running Norma](https://sandialabs.github.io/Norma.jl/dev/running/)
+- [Testing](https://sandialabs.github.io/Norma.jl/dev/testing/)
+- [Examples](https://sandialabs.github.io/Norma.jl/dev/examples/)
+- [Profiling and debugging](https://sandialabs.github.io/Norma.jl/dev/profiling-and-debugging/)
+- [Troubleshooting](https://sandialabs.github.io/Norma.jl/dev/troubleshooting/)
+- **[Input File Reference](https://sandialabs.github.io/Norma.jl/dev/reference/)**: every section and key
+  of the YAML input file
+
+The sources are in the [`docs/`](docs/) directory and are built with
+[Documenter.jl](https://documenter.juliadocs.org/). To build and view them
+locally:
 
 ```bash
 julia --project=docs -e 'using Pkg; Pkg.instantiate(); include("docs/make.jl")'
 # then open docs/build/index.html
 ```
-
-The documentation covers:
-
-- [Installation](docs/src/installation.md)
-- [Running Norma](docs/src/running.md)
-- [Testing](docs/src/testing.md)
-- [Examples](docs/src/examples.md)
-- [Profiling and debugging](docs/src/profiling-and-debugging.md)
-- [Troubleshooting](docs/src/troubleshooting.md)
-- **[Input File Reference](docs/src/reference/index.md)** — every section and key
-  of the YAML input file
 
 Runnable input files for every capability are in the [`examples/`](examples/)
 directory.
