@@ -20,8 +20,8 @@
 \newtheorem{proposition}{Proposition}
 \emergencystretch=3em
 
-\title{The Matching Dirichlet--Neumann Exchange\\
-for Schwarz Coupling in Solid Dynamics}
+\title{Schwarz Coupling for Solid Mechanics in Norma:\\
+Formulation, Algorithms, and Verification}
 \author{Alejandro Mota}
 \date{October 2026}
 
@@ -29,66 +29,99 @@ for Schwarz Coupling in Solid Dynamics}
 \maketitle
 
 \begin{abstract}
-This note specifies a Schwarz coupling for dynamic solid mechanics whose
-discrete interface work vanishes at the converged state, so that the
-coupled problem conserves the energy that its time integrators conserve.
-The method is a Dirichlet--Neumann exchange between two nonoverlapping
-subdomains, each advanced by its own Newmark scheme or by central
-difference, on meshes that need not match at the interface and with time
-steps that may differ by an integer ratio. It differs from the classical
-Dirichlet--Neumann exchange in five respects: the Neumann side receives the
-full dynamic (d'Alembert) reaction of its partner; both interface transfers
-are built from one cross-mass matrix, so that the force transfer is the
-transpose of the velocity transfer; the Dirichlet side receives the
-velocity only and derives its displacement and acceleration from its own
-time integrator; the iteration stops on the interface velocity jump and
-the interface force residual; and the initial acceleration is computed on
-the coupled system. At the fixed point the exchange solves the
-velocity-constrained coupled problem of Gravouil and Combescure, of
-Prakash and Hjelmstad, and of Connors, Owen, Kuberry, and Bochev, for which
-the pseudo-energy (the energy functional applied to the velocity and the
-acceleration) is conserved exactly for linear elasticity, for any pair of
-Newmark schemes, for any mesh ratio, and, with the coarse-step side as the
-Dirichlet side, for any integer step ratio. The note states the formulation
-and its proof, the algorithm in the form needed for an implementation in a
-production code (interface operators, the exchange, the stopping
-criterion, the coupled initial acceleration, subcycling, the assignment of
-the Dirichlet role, relaxation by Aitken or Anderson acceleration, and a
-direct interface solve for two explicit subdomains), and its verification
-on a cantilever beam and on nested cylinders: the matched energy is
-constant to the Schwarz tolerance over $10^4$ steps in every configuration
-measured, and to roundoff with the direct solve, while the classical
-exchange inverts an element within $1$\,ms with implicit subdomains.
+This note specifies the Schwarz alternating method as implemented in
+Norma for the coupling of finite element subdomains in solid mechanics,
+in the form needed to implement the same methods in another code. A
+multidomain simulation advances in controller steps, called stops; within
+a stop each subdomain is advanced by its own time integrator, with its own
+mesh and time step, and the subdomains are solved in turn with interface
+data exchanged between the solves until the data converge. The note
+states the controller (stops, substeps, the time interpolation of partner
+data, the stopping criteria, the relaxation and acceleration of the
+iteration, and the control of the Newton tolerance of the subdomain
+solves), the interface transfer operators (interpolation in a partner
+mesh and $L^2$ projections built from boundary mass matrices), and the
+five transmission conditions in the code: the overlapping Dirichlet
+coupling, the classical Dirichlet--Neumann exchange on a shared interface,
+the matching Dirichlet--Neumann exchange, the Robin--Robin condition, and
+the contact coupling. The matching exchange is treated in the most
+detail, because it is the only one whose fixed point conserves the energy
+of a dynamic problem: its Dirichlet side matches one kinematic quantity
+of the partner, the velocity or the displacement, and derives the other
+two from its own Newmark relations; its Neumann side receives the
+d'Alembert reaction of the partner through the transpose of the
+kinematic transfer, both transfers built from one cross-mass matrix; the
+iteration stops on the interface jump and the force residual; and the
+initial acceleration is computed on the coupled system. At the fixed
+point the exchange solves the velocity-constrained coupled problem of
+Gravouil and Combescure, of Prakash and Hjelmstad, and of Connors, Owen,
+Kuberry, and Bochev, for which the pseudo-energy (the energy functional
+applied to the velocity and the acceleration) is conserved exactly for
+linear elasticity, for any pair of Newmark schemes, for any mesh ratio,
+and, with the coarse-step side as the Dirichlet side, for any integer
+step ratio. The note gives the formulation and its proof, the algorithm,
+a direct interface solve for two explicit subdomains, and the
+verification on a cantilever beam and on nested cylinders: the matched
+energy is constant to the Schwarz tolerance over $10^4$ steps in every
+configuration measured, and to roundoff with the direct solve, while the
+classical exchange inverts an element within $1$\,ms with implicit
+subdomains. An appendix lists the input keys of every coupling and the
+tests and examples that exercise them.
 \end{abstract}
-
-\medskip
-\noindent\emph{This version replaces the July--September 2026 note, which
-recorded the transmission conditions measured before this method (overlap
-Dirichlet and impedance conditions, the paired impedance condition, and the
-Robin--Robin condition) and their failures; that version remains in the
-history of the Norma repository.}
 
 \tableofcontents
 
-\section{Problem and requirements}
-\label{sec:problem}
+\section{Scope}
+\label{sec:scope}
 
-A solid body $\Omega \subset \mathbb{R}^3$ is decomposed into two
-subdomains $\Omega_D$ and $\Omega_N$ that share an interface
-$\Gamma = \partial\Omega_D \cap \partial\Omega_N$ and are integrated in time
-independently, each with its own mesh, its own time integrator, and its own
-time step. The subdomains are coupled by a Schwarz iteration: within each
-time window the two subdomains are solved in turn, exchanging interface
-data, until the data converge, following Mota, Tezaur, and
-Phlipot~\cite{MotaTezaurPhlipot2022}. The coupling must satisfy the
-following requirements.
+A solid body $\Omega \subset \mathbb{R}^3$ is decomposed into subdomains
+$\Omega_k$ that are discretized and integrated in time independently, each
+with its own mesh, its own time integrator, and its own time step, and
+coupled by a Schwarz iteration: within each time window the subdomains are
+solved in turn, exchanging interface data, until the data converge,
+following Mota, Tezaur, and Phlipot~\cite{MotaTezaurPhlipot2022}. Norma
+implements five transmission conditions, each a boundary condition type of
+a subdomain input:
+\begin{enumerate}[itemsep=2pt]
+\item the \emph{overlapping Dirichlet coupling} (\code{Schwarz overlap}):
+  the subdomains overlap, and each receives on its boundary inside the
+  partner the displacement, velocity, and acceleration interpolated from
+  the partner's solution (Sec.~\ref{sec:overlap});
+\item the \emph{classical Dirichlet--Neumann exchange}
+  (\code{Schwarz DN nonoverlap} without \code{matching}): the subdomains
+  share an interface; one side receives the three kinematic fields of the
+  other and the other receives the internal force of the first
+  (Sec.~\ref{sec:classical});
+\item the \emph{matching Dirichlet--Neumann exchange}
+  (\code{Schwarz DN nonoverlap} with \code{matching}): one side matches the
+  velocity or the displacement of the other and the other receives the
+  d'Alembert reaction of the first, so that the fixed point of the
+  iteration is the constrained coupled problem whose pseudo-energy is
+  conserved (Sec.~\ref{sec:matching});
+\item the \emph{Robin--Robin condition} (\code{Schwarz RR nonoverlap}):
+  each side imposes $~t + \alpha ~W ~u = ~g$ on the shared interface, with
+  the datum $~g$ formed from the partner's traction and displacement
+  (Sec.~\ref{sec:rr});
+\item the \emph{contact coupling} (\code{Schwarz contact}): two bodies
+  whose surfaces may come into contact are coupled by a Dirichlet--Neumann
+  exchange that is active while contact is detected
+  (Sec.~\ref{sec:contact}).
+\end{enumerate}
+All five share the controller of Sec.~\ref{sec:controller}, the
+relaxation of Sec.~\ref{sec:relaxation}, and the transfer operators of
+Sec.~\ref{sec:transfer}. The note describes the code as of October 2026
+and states, for each method, what it requires of the input and what it
+does not do.
+
+The requirements on a dynamic coupling, which only the matching exchange
+satisfies in full, are:
 \begin{enumerate}[itemsep=2pt]
 \item \emph{Energy conservation.} At the converged state the coupling does
   no work on the system: the coupled problem conserves the quantity that
   the subdomain integrators conserve, to the tolerance of the Schwarz
   iteration.
-\item \emph{Nonconforming meshes.} The two meshes need not share nodes on
-  $\Gamma$.
+\item \emph{Nonconforming meshes.} The meshes need not share nodes on the
+  interface.
 \item \emph{Heterogeneous integrators and time steps.} Each subdomain may use
   an implicit Newmark scheme or central difference, and the time steps may
   differ by an integer ratio.
@@ -96,23 +129,19 @@ following requirements.
   solver; the coupling requires of a subdomain only operations that a
   structural dynamics code already provides (Sec.~\ref{sec:integration}).
 \end{enumerate}
-The classical Dirichlet--Neumann exchange satisfies the last three
-requirements but not the first: with implicit subdomains on the beam of
-Sec.~\ref{sec:verification} it inverts an element within $1$\,ms,
-and with explicit subdomains it conserves the energy only to $2$ to $4\%$
-(Sec.~\ref{sec:baseline}). The exchange of this note satisfies all four.
-It is called the \emph{matching exchange}, because its Dirichlet side
-matches one kinematic quantity of the partner, the velocity or, for
-trapezoidal pairs, the displacement, and derives the other two from its
-own time integrator; the coupled problem it solves is the constrained
-problem of Sec.~\ref{sec:constrained}, whose constraint is that matching
-and whose multiplier is the interface force.
+The classical exchange satisfies the last three but not the first: with
+implicit subdomains on the beam of Sec.~\ref{sec:verification} it inverts
+an element within $1$\,ms, and with explicit subdomains it conserves the
+energy only to $2$ to $4\%$ (Sec.~\ref{sec:baseline}). The overlapping
+coupling exchanges data on two different surfaces, so there is no shared
+interface on which the works of the two sides can cancel. The Robin--Robin
+condition is not absorbing and is used for quasi-static problems.
 
 \section{Setting and notation}
 \label{sec:setting}
 
 \paragraph{Semi-discrete equations.} After finite element discretization
-in space, subdomain $k \in \{D, N\}$ satisfies
+in space, subdomain $k$ satisfies
 \begin{equation}
   ~M_k\, ~a_k + ~f^{\mathrm{int}}_k(~u_k)
   = ~f^{\mathrm{ext}}_k + ~C_k^T ~\lambda_k ,
@@ -123,10 +152,12 @@ acceleration, $~M_k$ the mass matrix (lumped for central difference),
 $~f^{\mathrm{int}}_k$ the internal force, $~f^{\mathrm{ext}}_k$ the external
 force, $~C_k$ the Boolean restriction of the nodal vector to the interface
 nodes, and $~\lambda_k$ the interface force acting on subdomain $k$. For
-linear elasticity $~f^{\mathrm{int}}_k = ~K_k ~u_k$.
+linear elasticity $~f^{\mathrm{int}}_k = ~K_k ~u_k$. A quasi-static
+subdomain omits the inertial term. The reference coordinates of the nodes
+are $~X$, and the current coordinates are $~x = ~X + ~u$.
 
-\paragraph{Time integrators.} Subdomain $k$ is advanced by the Newmark
-scheme with parameters $(\beta_k, \gamma_k)$ and step $\Delta t_k$:
+\paragraph{Time integrators.} A dynamic subdomain is advanced by the
+Newmark scheme with parameters $(\beta, \gamma)$ and step $\Delta t$:
 \begin{equation}
   ~u^{n+1} = ~u^{n} + \Delta t\, ~v^{n}
     + \Delta t^2 \bigl[(\tfrac12 - \beta)\, ~a^{n} + \beta\, ~a^{n+1}\bigr],
@@ -136,7 +167,8 @@ scheme with parameters $(\beta_k, \gamma_k)$ and step $\Delta t_k$:
 \end{equation}
 The trapezoidal rule ($\beta = 1/4$, $\gamma = 1/2$, implicit, denoted I)
 and central difference ($\beta = 0$, $\gamma = 1/2$, explicit with a lumped
-mass, denoted E) are the two schemes used below. With the predictors
+mass, denoted E) are the two schemes used in the verification. With the
+predictors
 $~u^{\mathrm{pred}} = ~u^n + \Delta t\, ~v^n + (\tfrac12 - \beta)\Delta t^2 ~a^n$
 and $~v^{\mathrm{pred}} = ~v^n + (1-\gamma)\Delta t\, ~a^n$, the scheme gives
 \begin{equation}
@@ -146,16 +178,42 @@ and $~v^{\mathrm{pred}} = ~v^n + (1-\gamma)\Delta t\, ~a^n$, the scheme gives
   \label{eq:newmark-from-v}
 \end{equation}
 so a prescribed end-of-step velocity determines the acceleration and the
-displacement of the step.
+displacement of the step, and, for $\beta > 0$,
+\begin{equation}
+  ~a^{n+1} = \frac{~u^{n+1} - ~u^{\mathrm{pred}}}{\beta\, \Delta t^2},
+  \qquad
+  ~v^{n+1} = ~v^{\mathrm{pred}} + \gamma\, \Delta t\, ~a^{n+1},
+  \label{eq:newmark-from-u}
+\end{equation}
+so a prescribed end-of-step displacement determines the other two. An
+implicit subdomain solves its step by Newton's method on the displacement
+with the Hessian minimizer of Norma; an explicit subdomain divides the
+residual by the lumped mass. The Newmark predictor and corrector update
+only the free degrees of freedom of a subdomain, so a value prescribed on a
+degree of freedom before the step persists through it.
 
-\paragraph{Roles.} The \emph{Dirichlet side} $D$ receives a kinematic datum
-on its interface nodes; the \emph{Neumann side} $N$ receives a force. A
-pair of integrators is written with the integrator of one named subdomain
-first (II, IE, EI, EE).
+\paragraph{Prescribed rows.} A boundary condition prescribes a value on a
+set of degrees of freedom and marks them not free. Before every subdomain
+solve the boundary force vector is cleared, every degree of freedom is
+marked free, and the boundary conditions are applied in order, those whose
+type name ends in \code{Dirichlet} last, so that a prescribed displacement
+overrides a coupling datum on a shared node. The coupling conditions of
+this note either prescribe interface degrees of freedom (Dirichlet type) or
+add to the boundary force vector (Neumann type). The Newmark initial
+acceleration solves $~M_{ff}\, ~a_f = (~f^{\mathrm{ext}} - ~f^{\mathrm{int}})_f -
+~M_{fc}\, ~a_c$ for the free rows $f$ given the prescribed rows $c$; on a
+fresh start the rows held by a Schwarz coupling are excluded from the set
+$c$ of that correction, and included (the \emph{trusted} form) only in the
+refinement passes of Sec.~\ref{sec:initialization}.
+
+\paragraph{Roles.} In a Dirichlet--Neumann exchange the \emph{Dirichlet
+side} $D$ receives a kinematic datum on its interface nodes and the
+\emph{Neumann side} $N$ receives a force. A pair of integrators is written
+with the integrator of one named subdomain first (II, IE, EI, EE).
 
 \paragraph{Interface operators.} Let $\varphi^D_m$ and $\varphi^N_n$ be the
-interface traces of the nodal basis functions of the two sides. The
-cross-mass matrix and the boundary mass matrices are
+interface traces of the nodal basis functions of the two sides of a shared
+interface $\Gamma$. The cross-mass matrix and the boundary mass matrices are
 \begin{equation}
   B_{mn} = \int_\Gamma \varphi^D_m\, \varphi^N_n \,\dd S, \qquad
   (~W_D)_{ml} = \int_\Gamma \varphi^D_m\, \varphi^D_l \,\dd S, \qquad
@@ -171,14 +229,17 @@ The kinematic transfer to the Dirichlet side and its transpose are
 $\Pi_D$ maps the interface values of side $N$ to the $L^2$ projection of
 their trace onto the trace space of side $D$; it reproduces constants when
 $~B\,\mathbf{1} = ~W_D \mathbf{1}$, that is, when the quadrature of $~B$ is
-exact on products of the two trace spaces.
+exact on products of the two trace spaces. Section~\ref{sec:transfer}
+gives the assembly of these matrices and the variants that the other
+couplings use.
 
-\paragraph{Windows.} The Schwarz controller advances in \emph{stops}. Within
-a stop each subdomain advances to the stop end in its own steps; the
-\emph{Schwarz iteration} repeats a solve of each subdomain with interface
-data exchanged between the solves until the data converge, and the stop is
-then committed. A stop that spans $m$ steps of a subdomain is a
-\emph{window} of $m$ substeps for that subdomain.
+\paragraph{Stops and windows.} The Schwarz controller advances in
+\emph{stops} of length $\Delta t_c$. Within a stop each subdomain advances
+to the stop end in its own steps; the \emph{Schwarz iteration} repeats a
+solve of each subdomain with interface data exchanged between the solves
+until the data converge, and the stop is then committed. A stop that spans
+$m$ steps of a subdomain is a \emph{window} of $m$ substeps for that
+subdomain.
 
 \paragraph{Energies.} The energy is
 \begin{equation}
@@ -201,16 +262,591 @@ linear elasticity the pseudo-energy is
 \end{equation}
 the energy functional applied to the velocity and the acceleration, which
 is the energy of the time-differentiated system
-$~M \dot{~a} + ~K ~v = \dot{~f}$; its units are those of energy divided by time squared. $~S_k$ is $~M_k$ for
-the trapezoidal rule and $~M_k - \tfrac14 \Delta t_k^2 ~K_k$ for central
-difference, positive definite exactly below the stability limit of central
-difference. Relative to $E$, $\tilde{E}$ weights each vibration mode by the
-square of its frequency.
+$~M \dot{~a} + ~K ~v = \dot{~f}$; its units are those of energy divided by
+time squared. $~S_k$ is $~M_k$ for the trapezoidal rule and
+$~M_k - \tfrac14 \Delta t_k^2 ~K_k$ for central difference, positive
+definite exactly below the stability limit of central difference. Relative
+to $E$, $\tilde{E}$ weights each vibration mode by the square of its
+frequency.
 
-\section{The constrained coupled problem}
+\section{The controller and the Schwarz iteration}
+\label{sec:controller}
+
+A multidomain input (\code{type: multi}) lists the subdomain inputs in
+\code{domains} and sets the time window, the controller step, and the
+parameters of the iteration (Appendix~\ref{app:keys}). The controller
+supplies the time window to every subdomain and clamps each subdomain's
+step to the controller step.
+
+\subsection{Stops and substeps}
+\label{sec:stops}
+
+The controller time after stop $s$ is $t_s = t_0 + s\,\Delta t_c$; the
+number of stops is $\mathrm{round}((t_f - t_0)/\Delta t_c)$, and the span
+$t_f - t_0$ must be a multiple of $\Delta t_c$. The step of subdomain $k$ is
+$\Delta t_k = \min(\Delta t_k^{\mathrm{in}}, \Delta t_c)$, with
+$\Delta t_k^{\mathrm{in}}$ its own input step (default $\Delta t_c$); for
+central difference it is further capped at the stable step of the mesh.
+Within a stop the subdomain takes substeps of $\Delta t_k$ from $t_{s-1}$,
+the last substep absorbing a remainder of up to $1.5\,\Delta t_k$, until it
+reaches $t_s$ to a relative tolerance of $10^{-6}$. A stop of $m_k$
+substeps is a window of $m_k$ for subdomain $k$. No check enforces that
+$\Delta t_c$ is a multiple of $\Delta t_k$; the substep count is whatever
+this rule produces.
+
+\subsection{One Schwarz iteration}
+\label{sec:iteration}
+
+At the start of a stop the controller saves the state of every subdomain
+at $t_{s-1}$ (displacement, velocity, acceleration, internal force, and the
+material state), clears the partner histories and the relaxation state
+(Sec.~\ref{sec:relaxation}), swaps the roles of the pairs that request it
+(Sec.~\ref{sec:classical}), and, if the interface predictor is enabled,
+forms the predictor of Sec.~\ref{sec:predictor}. Iteration $i$ of the stop
+then proceeds as follows.
+\begin{enumerate}[itemsep=2pt]
+\item Every subdomain is reset to $t_{s-1}$.
+\item The subdomains are advanced one after another, in the order of
+  \code{domains}. Subdomain $k$ first clears its own history and records
+  the anchor $(t_{s-1}, ~u_k, ~v_k, ~a_k, ~f^{\mathrm{int}}_k)$; then for
+  each substep it applies its boundary conditions at the substep end time,
+  solves the substep, and records $(t, ~u_k, ~v_k, ~a_k, ~f^{\mathrm{int}}_k)$.
+\item A coupling condition of subdomain $k$ applied at time $t$ reads the
+  partner $j$'s displacement, velocity, acceleration, and internal force by
+  piecewise-linear interpolation in time of the partner's history,
+  \begin{equation}
+    ~x_j(t) = \frac{t_{l+1} - t}{t_{l+1} - t_l}\, ~x_j^{\,l}
+            + \frac{t - t_l}{t_{l+1} - t_l}\, ~x_j^{\,l+1},
+    \qquad t_l \le t \le t_{l+1},
+    \label{eq:interp}
+  \end{equation}
+  with the end values returned outside the recorded range. If the partner's
+  history is empty, the condition uses the predictor when one is enabled,
+  the partner's state at $t_{s-1}$ otherwise.
+\item After the pass over all subdomains the convergence tests of
+  Sec.~\ref{sec:stopping} are evaluated. If the stop has not converged, the
+  end-of-iteration state is saved as the comparison iterate for the next
+  test, and step 1 is repeated.
+\end{enumerate}
+The iteration is multiplicative: subdomain $k$ reads from a partner listed
+before it the history of the current iteration, and from a partner listed
+after it the history of the previous iteration; at $i = 0$ the latter is
+empty, so the first-listed subdomain reads its partner's state at
+$t_{s-1}$, constant in time, or the predictor. Every iteration restarts
+the subdomain solves from the state at $t_{s-1}$, not from the previous
+iterate.
+
+\subsection{Stopping criteria}
+\label{sec:stopping}
+
+\paragraph{Displacement update.} With $\Delta t_c$ the controller step and
+$~w_k = ~u_k + \Delta t_c\, ~v_k$ over all degrees of freedom of subdomain
+$k$ (prescribed ones included; the reduced coordinates for a reduced-order
+subdomain), the update between iterations $i-1$ and $i$ is
+\begin{equation}
+  \Delta U = \Bigl( \sum_k \norm{~w_k^{\,i} - ~w_k^{\,i-1}}^2 \Bigr)^{1/2},
+  \qquad
+  \Delta u = \Delta U \Big/ \Bigl( \sum_k \norm{~w_k^{\,i}}^2 \Bigr)^{1/2},
+  \label{eq:update}
+\end{equation}
+and the stop has converged when $\Delta U \le$ \code{absolute tolerance}
+or $\Delta u \le$ \code{relative tolerance}. At $i = 0$ the comparison
+iterate is the state at $t_{s-1}$, so $\Delta U$ is the change over the
+whole step and the relative test does not apply. This criterion stops the
+overlapping, classical Dirichlet--Neumann, Robin--Robin, and contact
+couplings.
+
+\paragraph{Matching criterion.} A matching pair converges when the
+one-sided jump of its matched quantity and its force residual are at or
+below \code{matching relative tolerance}, as defined in
+Sec.~\ref{sec:matching-stopping}. When every Schwarz coupling of the
+simulation is a matching pair, this criterion alone decides, also at
+$i = 0$, and the controller's \code{relative tolerance} and
+\code{absolute tolerance} are not used (given, they are ignored with a
+warning). When the simulation has couplings
+of both kinds, both criteria must hold.
+
+\paragraph{Iteration count.} A stop ends at iteration $i \ge 1$ when the
+criterion holds and $i \ge$ \code{minimum iterations}, or when
+$i >$ \code{maximum iterations}, or when $\Delta U = 0$. At $i = 0$ it
+ends without further iterations when $\Delta U \le$
+\code{absolute tolerance} (or, for a simulation of matching pairs only,
+when the matching criterion holds) and every matching pair has converged.
+A stop that reaches \code{maximum iterations} without converging aborts
+the run (\code{unconverged step action: abort}, the default) with the
+measures that apply, or continues with the last iterate
+(\code{warn}).
+
+\paragraph{Guards.} An iteration at which a relaxation factor of magnitude
+at most $10^{-12}$ was applied is not accepted as converged, because a
+factor of zero leaves the interface datum unchanged and the subdomains then
+return the solution they already had (Sec.~\ref{sec:aitken}). Under
+\code{tight final solve} (Sec.~\ref{sec:inexact-newton}) convergence is
+accepted only at an iteration whose Newton tolerance was the floor.
+
+\subsection{Windowed stops and relaxation slots}
+\label{sec:slots}
+
+The relaxation state of a coupling pair (Sec.~\ref{sec:relaxation}) is kept
+per pair and per \emph{slot}, a substep end time at which the relaxed side
+applies its condition; a stop that spans several substeps of the relaxed
+side has several slots. The state is cleared at every stop. A state shared
+across substeps would blend iterates of different times, which acts as a
+filter on the exchanged datum and moves the converged solution. Aitken and
+Anderson acceleration apply to stops of one slot; a stop of several slots
+uses the fixed factor \code{relaxation parameter}. Windowed and
+single-substep runs of the same problem agree to the Schwarz truncation
+error, and the total number of substep solves is proportional to the
+iterations per stop, so a window does not reduce the cost.
+
+\subsection{Control of the Newton tolerance of the subdomain solves}
+\label{sec:inexact-newton}
+
+The optional block \code{inexact Newton} sets the relative Newton tolerance
+of every implicit subdomain before the solves of each Schwarz iteration:
+the ceiling \code{maximum tolerance} (default $10^{-2}$) at $i = 0$, and
+\begin{equation}
+  \tau_i = \mathrm{clamp}\bigl(\eta\, r_{i-1},\ \tau_{\min},\ \tau_{\max}\bigr),
+  \qquad i \ge 1,
+  \label{eq:inexact}
+\end{equation}
+with $\eta$ the \code{tolerance ratio} (default $0.01$), $\tau_{\min}$ the
+\code{minimum tolerance} (default $10^{-12}$), and $r_{i-1}$ the relative
+Schwarz residual of the previous iteration: the matching measure of
+Sec.~\ref{sec:matching-stopping} when every coupling is a matching pair,
+$\Delta u$ of \eqref{eq:update} when there is none, and the larger of the
+two otherwise. A Newton solve stops when its residual norm is at or below
+the solver's absolute tolerance or its ratio to the initial residual norm
+is at or below $\tau_i$; the absolute tolerance of the subdomain
+\code{solver} block still applies. Because every Schwarz iteration restarts
+from the state at $t_{s-1}$, a constant Newton tolerance looser than the
+Schwarz tolerance leaves an error of the size of the Newton error that the
+displacement criterion does not detect; the ratio $\eta < 1$ keeps the
+Newton error of the accepted iterate below the Schwarz update by the factor
+$\eta$ (Sec.~\ref{sec:inexact}). With \code{tight final solve: true} a
+convergence reached at $\tau_i > \tau_{\min}$ is rejected and the iteration
+continues with $\tau_{\min}$ for the rest of the stop. The control acts on
+Hessian minimizer solvers only; explicit and reduced-order subdomains are
+not affected.
+
+\subsection{Initialization}
+\label{sec:initialization}
+
+Before the first stop the controller builds the transfer operators of
+every coupling (Sec.~\ref{sec:transfer}) on the reference configuration,
+applies the initial conditions, records a history snapshot of every
+subdomain, applies the boundary conditions, and computes the initial
+acceleration of every dynamic subdomain with the coupling rows excluded
+from the correction of Sec.~\ref{sec:setting}. If the run is a restart, or
+a Robin--Robin interface has nonzero initial displacement or velocity, two
+refinement passes follow, each applying the boundary conditions from the
+updated histories and recomputing the initial accelerations in the trusted
+form. Matching pairs then compute the coupled initial acceleration of
+Sec.~\ref{sec:initial}, and contact pairs evaluate their detection
+(Sec.~\ref{sec:contact}).
+
+\subsection{Output}
+\label{sec:output}
+
+Exodus and CSV output are written at the controller stops that are
+multiples of \code{Exodus output interval} (default $\Delta t_c$) and
+\code{CSV output interval} (default off). With
+\code{blended energy output: true} the controller writes
+\code{<name>-energy.csv} at every stop, with the columns \code{time},
+\code{stored\_energy}, \code{kinetic\_energy}, \code{total\_energy}
+($E$ of \eqref{eq:energy}, blended over overlaps as in
+Sec.~\ref{sec:blended}), \code{pseudo\_energy\_total} and one
+\code{pseudo\_energy\_<domain>} per subdomain ($\tilde{E}$ of
+\eqref{eq:pseudo-energy}, NaN unless every material is linear elastic and
+every integrator is central difference or Newmark without HHT-$\alpha$),
+\code{staggered\_kinetic\_interface} and
+\code{staggered\_kinetic\_interior} (the central difference kinetic term
+split between interface and interior nodes), and, for every
+Dirichlet--Neumann pair, the relative one-sided jumps
+\code{displacement\_jump\_<D>\_<N>} and \code{velocity\_jump\_<D>\_<N>}
+of Sec.~\ref{sec:matching-stopping} with their root mean square values
+(\code{\_rms}) and, for matching pairs, the impulse residual
+\eqref{eq:impulse} per component and its relative value. The
+pseudo-energy and staggered columns are not blended over overlaps.
+
+\subsection{Swaps and restart}
+\label{sec:swaps}
+
+A \code{swaps} list replaces a subdomain by another input between stops
+when a criterion holds: a time, a stress recovery estimate, an elastic to
+plastic transition, or the overlap $L^2$ error of Sec.~\ref{sec:overlap-l2}
+against a tolerance in a direction (\code{refine} or \code{coarsen}). The
+replacement receives the state of the subdomain it replaces, by copy on
+the same mesh, by $L^2$ transfer between meshes, or by projection between
+a full-order and a reduced-order model; the coupling conditions and
+transfer operators are rebuilt after a swap. A restart of a multidomain
+run resumes every subdomain from the same checkpoint time; it is allowed
+with the overlapping coupling, warned against with the nonoverlapping
+couplings, and rejected with contact.
+\section{Relaxation and acceleration of the iteration}
+\label{sec:relaxation}
+
+The datum that a coupling transmits is relaxed on one side of each pair:
+the Dirichlet side of a Dirichlet--Neumann or contact pair, and the
+later-listed side of a Robin--Robin pair. The overlapping coupling is not
+relaxed. Let $~g_i$ be the datum computed from the partner at iteration
+$i$ and $~\lambda_{i-1}$ the datum applied at the previous iteration of
+the same slot; a fresh slot has no previous datum and uses $~g_i$
+unrelaxed (the Robin--Robin datum starts from zero, Sec.~\ref{sec:rr}).
+The input key \code{relaxation} selects one of four schemes, with
+\code{relaxation parameter} $\theta_0$ (default $1$; $0.5$ under
+Anderson acceleration).
+
+\paragraph{Fixed.} $~\lambda_i = \theta_0\, ~g_i + (1 - \theta_0)\, ~\lambda_{i-1}$.
+
+\subsection{Aitken relaxation}
+\label{sec:aitken}
+
+With the residual $~r_i = ~g_i - ~\lambda_{i-1}$ and
+$~\delta_i = ~r_i - ~r_{i-1}$, the \emph{recursive} form
+(\code{aitken recursive}, Irons and Tuck) applies
+$~\lambda_i = \theta_i ~g_i + (1 - \theta_i) ~\lambda_{i-1}$ with
+\begin{equation}
+  \theta_i = -\,\theta_{i-1}\, \frac{~r_{i-1}^T ~\delta_i}{\norm{~\delta_i}^2},
+  \label{eq:aitken-recursive}
+\end{equation}
+and the \emph{secant} form (\code{aitken secant}) applies
+\begin{equation}
+  \theta_i = -\,\frac{~d_i^T ~\delta_i}{\norm{~\delta_i}^2}, \qquad
+  ~d_i = ~\lambda_{i-1} - ~\lambda_{i-2}.
+  \label{eq:aitken-secant}
+\end{equation}
+Both use $\theta_0$ for the first \code{aitken N0 parameter} iterations
+(default $1$) and whenever the required previous residuals do not exist.
+The factor is not clamped. The update is skipped, and the previous factor
+(recursive) or $\theta_0$ (secant) kept, when
+$\norm{~\delta_i}^2 \le (10^{-14})^2 \norm{~\lambda_{i-1}}^2$, so that a
+pair whose datum has stopped moving does not produce a factor of zero. A
+factor of magnitude at most $10^{-12}$ is recorded, and the iteration at
+which it was applied is not accepted as converged
+(Sec.~\ref{sec:stopping}): a zero factor freezes the interface, every
+subdomain then re-solves against the data it already had, and the
+displacement update that follows measures the frozen blend, not the
+interface residual. For a Dirichlet--Neumann pair the first secant factor
+appears at iteration $2$: at iteration $0$ the fresh slot has $~r = 0$,
+and at iteration $1$ the difference $~d$ is zero.
+
+The vector on which the factor is formed depends on the coupling. For the
+classical Dirichlet--Neumann and contact exchanges it is the partner's
+whole displacement field; for the matching exchange it is the projected
+interface trace $\Pi_D ~q_N$ of the matched quantity, because the interior
+values do not enter the exchange, follow a map of zero gain, and dominate
+the residual, which drives the factor toward $1$ where the interface map,
+of gain near $-1$, does not contract. For the Robin--Robin condition it is
+the Robin datum itself.
+
+\subsection{Anderson acceleration}
+\label{sec:anderson}
+
+Anderson acceleration~\cite{WalkerNi2011} (\code{anderson}), in the
+interface quasi-Newton form of Degroote, Bathe, and
+Vierendeels~\cite{DegrooteBatheVierendeels2009}, combines the last $m$
+iterates (\code{anderson depth}, default $10$). With $~x_i$ the datum
+applied at iteration $i$, $~f_i = ~g_i - ~x_i$ its residual, $~t_i$ the
+trace of the residual on which the coefficients are formed, and
+$\Delta ~X$, $\Delta ~F$, $\Delta ~T$ the matrices of differences of the
+last $m + 1$ iterates,
+\begin{equation}
+  ~\gamma = \arg\min \norm{~t_i - \Delta ~T\, ~\gamma}, \qquad
+  ~x_{i+1} = ~x_i + \beta\, ~f_i - (\Delta ~X + \beta\, \Delta ~F)\, ~\gamma ,
+  \label{eq:anderson}
+\end{equation}
+with the mixing parameter $\beta$ (\code{relaxation parameter}, default
+$0.5$). The least-squares problem is solved by QR, with the oldest column
+dropped while the condition number of the triangular factor exceeds
+$10^{10}$. The first iteration of a slot has no history and is the fixed
+relaxation $~x_1 = ~x_0 + \beta ~f_0$; it is not entered in the history.
+With $\beta = 1$ and a depth at least the iteration count the iterate
+equals the fixed-point map applied to the GMRES iterate of the same index
+on a linear interface map (Walker and Ni, Theorem~2.2), which test 136
+checks to $10^{-8}$ on a probed interface map. The trace $~t_i$ is the
+projected interface residual $\Pi_D(~g_i - ~x_i)$ of the displacement for
+the classical and contact exchanges (one set of coefficients then updates
+the displacement, velocity, and acceleration, each with its own history),
+of the matched quantity for the matching exchange, and the residual of the
+Robin datum for the Robin--Robin condition. The history of a pair is
+cleared at every stop and after a stall (Sec.~\ref{sec:matching-stopping}).
+On the beam of Sec.~\ref{sec:verification} ($1$\,ms, $\epsilon = 10^{-12}$)
+$\beta = 0.5$ needs $7.0$, $23.1$, and $7.9$ iterations per window on the
+implicit pair, on the mixed pair with the explicit side as the Dirichlet
+side, and on the explicit pair at mesh ratio $1{:}0.5$ with $4{:}1$ steps,
+against $8.9$, $28.7$, and $8.8$ at $\beta = 1$, with the same energies;
+for the matching exchange it is the recommended scheme.
+
+\section{Interface transfer operators}
+\label{sec:transfer}
+
+\subsection{Point location in a partner mesh}
+\label{sec:location}
+
+A node or quadrature point of one subdomain is located in the volume mesh
+of a partner by a search over the elements of a named block
+(\code{source block}) with a bounding-box grid built on the reference
+configuration; a candidate element is accepted when the point lies within
+its bounding box enlarged by $10\%$ and its parametric coordinates
+$~\xi$, found by Newton's method on $\sum_a N_a(~\xi) ~X_a = ~X$ to
+$10^{-8}$, satisfy the parametric inside test enlarged by the
+\code{search tolerance} (default $10^{-6}$, dimensionless): for a
+hexahedron $|\xi_c| \le 1 + \mathrm{tol}$ in every direction, for a
+tetrahedron $\sum_c \xi_c \le 1 + \mathrm{tol}$. The first element that
+passes is used, and a point found in no element aborts the run. The shape
+function values $N_a(~\xi)$ are stored once, on the reference
+configuration, and reused at every step.
+
+A point of a facet of one side of a shared interface is located on the
+partner's side set by a closest-point projection onto the partner facets,
+with a bounding-box prefilter by the nearest partner node; the facet whose
+parametric overshoot is at most $10^{-6}$ is preferred, with the distance
+as the tie-breaker, and the facet of the nearest node is the fallback.
+The search uses the partner's current coordinates, which are the reference
+coordinates when the operators are built at initialization.
+
+\subsection{Boundary mass and cross-mass matrices}
+\label{sec:mass-matrices}
+
+The boundary mass matrix $~W$ of a side set is the consistent facet mass
+matrix \eqref{eq:cross-mass} on the reference coordinates, with the
+default facet quadrature of each facet type (three points for a linear
+triangle, four for a bilinear quadrilateral, seven for a quadratic
+triangle). The cross-mass matrix of a destination side $d$ and a source
+side $s$ of a shared interface,
+\begin{equation}
+  L^{d s}_{mn} = \sum_{\text{facets of } d}\ \sum_{q}
+    \varphi^d_m(~x_q)\, \varphi^s_n(~\xi_s(~x_q))\, J_q\, w_q ,
+  \label{eq:cross-dst}
+\end{equation}
+is integrated over the facets of the destination, each quadrature point
+located on the source by the projection of Sec.~\ref{sec:location}; the
+matrix integrated over the source facets is $(L^{s d})^T$. Two
+projections are built from these matrices:
+\begin{align}
+  \text{Dirichlet projector}\quad & ~P_d = ~W_d^{-1} ~L, \label{eq:dirichlet-projector} \\
+  \text{Neumann projector}\quad & ~N_d = ~L\, ~W_s^{-1}, \label{eq:neumann-projector}
+\end{align}
+$~P_d$ mapping nodal values of the source to the $L^2$ projection of their
+trace onto the destination, and $~N_d$ mapping nodal forces of the source
+to nodal forces of the destination. For $~P_d$ the code prefers the
+source-integrated $~L$ and falls back to the destination-integrated one
+when $\max|~P_d \mathbf{1} - \mathbf{1}| > 10^{-10}$; for $~N_d$ it prefers
+the destination-integrated $~L$ and falls back to the other when the
+relative error of the column sums of $~L$ against $~W_s \mathbf{1}$ exceeds
+$10^{-10}$. The classical Dirichlet--Neumann, Robin--Robin, and contact
+couplings build $~P_d$ and $~N_d$ independently on each side by these
+rules. The matching exchange instead builds both sides' transfers from one
+cross-mass matrix $~B$, integrated over the facets of the side with more
+interface nodes, with no fallback: $\Pi_1 = ~W_1^{-1} ~B$ and
+$\Pi_2 = ~W_2^{-1} ~B^T$, each side's force transfer the transpose of the
+partner's kinematic transfer, and the partition-of-unity error
+$\max(\max|\Pi_1 \mathbf{1} - \mathbf{1}|, \max|\Pi_2 \mathbf{1} - \mathbf{1}|)$
+logged. Only $\Pi_D$ and its transpose enter the matching exchange; the
+projection onto the other side is never applied, which matters on curved
+or non-nested interfaces where it is inaccurate ($0.72$ on the cylinders
+of Sec.~\ref{sec:verification}, $1.2 \times 10^{-2}$ on the beam at mesh
+ratio $1{:}0.75$, against $10^{-15}$ for $\Pi_D$).
+
+\paragraph{Displacement, not position.} A Dirichlet--Neumann transfer
+projects the partner's displacement, $~P_d ~u_s$. Projecting the current
+position $~P_d(~X_s + ~u_s)$ and subtracting the destination's reference
+position $~X_d$ is not equivalent on a curved interface, because
+$~P_d ~X_s \ne ~X_d$ by the sagitta of the facets between the two meshes;
+that difference is a spurious displacement of the size of the chord
+error. The overlapping and contact couplings transfer the position, as
+their formulation requires (Secs.~\ref{sec:overlap} and
+\ref{sec:contact}).
+
+\section{The overlapping Dirichlet coupling}
+\label{sec:overlap}
+
+Two subdomains overlap; each has a side set $\Gamma_k$ of its own boundary
+that lies inside the partner. The coupling is a Dirichlet condition on
+$\Gamma_k$ with the datum interpolated from the partner's solution; both
+sides are Dirichlet, there is no force transfer, and no role is assigned.
+
+\paragraph{Strong form (the default).} For each node $i$ of $\Gamma_k$,
+the element of the partner's \code{source block} that contains its
+reference position $~X_i$ and the shape function values $N_a$ at that point
+are found once (Sec.~\ref{sec:location}). At every application the
+condition prescribes, with the partner fields interpolated in time by
+\eqref{eq:interp},
+\begin{equation}
+  ~u_i = \sum_a N_a\, (~X^{\,j}_a + ~u^{\,j}_a) - ~X_i, \qquad
+  ~v_i = \sum_a N_a\, ~v^{\,j}_a, \qquad
+  ~a_i = \sum_a N_a\, ~a^{\,j}_a ,
+  \label{eq:overlap-strong}
+\end{equation}
+and marks the three components of node $i$ not free. The displacement is
+the interpolated current position minus the node's own reference position,
+which equals the interpolated displacement up to the residual of the
+parametric inversion.
+
+\paragraph{Weak form (\code{weak: true}).} The datum is the $L^2$
+projection of the partner's field onto the trace space of $\Gamma_k$:
+$~P = ~W_k^{-1} ~L$, with $~W_k$ the boundary mass matrix of $\Gamma_k$ and
+$~L$ the rectangular matrix of \eqref{eq:cross-dst} whose quadrature points
+on the facets of $\Gamma_k$ are located in the partner's volume elements,
+so that $~L$ has one column per node of the partner. The condition
+prescribes $~u|_{\Gamma_k} = ~P(~X^{\,j} + ~u^{\,j}) - ~X|_{\Gamma_k}$,
+$~v|_{\Gamma_k} = ~P ~v^{\,j}$, $~a|_{\Gamma_k} = ~P ~a^{\,j}$.
+
+\paragraph{Properties.} The three fields are prescribed in both the
+dynamic and the quasi-static case; a quasi-static subdomain uses only the
+displacement, and a Newmark subdomain with a consistent mass sees the
+prescribed acceleration in its free rows through the coupling term of the
+mass matrix. The element search and the shape function values are fixed
+at construction on the reference configuration and are not updated for
+finite deformation. The datum is not relaxed: the relaxation keys have no
+effect on this coupling, and the interface predictor does not apply to it.
+A reduced-order partner is reconstructed to its full-order fields before
+the interpolation; a reduced-order receiver uses the transferred
+displacement only, as a reduced boundary forcing. The iteration stops on
+the displacement update of Sec.~\ref{sec:stopping}.
+
+\subsection{Overlap \texorpdfstring{$L^2$}{L2} error}
+\label{sec:overlap-l2}
+
+With \code{compute overlap L2 relative error: disp|velo|acce} the
+coupling records, for the set $\mathcal{O}$ of nodes of subdomain $k$
+that lie in the partner's \code{source block} (the nodes of elements whose
+centroid, or any node, is found there, restricted to those found
+themselves), the relative nodal error of the selected field $~\phi$,
+\begin{equation}
+  e_k = \Bigl( \sum_{i \in \mathcal{O}} \bigl\lVert ~\phi_i
+        - \sum_a N_a(~\xi_i)\, ~\phi^{\,j}_a \bigr\rVert^2
+        \Big/ \sum_{i \in \mathcal{O}} \norm{~\phi_i}^2 \Bigr)^{1/2},
+  \label{eq:overlap-l2}
+\end{equation}
+an unweighted nodal norm of the current fields, reported at the end of
+every stop that took at least one Schwarz iteration and written to
+\code{overlap-l2-<field>-rel-errors-<stop>.csv} at the CSV output times.
+It is also the criterion of the overlap $L^2$ swap of
+Sec.~\ref{sec:swaps}.
+
+\subsection{Blended energy over the overlap}
+\label{sec:blended}
+
+The overlap region is meshed twice, so the sum of the subdomain energies
+counts it twice. The blended energy output weights the energy density at
+each quadrature point $~x$ of subdomain $k$ by the Arlequin partition of
+unity
+\begin{equation}
+  w_k(~x) = \frac{d_k(~x)}{d_k(~x) + d_j(~x)}
+  \label{eq:arlequin}
+\end{equation}
+when $~x$ lies in the partner $j$, and $w_k = 1$ otherwise, with $d_k$ the
+distance from $~x$ to the overlap side set $\Gamma_k$ of subdomain $k$ and
+$d_j$ the distance to $\Gamma_j$, both on the reference configuration and
+each the minimum over the facets of the side set of the distance to the
+closest point of the facet. Membership is decided by locating $~x$ in the
+partner mesh (all blocks) with the \code{search tolerance}, so the meshes
+need not conform. For two subdomains with mutual overlap conditions
+$w_k + w_j = 1$ in the overlap; with several partners $d_j$ is the sum
+over the partners containing $~x$ and $d_k$ the minimum over the own
+overlap side sets. An overlap in which $d_k + d_j$ is below $10^{-3}$ of
+the element size at some point (a zero-width overlap) aborts the run. The
+weights are evaluated once and cached. Nonoverlapping and contact
+decompositions take unit weights, so their total is the plain sum. The
+weighted stored and kinetic energies, the latter in the staggered form for
+central difference, are written at every stop as described in
+Sec.~\ref{sec:output}, and reduce to the energy of the undecomposed body
+at Schwarz convergence.
+
+\section{The classical Dirichlet--Neumann exchange}
+\label{sec:classical}
+
+Two subdomains share an interface $\Gamma$ given on each side as a side
+set. The side whose \code{default BC type} is \code{Dirichlet} receives the
+partner's kinematic fields and the other, \code{Neumann}, receives the
+partner's internal force; the two values must differ. With
+\code{swap BC types: true} on both sides the roles are exchanged once per
+stop, before its Schwarz iteration.
+
+\paragraph{Dirichlet side.} With $~P_D$ the Dirichlet projector
+\eqref{eq:dirichlet-projector} of side $D$ and the partner fields
+interpolated in time, relaxed as in Sec.~\ref{sec:relaxation},
+\begin{equation}
+  ~u_D|_\Gamma = ~P_D\, ~u_N, \qquad
+  ~v_D|_\Gamma = ~P_D\, ~v_N, \qquad
+  ~a_D|_\Gamma = ~P_D\, ~a_N ,
+  \label{eq:classical-dirichlet}
+\end{equation}
+all three prescribed and their degrees of freedom marked not free.
+
+\paragraph{Neumann side.} With $~N_N$ the Neumann projector
+\eqref{eq:neumann-projector} of side $N$, the force
+\begin{equation}
+  ~f_N = ~N_N \bigl( -\,~f^{\mathrm{int}}_D|_\Gamma \bigr)
+  \label{eq:classical-neumann}
+\end{equation}
+is added to the boundary force of the interface nodes of $N$, with
+$~f^{\mathrm{int}}_D$ interpolated in time from the partner's history. This
+is the static reaction of the Dirichlet side; it omits the inertia of the
+interface nodes and the loads applied on them, which Sec.~\ref{sec:baseline}
+measures to be of the size of the reaction itself in dynamics.
+
+\paragraph{Relaxation.} Under fixed and recursive Aitken relaxation the
+three partner fields are blended with the same factor, formed from the
+partner's whole displacement field. Under secant Aitken relaxation the
+displacement is blended and the velocity and acceleration are recovered
+from the partner's Newmark predictors by \eqref{eq:newmark-from-u} when
+the partner is a Newmark subdomain, and left unrelaxed otherwise. Under
+Anderson acceleration the three fields have separate histories and share
+the coefficients formed from the projected displacement residual.
+
+\paragraph{Diagnostics and stopping.} At every Schwarz iteration the log
+reports, for each Dirichlet--Neumann pair, the one-sided jumps of the
+velocity and the displacement and the force residual defined in
+Sec.~\ref{sec:matching-stopping}; for the classical exchange they are
+reported only. The iteration stops on the displacement update of
+Sec.~\ref{sec:stopping}, and the initial acceleration of each subdomain
+is computed per subdomain with the interface rows excluded from the
+correction (Sec.~\ref{sec:initialization}).
+
+\subsection{Interface predictor}
+\label{sec:predictor}
+
+With \code{interface predictor: true} the first-listed subdomain of a
+nonoverlapping pair (Dirichlet--Neumann or Robin--Robin) reads at
+iteration $0$ a predictor of the partner's state instead of the state at
+$t_{s-1}$. For a quasi-static pair each side extrapolates its interface
+displacement, $~u^{\mathrm{pred}} = 2 ~u_s - ~u_{s-1}$, from the second
+stop on. For a dynamic pair the predictor velocity is the velocity of a
+perfectly inelastic collision of the two interface traces, with the row
+sums of the boundary mass matrices as masses,
+$~v^{\mathrm{pred}}_k = (~m_k ~v_k + ~P_k ~m_j \circ ~P_k ~v_j)/(~m_k +
+~P_k ~m_j)$ on side $k$ and its projection on side $j$, the predictor
+displacement is $~u_s + \Delta t_c\, ~v^{\mathrm{pred}}$, and the
+acceleration is that of the stop. The predicted internal force of the
+side whose force is read is $2 ~f_s - ~f_{s-1}$.
+
+\paragraph{Restrictions.} The exchange requires a full-order model on
+both sides for \code{swap BC types}. It does not conserve the energy of a
+dynamic problem (Sec.~\ref{sec:baseline}); the matching exchange is the
+dynamic coupling.
+\section{The matching Dirichlet--Neumann exchange}
+\label{sec:matching}
+
+The matching exchange is selected by \code{matching: velocity} or
+\code{matching: displacement} on both sides of a \code{Schwarz DN
+nonoverlap} pair, with the same value on both. It is called the matching
+exchange because its Dirichlet side matches one kinematic quantity of the
+partner, the velocity or, for trapezoidal pairs, the displacement, and
+derives the other two from its own time integrator; the coupled problem it
+solves is the constrained problem of Sec.~\ref{sec:constrained}, whose
+constraint is that matching and whose multiplier is the interface force.
+It differs from the classical exchange in five respects: the Neumann side
+receives the full dynamic (d'Alembert) reaction of its partner; both
+transfers are built from one cross-mass matrix, so that the force transfer
+is the transpose of the kinematic transfer; the Dirichlet side receives
+one quantity only; the iteration stops on the interface jump and the force
+residual; and the initial acceleration is computed on the coupled system.
+
+\subsection{The constrained coupled problem}
 \label{sec:constrained}
-
-\subsection{Formulation}
 
 The coupled problem consists of \eqref{eq:motion} on both sides with one
 interface force acting in opposite directions,
@@ -245,7 +881,9 @@ with $~f^{\mathrm{body}}_D$ the body force and $~f^{\mathrm{bdry}}_D$ the
 other boundary loads acting on the interface rows. The reaction includes
 the inertia of the interface nodes; the static reaction
 $-~f^{\mathrm{int}}$ omits a term of the size of the reaction itself
-(Sec.~\ref{sec:baseline}).
+(Sec.~\ref{sec:baseline}). The mass in \eqref{eq:reaction} is the
+consistent mass for a Newmark side and the lumped mass for a central
+difference side.
 
 \subsection{The energy identity}
 \label{sec:identity}
@@ -340,7 +978,8 @@ arrangement it is of the order of the impulse itself, and the energy $E$
 varies by $12$ to $51\%$ over the period of the first bending mode of the
 beam while $\tilde{E}$ is conserved (Sec.~\ref{sec:verify-subcycled}).
 $\tilde{E}$ weights the lowest mode least, so it does not detect the
-variation.
+variation. The code does not enforce the assignment; it is a rule for the
+input (Sec.~\ref{sec:roles}).
 
 \paragraph{Scope.} Propositions~\ref{prop:equal} and~\ref{prop:subcycled}
 hold for a linear stiffness. For a nonlinear material the exchange still
@@ -352,27 +991,30 @@ by a state-dependent term of order $\Delta t^2$
 \cite{HairerLubichWanner2006}. Conservation of $E$ to roundoff for a
 nonlinear material requires an energy-momentum
 integrator~\cite{SimoTarnow1992,Gonzalez1996} in each subdomain and a
-midpoint velocity constraint in the exchange, which this note does not
-treat.
-
-\section{Algorithm}
-\label{sec:algorithm}
+midpoint velocity constraint in the exchange, which the code does not
+have.
 
 \subsection{Setup}
+\label{sec:matching-setup}
 
 \begin{enumerate}[itemsep=2pt]
-\item Assign the Dirichlet role (Sec.~\ref{sec:roles}).
+\item Assign the Dirichlet role (Sec.~\ref{sec:roles}) with
+  \code{default BC type}.
 \item Assemble $~B$, $~W_D$, and $~W_N$ of \eqref{eq:cross-mass} on the
-  reference configuration with the facet quadrature of the finer side, and
-  form $\Pi_D$ of \eqref{eq:projector}. Check that $\Pi_D$ reproduces
-  constants (the partition-of-unity error $\max |\Pi_D \mathbf{1} - \mathbf{1}|$
-  is at roundoff when the quadrature is exact). Only $\Pi_D$ and its
-  transpose enter the exchange; the projection in the other direction is
-  never formed, which matters on curved or non-nested interfaces where it
-  is inaccurate.
+  reference configuration with the facet quadrature of the side with more
+  interface nodes, and form $\Pi_D$ of \eqref{eq:projector}
+  (Sec.~\ref{sec:mass-matrices}). Check that $\Pi_D$ reproduces constants
+  (the partition-of-unity error $\max |\Pi_D \mathbf{1} - \mathbf{1}|$ is at
+  roundoff when the quadrature is exact).
 \item Compute the initial acceleration on the coupled system
   (Sec.~\ref{sec:initial}).
 \end{enumerate}
+Both integrators must be Newmark or central difference without HHT-$\alpha$
+and both sides full-order models. Displacement matching requires the same
+Newmark parameters with $\beta > 0$ and the same step on both sides, and
+aborts if the steps taken differ during the run; velocity matching admits
+different steps and central difference. The exchange cannot be combined
+with \code{swap BC types}.
 
 \subsection{One window}
 \label{sec:window}
@@ -380,53 +1022,85 @@ treat.
 Given the converged state at the window start and the force $~\lambda^0$ of
 the previous window:
 \begin{enumerate}[itemsep=2pt]
-\item Initialize the datum $~v_D^\ast$ of the Dirichlet side, for example
-  with the projected partner velocity of the previous window.
-\item Repeat until the stopping criterion of Sec.~\ref{sec:stopping} holds:
+\item Initialize the datum $~q_D^\ast$ of the Dirichlet side, where $~q$
+  is the matched quantity, with the projected partner value at the window
+  start (the first iteration of a stop reads the partner's state at
+  $t_{s-1}$, Sec.~\ref{sec:iteration}).
+\item Repeat until the stopping criterion of
+  Sec.~\ref{sec:matching-stopping} holds:
   \begin{enumerate}[itemsep=1pt]
-  \item Advance side $D$ over the window with $~v_D = ~v_D^\ast$ imposed on
-    its interface nodes at the window end, the interface acceleration and
-    displacement from \eqref{eq:newmark-from-v}, and form its reaction
+  \item Advance side $D$ over the window with $~q_D = ~q_D^\ast$ imposed on
+    its interface nodes at the end of each of its substeps, the other two
+    kinematic fields from \eqref{eq:newmark-from-v} (velocity matching) or
+    \eqref{eq:newmark-from-u} (displacement matching) with its own
+    $\beta$, $\gamma$, and substep, and form its reaction
     $~\lambda^1 = ~r_D$ by \eqref{eq:reaction}.
   \item Advance side $N$ over its substeps with the force
     \eqref{eq:interpolated-force} on its interface nodes (at equal steps,
-    $~f_N = -\Pi_D^T ~\lambda^1$).
-  \item Form the new datum $\Pi_D ~v_N$ at the window end and relax it
-    (Sec.~\ref{sec:relaxation}) into $~v_D^\ast$.
+    $~f_N = -\Pi_D^T ~\lambda^1$); in the code this is the time
+    interpolation \eqref{eq:interp} of $D$'s acceleration and internal
+    force history in \eqref{eq:reaction}, with $D$'s current body and
+    boundary forces.
+  \item Form the new datum $\Pi_D ~q_N$ at the window end, with $~q_N$
+    interpolated in time to each substep of $D$ under subcycling, and relax
+    it (Sec.~\ref{sec:relaxation}, with the Aitken factor and the Anderson
+    coefficients formed from the projected trace) into $~q_D^\ast$.
   \end{enumerate}
 \item Commit the window and keep $~\lambda^1$ as the next $~\lambda^0$.
 \end{enumerate}
 Each Schwarz iteration restores both sides to the state at the window
-start before it advances them. With the displacement constraint instead of
-the velocity constraint (trapezoidal pairs only) the datum is
-$\Pi_D ~u_N$ and the velocity and acceleration follow from the Newmark
-relations; the velocity constraint is the general choice.
+start before it advances them. The datum is imposed before the Newmark
+predictor of the receiving substep, with the interface rows still holding
+the substep-start state from which the predictors of
+\eqref{eq:newmark-from-v} are formed; at $t = 0$, where no step is in
+progress, the Dirichlet side imposes the three projected fields instead.
+The velocity constraint is the general choice; the displacement
+constraint, between the same trapezoidal scheme on both sides at equal
+steps, gives the same solution to the Schwarz tolerance (test 136).
 
 \subsection{Stopping criterion}
-\label{sec:stopping}
+\label{sec:matching-stopping}
 
-The iteration stops when both the one-sided relative velocity jump and the
-relative force residual fall below a tolerance $\epsilon$:
+With $\norm{~x}^2_{~W} = \sum_c ~x_c^T ~W ~x_c$ over the three Cartesian
+components, the Dirichlet side's one-sided relative jump of a quantity
+$~q$ and the force residual are
 \begin{equation}
-  \frac{\norm{~v_D - \Pi_D ~v_N}_{~W_D}}{\norm{~v_D}_{~W_D}} < \epsilon,
+  \frac{\norm{~q_D - \Pi_D ~q_N}_{~W_D}}{\norm{~q_D}_{~W_D}},
   \qquad
-  \frac{\norm{~f_N + \Pi_D^T ~r_D}_{~W_N^{-1}}}{\norm{\Pi_D^T ~r_D}_{~W_N^{-1}}} < \epsilon,
+  \frac{\norm{~f_N + \Pi_D^T ~r_D}_{~W_N^{-1}}}{\norm{\Pi_D^T ~r_D}_{~W_N^{-1}}},
   \label{eq:stopping}
 \end{equation}
-the force residual taken at every substep of the window. The norms are the
-discrete $L^2$ norms of the trace and of its dual. An absolute floor, if
-any, must be given in the units of the matched quantity; a
+the discrete $L^2$ norms of the trace and of its dual, with $~f_N$ the
+force applied on $N$ in the same iteration. The log reports the velocity
+and displacement jumps and the force residual of every Dirichlet--Neumann
+pair at every Schwarz iteration; for a matching pair each value is the
+largest over the substeps of the window, the jumps at every substep of
+$D$ against $N$'s history interpolated to that time, the force residual at
+every substep of $N$ against $D$'s history. The iteration of a matching
+pair stops when the jump of the matched quantity and the force residual
+are both at or below $\epsilon$, the \code{matching relative tolerance},
+or when the root mean square jump
+$\norm{~q_D - \Pi_D ~q_N}_{~W_D} / (\mathbf{1}^T ~W_D \mathbf{1})^{1/2}$
+is at or below the \code{matching absolute tolerance} (default $0$, no
+absolute test), which is in the units of the matched quantity; a
 displacement tolerance divided by the step is not a valid velocity floor
 (on the cylinders of Sec.~\ref{sec:verification} it amounts to $200$\,m/s
 and stops the iteration after one pass). When every coupling of the
-simulation is a matching pair, Eq.~\eqref{eq:stopping} is the only stopping
-test, also at the first iteration of a stop, and the test on the change of
-the displacement between iterations is not used. A stop at which the residual
-stalls above $\epsilon$ for three consecutive iterations without falling
-$5\%$ below its smallest value may be accepted with a warning; the
-residual is not monotone under Aitken or Anderson acceleration, so a single
-non-decreasing iteration is not a stall. Every stopping tolerance leaves a
-drift of the conserved quantity of the order of $\epsilon$ per window,
+simulation is a matching pair, this is the only stopping test, also at the
+first iteration of a stop, and the displacement update of
+Sec.~\ref{sec:stopping} is not used.
+
+\paragraph{Stall.} Let $\mu_i$ be the larger of the jump and the force
+residual, maximized over the matching pairs, at iteration $i$. The
+iteration is stalled when $\mu_i$ has not fallen $5\%$ below its smallest
+value for three consecutive counted iterations (every iteration when all
+couplings are matching pairs; otherwise only those at which the
+displacement update has converged). The residual is not monotone under
+Aitken or Anderson acceleration, so a single non-decreasing iteration is
+not a stall. A stalled stop is accepted with a warning and the Anderson
+history cleared (\code{stalled interface jump action: warn}, the default)
+or aborts the run (\code{abort}). Every stopping tolerance leaves a drift
+of the conserved quantity of the order of $\epsilon$ per window,
 accumulated over the windows of the run (Sec.~\ref{sec:verify-relaxation}).
 
 \subsection{Coupled initial acceleration}
@@ -438,10 +1112,16 @@ step changes $\tilde{E}$ by $0.2$ to $0.9\%$ and, for an explicit pair, the
 difference of the two interface accelerations alternates in sign at every
 step without decaying. The coupled initial acceleration is a Schwarz
 iteration at $t = 0$ in which $D$ imposes the projected partner
-acceleration, $N$ receives the d'Alembert reaction of $D$, and each side
-solves for its acceleration with the interface rows included; it converges
-in $2$ iterations on conforming meshes with identical integrators, $16$ to
-$24$ on nonconforming meshes, and about $30$ for mixed pairs at a fixed
+displacement, velocity, and acceleration, $N$ receives the d'Alembert
+reaction of $D$, and each side solves for its acceleration with the
+interface rows trusted. The imposed interface acceleration is relaxed with
+the fixed factor, with the secant Aitken factor \eqref{eq:aitken-secant}
+under either Aitken option, or by Anderson acceleration, as the input
+selects. The iteration stops when the one-sided acceleration jump and the
+force residual of every pair are at or below $\epsilon$, or after
+\code{maximum iterations} with a warning. It converges in $2$ iterations
+on conforming meshes with identical integrators, $16$ to $24$ on
+nonconforming meshes, and about $30$ for mixed pairs at a fixed
 relaxation factor of $0.5$, and in $2$ to $9$ with Anderson acceleration.
 For two explicit sides the direct solve of Sec.~\ref{sec:direct} gives it
 in one step.
@@ -478,63 +1158,21 @@ finer mesh the coarser step satisfies both where the stability limit of an
 explicit side allows it. With Anderson acceleration every assignment
 measured converges, so the rules then set the cost, not the feasibility.
 
-\subsection{Relaxation and acceleration}
-\label{sec:relaxation}
-
-\paragraph{Aitken.} The Aitken factor must be formed from the projected
-interface trace $\Pi_D ~v_N$ that $D$ receives. Formed from the whole
-partner field it tends to $1$: the interior values do not enter the
-exchange, follow a map of zero gain, and dominate the residual, and at
-$\theta = 1$ the interface map, of gain near $-1$, does not contract.
-
-\paragraph{Anderson.} Anderson acceleration~\cite{WalkerNi2011}, in the
-interface quasi-Newton form of Degroote, Bathe, and
-Vierendeels~\cite{DegrooteBatheVierendeels2009}, combines the last $m$
-iterates. With $~x_k$ the datum $D$ used, $~f_k = G(~x_k) - ~x_k$ the
-residual, $~t_k$ its projected trace, and $\Delta ~T$, $\Delta ~X$,
-$\Delta ~F$ the differences of the last $m + 1$ iterates,
-\begin{equation}
-  ~\gamma = \arg\min \norm{~t_k - \Delta ~T ~\gamma}, \qquad
-  ~x_{k+1} = ~x_k + \beta\, ~f_k - (\Delta ~X + \beta\, \Delta ~F)\, ~\gamma ,
-  \label{eq:anderson}
-\end{equation}
-with mixing parameter $\beta$, the least-squares problem solved by QR with
-the oldest column dropped while the condition number exceeds $10^{10}$. The
-first iteration of a window has no history and is the fixed relaxation
-$~x_1 = ~x_0 + \beta ~f_0$; for $k \ge 1$ the term $\beta ~f_k$ is damped by
-$\beta$ and the history term corrects it. With $\beta = 1$ the update is the
-undamped quasi-Newton step. On the beam ($1$\,ms, $\epsilon = 10^{-12}$),
-$\beta = 0.5$ needs $7.0$, $23.1$, and $7.9$ iterations per window on the
-implicit pair, on the mixed pair with the explicit side as the Dirichlet
-side, and on the explicit pair at ratio $1{:}0.5$ with $4{:}1$ steps and the
-coarse mesh as the Dirichlet side, against $8.9$, $28.7$, and $8.8$ at
-$\beta = 1$, with the same energies; $\beta = 0.5$ is the recommended
-value and the default in Norma. For a linear interface map with $\beta = 1$ and a depth at least
-the iteration count, the iterate equals the map applied to the GMRES iterate
-of the same index (Walker and Ni, Theorem~2.2). The first iteration of a
-window has no history and is not entered in it. A depth of $10$ covers
-every case measured; a depth of $5$ is too short for an explicit Dirichlet
-side, whose window needs $12$ to $16$ iterations.
-
-\paragraph{State.} The relaxation state is kept per interface pair and per
-substep time, and cleared at every stop. A state shared across substeps
-blends iterates of different times, which acts as a causal filter on the
-exchanged datum and moves the converged solution. Aitken and Anderson
-acceleration apply to stops of one substep; a stop that spans several
-substeps of the relaxed side uses a fixed factor.
-
 \subsection{Direct interface solve for two explicit subdomains}
 \label{sec:direct}
 
-For central difference on both sides at equal steps the iteration can be
-replaced by one solve per step. Central difference computes $~u^{n+1}$
-before the acceleration, and the internal force at $~u^{n+1}$ does not
-depend on the interface force. Advancing both sides with free interface
-rows and no interface force gives the velocities $~v^{\mathrm{free}}$; the
-interface force adds $\gamma \Delta t\, ~m_D^{-1}~\lambda$ to the velocity
-of $D$ and $-\gamma\Delta t\, ~m_N^{-1}\Pi_D^T ~\lambda$ to that of $N$, with
-$~m_D$, $~m_N$ the lumped masses of the interface rows. The velocity
-constraint then gives, per Cartesian component,
+For central difference on both sides at equal steps, with velocity
+matching, the iteration can be replaced by one solve per step
+(\code{interface solve: direct} on both sides; every coupling of the
+simulation must then be such a pair). Central difference computes
+$~u^{n+1}$ before the acceleration, and the internal force at $~u^{n+1}$
+does not depend on the interface force. Advancing both sides with free
+interface rows and no interface force gives the velocities
+$~v^{\mathrm{free}}$; the interface force adds
+$\gamma \Delta t\, ~m_D^{-1}~\lambda$ to the velocity of $D$ and
+$-\gamma\Delta t\, ~m_N^{-1}\Pi_D^T ~\lambda$ to that of $N$, with $~m_D$,
+$~m_N$ the lumped masses of the interface rows. The velocity constraint
+then gives, per Cartesian component,
 \begin{equation}
   \gamma \Delta t \bigl(~m_D^{-1} + \Pi_D\, ~m_N^{-1}\, \Pi_D^T\bigr)
   ~\lambda = \Pi_D ~v_N^{\mathrm{free}} - ~v_D^{\mathrm{free}} .
@@ -542,25 +1180,31 @@ constraint then gives, per Cartesian component,
 \end{equation}
 The matrix is symmetric positive definite, of the size of the Dirichlet
 trace, and constant while the lumped masses and $\Pi_D$ are; rows held by
-other Dirichlet conditions take a zero inverse mass. It is the interface
+other Dirichlet conditions take a zero inverse mass, and a row held on
+both sides makes the matrix singular and aborts. It is the interface
 operator $~H = \sum_k \gamma_k \Delta t_k ~C_k \tilde{~M}_k^{-1} ~C_k^T$ of
 Gravouil and Combescure for two lumped-mass sides, written on the Dirichlet
-trace. Factor it once (a dense Cholesky factorization of $3920$ unknowns
-per component on the cylinders takes $0.7$\,s), and at every step advance
-both sides, solve \eqref{eq:direct}, and correct the interface
-accelerations and velocities. The solve is exact for nonlinear materials,
-because the internal force is evaluated at the predicted displacement.
-The same matrix gives the coupled initial acceleration from
-$~a_D = \Pi_D ~a_N$.
+trace. It is factored once by a dense Cholesky factorization ($3920$
+unknowns per component on the cylinders, $0.7$\,s), and at every step both
+sides are advanced, \eqref{eq:direct} is solved, and the interface
+accelerations and velocities are corrected by $~m_D^{-1} ~\lambda$ and
+$\gamma \Delta t\, ~m_D^{-1} ~\lambda$ on $D$, and by the same with
+$-\Pi_D^T ~\lambda$ and $~m_N$ on $N$; the displacements are not
+corrected, because central difference has already formed them. The solve
+is exact for nonlinear materials, because the internal force is evaluated
+at the predicted displacement. The same matrix gives the coupled initial
+acceleration from $~a_D = \Pi_D ~a_N$. Relaxation and the stopping
+tolerances do not apply; the stop takes no Schwarz iteration.
 
 \subsection{Requirements on a subdomain code}
 \label{sec:integration}
 
 The exchange requires of each subdomain code, beyond a standard step:
 \begin{enumerate}[itemsep=2pt]
-\item a step with a prescribed velocity on a set of boundary nodes, with
-  the displacement and acceleration of those nodes from
-  \eqref{eq:newmark-from-v} (the Dirichlet side);
+\item a step with a prescribed velocity (or displacement) on a set of
+  boundary nodes, with the other two kinematic fields of those nodes from
+  \eqref{eq:newmark-from-v} or \eqref{eq:newmark-from-u} (the Dirichlet
+  side);
 \item a step with a prescribed nodal force on a set of boundary nodes,
   constant or linear in time over the window (the Neumann side);
 \item the nodal d'Alembert reaction \eqref{eq:reaction} on a set of
@@ -572,12 +1216,136 @@ The exchange requires of each subdomain code, beyond a standard step:
 An implicit code provides items 1 to 3 as a Newton solve at fixed boundary
 data; an explicit code provides them as a division by the lumped mass. The
 coupler itself holds $\Pi_D$, the relaxation state, and, for two explicit
-sides, the factorization of \eqref{eq:direct}.
+sides, the factorization of \eqref{eq:direct}. The other couplings of this
+note require subsets of the same operations: the overlapping coupling
+items 1 (with all three fields prescribed) and 4 and a point location in
+the partner mesh; the classical exchange items 1, 2, 4, and 5 and the
+internal force on the interface nodes; the Robin--Robin condition a step
+with the term $\alpha ~W ~u$ and its tangent added to the residual.
 
-\section{Verification}
+\section{The Robin--Robin condition}
+\label{sec:rr}
+
+Two subdomains share an interface. Each side $k$ imposes the Robin
+condition $~t_k + \alpha_k ~W_k ~u_k = ~g_k$ on its interface rows, with
+$~t_k$ its interface traction, $~W_k$ its boundary mass matrix, and
+$\alpha_k > 0$ its \code{robin parameter} (required; the two sides may
+differ). The datum is formed from the partner's traction and displacement,
+\begin{equation}
+  ~g_k = ~N_k \bigl( -\,~f^{\mathrm{int}}_j|_\Gamma \bigr)
+       + \alpha_k ~W_k\, ~P_k\, ~u_j ,
+  \label{eq:robin-datum}
+\end{equation}
+with $~P_k$ and $~N_k$ the Dirichlet and Neumann projectors
+\eqref{eq:dirichlet-projector} and \eqref{eq:neumann-projector} of side
+$k$, each side building its own, and the partner fields interpolated in
+time. The partner's internal force is its elastic internal force; the
+partner's own Robin term is not part of it. The datum is added to the
+boundary force of the interface nodes of $k$; the self term
+$\alpha_k ~W_k ~u_k|_\Gamma$ is added to the internal force at every
+residual evaluation, including the initial-acceleration solves, and its
+tangent $\alpha_k ~W_k$ is added to the Hessian of implicit solvers. The
+condition solved on side $k$ is therefore
+\begin{equation}
+  ~f^{\mathrm{int}}_k(~u_k) + \alpha_k ~W_k ~u_k|_\Gamma - ~f^{\mathrm{ext}}_k
+  = ~N_k \bigl( -\,~f^{\mathrm{int}}_j|_\Gamma \bigr) + \alpha_k ~W_k ~P_k ~u_j .
+  \label{eq:robin-condition}
+\end{equation}
+
+\paragraph{Relaxation.} The side listed later in \code{domains} relaxes
+its datum: $~\lambda_i = (1 - \theta_i)\, ~\lambda_{i-1} + \theta_i\, ~g_i$,
+with the fixed, Aitken, or Anderson factor of Sec.~\ref{sec:relaxation}
+formed from the datum itself, and $~\lambda_{-1} = 0$ at a fresh slot, so
+that the first iteration of every stop applies $\theta_0 ~g_0$ on that
+side. The earlier-listed side applies $~g_i$ unrelaxed.
+
+\paragraph{Initialization and stopping.} When an interface node has a
+nonzero initial displacement or velocity, the initialization runs the two
+refinement passes of Sec.~\ref{sec:initialization}. The iteration stops on
+the displacement update of Sec.~\ref{sec:stopping}. The condition is not
+absorbing: under a dynamic integrator it can inject energy, and the code
+warns when a Robin--Robin side is not quasi-static. It is the coupling of
+the quasi-static examples; no impedance (velocity-proportional) term is
+implemented.
+
+\section{The contact coupling}
+\label{sec:contact}
+
+Two bodies whose surfaces, given as a side set on each, may come into
+contact are coupled by a Dirichlet--Neumann exchange that is active while
+contact is detected. Each side names its own side set, the partner, and
+the partner's side set, and a \code{friction type}: \code{frictionless}
+or \code{tied}. The side of the subdomain listed first in \code{domains}
+is the Dirichlet side; \code{swap BC types: true} exchanges the roles at
+every stop in which contact is active. The transfer operators are the
+Dirichlet and Neumann projectors of Sec.~\ref{sec:mass-matrices}, built
+once at initialization on the reference configuration.
+
+\paragraph{Detection.} One flag holds the contact state of the whole
+simulation. It is evaluated after every stop has been solved, and at
+initialization. While contact is inactive, the stop is solved with the
+subdomains advanced independently and the contact surfaces traction-free,
+and contact becomes active when any node $~x$ of the side set of a
+contact condition, in the current configuration, has a closest-point
+projection $~y$ onto a partner facet, within a search radius of ten times
+the smallest nodal spacing of its own side set, that lies inside the facet
+and on the far side of it: the signed distance
+$-\,\mathrm{sign}((~y - ~x) \cdot ~n)\, \norm{~y - ~x} \le 0$, with $~n$ the
+facet normal. While contact is active, the stop is solved by the Schwarz
+iteration, and contact persists while any node of a contact side set has
+a compressive normal force, $~f_i \cdot ~n_i \le 0$, with $~f_i$ the force
+transferred from the partner and $~n_i$ the nodal normal of the side set.
+When the state changes after a stop, the stop is restored and solved once
+more in the new state, without a further check. The state is written to
+\code{contact-<stop>.csv} at the CSV output stops.
+
+\paragraph{Dirichlet side.} With $~P_D$ the Dirichlet projector, the
+transferred values are the projected current position
+$\hat{~x} = ~P_D(~X_N + ~u_N)$, velocity $\hat{~v} = ~P_D ~v_N$, and
+acceleration $\hat{~a} = ~P_D ~a_N$ of the partner, relaxed as in
+Sec.~\ref{sec:classical}. A tied condition prescribes
+$~u_i = \hat{~x}_i - ~X_i$, $~v_i = \hat{~v}_i$, $~a_i = \hat{~a}_i$ on every
+node of the side set, all three components fixed. A frictionless
+condition prescribes the normal component only,
+\begin{equation}
+  ~x_i \leftarrow (~I - ~n_i ~n_i^T)\, ~x_i + ~n_i ~n_i^T\, \hat{~x}_i,
+  \qquad
+  ~v_i \leftarrow (~I - ~n_i ~n_i^T)\, ~v_i + ~n_i ~n_i^T\, \hat{~v}_i,
+  \qquad
+  ~a_i \leftarrow (~I - ~n_i ~n_i^T)\, ~a_i + ~n_i ~n_i^T\, \hat{~a}_i,
+  \label{eq:contact-frictionless}
+\end{equation}
+with $~n_i$ the normal of a facet of the side set containing node $i$, on
+the current configuration for finite kinematics. The code requires the
+normal to be along $\pm ~e_x$ to $10^{-6}$, fixes the $x$ component, and
+leaves the $y$ and $z$ components free; a side set whose normal is not
+along $x$ aborts.
+
+\paragraph{Neumann side.} With $~N_N$ the Neumann projector, the force
+$~f_N = ~N_N(-\,~f^{\mathrm{int}}_D|_\Gamma)$ of \eqref{eq:classical-neumann}
+is added to the boundary force of the side set, in full for a tied
+condition and as its normal component $~n_i ~n_i^T ~f_{N,i}$ for a
+frictionless one. The reaction transmitted is the static one, as in the
+classical exchange.
+
+\paragraph{Options and restrictions.} \code{naive stabilized: true} sets
+the acceleration of every node of every contact side set to zero after
+each substep while contact is active. The exchange shares the relaxation
+of the classical exchange and does not use the interface predictor. There
+is no friction law: the two options are no tangential transfer and a full
+tie. The contact state is one flag for all pairs of the simulation, and
+when it is active every node of the Dirichlet side set is constrained,
+whether or not it touches the partner; there is no nodal active set, gap
+function, or inequality enforcement. The surfaces must be declared in
+advance as side-set pairs; there is no global search and no self-contact.
+The projectors are not rebuilt during the run, so sliding is not tracked
+by the transfer operators. A restart is rejected with contact. The
+iteration stops on the displacement update of Sec.~\ref{sec:stopping}.
+\section{Verification of the matching exchange}
 \label{sec:verification}
 
 \subsection{Benchmarks}
+\label{sec:benchmarks}
 
 \paragraph{Cantilever beam.} A linear elastic bar ($E = 6.895$\,GPa,
 $\nu = 0.25$, $\rho = 2768$\,kg/m$^3$; $254 \times 25.4 \times 12.7$\,mm),
@@ -670,16 +1438,11 @@ growing by at most $10\%$ over the $10$\,ms, the displacement drift that
 velocity continuity permits~\cite{MahjoubiGravouilCombescure2009}. At
 $1{:}0.75$ the projector onto the coarse side reproduces constants only to
 $1.2\times 10^{-2}$; the exchange is unaffected because only $\Pi_D$, whose
-error is $7\times 10^{-16}$, enters it.
-
-The iteration counts of Table~\ref{tab:equal} were measured with the stopping
-rule of September 30, 2026, which also accepted a stop when the root mean
-square jump of the matched velocity fell below the controller's absolute
-tolerance divided by the step. Without this floor, removed on October 1,
-2026 (commit \code{d96ab13f}), the conforming II pair with the inputs of
-\code{studies/dynamic-stability} (case \code{beam\_no-cd\_II\_L1\_r100\_fixed},
-absolute tolerance $10^{-15}$) takes $8.85$ Schwarz iterations per stop
-(maximum $10$) instead of $7.97$ (maximum $8$) with the floor, with
+error is $7\times 10^{-16}$, enters it. The iteration counts of
+Table~\ref{tab:equal} were measured with an absolute floor on the root mean
+square jump equal to the displacement tolerance divided by the step; with
+the relative criterion alone the conforming II pair takes $8.85$ Schwarz
+iterations per stop (maximum $10$) instead of $7.97$ (maximum $8$), with
 $\delta E = 7.3\times 10^{-13}$ and $\delta\tilde{E} = 1.3\times 10^{-12}$.
 
 Table~\ref{tab:dn-gain} gives the gain \eqref{eq:gain} on which the role
@@ -816,7 +1579,8 @@ where every fixed factor diverged, and with an explicit Dirichlet side
 removes the drift of $\tilde{E}$ that Aitken left through stops accepted at
 the floor of the force residual ($6.8\times 10^{-11}$ against
 $6.5\times 10^{-14}$). The energies agree across the schemes to the digits
-measured.
+measured. A depth of $5$ is too short for an explicit Dirichlet side,
+whose window needs $12$ to $16$ iterations.
 
 \begin{table}[htbp]
 \centering
@@ -934,8 +1698,8 @@ Every Schwarz iteration solves each subdomain to the Newton tolerance of
 its solver, although only the converged Schwarz iterate is used. Inexact
 Schwarz solves the subdomains loosely and relies on the Schwarz iteration,
 stopped at a tight $\epsilon$, for the accuracy. Its effect was measured on
-the beam of Section~\ref{sec:norma} with a neohookean material of the same
-moduli, so that Newton takes more than one iteration per solve: two
+the beam of Sec.~\ref{sec:benchmarks} with a neohookean material of the
+same moduli, so that Newton takes more than one iteration per solve: two
 trapezoidal subdomains, the matching exchange with Anderson
 acceleration, $\epsilon = 10^{-12}$, $10^4$ stops of $1\,\mu$s on the
 mesh of level $1$ ($180$ elements) and $2\times 10^4$ stops of
@@ -945,11 +1709,8 @@ $\lVert u - u_{\mathrm{ref}} \rVert_2 / \lVert u_{\mathrm{ref}} \rVert_2$
 over all nodes at $10$\,ms. Table~\ref{tab:inexact} gives the Newton
 iterations of each run relative to the reference, the Schwarz iterations per
 stop, and the error, for constant Newton tolerances, for one Newton
-iteration per solve carried forward unconverged, and for a tolerance ratio
-$\eta$ that sets the Newton tolerance of Schwarz iteration $k$ to
-$\min(\max(\eta\, r_{k-1}, 10^{-12}), 10^{-2})$, with $r_{k-1}$ the
-relative Schwarz residual of the previous iteration of the stop and
-$10^{-2}$ at the first.
+iteration per solve carried forward unconverged, and for the tolerance
+ratio $\eta$ of Sec.~\ref{sec:inexact-newton}.
 
 \begin{table}[htbp]
 \centering
@@ -991,7 +1752,7 @@ measures the change between iterates and does not see it: with one Newton
 iteration per solve the iteration meets $\epsilon = 10^{-12}$ in $8$
 iterations per stop and the result is wrong by $0.5\%$. The tolerance
 ratio removes the error at $0.72$ to $0.74$ of the Newton iterations of the
-reference. The larger factor, $\eta = 0.1$, raises the Schwarz count by
+reference. The larger ratio, $\eta = 0.1$, raises the Schwarz count by
 $26$ to $28\%$ and loses most of the saving. A tight final solve, which
 accepts Schwarz convergence only at an iteration whose Newton tolerance was
 $10^{-12}$, was triggered at $50$ of the $10^4$ stops with $\eta = 0.01$
@@ -1014,23 +1775,24 @@ to $10^{-10}$ save $15\%$ of the Newton iterations at an error of
 $3\times 10^{-13}$, whereas $10^{-4}$ and looser raise the Schwarz count
 from $36$ to $84$ or more per load step and reach the cap of $128$, and the
 tolerance ratio $\eta = 0.1$ saves $24\%$ at an error of
-$6\times 10^{-13}$. The classical form of inexact Schwarz, in which each
+$6\times 10^{-13}$. A warm-started form of inexact Schwarz, in which each
 subdomain solve starts from its previous Schwarz iterate so that one
 Newton iteration per Schwarz iteration converges to the solution of the
-coupled problem, has not been implemented; it requires the predictor state
+coupled problem, is not implemented; it requires the predictor state
 of the integrator to be carried across Schwarz iterations.
 
 \subsection{The classical exchange}
 \label{sec:baseline}
 
-The classical Dirichlet--Neumann exchange departs from the constrained
-problem in the five respects listed in the abstract: it transmits the
-static reaction $-~f^{\mathrm{int}}$, builds its two transfers
-independently, imposes displacement, velocity, and acceleration together,
-stops on the displacement update of the whole domain, and computes the
-initial acceleration per subdomain with the interface held fixed. The
-relative difference between the force it applies on the Neumann side and
-the transposed d'Alembert reaction of the Dirichlet side, measured in the
+The classical Dirichlet--Neumann exchange of Sec.~\ref{sec:classical}
+departs from the constrained problem in the five respects listed in
+Sec.~\ref{sec:matching}: it transmits the static reaction
+$-~f^{\mathrm{int}}$, builds its two transfers independently, imposes
+displacement, velocity, and acceleration together, stops on the
+displacement update of the whole domain, and computes the initial
+acceleration per subdomain with the interface held fixed. The relative
+difference between the force it applies on the Neumann side and the
+transposed d'Alembert reaction of the Dirichlet side, measured in the
 $~W_N^{-1}$ norm at the end of every stop, has the median $0.83$ (maximum
 $4.2$) with explicit subdomains and $1.47$ (maximum $4.6$) with implicit
 ones; under the matching exchange it is below $4\times 10^{-16}$. On the
@@ -1039,16 +1801,6 @@ subdomains on every mesh ratio and with $4{:}1$ steps, and with explicit
 subdomains the energy varies by $2.6$ to $4.3\%$ (Fig.~\ref{fig:beam}). On
 the neohookean cylinders it stays within $3\%$ over $2$\,ms with explicit
 subdomains.
-
-The overlap decomposition admits no construction of this kind: its two
-sides exchange data on two different surfaces, so there is no shared
-interface on which the two works can cancel. Robin and impedance
-transmission conditions on a shared interface were measured in the
-previous version of this note; none conserved on nonconforming meshes,
-because the transmission condition, not only the Schwarz iteration,
-defines their fixed point. A Robin condition assembled from the same
-reaction and the same one-sided constraint has the fixed point of the
-constrained problem and could serve as a solver of it.
 
 \section{Limitations and open questions}
 \label{sec:open}
@@ -1063,7 +1815,7 @@ constrained problem and could serve as a solver of it.
   measured.
 \item \emph{Warm start of the subdomain solves.} Each Schwarz iteration
   restarts the subdomain solves from the state at the start of the stop
-  (Section~\ref{sec:inexact}), which bounds the saving of inexact
+  (Sec.~\ref{sec:inexact}), which bounds the saving of inexact
   subdomain solves at a fixed accuracy to the fraction of Newton
   iterations beyond the second. Starting each solve from the previous
   Schwarz iterate would let one Newton iteration per Schwarz iteration
@@ -1084,63 +1836,98 @@ constrained problem and could serve as a solver of it.
   subcycled window are not needed for conservation; whether they reduce
   the cost has not been measured.
 \item \emph{Implicit subdomains on the cylinders} and more than two
-  subdomains have not been run.
+  subdomains have not been run with the matching exchange.
+\item \emph{A conserving Robin condition.} A Robin condition assembled from
+  the d'Alembert reaction and the one-sided constraint of
+  Sec.~\ref{sec:constrained} has the fixed point of the constrained problem
+  and could serve as a solver of it; it has not been implemented.
+\item \emph{Contact.} The contact coupling has one active flag for the
+  whole simulation, no nodal active set, no friction law, and transfer
+  operators fixed at initialization (Sec.~\ref{sec:contact}).
 \end{enumerate}
 
-\section{Implementation in Norma}
-\label{sec:norma}
+\appendix
 
-The exchange is a \code{Schwarz DN nonoverlap} condition with
-\code{matching: velocity} (or \code{matching: displacement} for
-trapezoidal pairs) on both sides of a pair;
-\code{default BC type} assigns the Dirichlet and Neumann roles;
-\code{interface solve: direct} selects the direct solve for two explicit
-sides at equal steps. The top-level input sets the relative tolerance
-$\epsilon$ (\code{matching relative tolerance}, required; when every
-coupling is a matching pair the input has no \code{relative tolerance} or
-\code{absolute tolerance}, which act on the displacement update),
-\code{relaxation: anderson} with \code{anderson depth} and
-\code{relaxation parameter} (the mixing parameter $\beta$, default $0.5$ under
-Anderson acceleration and $1$ otherwise), or
-\code{relaxation: aitken recursive}; \code{matching absolute tolerance}
-sets an absolute floor in the units of the matched quantity (default
-$0$), and \code{stalled interface jump action} selects what a stalled stop
-does. The block \code{inexact Newton} (\code{tolerance ratio}, default
-$0.01$; \code{minimum tolerance}, $10^{-12}$; \code{maximum tolerance},
-$10^{-2}$; \code{tight final solve}, false) sets the Newton tolerance of
-the implicit subdomains from the previous Schwarz residual as in
-Section~\ref{sec:inexact}. \code{blended energy output: true} writes, per stop, the energy $E$
-(\code{total\_energy}), the pseudo-energy $\tilde{E}$
-(\code{pseudo\_energy\_total} and per subdomain; NaN for nonlinear
-materials), the interface displacement and velocity jumps, and, for
-subcycled pairs, the impulse residual \eqref{eq:impulse}. The keys are
-documented in \code{docs/src/reference/multidomain.md}. The implementation
-is in \code{src/schwarz.jl}, \code{src/simulation.jl}, and
-\code{src/overlap\_energy.jl}; tests 135 (pseudo-energy) and 136
-(matching exchange, including the displacement matching, the direct solve, subcycling, Aitken and
-Anderson acceleration, and the equivalence of Anderson acceleration with
-GMRES on a probed interface map), and 137 (windowed stops). Examples:
-\code{examples/nonoverlap/dynamic-same-step/cantilever-dn} (the beam, from
-which test 136 builds its matching pairs),
+\section{Input keys, tests, and examples}
+\label{app:keys}
+
+The keys are documented in \code{docs/src/reference/multidomain.md} of the
+Norma repository; unknown keys produce a warning with a suggestion and do
+not abort. The implementation is in \code{src/schwarz.jl},
+\code{src/simulation.jl}, \code{src/boundary\_conditions.jl},
+\code{src/interpolation.jl}, and \code{src/overlap\_energy.jl}.
+
+\paragraph{Controller (\code{type: multi}).} \code{domains} (required);
+\code{initial time}, \code{final time}, \code{time step} (required);
+\code{minimum iterations}, \code{maximum iterations} (required);
+\code{relative tolerance}, \code{absolute tolerance} (required unless every
+coupling is a matching pair, in which case they are ignored with a
+warning); \code{matching relative tolerance} (required when a pair sets
+\code{matching}), \code{matching absolute tolerance} (default $0$);
+\code{relaxation} (\code{aitken recursive}, \code{aitken secant},
+\code{anderson}; absent means fixed), \code{relaxation parameter} (default
+$1$, or $0.5$ under \code{anderson}), \code{aitken N0 parameter} (default
+$1$), \code{anderson depth} (default $10$); \code{interface predictor}
+(default false); \code{stalled interface jump action} (\code{warn},
+\code{abort}); \code{unconverged step action} (\code{abort}, \code{warn});
+\code{inexact Newton} block with \code{tolerance ratio} ($0.01$),
+\code{minimum tolerance} ($10^{-12}$), \code{maximum tolerance}
+($10^{-2}$), \code{tight final solve} (false); \code{naive stabilized}
+(default false, contact only); \code{blended energy output} (default
+false); \code{Exodus output interval} (default the controller step),
+\code{CSV output interval} (default off); \code{swaps}; \code{restart}.
+The keys \code{constrained}, \code{constraint},
+\code{constraint absolute tolerance}, and \code{forcing factor} are
+retired and abort with a message naming their replacements.
+
+\paragraph{\code{Schwarz overlap}.} \code{side set}, \code{source},
+\code{source block} (required); \code{search tolerance} (default
+$10^{-6}$); \code{weak} (default false); \code{compute overlap L2 relative
+error} (\code{disp}, \code{velo}, \code{acce}). The variant
+\code{OpInf Schwarz overlap} adds \code{model-directory} and
+\code{ensemble-size} for a neural-network reduced-order receiver.
+
+\paragraph{\code{Schwarz DN nonoverlap}.} \code{side set}, \code{source},
+\code{source side set} (required); \code{default BC type}
+(\code{Dirichlet} or \code{Neumann}, opposite on the two sides);
+\code{swap BC types} (default false); \code{matching} (\code{velocity} or
+\code{displacement}, the same on both sides; absent selects the classical
+exchange); \code{interface solve} (\code{iterative} or \code{direct}, the
+same on both sides).
+
+\paragraph{\code{Schwarz RR nonoverlap}.} \code{side set}, \code{source},
+\code{source side set}, \code{robin parameter} (required, positive).
+
+\paragraph{\code{Schwarz contact}.} \code{side set}, \code{source},
+\code{source side set}, \code{friction type} (\code{frictionless} or
+\code{tied}) (required); \code{swap BC types} (default false).
+
+\paragraph{Tests and examples.} Test numbers refer to
+\code{test/runtests.jl}. Overlapping coupling: tests 15 (static cuboids),
+56 (dynamic cantilever, weak form), 57 and 75 (swaps), 109 (blended
+energy), 113 (restart), 117 (quasi-static), and the reduced-order tests
+22 to 26, 61 to 63, 76, and 77; examples under \code{examples/overlap}
+and \code{examples/ahead/overlap}. Classical Dirichlet--Neumann exchange:
+tests 16, 18, 55, 58, 91, 92, 123 (displacement transfer on a curved
+interface), and 137 (windowed stops); examples
+\code{examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann},
+\code{matrix-inclusion}, and
+\code{examples/nonoverlap/dynamic-same-step/cantilever-dn}. Matching
+exchange: tests 135 (pseudo-energy) and 136 (operators, reaction, Newmark
+relations, pseudo-energy conservation, displacement matching, coupled
+initial acceleration, subcycling, the direct solve, Aitken and Anderson
+acceleration, the equivalence of Anderson acceleration with GMRES on a
+probed interface map, and the retired keys); examples
 \code{examples/nonoverlap/dynamic-same-step/cantilever-dn-nonconforming}
-(the beam at mesh ratio $1{:}0.5$), and
-\code{examples/jmp/concentric-cylinders-linear}. The parameter study
-\code{studies/dynamic-stability} measures the effect of each factor
-(exchange, mesh ratio, tolerance, time steps, solver, refinement) on the
-beam.
-
-\subsection*{Data provenance}
-
-The equal-step, subcycled, gain, and solver measurements were made on
-sirius between September 30 and October 1, 2026, at the commits that
-introduced each feature (\code{9b09793c} through \code{570557c5}); the
-figures and the neohookean time-step measurements are reruns of October 2,
-2026 at commit \code{08b0d866}. The inexact subdomain solve measurements
-(Section~\ref{sec:inexact}) were made on sirius (level $1$, the inclusion)
-and rigel (level $2$) on October 11 and 12, 2026, at commit
-\code{9428ecbd} with the \code{inexact Newton} control of commit
-\code{106800d9}; their data are in
-\code{\textasciitilde/Projects/Norma-Schwarz-Coupling/inexact-2026-10}.
+and the linear cylinders of \code{examples/jmp/concentric-cylinders-linear};
+the
+parameter study \code{studies/dynamic-stability} measures the effect of
+each factor (exchange, mesh ratio, tolerance, time steps, solver,
+refinement) on the beam. Robin--Robin: tests 17, 18, 93, 95, and 137;
+examples \code{cuboids-robin-robin} (static and dynamic) and
+\code{cantilever-rr}. Contact: tests 19 (transfer operators), 20 (static
+cubes, frictionless and tied), and 21 (dynamic cubes, tied); examples
+under \code{examples/contact}.
 
 \begin{thebibliography}{99}
 
