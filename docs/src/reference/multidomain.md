@@ -46,17 +46,19 @@ Each controller step performs Schwarz iterations until the interface converges.
 |---|---|---|---|
 | `minimum iterations` | yes | — | minimum Schwarz iterations per step |
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
-| `absolute tolerance` | yes | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds |
-| `relative tolerance` | yes | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Matching pairs use their own interface criterion instead (see `matching relative tolerance`) |
+| `absolute tolerance` | unless every coupling is a matching pair | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds. When every Schwarz coupling is a matching pair it is not used, and it is ignored with a warning if given |
+| `relative tolerance` | unless every coupling is a matching pair | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Matching pairs use their own interface criterion instead (see `matching relative tolerance`); when every Schwarz coupling is a matching pair it is not used, and it is ignored with a warning if given |
 | `matching relative tolerance` | when a pair sets `matching` | — | relative tolerance of the matching Dirichlet–Neumann criterion, on the one-sided jump of the matched quantity and on the force residual (see `Schwarz DN nonoverlap`); the controller's `relative tolerance` does not apply to matching pairs |
 | `matching absolute tolerance` | no | `0` | absolute tolerance of the matching criterion on the root mean square interface jump, in the units of the matched quantity (velocity or displacement); the controller's `absolute tolerance` does not apply to matching pairs |
-| `unconverged step action` | no | `abort` | what to do with a step that exhausts `maximum iterations` without meeting either tolerance: `abort` the run, or `warn` and continue with the last iterate |
+| `unconverged step action` | no | `abort` | what to do with a step that exhausts `maximum iterations` without converging: `abort` the run, or `warn` and continue with the last iterate |
 | `stalled interface jump action` | no | `warn` | what to do when the interface residual of a matching Dirichlet–Neumann pair stops decreasing above `matching relative tolerance`: `warn` and accept the iterate, or `abort` |
 
-A step that reaches `maximum iterations` without converging reports the errors
-it stopped at against both tolerances. Under the default it says so and the run
-continues, which is the historical behavior made visible; `abort` stops the run
-instead, for cases where an unconverged interface must not be carried forward.
+A step that reaches `maximum iterations` without converging reports the
+measures it stopped at against the tolerances that apply: the displacement
+update against `absolute tolerance` and `relative tolerance`, the interface
+residual of the matching pairs against `matching relative tolerance`, or both.
+Under the default `abort` the run stops; `warn` continues with the last
+iterate.
 
 ### Inexact Newton control of the subdomain solves
 
@@ -273,9 +275,8 @@ boundary conditions:
 # side set ssx+, source cantilever-free, source side set ssx-,
 # default BC type Neumann, and matching: velocity
 
-# cantilever-multi.yaml (controller)
-relative tolerance: 1.0e-08          # displacement update criterion
-absolute tolerance: 2.54e-08         # displacement update criterion
+# cantilever-multi.yaml (controller): the only coupling is a matching pair,
+# so the controller has no `relative tolerance` or `absolute tolerance`
 matching relative tolerance: 1.0e-08 # interface jump and force residual
 relaxation: anderson
 ```
@@ -336,13 +337,16 @@ meshes, the fixed factor is equivalent. A pair converges when the jump of its ma
 quantity and the force residual are both at or below `matching relative
 tolerance`, or when the root mean square jump over the interface is at or
 below `matching absolute tolerance` (in the units of the matched quantity;
-default 0, which leaves the relative test alone); when every Schwarz coupling
-is a matching pair this replaces the displacement criterion, otherwise both
-must hold. A residual that stays above the tolerance while the
-displacement update has converged and has not fallen 5% below its smallest
-value for three consecutive such iterations is handled by `stalled interface
-jump action`; a single iteration without decrease, which Aitken factors
-produce, is not a stall.
+default 0, which leaves the relative test alone). When every Schwarz coupling
+is a matching pair this criterion alone stops the iteration, including at the
+first Schwarz iteration of a stop, and the controller's `relative tolerance`
+and `absolute tolerance` are not used; otherwise the displacement criterion
+must hold as well. A residual that stays above the tolerance and has not
+fallen 5% below its smallest value for three consecutive iterations is handled
+by `stalled interface jump action`; when the simulation has other couplings,
+only iterations at which the displacement update has converged are counted. A
+single iteration without decrease, which Aitken factors produce, is not a
+stall.
 
 Velocity matching admits different time steps on the two sides, as in
 Gravouil and Combescure (2001): the side with the finer step receives the

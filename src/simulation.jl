@@ -481,7 +481,7 @@ function create_simulation(params::Parameters)
         sim = MultiDomainSimulation(params)
         try
             create_bcs(sim)
-            validate_matching_tolerances(sim)
+            validate_schwarz_tolerances(sim)
             validate_swap_criteria(sim)
             warn_restart_with_nonoverlap_schwarz(sim)
             reject_restart_with_contact(sim)
@@ -738,8 +738,10 @@ function SolidMultiDomainTimeController(params::Parameters)
     num_domains = length(params["domains"])
     minimum_iterations = params["minimum iterations"]
     maximum_iterations = params["maximum iterations"]
-    absolute_tolerance = params["absolute tolerance"]
-    relative_tolerance = params["relative tolerance"]
+    # NaN, which no update meets, when absent; validate_schwarz_tolerances
+    # requires both keys unless every Schwarz coupling is a matching pair.
+    absolute_tolerance = Float64(get(params, "absolute tolerance", NaN))
+    relative_tolerance = Float64(get(params, "relative tolerance", NaN))
     initial_time = params["initial time"]
     final_time = params["final time"]
     time_step = params["time step"]
@@ -1280,8 +1282,9 @@ end
 # the interface rows trusted (initialize with trust_schwarz=true). The
 # Dirichlet datum is relaxed with the fixed factor `relaxation parameter` (also
 # under Aitken relaxation, which applies to the stops). The iteration stops when
-# the one-sided acceleration jump and the force residual of every constrained
-# pair are at or below `relative tolerance`, or after `maximum iterations`.
+# the one-sided acceleration jump and the force residual of every matching
+# pair are at or below `matching relative tolerance`, or after `maximum
+# iterations`.
 function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     pairs = SolidMechanicsNonOverlapSchwarzBoundaryCondition[]
     for subsim in sim.subsims, bc in subsim.model.boundary_conditions
@@ -1609,8 +1612,11 @@ function schwarz(sim::MultiDomainSimulation)
             )
             # Early exit: if the initial absolute update already meets the absolute
             # tolerance, no further Schwarz iterations are needed. The relative test
-            # still cannot be applied on iteration 0 (no prior iterate).
-            if ΔU ≤ sim.controller.absolute_tolerance && constrained_converged && !tight_pending
+            # still cannot be applied on iteration 0 (no prior iterate). When every
+            # coupling is a matching pair the matching criterion, which compares the
+            # two sides of each interface, applies at iteration 0 and decides alone.
+            update_met = only_constrained_couplings(sim) || ΔU ≤ sim.controller.absolute_tolerance
+            if update_met && constrained_converged && !tight_pending
                 norma_log(0, :schwarz, "Performed 0 Schwarz Iterations")
                 sim.controller.schwarz_iters[sim.controller.stop] = 0
                 break
@@ -1968,17 +1974,40 @@ end
 # below its smallest value that make a stall.
 const STALL_ITERATIONS = 3
 
-# The tolerances of the matching criterion. `matching relative tolerance` is
-# required when the simulation has a matching DN pair, so that the input states
-# the criterion of those pairs; `matching absolute tolerance` is optional
-# (default 0, the relative test alone) and is in the units of the matched
-# quantity. The retired top-level key `constraint absolute tolerance` aborts.
-function validate_matching_tolerances(sim::MultiDomainSimulation)
+# The stopping tolerances of the Schwarz iteration. The controller's `relative
+# tolerance` and `absolute tolerance` act on the displacement update and are
+# required unless every Schwarz coupling is a matching pair, which stops on its
+# own criterion; given in that case, they are ignored with a warning, so that
+# an input states only the tolerances that act on it. `matching relative
+# tolerance` is required when the simulation has a matching DN pair;
+# `matching absolute tolerance` is optional (default 0, the relative test
+# alone) and is in the units of the matched quantity. Either matching key
+# without a matching pair is ignored with a warning. The retired top-level key
+# `constraint absolute tolerance` aborts.
+function validate_schwarz_tolerances(sim::MultiDomainSimulation)
     if haskey(sim.params, "constraint absolute tolerance")
         norma_abort(
             "`constraint absolute tolerance` was retired; use `matching absolute tolerance`, " *
             "together with the required `matching relative tolerance`.",
         )
+    end
+    controller_keys = ("relative tolerance", "absolute tolerance")
+    if only_constrained_couplings(sim)
+        for key in controller_keys
+            haskey(sim.params, key) && norma_log(
+                0,
+                :warning,
+                "`$(key)` is ignored: every Schwarz coupling is a matching DN pair, which stops on " *
+                "`matching relative tolerance` and `matching absolute tolerance`.",
+            )
+        end
+    else
+        for key in controller_keys
+            haskey(sim.params, key) || norma_abort(
+                "The top-level key `$(key)` is required: it sets the displacement update criterion, " *
+                "which every Schwarz coupling other than a matching DN pair uses.",
+            )
+        end
     end
     has_matching = any(is_constrained_dn(bc) for subsim in sim.subsims for bc in subsim.model.boundary_conditions)
     keys = ("matching relative tolerance", "matching absolute tolerance")
@@ -2001,7 +2030,7 @@ function validate_matching_tolerances(sim::MultiDomainSimulation)
     return nothing
 end
 
-# NaN, which no residual meets, when the key is absent; validate_matching_tolerances
+# NaN, which no residual meets, when the key is absent; validate_schwarz_tolerances
 # requires it whenever a matching pair exists.
 matching_relative_tolerance(sim::MultiDomainSimulation) = Float64(get(sim.params, "matching relative tolerance", NaN))
 
@@ -2013,13 +2042,14 @@ matching_absolute_tolerance(sim::MultiDomainSimulation) = Float64(get(sim.params
 # its matched quantity and the interface force residual are both at or below
 # `matching relative tolerance` (or the root mean square jump at or below
 # `matching absolute tolerance`, when that key is given). When every
-# Schwarz coupling of the simulation is a constrained DN pair this replaces the
-# displacement criterion; otherwise both must hold. The larger of the constrained
-# jump and the force residual, maximized over the constrained pairs, is stalled
-# when it stays above the tolerance while the displacement update has converged
-# and has not fallen 5% below its smallest value for STALL_ITERATIONS
-# consecutive such iterations; a stall is handled as `stalled interface jump
-# action` directs. Returns whether every constrained pair has converged, and the
+# Schwarz coupling of the simulation is a matching pair this replaces the
+# displacement criterion, and the controller tolerances are not used; otherwise
+# both must hold. The larger of the matching jump and the force residual,
+# maximized over the matching pairs, is stalled when it stays above the
+# tolerance and has not fallen 5% below its smallest value for STALL_ITERATIONS
+# consecutive iterations; with other couplings present, only iterations at which
+# the displacement update has converged are counted. A stall is handled as
+# `stalled interface jump action` directs. Returns whether every constrained pair has converged, and the
 # stall state (smallest value, iterations without decrease) for the next
 # iteration.
 function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tuple{Float64,Int})
@@ -2066,15 +2096,15 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
     controller.interface_residual = has_constrained ? max_measure : NaN
     has_constrained || return true, stall
     displacement_converged = controller.converged
+    matching_only = only_constrained_couplings(sim)
     if all_constrained_converged
-        controller.converged = only_constrained_couplings(sim) ? true : displacement_converged
+        controller.converged = matching_only ? true : displacement_converged
         return true, stall
     end
     controller.converged = false
-    displacement_converged || return false, stall
-    # A residual is stalled when, over STALL_ITERATIONS consecutive iterations
-    # with the displacement update converged, it has not fallen 5% below the
-    # smallest value seen. Aitken factors make the residual non-monotone from
+    matching_only || displacement_converged || return false, stall
+    # A residual is stalled when, over STALL_ITERATIONS consecutive counted
+    # iterations, it has not fallen 5% below the smallest value seen. Aitken factors make the residual non-monotone from
     # one iteration to the next, so a single iteration without decrease is not
     # a stall.
     best, count = stall
@@ -2087,8 +2117,8 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
         stall_action = get(sim.params, "stalled interface jump action", "warn")
         if stall_action == "abort"
             norma_abort(
-                "Matching DN interface residual $(max_measure) stalled above tolerance $(rtol) " *
-                "while the displacement update has converged, and `stalled interface jump action: abort` is set.",
+                "Matching DN interface residual $(max_measure) stalled above tolerance $(rtol), " *
+                "and `stalled interface jump action: abort` is set.",
             )
         elseif stall_action != "warn"
             norma_abort(
@@ -2110,16 +2140,18 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
     return false, (best, count)
 end
 
-# True when every Schwarz coupling condition of the simulation belongs to a
-# constrained DN pair.
+# True when the simulation has a Schwarz coupling and every Schwarz coupling
+# condition belongs to a matching DN pair.
 function only_constrained_couplings(sim::MultiDomainSimulation)
+    has_coupling = false
     for subsim in sim.subsims
         for bc in subsim.model.boundary_conditions
             bc isa SolidMechanicsSchwarzBoundaryCondition || continue
             is_constrained_dn(bc) || return false
+            has_coupling = true
         end
     end
-    return true
+    return has_coupling
 end
 
 # A step that leaves the Schwarz loop without meeting either tolerance has
@@ -2132,42 +2164,36 @@ end
 function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::Int64)
     controller = sim.controller
     action = get(sim.params, "unconverged step action", "abort")
-    if any(is_constrained_dn(bc) for subsim in sim.subsims for bc in subsim.model.boundary_conditions)
-        norma_log(
-            0,
-            :warning,
-            "Matching DN pairs stop on the interface jump and force residual logged above; " *
-            "the displacement update below is reported for reference.",
-        )
-    end
-    if action == "abort"
-        norma_abortf(
-            "Schwarz did not converge at stop %d in %d iterations: |ΔU| = %.2e against " *
-            "absolute tolerance %.2e, |ΔU|/|U| = %.2e against relative tolerance %.2e, and " *
-            "`unconverged step action` is `abort` (the default). Raise `maximum iterations`, loosen the " *
-            "tolerances, or change the relaxation.",
-            controller.stop,
-            iteration_number,
+    matching = @sprintf(
+        "the matching DN interface residual is %.2e against matching relative tolerance %.2e",
+        controller.interface_residual,
+        matching_relative_tolerance(sim),
+    )
+    measures = if only_constrained_couplings(sim)
+        matching
+    else
+        update = @sprintf(
+            "|ΔU| = %.2e against absolute tolerance %.2e and |ΔU|/|U| = %.2e against relative tolerance %.2e",
             controller.absolute_error,
             controller.absolute_tolerance,
             controller.relative_error,
             controller.relative_tolerance,
         )
+        isnan(controller.interface_residual) ? update : update * ", and " * matching
+    end
+    message = @sprintf(
+        "Schwarz did not converge at stop %d in %d iterations: %s", controller.stop, iteration_number, measures
+    )
+    if action == "abort"
+        norma_abort(
+            message *
+            ", and `unconverged step action` is `abort` (the default). Raise `maximum iterations`, " *
+            "loosen the tolerances, or change the relaxation.",
+        )
     elseif action != "warn"
         norma_abort("Unknown `unconverged step action: $(action)`. Valid values are `abort` (default) and `warn`.")
     end
-    norma_logf(
-        0,
-        :warning,
-        "Schwarz did not converge at stop %d in %d iterations: |ΔU| = %.2e > %.2e and " *
-        "|ΔU|/|U| = %.2e > %.2e; continuing.",
-        controller.stop,
-        iteration_number,
-        controller.absolute_error,
-        controller.absolute_tolerance,
-        controller.relative_error,
-        controller.relative_tolerance,
-    )
+    norma_log(0, :warning, message * "; continuing.")
     return nothing
 end
 

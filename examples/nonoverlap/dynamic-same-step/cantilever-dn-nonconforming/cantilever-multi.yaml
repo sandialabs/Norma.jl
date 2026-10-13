@@ -8,8 +8,6 @@ final time: 1.0e-03
 time step: 5.0e-07
 minimum iterations: 1
 maximum iterations: 128
-relative tolerance: 1.0e-08
-absolute tolerance: 2.54e-08
 matching relative tolerance: 1.0e-08
 relaxation: anderson
 relaxation parameter: 1.0

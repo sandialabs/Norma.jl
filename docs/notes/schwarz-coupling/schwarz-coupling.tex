@@ -418,7 +418,10 @@ discrete $L^2$ norms of the trace and of its dual. An absolute floor, if
 any, must be given in the units of the matched quantity; a
 displacement tolerance divided by the step is not a valid velocity floor
 (on the cylinders of Sec.~\ref{sec:verification} it amounts to $200$\,m/s
-and stops the iteration after one pass). A stop at which the residual
+and stops the iteration after one pass). When every coupling of the
+simulation is a matching pair, Eq.~\eqref{eq:stopping} is the only stopping
+test, also at the first iteration of a stop, and the test on the change of
+the displacement between iterations is not used. A stop at which the residual
 stalls above $\epsilon$ for three consecutive iterations without falling
 $5\%$ below its smallest value may be accepted with a warning; the
 residual is not monotone under Aitken or Anderson acceleration, so a single
@@ -1093,7 +1096,10 @@ trapezoidal pairs) on both sides of a pair;
 \code{default BC type} assigns the Dirichlet and Neumann roles;
 \code{interface solve: direct} selects the direct solve for two explicit
 sides at equal steps. The top-level input sets the relative tolerance
-$\epsilon$ (\code{matching relative tolerance}, required), \code{relaxation: anderson} with \code{anderson depth} and
+$\epsilon$ (\code{matching relative tolerance}, required; when every
+coupling is a matching pair the input has no \code{relative tolerance} or
+\code{absolute tolerance}, which act on the displacement update),
+\code{relaxation: anderson} with \code{anderson depth} and
 \code{relaxation parameter} (the mixing parameter $\beta$, default $0.5$ under
 Anderson acceleration and $1$ otherwise), or
 \code{relaxation: aitken recursive}; \code{matching absolute tolerance}

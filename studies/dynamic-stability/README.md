@@ -87,10 +87,12 @@ a tier.
   the explicit member as the Dirichlet side only Anderson acceleration
   converges.
 - The constrained exchange stops on the interface velocity jump and the
-  interface force residual at the relative tolerance of the case, with no
-  absolute floor; the baseline keeps the displacement criterion of the
-  examples (relative 1e-8, absolute 2.54e-8). At most 256 Schwarz
-  iterations per stop; a stalled iteration is accepted with a warning.
+  interface force residual at the relative tolerance of the case
+  (`matching relative tolerance`), with no absolute floor; its inputs have
+  no controller `relative tolerance` or `absolute tolerance`. The baseline
+  keeps the displacement criterion of the examples (relative 1e-8, absolute
+  2.54e-8). At most 256 Schwarz iterations per stop; a stalled iteration is
+  accepted with a warning.
 - Newton on implicit subdomains: relative 1e-10, absolute 2.54e-8, direct
   linear solver.
 - The free part is listed first in `run.yaml`, so the relaxation acts on the

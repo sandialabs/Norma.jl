@@ -198,17 +198,21 @@ function relaxation(c::Case)
     return "relaxation parameter: 0.5\n"
 end
 
-# Schwarz tolerances: the matching criterion is relative (`matching relative
-# tolerance`), on the interface velocity jump and the force residual, with no
-# absolute floor; the baseline keeps the displacement criterion of the
-# examples.
-function tolerances(c::Case)
-    c.coupling == "no-dn" && return (BEAM.baseline_relative_tolerance, BEAM.baseline_absolute_tolerance)
-    return (c.tolerance, 1.0e-15)
+# Schwarz tolerances: the matching exchange stops on its relative criterion
+# alone (`matching relative tolerance`), on the interface velocity jump and the
+# force residual, with no absolute floor, and its inputs carry no controller
+# tolerances; the baseline keeps the displacement criterion of the examples.
+function tolerance_lines(c::Case)
+    c.coupling == "no-cd" && return "matching relative tolerance: $(num(c.tolerance))\n"
+    relative, absolute = if c.coupling == "no-dn"
+        (BEAM.baseline_relative_tolerance, BEAM.baseline_absolute_tolerance)
+    else
+        (c.tolerance, 1.0e-15)
+    end
+    return "relative tolerance: $(num(relative))\nabsolute tolerance: $(num(absolute))\n"
 end
 
 function run_input(c::Case, domains, final_time, exodus_interval)
-    relative, absolute = tolerances(c)
     list = join(("\"$d.yaml\"" for d in domains), ", ")
     text = """
         type: multi
@@ -221,11 +225,9 @@ function run_input(c::Case, domains, final_time, exodus_interval)
         time step: $(num(BEAM.time_step / c.level))
         minimum iterations: 1
         maximum iterations: $(BEAM.maximum_iterations)
-        relative tolerance: $(num(relative))
-        absolute tolerance: $(num(absolute))
         """
+    text *= tolerance_lines(c)
     c.coupling == "mono" && return text
-    c.coupling == "no-cd" && (text *= "matching relative tolerance: $(num(relative))\n")
     return text * relaxation(c) * "stalled interface jump action: warn\n"
 end
 

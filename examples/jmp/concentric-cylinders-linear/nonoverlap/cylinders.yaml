@@ -23,8 +23,8 @@
 # the matching Dirichlet-Neumann exchange with velocity matching and the
 # inner side as the Dirichlet side. The Schwarz iteration stops on the
 # relative interface velocity jump and force residual (matching relative
-# tolerance); the relative and absolute tolerances apply only to the
-# displacement criterion, which matching pairs do not use.
+# tolerance). The input has no controller relative and absolute tolerances:
+# they act on the displacement update, which matching pairs do not use.
 type: multi
 domains: ["inner.yaml", "outer.yaml"]
 blended energy output: true
@@ -35,7 +35,5 @@ final time: 1.0e-03
 time step: 5.0e-07
 minimum iterations: 1
 maximum iterations: 256
-relative tolerance: 1.0e-12
-absolute tolerance: 1.0e-04
 matching relative tolerance: 1.0e-12
 relaxation parameter: 0.5

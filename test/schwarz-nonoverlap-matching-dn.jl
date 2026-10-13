@@ -93,8 +93,6 @@ function run_constrained_dn(
         "time step" => dt,
         "minimum iterations" => 1,
         "maximum iterations" => 64,
-        "relative tolerance" => 1.0e-12,
-        "absolute tolerance" => 1.0e-15,
         "matching relative tolerance" => 1.0e-12,
         "relaxation parameter" => theta,
         "blended energy output" => true,
@@ -247,18 +245,25 @@ end
 # The retired keys `constrained` and `constraint` abort instead of being
 # ignored, which would run the standard exchange; the top-level key
 # `matching relative tolerance` is required when a pair sets `matching`; the
-# retired top-level key `constraint absolute tolerance` aborts.
-@testset "Matching DN: Retired Keys and Required Tolerance" begin
+# retired top-level key `constraint absolute tolerance` aborts. The controller's
+# `relative tolerance` and `absolute tolerance` are required when a coupling
+# other than a matching pair exists (here the pair without `matching`, which
+# is the standard exchange), and ignored when every coupling is a matching pair.
+@testset "Matching DN: Retired Keys and Required Tolerances" begin
     cases = [
         (edit_bc=bc -> (delete!(bc, "matching"); bc["constrained"]=true), edit_params=nothing),
         (edit_bc=bc -> (bc["constraint"] = "velocity"), edit_params=nothing),
         (edit_bc=nothing, edit_params=p -> delete!(p, "matching relative tolerance")),
         (edit_bc=nothing, edit_params=p -> (p["constraint absolute tolerance"] = 1.0e-9)),
         (edit_bc=nothing, edit_params=p -> (p["matching relative tolerance"] = -1.0)),
+        (edit_bc=bc -> delete!(bc, "matching"), edit_params=nothing),
     ]
     for case in cases
         @test_throws Exception run_constrained_dn(false; num_steps=1, case.edit_bc, case.edit_params)
     end
+    controller_tolerances = p -> (p["relative tolerance"]=1.0; p["absolute tolerance"]=1.0)
+    sim, _, _ = run_constrained_dn(false; num_steps=2, edit_params=controller_tolerances)
+    @test sim.controller.interface_residual ≤ 1.0e-12
     for f in [
         "cantilever-clamped.g",
         "cantilever-free.g",
