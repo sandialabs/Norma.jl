@@ -885,7 +885,11 @@ impose the constraint only at the end of a coarse step, with the force on
 the fine side interpolated linearly in time; Connors, Owen, Kuberry, and
 Bochev~\cite{ConnorsEtAl2024} cast the same structure as a
 discontinuous-Galerkin-in-time multirate framework whose lowest flux order
-is this scheme.
+is this scheme. All three assume the same spatial discretization on both
+sides of the interface, so that their interface map is Boolean; the
+matching exchange removes that assumption, with the $L^2$ projector
+$\Pi_D$ in place of the Boolean map, and the identities of
+Sec.~\ref{sec:identity} hold for any cross-mass matrix $~B$.
 
 The force on the interface rows of side $D$ is, by \eqref{eq:motion}, its
 d'Alembert reaction
