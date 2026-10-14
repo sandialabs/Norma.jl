@@ -157,9 +157,9 @@ end
     @test isfile("cuboids-blended-energy.csv")
     rows = readlines("cuboids-blended-energy.csv")
     # The blended physical energy occupies the first four columns; the columns
-    # appended after them (pseudo-energy, staggered kinetic split, interface jumps) are
+    # appended after them (rate invariant, staggered kinetic split, interface jumps) are
     # NaN or absent for this static overlap run.
-    @test startswith(rows[1], "time,stored_energy,kinetic_energy,total_energy,pseudo_energy_total,")
+    @test startswith(rows[1], "time,stored_energy,kinetic_energy,total_energy,rate_invariant_total,")
     fields = split(rows[end], ",")
     stored = parse(Float64, fields[2])
     kinetic = parse(Float64, fields[3])

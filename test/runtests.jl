@@ -173,7 +173,7 @@ const indexed_test_files = [
     (132, "smoothing-metric-nodal.jl"),
     (133, "adaptivity-length.jl"),
     (134, "adaptivity-quality.jl"),
-    (135, "pseudo-energy.jl"),
+    (135, "rate-invariant.jl"),
     (136, "schwarz-nonoverlap-matching-dn.jl"),
     (137, "schwarz-nonoverlap-windowed-stops.jl"),
 ]

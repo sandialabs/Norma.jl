@@ -4,8 +4,9 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Pseudo-energy Ẽ, the energy functional applied to the velocity and the acceleration (subdomain_pseudo_energy in
-# overlap_energy.jl), Ẽ = 1/2 a^T A a + 1/2 v^T K v with
+# Rate invariant Ẽ, the energy functional evaluated on the velocity and the
+# acceleration, the invariant of the time-differentiated system
+# (subdomain_rate_invariant in overlap_energy.jl), Ẽ = 1/2 a^T A a + 1/2 v^T K v with
 # A = M + (dt^2/2)(2 beta - gamma) K, on the undecomposed linear elastic
 # cantilever written as a one-subdomain multidomain run. The Newmark scheme
 # with beta = 1/4, gamma = 1/2 and the central difference scheme both conserve
@@ -16,11 +17,11 @@
 using YAML
 using LinearAlgebra
 
-const pseudo_example = "../examples/nonoverlap/dynamic-same-step/cantilever-dn"
+const invariant_example = "../examples/nonoverlap/dynamic-same-step/cantilever-dn"
 
 function run_monolithic_e2(explicit::Bool; num_steps=50, dt=5.0e-7)
-    cp("$pseudo_example/cantilever.g", "cantilever.g"; force=true)
-    sub = YAML.load_file("$pseudo_example/cantilever.yaml"; dicttype=Norma.Parameters)
+    cp("$invariant_example/cantilever.g", "cantilever.g"; force=true)
+    sub = YAML.load_file("$invariant_example/cantilever.yaml"; dicttype=Norma.Parameters)
     delete!(sub["time integrator"], "initial time")
     delete!(sub["time integrator"], "final time")
     if explicit
@@ -37,7 +38,7 @@ function run_monolithic_e2(explicit::Bool; num_steps=50, dt=5.0e-7)
     YAML.write_file("cantilever.yaml", sub)
     params = Norma.Parameters(
         "type" => "multi",
-        "name" => "mono-pseudo",
+        "name" => "mono-invariant",
         "domains" => ["cantilever.yaml"],
         "Exodus output interval" => 1.0,
         "initial time" => 0.0,
@@ -50,43 +51,43 @@ function run_monolithic_e2(explicit::Bool; num_steps=50, dt=5.0e-7)
         "blended energy output" => true,
     )
     sim = Norma.run(params)
-    rows = readlines("mono-pseudo-energy.csv")
+    rows = readlines("mono-invariant-energy.csv")
     header = split(rows[1], ",")
     data = [parse.(Float64, split(row, ",")) for row in rows[2:end]]
-    for f in ["cantilever.g", "cantilever.e", "cantilever.yaml", "mono-pseudo-energy.csv"]
+    for f in ["cantilever.g", "cantilever.e", "cantilever.yaml", "mono-invariant-energy.csv"]
         rm(f; force=true)
     end
     return sim, header, data
 end
 
-@testset "Differentiated-System Energy: Newmark" begin
+@testset "Rate Invariant: Newmark" begin
     sim, header, data = run_monolithic_e2(false)
     @test sim.failed == false
     @test length(data) == 51
-    i_pseudo = findfirst(==("pseudo_energy_total"), header)
+    i_invariant = findfirst(==("rate_invariant_total"), header)
     i_e1 = findfirst(==("total_energy"), header)
-    pseudo = [row[i_pseudo] for row in data]
+    invariant = [row[i_invariant] for row in data]
     e1 = [row[i_e1] for row in data]
-    @test maximum(abs.(pseudo ./ pseudo[1] .- 1.0)) < 1.0e-11
+    @test maximum(abs.(invariant ./ invariant[1] .- 1.0)) < 1.0e-11
     @test maximum(abs.(e1 ./ e1[1] .- 1.0)) < 1.0e-11
     # The quadrature form of Ẽ equals the quadratic forms of the assembled
     # matrices (A = M for beta = 1/4, gamma = 1/2).
     model = sim.subsims[1].model
     a = vec(model.acceleration)
     v = vec(model.velocity)
-    pseudo_matrix = 0.5 * dot(a, model.mass * a) + 0.5 * dot(v, model.stiffness * v)
-    pseudo_written, _, _ = Norma.subdomain_pseudo_energy(sim.subsims[1])
-    @test pseudo_written ≈ pseudo_matrix rtol = 1.0e-12
-    @test pseudo_written ≈ pseudo[end] rtol = 1.0e-14
+    invariant_matrix = 0.5 * dot(a, model.mass * a) + 0.5 * dot(v, model.stiffness * v)
+    invariant_written, _, _ = Norma.subdomain_rate_invariant(sim.subsims[1])
+    @test invariant_written ≈ invariant_matrix rtol = 1.0e-12
+    @test invariant_written ≈ invariant[end] rtol = 1.0e-14
 end
 
-@testset "Differentiated-System Energy: Central Difference" begin
+@testset "Rate Invariant: Central Difference" begin
     sim, header, data = run_monolithic_e2(true)
     @test sim.failed == false
     @test length(data) == 51
-    i_pseudo = findfirst(==("pseudo_energy_total"), header)
-    pseudo = [row[i_pseudo] for row in data]
-    @test maximum(abs.(pseudo ./ pseudo[1] .- 1.0)) < 1.0e-12
+    i_invariant = findfirst(==("rate_invariant_total"), header)
+    invariant = [row[i_invariant] for row in data]
+    @test maximum(abs.(invariant ./ invariant[1] .- 1.0)) < 1.0e-12
     # Without Schwarz side sets every row of the staggered kinetic energy is
     # an interior row.
     i_interface = findfirst(==("staggered_kinetic_interface"), header)

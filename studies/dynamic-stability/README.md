@@ -21,7 +21,7 @@ Read these first, in this order:
 
 1. `docs/notes/schwarz-coupling/schwarz-coupling.pdf`, Section 9: what the
    constrained exchange is (its five changes against the Dirichlet-Neumann
-   exchange), why it conserves (the pseudo-energy identity and its
+   exchange), why it conserves (the rate invariant identity and its
    cancellation), and what was measured on the beam, including the Aitken
    and Anderson subsections; then the conclusions. The tables there are the
    results this study extends; reproducing one of its numbers is the best
@@ -45,8 +45,8 @@ Courant number of every run the same; the explicit runs use a Courant
 number of 0.5.
 
 Two energies are written at every stop (`run-energy.csv`): the energy E,
-kinetic plus strain, which the plots show, and the pseudo-energy, the energy
-functional applied to the velocity and the acceleration (`pseudo_energy_total`,
+kinetic plus strain, which the plots show, and the rate invariant, the energy
+functional evaluated on the velocity and the acceleration (`rate_invariant_total`,
 in J/s²), which is the quantity that the velocity constraint conserves by
 theorem and which the summary table reports.
 
@@ -149,7 +149,7 @@ explain, keep its directory and its log and ask.
 
 `summary.csv` has one row per case (the header of `collect.jl` lists the
 columns): the energy ratio at 1, 2, 5, and 10 ms, its extremes, the largest
-change of the energy and of the pseudo-energy, the interface jumps at the
+change of the energy and of the rate invariant, the interface jumps at the
 end, the impulse residual of subcycled cases, the Schwarz iterations per
 stop, the wall time, and an outcome:
 
@@ -175,11 +175,11 @@ from the coupling note (reproduce them first):
    constrained exchange conserves to roundoff for every pair.
 2. **Mesh ratio**: the constrained exchange conserves at every ratio.
 3. **Tolerance**: the energy drift grows with the tolerance; at 1e-12 the
-   pseudo-energy drifts by about 1e-10 over the 10⁴ stops. The question is
+   rate invariant drifts by about 1e-10 over the 10⁴ stops. The question is
    how the drift scales with the tolerance and with the number of stops.
 4. **Time steps**: with the clamped (coarse-step) part as the Dirichlet side
-   the pseudo-energy is conserved and the energy stays within 0.4%; with the
-   free (fine-step) part as the Dirichlet side the pseudo-energy is still
+   the rate invariant is conserved and the energy stays within 0.4%; with the
+   free (fine-step) part as the Dirichlet side the rate invariant is still
    conserved but the energy swings by 12% (II) and 31% (EE) over the bending
    period.
 5. **Solver**: all converged solvers give the same energies; they differ in

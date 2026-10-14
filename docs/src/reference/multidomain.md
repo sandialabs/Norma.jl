@@ -169,8 +169,8 @@ The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
 |---|---|
 | `time` | time of the stop |
 | `stored_energy`, `kinetic_energy`, `total_energy` | blended energy E: strain energy, kinetic energy (the staggered form ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for central difference subdomains), and their sum |
-| `pseudo_energy_total` | Ẽ, the pseudo-energy: the sum over subdomains of the energy functional applied to the velocity and the acceleration, in units of energy per time squared |
-| `pseudo_energy_<subdomain>` | Ẽ of one subdomain, one column per subdomain in the order of `domains` |
+| `rate_invariant_total` | Ẽ, the rate invariant: the sum over subdomains of the energy functional evaluated on the velocity and the acceleration, which is the invariant of the time-differentiated equation of motion; in units of energy per time squared |
+| `rate_invariant_<subdomain>` | Ẽ of one subdomain, one column per subdomain in the order of `domains` |
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
 | `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`) |
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in units of displacement and of velocity |
@@ -190,7 +190,7 @@ stored energy at t = 0 is 1506.28 J, the kinetic energy −10.68 J, and
 velocity at the stop gives E(0) equal to the stored energy, but E then varies
 by 0.62% over the same run, so it is not written.
 
-Ẽ is the pseudo-energy, the Newmark discrete energy of the differentiated equation of motion
+Ẽ is the rate invariant, the Newmark discrete invariant of the differentiated equation of motion
 M ȧ + K v = ḟ (Prakash and Hjelmstad 2004, Eqs. (56)–(58) and (71)),
 Ẽ = ½ aᵀ A a + ½ vᵀ K v with A = M + (Δt²/2)(2β − γ) K, evaluated as
 ½ aᵀ M a + (Δt²/2)(2β − γ) SE(a) + SE(v), where SE(x) is the strain energy

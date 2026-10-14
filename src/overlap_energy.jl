@@ -377,7 +377,8 @@ function total_blended_energy(sim::MultiDomainSimulation)
 end
 
 # ---------------------------------------------------------------------------
-# Pseudo-energy: the energy functional applied to the velocity and the acceleration (energy per time squared).
+# Rate invariant: the invariant of the time-differentiated system, the energy
+# functional evaluated on the velocity and the acceleration (energy per time squared).
 #
 # Differentiating the linear equation of motion M ü + K u = f in time gives
 # M a' + K v = f', whose Newmark discrete energy (Prakash and Hjelmstad 2004,
@@ -404,7 +405,7 @@ end
 # ---------------------------------------------------------------------------
 
 # True when Ẽ is defined for the subdomain.
-function pseudo_energy_applies(subsim::SingleDomainSimulation)
+function rate_invariant_applies(subsim::SingleDomainSimulation)
     model = subsim.model
     model isa SolidMechanics || return false
     model.mesh_smoothing && return false
@@ -487,8 +488,8 @@ end
 # difference, the staggered kinetic energy ½ vᵀ M_L v - (Δt²/8) aᵀ M_L a split
 # into the rows of the Schwarz interface nodes and the remaining rows (NaN for
 # other integrators). The lumped mass is diagonal, so the split is exact.
-function subdomain_pseudo_energy(subsim::SingleDomainSimulation)
-    pseudo_energy_applies(subsim) || return NaN, NaN, NaN
+function subdomain_rate_invariant(subsim::SingleDomainSimulation)
+    rate_invariant_applies(subsim) || return NaN, NaN, NaN
     model = subsim.model
     integrator = subsim.integrator
     Δt = integrator.time_step
@@ -509,8 +510,8 @@ function subdomain_pseudo_energy(subsim::SingleDomainSimulation)
     else
         kin_a = kin_a_consistent
     end
-    pseudo = kin_a + 0.5 * Δt * Δt * (2.0 * β - γ) * se_a + se_v
-    return pseudo, staggered_interface, staggered_interior
+    invariant = kin_a + 0.5 * Δt * Δt * (2.0 * β - γ) * se_a + se_v
+    return invariant, staggered_interface, staggered_interior
 end
 
 # Interface displacement and velocity jumps of every DN pair at the end of the
@@ -541,19 +542,19 @@ end
 
 # Append the current blended energy to <sim.name>-energy.csv (header written on
 # the first stop). The first four columns are the blended physical energy; the
-# columns after them are the pseudo-energy Ẽ (total and per
+# columns after them are the rate invariant Ẽ (total and per
 # subdomain), the staggered kinetic energy of the central difference subdomains
 # on the Schwarz interface rows and on the remaining rows, and the one-sided
 # displacement and velocity jumps of each Dirichlet-Neumann pair.
 function write_blended_energy_csv(sim::MultiDomainSimulation)
     stored, kinetic, total = total_blended_energy(sim)
-    pseudo = Float64[]
+    invariant = Float64[]
     staggered_interface = 0.0
     staggered_interior = 0.0
     any_explicit = false
     for subsim in sim.subsims
-        pseudo_k, interface_k, interior_k = subdomain_pseudo_energy(subsim)
-        push!(pseudo, pseudo_k)
+        invariant_k, interface_k, interior_k = subdomain_rate_invariant(subsim)
+        push!(invariant, invariant_k)
         if subsim.integrator isa CentralDifference
             any_explicit = true
             staggered_interface += interface_k
@@ -569,14 +570,14 @@ function write_blended_energy_csv(sim::MultiDomainSimulation)
     time = sim.controller.time
     open(filename, stop == 0 ? "w" : "a") do io
         if stop == 0
-            header = ["time", "stored_energy", "kinetic_energy", "total_energy", "pseudo_energy_total"]
-            append!(header, ["pseudo_energy_" * subsim.name for subsim in sim.subsims])
+            header = ["time", "stored_energy", "kinetic_energy", "total_energy", "rate_invariant_total"]
+            append!(header, ["rate_invariant_" * subsim.name for subsim in sim.subsims])
             append!(header, ["staggered_kinetic_interface", "staggered_kinetic_interior"])
             append!(header, jump_names)
             println(io, join(header, ","))
         end
-        row = Any[time, stored, kinetic, total, sum(pseudo)]
-        append!(row, pseudo)
+        row = Any[time, stored, kinetic, total, sum(invariant)]
+        append!(row, invariant)
         append!(row, [staggered_interface, staggered_interior])
         append!(row, jump_values)
         return println(io, join(row, ","))

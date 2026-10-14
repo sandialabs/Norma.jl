@@ -10,7 +10,7 @@
 # The energy E is the blended total energy of run-energy.csv (kinetic plus
 # strain; for central difference the kinetic energy is the staggered form
 # that the scheme conserves), normalized by its value at the initial time.
-# The pseudo-energy is the energy functional applied to the velocity and the
+# The rate invariant is the energy functional evaluated on the velocity and the
 # acceleration, the quantity that the velocity constraint conserves.  The
 # columns are:
 #   status            completed, failed, or not run
@@ -20,7 +20,7 @@
 #   E/E0@t            energy ratio at each checkpoint (blank if not reached)
 #   E/E0 max, min     extremes of the energy ratio over the run
 #   dE                max |E/E0 - 1| over the run
-#   dpseudo           max |pseudo/pseudo0 - 1| over the run (blank for a
+#   dinvariant        max |I/I0 - 1| of the rate invariant over the run (blank for a
 #                     monolithic run without the column)
 #   jump u, jump v    root mean square interface displacement and velocity
 #                     jump at the end of the run (m, m/s; blank if none)
@@ -125,13 +125,14 @@ function summarize(dir)
     row["ratio"] = row["ratio"] == "NaN" ? "" : row["ratio"]
     if columns === nothing
         time, ratio = [0.0], [NaN]
-        row["dpseudo"] = row["jump u"] = row["jump v"] = row["impulse"] = ""
+        row["dinvariant"] = row["jump u"] = row["jump v"] = row["impulse"] = ""
     else
         time = columns["time"]
         total = columns["total_energy"]
         ratio = total ./ total[1]
-        pseudo = get(columns, "pseudo_energy_total", nothing)
-        row["dpseudo"] = format(pseudo === nothing ? nothing : max_deviation(pseudo))
+        # Runs made before October 13, 2026 wrote the column as pseudo_energy_total.
+        invariant = get(columns, "rate_invariant_total", get(columns, "pseudo_energy_total", nothing))
+        row["dinvariant"] = format(invariant === nothing ? nothing : max_deviation(invariant))
         jump_u = column(columns, "displacement_jump_rms")
         jump_v = column(columns, "velocity_jump_rms")
         impulse = column(columns, "impulse_residual_relative")
@@ -175,7 +176,7 @@ const COLUMNS = [
     "E/E0 max",
     "E/E0 min",
     "dE",
-    "dpseudo",
+    "dinvariant",
     "jump u",
     "jump v",
     "impulse",
@@ -202,7 +203,7 @@ function main(args)
         end
     end
     times = join((@sprintf("%8s", @sprintf("%.3g ms", 1.0e3 * t)) for t in BEAM.checkpoints), " ")
-    println("\nE/E0 at $times      dE       dpseudo  it")
+    println("\nE/E0 at $times      dE       dinvariant  it")
     for row in rows
         ratios = join((@sprintf("%8s", row["E/E0 $k"]) for k in 1:4), " ")
         @printf(
@@ -211,7 +212,7 @@ function main(args)
             row["outcome"],
             ratios,
             row["dE"],
-            row["dpseudo"],
+            row["dinvariant"],
             row["iterations mean"],
             row["status"] == "failed" ? "ended at " * row["reached"] * " s" : ""
         )

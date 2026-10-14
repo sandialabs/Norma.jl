@@ -55,8 +55,9 @@ iteration stops on the interface jump and the force residual; and the
 initial acceleration is computed on the coupled system. At the fixed
 point the exchange solves the velocity-constrained coupled problem of
 Gravouil and Combescure, of Prakash and Hjelmstad, and of Connors, Owen,
-Kuberry, and Bochev, for which the pseudo-energy (the energy functional
-applied to the velocity and the acceleration) is conserved exactly for
+Kuberry, and Bochev, for which the rate invariant (the energy functional
+evaluated on the velocity and the acceleration, the invariant of the
+time-differentiated system) is conserved exactly for
 linear elasticity, for any pair of Newmark schemes, for any mesh ratio,
 and, with the coarse-step side as the Dirichlet side, for any integer
 step ratio. The note gives the formulation and its proof, the algorithm,
@@ -96,7 +97,7 @@ a subdomain input:
   (\code{Schwarz DN nonoverlap} with \code{matching}): one side matches the
   velocity or the displacement of the other and the other receives the
   d'Alembert reaction of the first, so that the fixed point of the
-  iteration is the constrained coupled problem whose pseudo-energy is
+  iteration is the constrained coupled problem whose rate invariant is
   conserved (Sec.~\ref{sec:matching});
 \item the \emph{Robin--Robin condition} (\code{Schwarz RR nonoverlap}):
   each side imposes $~t + \alpha ~W ~u = ~g$ on the shared interface, with
@@ -267,18 +268,19 @@ $\tfrac12 (~u^n)^T ~K ~u^{n+1}$. The form \eqref{eq:staggered} pairs with
 $\mathrm{SE}(~u^n)$ and therefore extends to nonlinear materials. The
 consistent-mass kinetic energy $\tfrac12 (~v^n)^T ~M ~v^n$ at integer steps
 misrepresents the short-wavelength content of a sharp front by several
-percent. For linear elasticity the pseudo-energy is
+percent. For linear elasticity the rate invariant is
 \begin{equation}
   \tilde{E} = \sum_k \Bigl(\tfrac12\, ~a_k^T ~S_k\, ~a_k
              + \tfrac12\, ~v_k^T ~K_k\, ~v_k\Bigr),
   \qquad
   ~S_k = ~M_k + \Bigl(\beta_k - \frac{\gamma_k}{2}\Bigr)\Delta t_k^2\, ~K_k ,
-  \label{eq:pseudo-energy}
+  \label{eq:rate-invariant}
 \end{equation}
-the energy functional applied to the velocity and the acceleration, which
-is the energy of the time-differentiated system
-$~M \dot{~a} + ~K ~v = \dot{~f}$; its units are those of energy divided by
-time squared. $~S_k$ is $~M_k$ for the trapezoidal rule and
+the energy functional evaluated on the velocity and the acceleration. The
+time derivative of a solution of $~M \ddot{~u} + ~K ~u = ~f$ solves
+$~M \dot{~a} + ~K ~v = \dot{~f}$, so this quadratic is the invariant of the
+time-differentiated system; it is not an energy, and its units are those of
+energy divided by time squared. $~S_k$ is $~M_k$ for the trapezoidal rule and
 $~M_k - \tfrac14 \Delta t_k^2 ~K_k$ for central difference, positive
 definite exactly below the stability limit of central difference. Relative
 to $E$, $\tilde{E}$ weights each vibration mode by the square of its
@@ -470,9 +472,9 @@ multiples of \code{Exodus output interval} (default $\Delta t_c$) and
 \code{<name>-energy.csv} at every stop, with the columns \code{time},
 \code{stored\_energy}, \code{kinetic\_energy}, \code{total\_energy}
 ($E$ of \eqref{eq:energy}, blended over overlaps as in
-Sec.~\ref{sec:blended}), \code{pseudo\_energy\_total} and one
-\code{pseudo\_energy\_<domain>} per subdomain ($\tilde{E}$ of
-\eqref{eq:pseudo-energy}, NaN unless every material is linear elastic and
+Sec.~\ref{sec:blended}), \code{rate\_invariant\_total} and one
+\code{rate\_invariant\_<domain>} per subdomain ($\tilde{E}$ of
+\eqref{eq:rate-invariant}, NaN unless every material is linear elastic and
 every integrator is central difference or Newmark without HHT-$\alpha$),
 \code{staggered\_kinetic\_interface} and
 \code{staggered\_kinetic\_interior} (the central difference kinetic term
@@ -482,7 +484,7 @@ Dirichlet--Neumann pair, the relative one-sided jumps
 of Sec.~\ref{sec:matching-stopping} with their root mean square values
 (\code{\_rms}) and, for matching pairs, the impulse residual
 \eqref{eq:impulse} per component and its relative value. The
-pseudo-energy and staggered columns are not blended over overlaps.
+rate invariant and staggered columns are not blended over overlaps.
 
 \subsection{Swaps and restart}
 \label{sec:swaps}
@@ -915,7 +917,7 @@ interface force $~f_k$ on its interface rows, and no other loads,
   \label{eq:per-side}
 \end{equation}
 with $\Delta(\cdot)^n = (\cdot)^n - (\cdot)^{n-1}$ and $\tilde{E}_k$ the
-term of side $k$ in \eqref{eq:pseudo-energy}. With $\gamma_k = 1/2$ the
+term of side $k$ in \eqref{eq:rate-invariant}. With $\gamma_k = 1/2$ the
 second term vanishes.
 
 \begin{proposition}[Equal steps]
@@ -1835,7 +1837,7 @@ subdomains.
   iterations beyond the second. Starting each solve from the previous
   Schwarz iterate would let one Newton iteration per Schwarz iteration
   converge to the coupled solution; its effect on the Schwarz count and on
-  the pseudo-energy identity has not been measured.
+  the rate invariant identity has not been measured.
 \item \emph{Mixed pair with an explicit coarse-step side.} The coarse-step
   side must be the Dirichlet side and an explicit Dirichlet side has a gain
   down to $-13$; Anderson acceleration converges at equal steps in this
@@ -1928,8 +1930,8 @@ interface), and 137 (windowed stops); examples
 \code{examples/nonoverlap/static-same-step/cuboids-dirichlet-neumann},
 \code{matrix-inclusion}, and
 \code{examples/nonoverlap/dynamic-same-step/cantilever-dn}. Matching
-exchange: tests 135 (pseudo-energy) and 136 (operators, reaction, Newmark
-relations, pseudo-energy conservation, displacement matching, coupled
+exchange: tests 135 (rate invariant) and 136 (operators, reaction, Newmark
+relations, rate invariant conservation, displacement matching, coupled
 initial acceleration, subcycling, the direct solve, Aitken and Anderson
 acceleration, the equivalence of Anderson acceleration with GMRES on a
 probed interface map, and the retired keys); examples
