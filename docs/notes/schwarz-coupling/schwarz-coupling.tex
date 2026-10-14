@@ -1109,7 +1109,16 @@ displacement tolerance divided by the step is not a valid velocity floor
 and stops the iteration after one pass). When every coupling of the
 simulation is a matching pair, this is the only stopping test, also at the
 first iteration of a stop, and the displacement update of
-Sec.~\ref{sec:stopping} is not used.
+Sec.~\ref{sec:stopping} is not used. Measured against the earlier rule that
+also required the displacement update to meet the controller's absolute
+tolerance at the first iteration, this changes only the stops at which
+nothing has yet reached the interface: on the nonconforming beam
+($2000$ stops) the $7953$ Schwarz iterations and the energy output are
+identical, and on the linear cylinders ($2000$ stops, fixed relaxation
+$0.5$, $\epsilon = 10^{-12}$) the first seven stops take $0$ iterations
+instead of $1$, every later count of the $53\,694$ is the same, and the
+energies of the two runs differ by at most $7.7\times 10^{-14}$ ($E$) and
+$4.4\times 10^{-12}$ ($\tilde{E}$).
 
 \paragraph{Stall.} Let $\mu_i$ be the larger of the jump and the force
 residual, maximized over the matching pairs, at iteration $i$. The
@@ -1635,7 +1644,9 @@ iteration and with the monolithic runs. It conserves $E$ and $\tilde{E}$ to
 roundoff on the beam at every mesh ratio and on the linear cylinders, at a
 lower cost than the iteration on nonconforming meshes; on the cylinders the
 relative interface velocity jump at the end of every stop is at most
-$7\times 10^{-16}$. On the linear cylinders $\tilde{E}$ varies more than
+$7\times 10^{-16}$, against $10^{-12}$ for the iteration at
+$\epsilon = 10^{-12}$, which needs $26.9$ Schwarz iterations per stop at a
+fixed factor of $0.5$ and conserves both quantities to the same digits. On the linear cylinders $\tilde{E}$ varies more than
 $E$ because the deformation gradient is formed from the current
 coordinates $~X + ~u$, which loses digits in proportion to
 $\lvert ~X \rvert / \lvert ~u \rvert$; its per-step increments have a
@@ -1644,9 +1655,10 @@ standard deviation of $1.1\times 10^{-13}$ and no significant mean.
 \begin{table}[htbp]
 \centering
 \caption{Direct interface solve, two explicit sides at equal steps. Beam:
-$10$\,ms, $1\,\mu$s; cylinders: $1$\,ms, $0.5\,\mu$s, eight threads.
-$\delta E$ and $\delta\tilde{E}$ as in Table~\ref{tab:equal}; drift is the
-root mean square interface displacement jump at the end.}
+$10$\,ms, $1\,\mu$s; cylinders: $1$\,ms, $0.5\,\mu$s, eight threads
+($^{*}$one thread). $\delta E$ and $\delta\tilde{E}$ as in
+Table~\ref{tab:equal}; drift is the root mean square interface
+displacement jump at the end.}
 \label{tab:direct}
 \footnotesize\setlength{\tabcolsep}{3pt}
 \begin{tabular}{llcccrrl}
@@ -1661,6 +1673,7 @@ beam, $1{:}0.75$, EE & direct & $1.2\mathrm{e}{-14}$ & $6.0\mathrm{e}{-14}$ & $2
  & iterated & $1.6\mathrm{e}{-12}$ & $4.6\mathrm{e}{-12}$ & $2.3\mathrm{e}{-15}$ & 18.1/20 & 164 & rel.\ $10^{-12}$ \\
 linear cylinders, $-5$\,m/s & monolithic & $1.3\mathrm{e}{-13}$ & $6.2\mathrm{e}{-12}$ & -- & -- & 371 & -- \\
  & direct & $9.9\mathrm{e}{-14}$ & $3.2\mathrm{e}{-12}$ & $6.0\mathrm{e}{-19}$ & -- & 735 & -- \\
+ & iterated, $\theta = 0.5$ & $1.3\mathrm{e}{-13}$ & $1.8\mathrm{e}{-12}$ & $8.3\mathrm{e}{-17}$ & 26.9/28 & 14\,265$^{*}$ & rel.\ $10^{-12}$ \\
 linear cylinders, $-35$\,m/s & monolithic & $1.2\mathrm{e}{-14}$ & $4.8\mathrm{e}{-13}$ & -- & -- & 359 & -- \\
  & direct & $1.1\mathrm{e}{-14}$ & $4.3\mathrm{e}{-13}$ & $4.3\mathrm{e}{-18}$ & -- & 731 & -- \\
 \bottomrule
