@@ -205,8 +205,8 @@ acceleration solves $~M_{ff}\, ~a_f = (~f^{\mathrm{ext}} - ~f^{\mathrm{int}})_f 
 ~M_{fc}\, ~a_c$ for the free rows $f$ given the prescribed rows $c$. The
 rows held by a Schwarz coupling carry the partner's projected
 acceleration, which is zero until the partner has computed its own. On a
-fresh start those rows are therefore excluded from the set $c$ of the
-correction; they are included only in the refinement passes of
+start from initial conditions those rows are therefore excluded from the
+set $c$ of the correction; they are included only in the refinement passes of
 Sec.~\ref{sec:initialization} and in the coupled initial acceleration of
 Sec.~\ref{sec:initial}, once every subdomain has an acceleration.
 
@@ -306,9 +306,9 @@ number of stops is $\mathrm{round}((t_f - t_0)/\Delta t_c)$, and the span
 $t_f - t_0$ must be a multiple of $\Delta t_c$. The step of subdomain $k$ is
 $\Delta t_k = \min(\Delta t_k^{\mathrm{in}}, \Delta t_c)$, with
 $\Delta t_k^{\mathrm{in}}$ its own input step (default $\Delta t_c$); for
-central difference it is further capped at the stable step of the mesh.
+central difference it is further limited to the stable step of the mesh.
 Within a stop the subdomain takes substeps of $\Delta t_k$ from $t_{s-1}$,
-the last substep absorbing a remainder of up to $1.5\,\Delta t_k$, until it
+the last substep taking a remainder of up to $1.5\,\Delta t_k$, until it
 reaches $t_s$ to a relative tolerance of $10^{-6}$. A stop of $m_k$
 substeps is a window of $m_k$ for subdomain $k$. No check enforces that
 $\Delta t_c$ is a multiple of $\Delta t_k$; the substep count is whatever
@@ -397,7 +397,7 @@ the run (\code{unconverged step action: abort}, the default) with the
 measures that apply, or continues with the last iterate
 (\code{warn}).
 
-\paragraph{Guards.} An iteration at which a relaxation factor of magnitude
+\paragraph{Iterations not accepted.} An iteration at which a relaxation factor of magnitude
 at most $10^{-12}$ was applied is not accepted as converged, because a
 factor of zero leaves the interface datum unchanged and the subdomains then
 return the solution they already had (Sec.~\ref{sec:aitken}). Under
@@ -411,13 +411,14 @@ The relaxation state of a coupling pair (Sec.~\ref{sec:relaxation}) is kept
 per pair and per \emph{slot}, a substep end time at which the relaxed side
 applies its condition; a stop that spans several substeps of the relaxed
 side has several slots. The state is cleared at every stop. A state shared
-across substeps would blend iterates of different times, which acts as a
-filter on the exchanged datum and moves the converged solution. Aitken and
+across substeps would combine iterates of different times, which acts as
+a filter on the exchanged datum and moves the converged solution. Aitken and
 Anderson acceleration apply to stops of one slot; a stop of several slots
 uses the fixed factor \code{relaxation parameter}. Windowed and
 single-substep runs of the same problem agree to the Schwarz truncation
 error, and the total number of substep solves is proportional to the
-iterations per stop, so a window does not reduce the cost.
+iterations per stop, so a window does not reduce the number of subdomain
+solves.
 
 \subsection{Control of the Newton tolerance of the subdomain solves}
 \label{sec:inexact-newton}
@@ -439,7 +440,7 @@ two otherwise. A Newton solve stops when its residual norm is at or below
 the solver's absolute tolerance or its ratio to the initial residual norm
 is at or below $\tau_i$; the absolute tolerance of the subdomain
 \code{solver} block still applies. Because every Schwarz iteration restarts
-from the state at $t_{s-1}$, a constant Newton tolerance looser than the
+from the state at $t_{s-1}$, a constant Newton tolerance larger than the
 Schwarz tolerance leaves an error of the size of the Newton error that the
 displacement criterion does not detect; the ratio $\eta < 1$ keeps the
 Newton error of the accepted iterate below the Schwarz update by the factor
@@ -510,7 +511,7 @@ the Dirichlet side of a Dirichlet--Neumann or contact pair, and the
 later-listed side of a Robin--Robin pair. The overlapping coupling is not
 relaxed. Let $~g_i$ be the datum computed from the partner at iteration
 $i$ and $~\lambda_{i-1}$ the datum applied at the previous iteration of
-the same slot; a fresh slot has no previous datum and uses $~g_i$
+the same slot; a new slot has no previous datum and uses $~g_i$
 unrelaxed (the Robin--Robin datum starts from zero, Sec.~\ref{sec:rr}).
 The input key \code{relaxation} selects one of four schemes, with
 \code{relaxation parameter} $\theta_0$ (default $1$; $0.5$ under
@@ -543,11 +544,11 @@ $\norm{~\delta_i}^2 \le (10^{-14})^2 \norm{~\lambda_{i-1}}^2$, so that a
 pair whose datum has stopped moving does not produce a factor of zero. A
 factor of magnitude at most $10^{-12}$ is recorded, and the iteration at
 which it was applied is not accepted as converged
-(Sec.~\ref{sec:stopping}): a zero factor freezes the interface, every
-subdomain then re-solves against the data it already had, and the
-displacement update that follows measures the frozen blend, not the
-interface residual. For a Dirichlet--Neumann pair the first secant factor
-appears at iteration $2$: at iteration $0$ the fresh slot has $~r = 0$,
+(Sec.~\ref{sec:stopping}): a zero factor leaves the interface datum at
+its previous value, every subdomain then re-solves against the data it
+already had, and the displacement update that follows measures the
+effect of an unchanged datum, not the interface residual. For a Dirichlet--Neumann pair the first secant factor
+appears at iteration $2$: at iteration $0$ the new slot has $~r = 0$,
 and at iteration $1$ the difference $~d$ is zero.
 
 The vector on which the factor is formed depends on the coupling. For the
@@ -621,7 +622,8 @@ A point of a facet of one side of a shared interface is located on the
 partner's side set by a closest-point projection onto the partner facets,
 with a bounding-box prefilter by the nearest partner node; the facet whose
 parametric overshoot is at most $10^{-6}$ is preferred, with the distance
-as the tie-breaker, and the facet of the nearest node is the fallback.
+deciding between equal overshoots, and the facet of the nearest node is
+used when no facet satisfies the overshoot bound.
 The search uses the partner's current coordinates, which are the reference
 coordinates when the operators are built at initialization.
 
@@ -650,15 +652,15 @@ projections are built from these matrices:
 $~P_d$ mapping nodal values of the source to the $L^2$ projection of their
 trace onto the destination, and $~N_d$ mapping nodal forces of the source
 to nodal forces of the destination. For $~P_d$ the code prefers the
-source-integrated $~L$ and falls back to the destination-integrated one
+source-integrated $~L$ and uses the destination-integrated one instead
 when $\max|~P_d \mathbf{1} - \mathbf{1}| > 10^{-10}$; for $~N_d$ it prefers
-the destination-integrated $~L$ and falls back to the other when the
+the destination-integrated $~L$ and uses the other instead when the
 relative error of the column sums of $~L$ against $~W_s \mathbf{1}$ exceeds
 $10^{-10}$. The classical Dirichlet--Neumann, Robin--Robin, and contact
 couplings build $~P_d$ and $~N_d$ independently on each side by these
 rules. The matching exchange instead builds both sides' transfers from one
 cross-mass matrix $~B$, integrated over the facets of the side with more
-interface nodes, with no fallback: $\Pi_1 = ~W_1^{-1} ~B$ and
+interface nodes, with no alternative: $\Pi_1 = ~W_1^{-1} ~B$ and
 $\Pi_2 = ~W_2^{-1} ~B^T$, each side's force transfer the transpose of the
 partner's kinematic transfer, and the partition-of-unity error
 $\max(\max|\Pi_1 \mathbf{1} - \mathbf{1}|, \max|\Pi_2 \mathbf{1} - \mathbf{1}|)$
@@ -714,7 +716,7 @@ $~v|_{\Gamma_k} = ~P ~v^{\,j}$, $~a|_{\Gamma_k} = ~P ~a^{\,j}$.
 
 \paragraph{Properties.} The three fields are prescribed in both the
 dynamic and the quasi-static case; a quasi-static subdomain uses only the
-displacement, and a Newmark subdomain with a consistent mass sees the
+displacement, and a Newmark subdomain with a consistent mass receives the
 prescribed acceleration in its free rows through the coupling term of the
 mass matrix. The element search and the shape function values are fixed
 at construction on the reference configuration and are not updated for
@@ -1003,7 +1005,8 @@ input (Sec.~\ref{sec:roles}).
 
 \paragraph{Scope.} Propositions~\ref{prop:equal} and~\ref{prop:subcycled}
 hold for a linear stiffness. For a nonlinear material the exchange still
-closes the interface exactly and does no interface work at the fixed point;
+satisfies the velocity constraint exactly and does no interface work at the
+fixed point;
 the energy then varies by the time-step error of the subdomain integrators
 themselves. For central difference that error is of order $\Delta t^2$ and
 does not grow: the scheme conserves a modified energy that differs from $E$
@@ -1169,7 +1172,7 @@ with $~H_N = ~C_N \tilde{~M}_N^{-1} ~C_N^T$ the interface flexibility of $N$
 difference) and $~S_D$ the interface dynamic stiffness of $D$. A fixed
 relaxation factor $\theta$ converges if and only if the spectral radius of
 $(1 - \theta)~I + \theta ~G$ is below one; for a real spectrum in $[a, b]$
-the best factor is $\theta^\ast = 2/((1-a) + (1-b))$ with contraction
+the optimal factor is $\theta^\ast = 2/((1-a) + (1-b))$ with contraction
 $(b - a)/((1-a) + (1-b))$. Table~\ref{tab:dn-gain} lists the computed
 eigenvalues on the beam. The rules that follow, in order of precedence:
 \begin{enumerate}[itemsep=2pt]
@@ -1186,7 +1189,8 @@ eigenvalues on the beam. The rules that follow, in order of precedence:
 When rules 1 and 3 conflict (a finer mesh with a finer step), giving the
 finer mesh the coarser step satisfies both where the stability limit of an
 explicit side allows it. With Anderson acceleration every assignment
-measured converges, so the rules then set the cost, not the feasibility.
+measured converges, so the rules then set the iteration count, not the
+feasibility.
 
 \subsection{Direct interface solve for two explicit subdomains}
 \label{sec:direct}
@@ -1285,7 +1289,7 @@ condition solved on side $k$ is therefore
 \paragraph{Relaxation.} The side listed later in \code{domains} relaxes
 its datum: $~\lambda_i = (1 - \theta_i)\, ~\lambda_{i-1} + \theta_i\, ~g_i$,
 with the fixed, Aitken, or Anderson factor of Sec.~\ref{sec:relaxation}
-formed from the datum itself, and $~\lambda_{-1} = 0$ at a fresh slot, so
+formed from the datum itself, and $~\lambda_{-1} = 0$ at a new slot, so
 that the first iteration of every stop applies $\theta_0 ~g_0$ on that
 side. The earlier-listed side applies $~g_i$ unrelaxed.
 
@@ -1293,7 +1297,7 @@ side. The earlier-listed side applies $~g_i$ unrelaxed.
 nonzero initial displacement or velocity, the initialization runs the two
 refinement passes of Sec.~\ref{sec:initialization}. The iteration stops on
 the displacement update of Sec.~\ref{sec:stopping}. The condition is not
-absorbing: under a dynamic integrator it can inject energy, and the code
+absorbing: under a dynamic integrator it can increase the energy, and the code
 warns when a Robin--Robin side is not quasi-static. It is the coupling of
 the quasi-static examples; no impedance (velocity-proportional) term is
 implemented.
@@ -1365,7 +1369,7 @@ of the classical exchange and does not use the interface predictor. There
 is no friction law: the two options are no tangential transfer and a full
 tie. The contact state is one flag for all pairs of the simulation, and
 when it is active every node of the Dirichlet side set is constrained,
-whether or not it touches the partner; there is no nodal active set, gap
+whether or not it is in contact with the partner; there is no nodal active set, gap
 function, or inequality enforcement. The surfaces must be declared in
 advance as side-set pairs; there is no global search and no self-contact.
 The projectors are not rebuilt during the run, so sliding is not tracked
@@ -1404,7 +1408,7 @@ The inner side is the Dirichlet side.
 \paragraph{Ground truth.} The undecomposed beam keeps $E$ and $\tilde{E}$
 within $1.7\times 10^{-13}$ over $10$\,ms with the trapezoidal rule and
 within $2.7\times 10^{-14}$ with central difference; the trapezoidal value
-requires a direct linear solver and a tight tolerance on the
+requires a direct linear solver and a small tolerance on the
 initial-acceleration solve.
 
 \subsection{Equal steps}
@@ -1435,12 +1439,13 @@ acceleration, velocity constraint unless marked $u$). $\delta E$ and
 $\delta\tilde{E}$ are the largest $\lvert E(t)/E(0) - 1\rvert$ and
 $\lvert \tilde{E}(t)/\tilde{E}(0) - 1\rvert$; jump is the largest relative
 one-sided interface displacement jump over the last $100$ stops; it.\ is the mean and maximum
-number of Schwarz iterations per stop. D is the Dirichlet side: the free
-part, or the implicit side of a mixed pair.}
+number of Schwarz iterations per stop; time is the elapsed time of the
+run in seconds. D is the Dirichlet side: the free part, or the implicit
+side of a mixed pair.}
 \label{tab:equal}
 \begin{tabular}{llccccr}
 \toprule
-meshes & pair & $\delta E$ & $\delta\tilde{E}$ & jump & it. & wall (s) \\
+meshes & pair & $\delta E$ & $\delta\tilde{E}$ & jump & it. & time (s) \\
 \midrule
 conforming & II, $u$ & $2.2\mathrm{e}{-11}$ & $5.3\mathrm{e}{-11}$ & $5.4\mathrm{e}{-13}$ & 7.1/8 & 215 \\
 conforming & II & $2.8\mathrm{e}{-11}$ & $7.0\mathrm{e}{-11}$ & $1.7\mathrm{e}{-12}$ & 7.0/8 & 206 \\
@@ -1461,7 +1466,7 @@ $4\times 10^{-10}$ in every case: $\tilde{E}$ for every pair, and $E$ as
 well for identical integrators. The residual is the tolerance accumulated
 over $10^4$ stops; the explicit pair at $\theta = 0.5$ converges in one
 iteration exactly. For the mixed pairs $E$ varies by $0.1$ to $0.4\%$, which
-is the expected behavior of the velocity constraint between different
+is the expected consequence of the velocity constraint between different
 integrators, and the root mean square displacement jump stays near
 $10^{-5}$\,m ($0.1$ to $0.2\%$ of the initial interface displacement),
 growing by at most $10\%$ over the $10$\,ms, the displacement drift that
@@ -1539,15 +1544,15 @@ $2$, $5$, and $10$\,ms; $\delta E = \max_t \lvert E/E(0) - 1\rvert$ with the
 sign of the final value; drift: root mean square interface displacement
 jump at $10$\,ms (m); impulse: largest net residual per window in $y$
 (N\,s) and the median relative residual; it.: Schwarz iterations per stop,
-mean/maximum (each iteration advances the fine side four substeps); wall
-time in seconds on four threads. The $1{:}0.5$ (A) run with explicit sides
+mean/maximum (each iteration advances the fine side four substeps); time:
+elapsed time of the run in seconds on four threads. The $1{:}0.5$ (A) run with explicit sides
 ended at the first stop. Lower part: the spectral radius $\rho$ of the
 relaxed iteration from the linearized gain at a stop.}
 \label{tab:subcycled}
 \begin{tabular}{llccccccccrr}
 \toprule
 meshes & pair, D & 1 & 2 & 5 & 10 & $\delta E$ & $\delta \tilde{E}$ & drift &
-  impulse $y$, rel. & it. & wall \\
+  impulse $y$, rel. & it. & time \\
 \midrule
 conf. & EE, D coarse & 1.0005 & 1.0009 & 1.0003 & 1.0006 & $+1.1\mathrm{e}{-3}$ & $-4.5\mathrm{e}{-13}$ &
   $3.1\mathrm{e}{-6}$ & $1.9\mathrm{e}{-15}$, $1.1\mathrm{e}{-13}$ & 6.0/7 & 139 \\
@@ -1589,7 +1594,7 @@ Dirichlet side, $\tilde{E}$ changes by $2$ to $4\times 10^{-9}$ (the
 accumulated stopping error, which falls with the tolerance), the relative
 impulse residual has a median of $0.67$ (II) and $0.95$ (EE), its net value
 in the bending direction sums to $-17$ and $-29$\,N\,s over the run while
-the other components stay below $5\times 10^{-12}$\,N\,s, and $E$ swings by
+the other components stay below $5\times 10^{-12}$\,N\,s, and $E$ varies by
 $20$ and $51\%$. Assignment (A) with explicit sides has gain eigenvalues in
 $[-7.9, -2.0]$; it diverges at every fixed factor from $0.25$ up, already in
 the coupled initial acceleration, and converges with Anderson acceleration
@@ -1641,8 +1646,9 @@ IE, D explicit & diverged & 33.9/46 & 53.6/108 & 13.9/14 & 47 & 8 \\
 
 Table~\ref{tab:direct} compares the direct solve \eqref{eq:direct} with the
 iteration and with the monolithic runs. It conserves $E$ and $\tilde{E}$ to
-roundoff on the beam at every mesh ratio and on the linear cylinders, at a
-lower cost than the iteration on nonconforming meshes; on the cylinders the
+roundoff on the beam at every mesh ratio and on the linear cylinders, in
+less elapsed time than the iteration on nonconforming meshes; on the
+cylinders the
 relative interface velocity jump at the end of every stop is at most
 $7\times 10^{-16}$, against $10^{-12}$ for the iteration at
 $\epsilon = 10^{-12}$, which needs $26.9$ Schwarz iterations per stop at a
@@ -1658,12 +1664,13 @@ standard deviation of $1.1\times 10^{-13}$ and no significant mean.
 $10$\,ms, $1\,\mu$s; cylinders: $1$\,ms, $0.5\,\mu$s, eight threads
 ($^{*}$one thread). $\delta E$ and $\delta\tilde{E}$ as in
 Table~\ref{tab:equal}; drift is the root mean square interface
-displacement jump at the end.}
+displacement jump at the end; time is the elapsed time of the run in
+seconds.}
 \label{tab:direct}
 \footnotesize\setlength{\tabcolsep}{3pt}
 \begin{tabular}{llcccrrl}
 \toprule
-case & exchange & $\delta E$ & $\delta \tilde{E}$ & drift (m) & it. & wall (s) & tolerance \\
+case & exchange & $\delta E$ & $\delta \tilde{E}$ & drift (m) & it. & time (s) & tolerance \\
 \midrule
 beam, conforming, EE & direct & $1.5\mathrm{e}{-14}$ & $4.4\mathrm{e}{-14}$ & $1.6\mathrm{e}{-17}$ & -- & 39 & -- \\
  & iterated & $1.2\mathrm{e}{-14}$ & $3.6\mathrm{e}{-14}$ & $4.8\mathrm{e}{-17}$ & 1.0/1 & 45 & rel.\ $10^{-12}$ \\
@@ -1682,8 +1689,8 @@ linear cylinders, $-35$\,m/s & monolithic & $1.2\mathrm{e}{-14}$ & $4.8\mathrm{e
 
 \subsection{Nonlinear material}
 
-On the neohookean cylinders the direct solve closes the interface to
-$7\times 10^{-16}$ at every step, and $E$ stays within $6.4\times 10^{-5}$
+On the neohookean cylinders the direct solve reduces the relative
+interface velocity jump to $7\times 10^{-16}$ at every step, and $E$ stays within $6.4\times 10^{-5}$
 over $2$\,ms, against $5.4\times 10^{-5}$ for the monolithic mesh at the
 same step. Halving the step reduces both variations by a factor of $3.9$
 and $4.0$ (Table~\ref{tab:neohookean-dt}, Fig.~\ref{fig:cylinders}): the
@@ -1730,8 +1737,8 @@ decomposed, direct & $2.5\times 10^{-7}$ & $0.999995$ & $0.999993$
 
 Every Schwarz iteration solves each subdomain to the Newton tolerance of
 its solver, although only the converged Schwarz iterate is used. Inexact
-Schwarz solves the subdomains loosely and relies on the Schwarz iteration,
-stopped at a tight $\epsilon$, for the accuracy. Its effect was measured on
+Schwarz solves the subdomains to a large Newton tolerance and relies on
+the Schwarz iteration, stopped at a small $\epsilon$, for the accuracy. Its effect was measured on
 the beam of Sec.~\ref{sec:benchmarks} with a neohookean material of the
 same moduli, so that Newton takes more than one iteration per solve: two
 trapezoidal subdomains, the matching exchange with Anderson
@@ -1782,16 +1789,17 @@ the subdomain solves from the state at the start of the stop, not from the
 previous Schwarz iterate, so with a fixed Newton setting each Schwarz
 iteration applies the same map and the iteration converges to the fixed
 point of that map, which carries the Newton error. The Schwarz criterion
-measures the change between iterates and does not see it: with one Newton
+measures the change between iterates and does not detect it: with one Newton
 iteration per solve the iteration meets $\epsilon = 10^{-12}$ in $8$
 iterations per stop and the result is wrong by $0.5\%$. The tolerance
 ratio removes the error at $0.72$ to $0.74$ of the Newton iterations of the
 reference. The larger ratio, $\eta = 0.1$, raises the Schwarz count by
-$26$ to $28\%$ and loses most of the saving. A tight final solve, which
+$26$ to $28\%$ and removes most of the saving. The \code{tight final solve}
+option, which
 accepts Schwarz convergence only at an iteration whose Newton tolerance was
 $10^{-12}$, was triggered at $50$ of the $10^4$ stops with $\eta = 0.01$
-and did not reduce the error. On a machine with no other load the wall time
-of the level $1$ runs relative to the reference ($1081$\,s on $4$ threads)
+and did not reduce the error. On a machine with no other load the elapsed
+time of the level $1$ runs relative to the reference ($1081$\,s on $4$ threads)
 is $0.49$ for one Newton iteration per solve, $0.74$ for the tolerance
 $10^{-4}$, and $0.81$ for $\eta = 0.01$, within $2.4\%$ of the ratios of
 residual and tangent assemblies. The energy of the neohookean beam under
@@ -1801,13 +1809,13 @@ at each halving of the step on a fixed mesh, so it is the second-order
 error of the integrator at the Courant number the levels share, and the
 energy is not a measure of the coupling for this material.
 
-On a static problem the picture differs. For a neohookean inclusion in a
+On a static problem the result differs. For a neohookean inclusion in a
 neohookean matrix (\code{examples/nonoverlap/static-same-step/matrix-inclusion}
 at $5\%$ strain in $10$ load steps, the classical exchange with Aitken
 secant relaxation, $\epsilon = 10^{-12}$) Newton tolerances from $10^{-6}$
 to $10^{-10}$ save $15\%$ of the Newton iterations at an error of
-$3\times 10^{-13}$, whereas $10^{-4}$ and looser raise the Schwarz count
-from $36$ to $84$ or more per load step and reach the cap of $128$, and the
+$3\times 10^{-13}$, whereas $10^{-4}$ and larger raise the Schwarz count
+from $36$ to $84$ or more per load step and reach the maximum of $128$, and the
 tolerance ratio $\eta = 0.1$ saves $24\%$ at an error of
 $6\times 10^{-13}$. A warm-started form of inexact Schwarz, in which each
 subdomain solve starts from its previous Schwarz iterate so that one
@@ -1859,8 +1867,8 @@ subdomains.
   side must be the Dirichlet side and an explicit Dirichlet side has a gain
   down to $-13$; Anderson acceleration converges at equal steps in this
   configuration but has not been measured with subcycling.
-\item \emph{Cause of the energy swing with the fine-step side as the
-  Dirichlet side.} The swing coincides with an impulse residual of the
+\item \emph{Cause of the energy variation with the fine-step side as the
+  Dirichlet side.} The variation coincides with an impulse residual of the
   order of the impulse; that the residual causes it has not been tested
   separately.
 \item \emph{Nonlinear materials.} Conservation of $E$ to roundoff needs an
@@ -1868,7 +1876,7 @@ subdomains.
 \item \emph{Higher flux order and window solves.} Flux order $r \ge 2$ in
   the sense of Connors et al.\ and a direct interface solve over a
   subcycled window are not needed for conservation; whether they reduce
-  the cost has not been measured.
+  the iteration count or the elapsed time has not been measured.
 \item \emph{Implicit subdomains on the cylinders} and more than two
   subdomains have not been run with the matching exchange.
 \item \emph{A conserving Robin condition.} A Robin condition assembled from
