@@ -18,14 +18,14 @@ window. The `type` is required and case-sensitive:
 | `time step` | yes | — | base (target) time increment Δt |
 
 In a [multidomain](multidomain.md) simulation the time window is set on the
-top-level controller and injected into each subdomain, so subdomain input files
+top-level controller and passed to each subdomain, so subdomain input files
 may omit `initial time` and `final time`.
 
 ## Adaptive time stepping (all schemes)
 
 Adaptive stepping is all-or-nothing: either supply none of the four keys below
-(fixed step) or supply all four. The step is grown after successful steps and
-shrunk after failed ones, staying within the min/max bounds.
+(fixed step) or supply all four. The step is increased after successful steps
+and reduced after failed ones, within the minimum and maximum bounds.
 
 | Key | Required | Default | Constraint |
 |---|---|---|---|

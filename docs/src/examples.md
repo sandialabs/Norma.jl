@@ -28,8 +28,8 @@ Norma.run("bars.yaml")
 | `examples/ahead/` | Application-motivated cases, including the reduced-order-model workflow |
 
 Each example is a self-contained set of a YAML input file and its Exodus mesh.
-Reading the input alongside the [Input File Reference](reference/index.md) is the
-quickest way to learn how a feature is configured.
+The input, read with the [Input File Reference](reference/index.md), shows how
+a feature is configured.
 
 ## Choosing a starting point
 

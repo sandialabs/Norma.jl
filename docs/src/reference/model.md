@@ -70,7 +70,7 @@ model:
     ...
 ```
 
-The legacy keys `stress recovery` and `recover internal variables` are no longer
+The keys `stress recovery` and `recover internal variables` of earlier versions are no longer
 accepted and cause an error; use the `nodal recovery` block above.
 
 ## Mesh smoothing
@@ -78,7 +78,7 @@ accepted and cause an error; use the `nodal recovery` block above.
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `mesh smoothing` | no | `false` | enable mesh smoothing (set automatically when `type: mesh smoothing`); a top-level key |
-| `smooth reference` | no | `""` | rule for the ideal element of TETRA4 smoothing: `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted`, which prescribe the target; `equal volume`, `average edge length`, and `max`, which take the target from the original element, are legacy rules kept for older inputs |
+| `smooth reference` | no | `""` | rule for the ideal element of TETRA4 smoothing: `size field`, `size field unrestricted`, `metric field`, or `metric field unrestricted`, which prescribe the target; `equal volume`, `average edge length`, and `max`, which take the target from the original element, are rules of earlier versions kept for older inputs |
 | `size field` | required if `smooth reference: size field`/`size field unrestricted` | `nothing` | expression in `t, x, y, z` giving the target element size (edge length of the ideal regular tetrahedron); under `size field` the target is at least the edge of the regular tetrahedron with the volume of the original element, so the ideal never asks an element to shrink, and under `size field unrestricted` it is the field as given |
 | `metric field` | required if `smooth reference: metric field`/`metric field unrestricted` | `nothing` | block giving the metric in one of four forms: `sizes` (three expressions in `t, x, y, z`: the principal sizes h₁, h₂, h₃) with optional `rotation vector` (three expressions: the rotation vector whose exponential carries the global axes onto the principal directions); `tensor` (six expressions: M_xx, M_yy, M_zz, M_xy, M_yz, M_zx); `nodal sizes` (three nodal variables of the input mesh) with optional `nodal rotation vector` (three nodal variables); or `nodal tensor` (six nodal variables), read at `time index` (default: the last step) and interpolated by `interpolation: principal` (default) or `log-Euclidean`; see below |
 
@@ -92,7 +92,7 @@ element of each tetrahedron is the unit regular tetrahedron scaled by `h_i`
 along the global axes and rotated by `R`, and the smoothing energy is evaluated
 on the deformation gradient measured in the metric, `F_U = F_M F F_M⁻¹` with
 `F_M = diag(1/h_i) Rᵀ`, so the orientation of an elongated element is part of
-the objective, which an isotropic energy on `F` alone cannot see. With equal
+the objective, on which an isotropic energy on `F` alone does not depend. With equal
 sizes the rule reduces exactly to `size field`. As for `size field`, the
 target is evaluated at the centroid of each element in the original mesh, so
 it does not follow the nodes as they move, and at the current time, so an
@@ -208,7 +208,7 @@ Each operation is accepted by the test its criterion names. With the
 defaults every operation must lower the energy of the elements around it
 (its cavity) by the relative margin; `size criterion: length` and
 `shape criterion: scaled Jacobian`, described below, replace that test for
-the size operations and the shape operations. Whatever the criterion, no
+the size operations and the shape operations. Under every criterion, no
 new element may exceed the allowed density, and the worst new element must
 respect the geometric floor. The energy sums the elements of the cavity, so
 without the floor an operation can improve the sum while creating one flat
@@ -221,27 +221,28 @@ energy test for the swaps.
 
 The energy test alone cannot refine or coarsen a smoothed mesh toward a
 prescribed target by more than a factor of about 1.5 in edge length: a split
-bisects the elements around the edge and roughly halves their scaled
-Jacobian, and with equal bulk and shear moduli that shape penalty outweighs
-the size gain until the edges are far longer than the target (on a plate
+bisects the elements around the edge and approximately halves their scaled
+Jacobian, and with equal bulk and shear moduli the increase of the shape
+energy exceeds the decrease of the size energy until the edges are far
+longer than the target (on a plate
 refined toward a sinusoid, every split of the 920 edges beyond the band
 raised the cavity energy, by 52 percent at the median). A larger bulk
-modulus makes the splits favorable but also makes the smoothing sacrifice
-shape for size. `size criterion: length` therefore accepts the size
+modulus makes the splits favorable but also makes the smoothing lower the
+shape quality to reach the size. `size criterion: length` therefore accepts the size
 operations, the splits of edges longer than √2 and the collapses of edges
 shorter than 1/√2 in the target, on the edge length alone, subject to the
 geometric floor and, for collapses, the set and surface constraints, with
 the energy as a validity check only; the swaps and the shape-driven
-operations keep the energy test. Under refinement the floor throttles the
-splits (a floor of 0.35 let 981 of 29797 splits through on that plate,
-none 29222), so a low floor such as 0.15 suits a refinement stage.
+operations keep the energy test. Under refinement the floor limits the
+number of splits (a floor of 0.35 accepted 981 of 29797 splits on that
+plate, none 29222), so a low floor such as 0.15 suits a refinement stage.
 
 The cavity energy sum can also accept a swap that leaves the worst element
 of the cavity as it was, and refuse one that raises it while raising the
 sum. `shape criterion: scaled Jacobian` accepts the swaps and the
 shape-driven collapses and splits when the minimum scaled Jacobian of the
 cavity rises, and chooses among the configurations of a swap the one with
-the best worst element; the energy remains the validity check. On the
+the largest minimum scaled Jacobian; the energy remains the validity check. On the
 distorted cube this criterion together with `boundary swaps` brings the
 coupled loop to the quality of the staggered workflow of Norma smoothing
 alternated with the Sierra tool improve_mesh, which accepts on the same
@@ -264,8 +265,8 @@ improve_mesh does, and on the distorted cube this raises the final mean from
 0.692 to 0.698 and the minimum from 0.39 to 0.41; the loop applied to the
 mesh that the staggered workflow produced improves it further (minimum 0.38
 to 0.44, mean 0.703 to 0.707), so the remaining difference between the two
-workflows from the distorted input is the path each takes, not the
-acceptance test. Ranking the cavities worst first, more alternation with
+workflows from the distorted input is the sequence of operations each
+takes, not the acceptance test. Ranking the cavities worst first, more alternation with
 fewer passes, and shape operations in every pass were measured and gain
 nothing.
 
@@ -285,12 +286,12 @@ stage from 0.696 to 0.702 and the minimum of the third from 0.22 to 0.33,
 within 0.011 of the staggered workflow.
 
 Within a pass the operations of one operator are independent, since every
-accepted operation marks the elements of its cavity dead and a later
-proposal touching a dead element is refused, but they may not create an
+accepted operation marks the elements of its cavity as removed and a later
+proposal that includes a removed element is refused, but they may not create an
 edge or a face that exists in the mesh or was created earlier in the pass,
 so that no face is shared by more than two elements and the link of every
 edge stays a single ring. The topology is compacted after every operator,
-so that the collapses and splits see the elements the swaps made. Nodes do
+so that the collapses and splits operate on the elements the swaps made. Nodes do
 not move within a phase, so a refused proposal is remembered for the phase
 and retried only when an element around its edge or face has changed; on a
 converged mesh of half a million elements this takes a pass from about
@@ -304,7 +305,7 @@ converged mesh of half a million elements this takes a pass from about
 | `boundary swap angle` | no | `20` | largest angle in degrees between the two boundary faces of an edge for its swap to be tried |
 | `size operations first` | no | `false` | collapse and split the edges outside the band before the swaps in every pass, rather than after; recommended, since the swaps then act on elements already near their target size |
 | `shape operations every pass` | no | `false` | try the shape-driven collapses and splits in every pass, not only in a pass that accepted no swap |
-| `desired scaled Jacobian` | no | `0.9` | under `shape criterion: scaled Jacobian`, the elements below this are the candidates of the swaps and the shape-driven operations, without dilation; lowering it focuses the phase on the worst elements and shortens it |
+| `desired scaled Jacobian` | no | `0.9` | under `shape criterion: scaled Jacobian`, the elements below this are the candidates of the swaps and the shape-driven operations, without dilation; lowering it restricts the phase to the elements of lowest quality and shortens it |
 | `face swaps` | no | `false` | try the swap of an interior face into the three elements around the edge between the apexes |
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |
 | `allowed energy density` | no | `Inf` | no accepted operation may create an element above this |

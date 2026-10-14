@@ -31,7 +31,7 @@ solver:
 | `absolute tolerance` | yes | — | absolute residual-norm convergence tolerance |
 | `relative tolerance` | yes | — | relative residual-norm convergence tolerance |
 | `unconverged solve action` | no | `fail` (`warn` for matrix-free solvers) | what to do with a solve that exhausts `maximum iterations` without meeting either tolerance: `fail` marks the step failed, so adaptive time stepping retries it with a smaller step or the run aborts; `warn` reports it and continues |
-| `linear solver` | no | `cg` | `cg` (conjugate gradient) or `direct` (sparse Cholesky with a reused symbolic factorization, LU fallback) |
+| `linear solver` | no | `cg` | `cg` (conjugate gradient) or `direct` (sparse Cholesky with a reused symbolic factorization; LU when the matrix is not positive definite) |
 | `linear solver absolute tolerance` | no | `0.0` | absolute tolerance for the inner CG linear solve |
 | `linear solver relative tolerance` | no | `sqrt(eps)` | relative tolerance for the inner CG linear solve |
 | `use line search` | no | `false` | enable backtracking line search |
@@ -89,7 +89,7 @@ loop on this exit, so its examples set the window. With
 decrease over the last ``W`` iterations, relative to the current energy, stays
 below `energy stagnation tolerance` for ``W`` consecutive iterations. The
 energy still recoverable past that point is of the order of the tolerance
-times the energy itself. On trigger the step is accepted as converged, a
+times the energy itself. When the criterion is met the step is accepted as converged, a
 message advising topology modification is logged, and the solver's
 `stagnated` flag is raised. The criterion applies to `mesh smoothing` models
 with the `steepest descent` solver only; setting the keys anywhere else

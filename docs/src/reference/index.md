@@ -122,8 +122,8 @@ on the system of units and on the level-set function; set it for the problem.
 ## Keyword validation
 
 Every loaded input file is checked against the set of keys Norma actually
-reads. A key that no parser recognizes — a misspelling, a stale key from an
-older input format, or a key placed in the wrong section — produces a warning
+reads. A key that no parser recognizes — a misspelling, a key from an older
+input format, or a key placed in the wrong section — produces a warning
 with a suggestion:
 
 ```text
@@ -134,4 +134,4 @@ with a suggestion:
 
 Unknown keys warn rather than abort, and the run proceeds with the unknown
 key ignored, exactly as before. Missing required keys and invalid values
-remain hard errors reported by the section that reads them.
+remain errors that abort the run, reported by the section that reads them.

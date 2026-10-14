@@ -16,13 +16,14 @@ julia --project=@/path/to/Norma.jl ./runtests.jl
 ```
 
 By default every test runs except the neural-network Operator-Inference tests,
-which depend on an optional Python stack and are enabled with a flag (see
+which depend on optional Python packages and are enabled with a flag (see
 [Neural-network reduced-order tests](#neural-network-reduced-order-tests)
 below). The suite reports which tests it skipped for this reason.
 
 ## Selective execution
 
-Run a quick subset (fast tests only, excluding the slow coupling cases):
+Run the subset that excludes the tests with the longest run times (the
+ahead-Schwarz, swapping, restart, and cantilever Dirichlet-Neumann cases):
 
 ```bash
 julia --project=.. runtests.jl --quick

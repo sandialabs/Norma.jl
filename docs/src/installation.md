@@ -41,13 +41,13 @@ pkg> add PyCall
 ```
 
 Julia then loads the backend automatically. Without it, requesting a neural-network
-model aborts with a message telling you to install PyCall. The reduced-order
+model aborts with a message that names PyCall as the missing package. The reduced-order
 capabilities as a whole are documented with the
 [`norma-opinf`](https://github.com/sandialabs/norma-opinf) companion package and
 are outside the scope of this guide.
 
 ## Sandia network
 
-If you are on Sandia's network and hit SSL/TLS certificate errors when
+If you are on Sandia's network and encounter SSL/TLS certificate errors when
 installing or fetching packages, see `README-sandia.md` in the repository for a
 complete setup guide, and [Troubleshooting](troubleshooting.md).

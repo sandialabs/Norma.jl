@@ -2,7 +2,7 @@
 
 ## Sandia network SSL/TLS errors
 
-If you are on Sandia's network and run into SSL/TLS certificate errors when
+If you are on Sandia's network and encounter SSL/TLS certificate errors when
 installing or fetching packages, see `README-sandia.md` in the repository for a
 complete setup guide.
 
@@ -10,7 +10,8 @@ complete setup guide.
 
 The neural-network Operator-Inference model is an optional package extension
 that needs Python (PyTorch via PyCall). If you request it without PyCall
-installed, Norma aborts with a message telling you to install it. See
+installed, Norma aborts with a message that names PyCall as the missing
+package. See
 [Installation](installation.md).
 
 ## A required input key is missing
