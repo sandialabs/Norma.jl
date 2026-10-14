@@ -1218,7 +1218,7 @@ function initialize(sim::MultiDomainSimulation)
     # time and just returns it) and be a no-op. So: reset each subdomain's
     # history and re-push a fresh snapshot reflecting its now-real,
     # pass-1-solved state first, *then* refresh apply_bcs and re-solve, this
-    # time trusting the Schwarz-coupled DOFs.
+    # time with the Schwarz coupling rows included in the inertial correction.
     #
     # Run this reset/apply/re-solve sequence twice (not once) when a ROM
     # subdomain is involved. For a FOM neighbor, model.displacement and
@@ -1258,7 +1258,7 @@ function initialize(sim::MultiDomainSimulation)
             end
             apply_bcs(sim)
             for subsim in sim.subsims
-                initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
+                initialize(subsim.integrator, subsim.solver, subsim.model; include_schwarz_rows=true)
                 save_curr_state(subsim)
             end
         end
@@ -1281,8 +1281,9 @@ end
 # imposes the projected partner acceleration (displacement and velocity are the
 # initial conditions, projected), the Neumann side receives the d'Alembert
 # reaction of the Dirichlet side, and each side recomputes its acceleration with
-# the interface rows trusted (initialize with trust_schwarz=true). The
-# Dirichlet datum is relaxed with the fixed factor `relaxation parameter` (also
+# the coupling rows included in the inertial correction (initialize with
+# include_schwarz_rows=true). The Dirichlet datum is relaxed with the fixed
+# factor `relaxation parameter` (also
 # under Aitken relaxation, which applies to the stops). The iteration stops when
 # the one-sided acceleration jump and the force residual of every matching
 # pair are at or below `matching relative tolerance`, or after `maximum
@@ -1358,7 +1359,7 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
                 end
                 previous[k] = copy(imposed)
             end
-            initialize(subsim.integrator, subsim.solver, subsim.model; trust_schwarz=true)
+            initialize(subsim.integrator, subsim.solver, subsim.model; include_schwarz_rows=true)
             save_curr_state(subsim)
             reset_history(controller, subsim_index)
             save_history_snapshot(controller, subsim, subsim_index)
@@ -1390,8 +1391,8 @@ end
 # is needed for a fresh start. Restricted to the Robin-Robin nonoverlap
 # exchange, the only remaining coupling the pass has been validated on: the unbalanced
 # Robin term α W u is what produces the one-step kick the pass removes, and
-# the DN d-form exchange demonstrably does not tolerate a trust-Schwarz
-# re-solve from a moving initial state (element inversion on the DN
+# the DN d-form exchange does not tolerate a re-solve with the coupling rows
+# included from a moving initial state (element inversion on the DN
 # cantilever with a parabolic initial bend). Constrained DN pairs are excluded
 # here as well: they get their own iteration on the initial acceleration
 # (coupled_initial_acceleration!), which on the same cantilever converges in

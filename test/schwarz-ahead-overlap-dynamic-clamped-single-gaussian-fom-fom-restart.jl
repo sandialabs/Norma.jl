@@ -30,7 +30,7 @@ using Exodus
 # boundary right at the restart instant, then propagating through the
 # domain over subsequent steps (Newmark with β=0.25, γ=0.5 has no numerical
 # damping to dissipate it). See initialize(sim::MultiDomainSimulation) and
-# initialize(::Newmark, ...; trust_schwarz) in src/simulation.jl and
+# initialize(::Newmark, ...; include_schwarz_rows) in src/simulation.jl and
 # src/time_integrator.jl for the fix.
 #
 # The initial-acceleration-at-restart check below covers both subdomains

@@ -30,8 +30,8 @@ using Exodus
 # (see that test for the full history of the bug this exercises): it
 # verifies that the restart-only Schwarz initial-acceleration refinement
 # (see initialize(sim::MultiDomainSimulation) in src/simulation.jl and
-# initialize(::Newmark, ...; trust_schwarz) / initialize(::RomNewmark, ...;
-# trust_schwarz) in src/time_integrator.jl / src/opinf/opinf_time_integrator.jl)
+# initialize(::Newmark, ...; include_schwarz_rows) / initialize(::RomNewmark, ...;
+# include_schwarz_rows) in src/time_integrator.jl / src/opinf/opinf_time_integrator.jl)
 # also produces a correct, non-placeholder-zero initial acceleration at the
 # Schwarz-coupled boundary when one side of that boundary is a ROM. A ROM
 # subdomain's restart is layered on top of the FOM restart machinery — its

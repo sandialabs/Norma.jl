@@ -16,7 +16,7 @@ using Base.Threads: @threads, threadid, nthreads, maxthreadid
 # opinf_ics_bcs.jl — so the two always agree. Used by
 # initialize(sim::MultiDomainSimulation) (simulation.jl) to decide whether
 # the restart-only Schwarz refinement pass is needed, and forwarded as
-# `trust_schwarz` into initialize(::TimeIntegrator, ::Solver, ::Model) /
+# `include_schwarz_rows` into initialize(::TimeIntegrator, ::Solver, ::Model) /
 # initialize(::RomNewmark, ...) / initialize(::RomCentralDifference, ...).
 is_restarted(model::SolidMechanics) = model.restarted
 is_restarted(model::RomModel) = model.fom_model.restarted

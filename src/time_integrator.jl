@@ -202,7 +202,7 @@ function is_dynamic(integrator::TimeIntegrator)
     return is_static(integrator) == false
 end
 
-function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics; trust_schwarz::Bool=false)
+function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechanics; include_schwarz_rows::Bool=false)
     if integrator.initial_equilibrium == true
         norma_log(0, :equilibrium, "Establishing Initial Equilibrium...")
         solve(integrator, solver, model)
@@ -221,7 +221,9 @@ function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     return nothing
 end
 
-function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics; trust_schwarz::Bool=false)
+function initialize(
+    integrator::Newmark, solver::HessianMinimizer, model::SolidMechanics; include_schwarz_rows::Bool=false
+)
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
     free = model.free_dofs
     # HHT-α: make the blend a no-op until the first predictor runs.
@@ -258,35 +260,28 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     # vanishes and this is a no-op, but a fresh run with a nonzero prescribed
     # boundary acceleration at t=0 needs it just as much as a restart does.
     fixed = .!free
-    # Schwarz-coupled fixed DOFs are excluded from this correction by
-    # default (trust_schwarz=false): this function runs once, at the very
-    # start of the simulation (or of a restart), before any subdomain has
-    # ever taken a predictor step or had its own initial acceleration
-    # computed. The Schwarz coupling machinery (coupling_weak_dbc /
-    # contact_weak_dbc / overlap variants) derives its acceleration either
-    # by reading the coupled side's integrator.acceleration directly, or —
-    # under Aitken-secant relaxation — via integrator.disp_pre, both of
-    # which are only physically meaningful once the coupled side has a real
-    # acceleration of its own. The first time this function runs for any
-    # subdomain, apply_bcs() has only ever seen every subdomain's untouched
-    # (zero) initial acceleration, so whatever value it left on
-    # Schwarz-coupled DOFs is not trustworthy and must not be allowed into
-    # this one-shot linear solve. A plain (non-Schwarz) Dirichlet BC's
-    # prescribed acceleration is exact at any time, including t=0, and is
-    # always trusted.
+    # The rows held by a Schwarz coupling are prescribed rows whose value is
+    # the partner's projected acceleration. They are excluded from the
+    # correction by default (include_schwarz_rows=false): this function runs
+    # once at the start of the simulation (or of a restart), before any
+    # subdomain has computed its own initial acceleration, so apply_bcs()
+    # has written the partner's zero acceleration onto those rows, and
+    # including them would subtract a zero datum that is not the partner's
+    # acceleration. The acceleration prescribed by a plain Dirichlet
+    # boundary condition is exact at any time, including t = 0, and is
+    # always included.
     #
-    # trust_schwarz=true is used for a second, refinement pass over all
-    # subdomains of a restarted multi-domain (Schwarz) simulation — see
-    # initialize(sim::MultiDomainSimulation) in simulation.jl. By the time
-    # that second pass runs, every subdomain already has a real initial
-    # acceleration from the first pass, apply_bcs() has been re-run so
-    # Schwarz-coupled DOFs now carry a real (not stale-zero) coupled
-    # acceleration, and it is safe — indeed necessary for an accurate
-    # restart, since the true acceleration at a Schwarz interface generally
-    # is not zero mid-simulation — to include them in the correction below.
-    # This is a single Jacobi-style correction, not a fully converged fixed
-    # point; any remaining small inconsistency is absorbed by the real
-    # Newton/Schwarz iterations that run on the first actual control step.
+    # include_schwarz_rows=true is used for the refinement passes over all
+    # subdomains of a multidomain simulation (initialize(sim::MultiDomainSimulation)
+    # and coupled_initial_acceleration! in simulation.jl). By then every
+    # subdomain has an initial acceleration from the first pass and
+    # apply_bcs() has written the partner's acceleration onto the coupling
+    # rows, so the rows carry the datum the correction needs; on a restart
+    # the acceleration at a Schwarz interface is in general not zero, and
+    # the pass is required for a correct restart. One pass is a single
+    # Jacobi correction, not a converged fixed point; the remaining
+    # inconsistency is removed by the Newton and Schwarz iterations of the
+    # first stop.
     schwarz_fixed = falses(length(free))
     for bc in model.boundary_conditions
         if bc isa SolidMechanicsSchwarzBoundaryCondition
@@ -295,7 +290,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
             end
         end
     end
-    trusted_fixed = trust_schwarz ? fixed : (fixed .& .!schwarz_fixed)
+    correction_rows = include_schwarz_rows ? fixed : (fixed .& .!schwarz_fixed)
     # Read the prescribed (Dirichlet / Schwarz-coupled) accelerations from
     # model.acceleration rather than integrator.acceleration. apply_bcs()
     # always writes prescribed values onto model.acceleration. For a
@@ -311,7 +306,7 @@ function initialize(integrator::Newmark, solver::HessianMinimizer, model::SolidM
     # match the node/component ordering used everywhere else) is
     # therefore correct in both cases.
     prescribed_acceleration = vec(model.acceleration)
-    rhs_free = inertial_force[free] - model.mass[free, trusted_fixed] * prescribed_acceleration[trusted_fixed]
+    rhs_free = inertial_force[free] - model.mass[free, correction_rows] * prescribed_acceleration[correction_rows]
     integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
     return nothing
 end
@@ -354,7 +349,7 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
 end
 
 function initialize(
-    integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics; trust_schwarz::Bool=false
+    integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics; include_schwarz_rows::Bool=false
 )
     norma_log(0, :acceleration, "Computing Initial Acceleration...")
     free = model.free_dofs
