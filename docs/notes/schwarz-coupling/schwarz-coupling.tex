@@ -248,11 +248,26 @@ subdomain.
 \end{equation}
 with $\mathrm{SE}$ the strain energy. For central difference the kinetic
 term is evaluated in the staggered form
-$\tfrac12\, ~v^T ~M ~v - \tfrac{\Delta t^2}{8}\, ~a^T ~M ~a$, which is the
-kinetic part of the quadratic that the scheme conserves exactly on a linear
-problem; the consistent-mass kinetic energy at integer steps misrepresents
-the short-wavelength content of a sharp front by several percent. For
-linear elasticity the pseudo-energy is
+\begin{equation}
+  \tfrac12\, (~v^{n-1/2})^T ~M\, ~v^{n+1/2}
+  = \tfrac12\, (~v^n)^T ~M\, ~v^n - \tfrac{\Delta t^2}{8}\, (~a^n)^T ~M\, ~a^n ,
+  \label{eq:staggered}
+\end{equation}
+the product of the two half-step velocities that bracket $t_n$, written in
+terms of the integer-step velocity $~v^n = \tfrac12(~v^{n-1/2} + ~v^{n+1/2})$
+and the acceleration, since $~v^{n \pm 1/2} = ~v^n \pm \tfrac{\Delta t}{2} ~a^n$.
+With the strain energy at $~u^n$ it is the quadratic
+$\tfrac12 (~v^{n-1/2})^T ~M ~v^{n+1/2} + \tfrac12 (~u^n)^T ~K ~u^n$ that
+central difference conserves exactly on a linear problem, evaluated at the
+integer step; it is not the kinetic energy at a half step, which is
+$\tfrac12 (~v^{n+1/2})^T ~M ~v^{n+1/2} = \tfrac12 (~v^n)^T ~M ~v^n
++ \tfrac{\Delta t}{2} (~v^n)^T ~M ~a^n + \tfrac{\Delta t^2}{8} (~a^n)^T ~M ~a^n$
+and is conserved only together with the product strain energy
+$\tfrac12 (~u^n)^T ~K ~u^{n+1}$. The form \eqref{eq:staggered} pairs with
+$\mathrm{SE}(~u^n)$ and therefore extends to nonlinear materials. The
+consistent-mass kinetic energy $\tfrac12 (~v^n)^T ~M ~v^n$ at integer steps
+misrepresents the short-wavelength content of a sharp front by several
+percent. For linear elasticity the pseudo-energy is
 \begin{equation}
   \tilde{E} = \sum_k \Bigl(\tfrac12\, ~a_k^T ~S_k\, ~a_k
              + \tfrac12\, ~v_k^T ~K_k\, ~v_k\Bigr),
