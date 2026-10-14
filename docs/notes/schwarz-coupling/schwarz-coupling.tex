@@ -358,8 +358,8 @@ iterate.
 
 \paragraph{Displacement update.} With $\Delta t_c$ the controller step and
 $~w_k = ~u_k + \Delta t_c\, ~v_k$ over all degrees of freedom of subdomain
-$k$ (prescribed ones included; the reduced coordinates for a reduced-order
-subdomain), the update between iterations $i-1$ and $i$ is
+$k$ (prescribed ones included), the update between iterations $i-1$ and
+$i$ is
 \begin{equation}
   \Delta U = \Bigl( \sum_k \norm{~w_k^{\,i} - ~w_k^{\,i-1}}^2 \Bigr)^{1/2},
   \qquad
@@ -443,8 +443,7 @@ Newton error of the accepted iterate below the Schwarz update by the factor
 $\eta$ (Sec.~\ref{sec:inexact}). With \code{tight final solve: true} a
 convergence reached at $\tau_i > \tau_{\min}$ is rejected and the iteration
 continues with $\tau_{\min}$ for the rest of the stop. The control acts on
-Hessian minimizer solvers only; explicit and reduced-order subdomains are
-not affected.
+Hessian minimizer solvers only; explicit subdomains are not affected.
 
 \subsection{Initialization}
 \label{sec:initialization}
@@ -494,9 +493,8 @@ when a criterion holds: a time, a stress recovery estimate, an elastic to
 plastic transition, or the overlap $L^2$ error of Sec.~\ref{sec:overlap-l2}
 against a tolerance in a direction (\code{refine} or \code{coarsen}). The
 replacement receives the state of the subdomain it replaces, by copy on
-the same mesh, by $L^2$ transfer between meshes, or by projection between
-a full-order and a reduced-order model; the coupling conditions and
-transfer operators are rebuilt after a swap. A restart of a multidomain
+the same mesh or by $L^2$ transfer between meshes; the coupling conditions
+and transfer operators are rebuilt after a swap. A restart of a multidomain
 run resumes every subdomain from the same checkpoint time; it is allowed
 with the overlapping coupling, warned against with the nonoverlapping
 couplings, and rejected with contact.
@@ -718,10 +716,8 @@ mass matrix. The element search and the shape function values are fixed
 at construction on the reference configuration and are not updated for
 finite deformation. The datum is not relaxed: the relaxation keys have no
 effect on this coupling, and the interface predictor does not apply to it.
-A reduced-order partner is reconstructed to its full-order fields before
-the interpolation; a reduced-order receiver uses the transferred
-displacement only, as a reduced boundary forcing. The iteration stops on
-the displacement update of Sec.~\ref{sec:stopping}.
+The iteration stops on the displacement update of
+Sec.~\ref{sec:stopping}.
 
 \subsection{Overlap \texorpdfstring{$L^2$}{L2} error}
 \label{sec:overlap-l2}
@@ -840,8 +836,7 @@ displacement is $~u_s + \Delta t_c\, ~v^{\mathrm{pred}}$, and the
 acceleration is that of the stop. The predicted internal force of the
 side whose force is read is $2 ~f_s - ~f_{s-1}$.
 
-\paragraph{Restrictions.} The exchange requires a full-order model on
-both sides for \code{swap BC types}. It does not conserve the energy of a
+\paragraph{Restrictions.} The exchange does not conserve the energy of a
 dynamic problem (Sec.~\ref{sec:baseline}); the matching exchange is the
 dynamic coupling.
 \section{The matching Dirichlet--Neumann exchange}
@@ -1030,8 +1025,8 @@ have.
 \item Compute the initial acceleration on the coupled system
   (Sec.~\ref{sec:initial}).
 \end{enumerate}
-Both integrators must be Newmark or central difference without HHT-$\alpha$
-and both sides full-order models. Displacement matching requires the same
+Both integrators must be Newmark or central difference without
+HHT-$\alpha$. Displacement matching requires the same
 Newmark parameters with $\beta > 0$ and the same step on both sides, and
 aborts if the steps taken differ during the run; velocity matching admits
 different steps and central difference. The exchange cannot be combined
@@ -1917,9 +1912,7 @@ retired and abort with a message naming their replacements.
 \paragraph{\code{Schwarz overlap}.} \code{side set}, \code{source},
 \code{source block} (required); \code{search tolerance} (default
 $10^{-6}$); \code{weak} (default false); \code{compute overlap L2 relative
-error} (\code{disp}, \code{velo}, \code{acce}). The variant
-\code{OpInf Schwarz overlap} adds \code{model-directory} and
-\code{ensemble-size} for a neural-network reduced-order receiver.
+error} (\code{disp}, \code{velo}, \code{acce}).
 
 \paragraph{\code{Schwarz DN nonoverlap}.} \code{side set}, \code{source},
 \code{source side set} (required); \code{default BC type}
@@ -1939,8 +1932,7 @@ same on both sides).
 \paragraph{Tests and examples.} Test numbers refer to
 \code{test/runtests.jl}. Overlapping coupling: tests 15 (static cuboids),
 56 (dynamic cantilever, weak form), 57 and 75 (swaps), 109 (blended
-energy), 113 (restart), 117 (quasi-static), and the reduced-order tests
-22 to 26, 61 to 63, 76, and 77; examples under \code{examples/overlap}
+energy), 113 (restart), and 117 (quasi-static); examples under \code{examples/overlap}
 and \code{examples/ahead/overlap}. Classical Dirichlet--Neumann exchange:
 tests 16, 18, 55, 58, 91, 92, 123 (displacement transfer on a curved
 interface), and 137 (windowed stops); examples
