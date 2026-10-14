@@ -75,7 +75,7 @@ iterations of every Schwarz iteration are logged with the Schwarz criterion.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
-| `tolerance ratio` | no | `0.01` | ratio η > 0 of the relative Newton tolerance to the previous relative Schwarz residual; a smaller η solves each subdomain more tightly relative to the Schwarz residual. The key `forcing factor`, which set η before October 2026, aborts |
+| `tolerance ratio` | no | `0.01` | ratio η > 0 of the relative Newton tolerance to the previous relative Schwarz residual; a smaller η solves each subdomain to a smaller Newton tolerance relative to the Schwarz residual. The key `forcing factor`, which set η before October 2026, aborts |
 | `minimum tolerance` | no | `1.0e-12` | floor of the relative Newton tolerance |
 | `maximum tolerance` | no | `1.0e-2` | ceiling of the relative Newton tolerance, used at the first Schwarz iteration of a stop |
 | `tight final solve` | no | `false` | accept Schwarz convergence only at a Schwarz iteration whose Newton tolerance was the floor; a convergence reached above the floor is rejected and the Schwarz iteration continues with the tolerance at the floor for the rest of the stop |
@@ -90,7 +90,7 @@ constant Newton tolerance 1e-6 needed 0.667 at an error of 6.0e-9 (0.717 and
 1.8e-12 for η = 0.01 on the mesh with 8 times the elements and 20 000 stops).
 Every Schwarz iteration restarts the subdomain solves from the state at the
 start of the stop, not from the previous Schwarz iterate, so a constant Newton
-tolerance looser than the Schwarz tolerance leaves an error of the size of the
+tolerance larger than the Schwarz tolerance leaves an error of the size of the
 Newton error, which the Schwarz criterion does not detect.
 
 ### Relaxation and acceleration
@@ -117,8 +117,9 @@ thing in each.
 
 `relaxation parameter` is not ignored when `relaxation` names an Aitken method.
 It is the factor applied for Schwarz iterations below `aitken N0 parameter`,
-and the fallback whenever an adaptive factor cannot be formed, which includes
-the first iterations of every step before two iterates exist to compare.
+and the factor used whenever an adaptive factor cannot be formed, which
+includes the first iterations of every step before two iterates exist to
+compare.
 
 An adaptive factor cannot be formed either when the difference of two
 successive interface iterates, or of two successive interface residuals, is
@@ -131,7 +132,7 @@ squared norm of the difference). On
 `examples/nonoverlap/static-same-step/matrix-inclusion` at 5% strain in 10
 load steps, with `relaxation parameter: 0.5` and a relative tolerance of
 1e-12, the absolute floor was reached at interface differences of about
-1e-10 m, the fallback factor 0.5 made the iteration diverge by a factor of
+1e-10 m, the factor 0.5 used in its place made the iteration diverge by a factor of
 1.33 per Schwarz iteration, and every load step ended at the limit of 128
 Schwarz iterations. With the relative floor the same run converges in 26 to
 33 Schwarz iterations per load step.
@@ -139,8 +140,8 @@ Schwarz iterations. With the relative floor the same run converges in 26 to
 Aitken acceleration is applied only to stops with a single substep, that is
 when the controller `time step` equals the relaxed subdomain's time step. A
 windowed stop couples all of its time slots in one Schwarz iteration, where the adaptive
-factors were measured to diverge or to lose to a fixed factor, so such stops
-use `relaxation parameter` throughout. This is automatic and needs no input.
+factors were measured to diverge or to need more iterations than a fixed
+factor, so such stops use `relaxation parameter` throughout. This is automatic and needs no input.
 
 If a relaxation factor ever becomes small enough to leave an interface iterate
 unchanged, the Schwarz iteration carries no information: every subdomain re-solves against
@@ -235,7 +236,7 @@ Non-overlapping Dirichlet–Neumann coupling across a shared interface. The two
 sides must take opposite roles. The Dirichlet side receives the partner's
 projected interface *displacement* (not the projected current position): on a
 curved interface the two sides discretize the geometry as different facet
-polyhedra, so a position transfer would inject the chordal mismatch between
+polyhedra, so a position transfer would add the chordal mismatch between
 the two trace meshes — of the order of the coarser side's facet sagitta — as
 a spurious scalloped interface displacement at the coarse-facet frequency. On
 flat interfaces the two forms coincide, because the L2 projection reproduces
@@ -337,13 +338,13 @@ meshes, the fixed factor is equivalent. A pair converges when the jump of its ma
 quantity and the force residual are both at or below `matching relative
 tolerance`, or when the root mean square jump over the interface is at or
 below `matching absolute tolerance` (in the units of the matched quantity;
-default 0, which leaves the relative test alone). When every Schwarz coupling
+default 0, which disables the absolute test). When every Schwarz coupling
 is a matching pair this criterion alone stops the iteration, including at the
 first Schwarz iteration of a stop, and the controller's `relative tolerance`
 and `absolute tolerance` are not used; otherwise the displacement criterion
 must hold as well. A residual that stays above the tolerance and has not
-fallen 5% below its smallest value for three consecutive iterations is handled
-by `stalled interface jump action`; when the simulation has other couplings,
+fallen 5% below its smallest value for three consecutive iterations is a
+stall, treated according to `stalled interface jump action`; when the simulation has other couplings,
 only iterations at which the displacement update has converged are counted. A
 single iteration without decrease, which Aitken factors produce, is not a
 stall.
@@ -431,7 +432,7 @@ Robin parameter (force per unit area per unit displacement), and g the datum
 assembled from the traction and displacement of the partner. Each side builds
 its own transfer operators from the partner trace (per-side transfer), so the
 two sides of an interface may use different values of α. The condition does
-not absorb interface waves, so in elastodynamics it can inject energy at the
+not absorb interface waves, so in elastodynamics it can increase the energy at the
 interface (issue #176; on the cantilever and nested-cylinders benchmarks of
 `docs/notes/schwarz-coupling` nearly every dynamic Robin-Robin run ends by
 element inversion after exponential energy growth, on overlap and nonoverlap
@@ -465,7 +466,7 @@ infinitesimal kinematics.
 ## Mesh swapping (`swaps`)
 
 Both single- and multi-domain runs can replace a mesh mid-run when a criterion
-fires. `swaps` is a list; each entry names a `replacement` file and a
+is met. `swaps` is a list; each entry names a `replacement` file and a
 `criterion` (in a multidomain run it also names the `subsim` to replace). Swaps
 cannot be combined with `restart`.
 
