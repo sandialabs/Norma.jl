@@ -8,10 +8,10 @@
 #
 # At the first time step the displacement field is zero everywhere, so the
 # overlap L2 error is exactly 0.0 — well below the 1.0 tolerance.  The
-# coarsen criterion therefore fires immediately and cuboid-1 is replaced by
+# coarsen criterion is therefore met immediately and cuboid-1 is replaced by
 # cuboid-1-phase2 before any Schwarz iteration runs.  The replacement carries
-# the same material and mesh, so the final stress field matches the vanilla
-# reference (σ_zz ≈ 5e8 Pa at t = 1).
+# the same material and mesh, so the final stress field matches the
+# reference without swap (σ_zz ≈ 5e8 Pa at t = 1).
 
 type: multi
 domains: ["cuboid-1.yaml", "cuboid-2.yaml"]

@@ -5,7 +5,7 @@
 # top-level Norma.jl directory.
 
 # Replacement for cuboid-1 loaded after the overlap L2 error swap criterion
-# fires.  Same material and mesh as the original so the solution remains
+# is met.  Same material and mesh as the original so the solution remains
 # correct; the different output file name lets tests verify the swap occurred.
 
 type: single

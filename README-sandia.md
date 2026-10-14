@@ -1,8 +1,9 @@
 # Running Norma.jl on the Sandia Network (macOS & Linux)
 
-Unofficial setup notes for getting Norma.jl running on a Sandia-managed machine.
+Setup notes for running Norma.jl on a Sandia-managed machine. They are not
+official Sandia IT guidance.
 
-Norma's standard install (see `README.md`) is just:
+Norma's standard install (see `README.md`) is:
 
 ```bash
 git clone https://github.com/sandialabs/Norma.jl.git
@@ -11,14 +12,14 @@ julia --project=. -e 'using Pkg; Pkg.instantiate()'
 julia --project=. src/Norma.jl examples/<case>/input.yaml
 ```
 
-That works **everywhere except** the two points where Sandia's TLS inspection
-(ZScaler on laptops / the SRN proxy) breaks tools that ship their **own** CA
+That works everywhere except at the two points where Sandia's TLS inspection
+(ZScaler on laptops, the SRN proxy) interrupts tools that ship their own CA
 store. macOS- and Linux-native tools trust Sandia's interception via the system
 trust store, but **Julia and conda do not** — they carry their own CA bundles
 and will fail with `certificate verify failed` until pointed at a bundle that
 includes the **Sandia Root CA**.
 
-So the only Sandia-specific work is **Section A** below (set up CA trust once).
+The only Sandia-specific step is **Section A** below (set up CA trust once).
 Sections B–D are the normal Julia workflow.
 
 ---
@@ -27,10 +28,10 @@ Sections B–D are the normal Julia workflow.
 
 ### A.1 — Get a CA bundle that includes the Sandia root
 
-The goal is a single PEM file (we'll use `~/ssl/my-ca-bundle.pem`) containing the
+The result is a single PEM file (here `~/ssl/my-ca-bundle.pem`) containing the
 public root CAs **plus** Sandia's CA.
 
-**macOS** — export it straight from the system keychain (Sandia's root is
+**macOS** — export it from the system keychain (Sandia's root is
 installed there by MDM):
 
 ```bash
@@ -40,7 +41,7 @@ mkdir -p ~/ssl
 } > ~/ssl/my-ca-bundle.pem
 ```
 
-**Linux** — a managed Sandia box already has the Sandia CA in the system trust
+**Linux** — a managed Sandia machine already has the Sandia CA in the system trust
 store, so copy that bundle:
 
 ```bash
@@ -62,7 +63,7 @@ sudo cp sandia-root.crt /usr/local/share/ca-certificates/ && sudo update-ca-cert
 sudo cp sandia-root.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
 ```
 
-Verify the bundle works:
+Verify the bundle:
 
 ```bash
 curl --cacert ~/ssl/my-ca-bundle.pem -sSI https://pkg.julialang.org | head -1   # expect HTTP 200/301
@@ -80,7 +81,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/ssl/my-ca-bundle.pem" # Node / npm (optional)
 
 Open a new shell (or `source` the file) so these take effect.
 
-### A.3 — Point conda at it (unblocks the PyCall build)
+### A.3 — Point conda at it (required by the PyCall build)
 
 **Only needed if you use the neural-network OpInf ROM.** PyCall is an optional
 dependency (a package extension); a normal install does not build it, so most
@@ -116,14 +117,14 @@ curl -fsSL https://install.julialang.org | sh
 ```
 
 This installs the `juliaup` version manager and a `julia` launcher under
-`~/.juliaup/bin` (make sure it's on your `PATH`). Manage versions with
+`~/.juliaup/bin` (add it to your `PATH`). Manage versions with
 `juliaup add <channel>`, `juliaup default <channel>`, `juliaup status`.
 
 ---
 
 ## C. Get Norma.jl
 
-Use **HTTPS** — it's the least-friction option on the corporate network. (SSH
+Use **HTTPS**, which needs no further configuration on the corporate network. (SSH
 `git@github.com:…` needs a GitHub key *and* outbound port 22, which ZScaler may
 block; if you prefer SSH, configure it over port 443.)
 
@@ -137,8 +138,8 @@ cd ~/Repos/Norma.jl
 ## D. Instantiate and run
 
 Use **`instantiate`**, not `update` — it reproduces the exact dependency
-versions pinned in the committed `Manifest.toml` (faster and avoids surprise
-version bumps):
+versions pinned in the committed `Manifest.toml` (faster, and the versions do
+not change):
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
@@ -163,13 +164,13 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Pkg.update()`/first op hangs forever | General registry bootstrap stalled on a transient network hiccup | Re-run; or `julia -e 'using Pkg; Pkg.Registry.add("General")'` then retry. Not a config problem. |
-| `Pkg` fails fetching registry/packages with a TLS/cert error | Julia's bundled CA doesn't trust Sandia's intercepted cert | Section A.1–A.2 (`SSL_CERT_FILE` → CA bundle) |
-| Build error in **PyCall** → `CondaSSLError: CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate` (only if you opted into PyCall for the neural-network OpInf ROM) | conda's Python doesn't trust Sandia's cert | Section A.3 (`~/.condarc` `ssl_verify`), then `julia --project=. -e 'using Pkg; Pkg.build("PyCall")'` |
+| `Pkg.update()` or the first operation does not complete | The General registry download stalled on a transient network failure | Re-run; or `julia -e 'using Pkg; Pkg.Registry.add("General")'` then retry. Not a configuration problem. |
+| `Pkg` fails fetching registry/packages with a TLS/cert error | Julia's bundled CA does not trust Sandia's intercepted certificate | Section A.1–A.2 (`SSL_CERT_FILE` → CA bundle) |
+| Build error in **PyCall** → `CondaSSLError: CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate` (only if you opted into PyCall for the neural-network OpInf ROM) | conda's Python does not trust Sandia's certificate | Section A.3 (`~/.condarc` `ssl_verify`), then `julia --project=. -e 'using Pkg; Pkg.build("PyCall")'` |
 | Connections time out off-site | Need the Sandia proxy | Section A.4 |
 | `git clone` over SSH hangs | Outbound port 22 blocked | Use the HTTPS URL (Section C) |
 
-### Quick sanity checks
+### Checks
 
 ```bash
 echo "$SSL_CERT_FILE"                                   # should be set
@@ -179,6 +180,5 @@ julia -e 'using Downloads; Downloads.download("https://pkg.julialang.org/registr
 
 ---
 
-*These are community setup notes, not official Sandia IT guidance. The only
-Sandia-specific requirement is CA trust (Section A); everything else is the
-standard juliaup → clone → instantiate → run workflow.*
+*The only Sandia-specific requirement is CA trust (Section A); everything else
+is the standard workflow: juliaup, clone, instantiate, run.*

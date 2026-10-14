@@ -30,7 +30,7 @@ model:
   # measures 0.025 along x or 0.2 along y or z, and the ideal element is the
   # unit regular tetrahedron scaled by the sizes along the axes.  Their
   # product is the volume of an isotropic element of the mesh size 0.1, so
-  # the target asks for a change of shape rather than refinement.  The energy
+  # the target requires a change of shape rather than refinement.  The energy
   # is evaluated in the metric space, so the orientation of an element is
   # part of the objective (see docs/notes/ems-anisotropic).
   smooth reference: metric field unrestricted

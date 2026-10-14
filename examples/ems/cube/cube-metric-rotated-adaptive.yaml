@@ -1,6 +1,6 @@
 # The target of cube-metric-adaptive.yaml turned by 45 degrees about z, so
 # that the thin direction is the diagonal of the x-y plane rather than an
-# axis.  Smoothing alone tells the two apart: the axis-aligned target is
+# axis.  Smoothing alone distinguishes the two: the axis-aligned target is
 # normal to a pair of fixed faces and leaves the mesh isotropic, while this
 # one is partly reachable, since a path through the mesh can zigzag in the
 # plane normal to the thin direction.  With the topological operations they
@@ -28,7 +28,7 @@ model:
   # it measures 0.025 along that diagonal or 0.2 across it, and the ideal
   # element is the unit regular tetrahedron scaled by the sizes and turned
   # with them.  Their product is the volume of an isotropic element of the
-  # mesh size 0.1, so the target asks for a change of shape rather than
+  # mesh size 0.1, so the target requires a change of shape rather than
   # refinement.
   smooth reference: metric field unrestricted
   metric field:

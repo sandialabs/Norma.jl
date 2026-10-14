@@ -57,7 +57,7 @@ sideset 6 name "ssz+"
 set large exodus file off
 export mesh "clamped-smaller-1.g" overwrite
 
-# Start from a fresh brick for the right/fine subdomain.  Compressing IDs
+# Start from a new brick for the right/fine subdomain.  Compressing IDs
 # ensures the new brick again has volume ID 1, surfaces 1--6, and curves 1--12.
 delete mesh
 delete volume all

@@ -30,8 +30,8 @@ initial conditions:
   velocity:
     - node set: nsall
       component: z
-      #WARNING: if you change elastic modiulus and density above, make sure to change them in the following line too!
-      #Otherwise you will change the problem being solved.
+      # The wave speed c in this function is computed from the elastic modulus E
+      # and the density rho, which must equal the values of the material block above.
       function: "a=0.001; s=0.02; E=1.0e+09; rho=1000.0; c=sqrt(E/rho); -a*c*z/s/s*exp(-z*z/s/s/2)"
 boundary conditions:
   Dirichlet:

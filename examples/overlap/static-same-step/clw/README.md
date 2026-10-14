@@ -9,13 +9,13 @@ fine-domain base-material rings graded to t/4 of the specimen thickness
 fine weld domain 24,804 hexes / 31,672 nodes — 39,357 hexes total against
 61,978 for the monolithic reference mesh. All units SI (meshes in meters).
 
-Physics matching the study's Sierra/SM deck: 304L steel, finite-deformation
+The problem matches the study's Sierra/SM input: 304L steel, finite-deformation
 J2 plasticity (E = 200 GPa, nu = 0.25, rho = 7800 kg/m^3, yield 1 GPa, linear
-hardening 20 GPa), quasistatic, 50 steps to t = 1, displacement-controlled
-pull of 5 mm in y on the plate top surface with a cosine ramp, x/y symmetry
+hardening 20 GPa), quasistatic, 50 steps to t = 1, prescribed
+displacement of 5 mm in y on the plate top surface with a cosine ramp, x/y symmetry
 and a z-fixed line on the coarse plate, overlapping Schwarz coupling with
 minimum 1 iteration and relative tolerance 1e-3 (the study's operating
-point). Both stops of the smoke case converge in one Schwarz iteration.
+point). Both stops of the 2-step case converge in one Schwarz iteration.
 
 ## Files
 
@@ -27,8 +27,8 @@ point). Both stops of the smoke case converge in one Schwarz iteration.
 - `clw-coarse.g`, `clw-fine.g` — the generated meshes.
 - `clw.yaml`, `clw-coarse.yaml`, `clw-fine.yaml` — the full 50-step case.
 - `clw-smoke.yaml` — 2-step version for timing and setup checks.
-- `nh-*.yaml` — neohookean (elastic) variant; much faster, useful for
-  Schwarz-behavior studies that do not need plasticity.
+- `nh-*.yaml` — neohookean (elastic) variant, about 25 times faster per step;
+  for studies of the Schwarz iteration that do not need plasticity.
 
 ## Running
 
@@ -38,10 +38,11 @@ JULIA_NUM_THREADS=8 julia --project=/path/to/Norma.jl /path/to/Norma.jl/src/Norm
 
 `use line search: true` in the solver blocks is required: the first Newton
 iterate of a step yields spuriously in the boundary layer next to the loaded
-surface, and raw full Newton bounces off the yield surface. The case also
+surface, and the full Newton step without line search oscillates about the
+yield surface. The case also
 needs the J2 state-commit fix (commit b15ace97, 2026-08-28); before it the
 first step never converges.
 
 Measured on 8 threads (Linux workstation, 2026-08-28): J2 about 38 s per step
-after JIT warm-up (roughly 30-35 min for the 50-step case); neohookean about
+after compilation (30 to 35 min for the 50-step case); neohookean about
 1.5 s per step.

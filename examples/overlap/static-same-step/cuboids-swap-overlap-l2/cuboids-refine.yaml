@@ -7,15 +7,15 @@
 # Overlap L2 error swap — refine direction.
 #
 # At the first time step the displacement is zero, so the overlap L2 error is
-# exactly 0.0 and the refine criterion does NOT fire (0 is not > 1e-15).
+# exactly 0.0 and the refine criterion is not met (0 is not > 1e-15).
 # After the first Schwarz solve the displacements are non-zero and the overlap
 # L2 error — evaluated at the start of the second step from the converged
 # step-1 fields — is a small positive number (on the order of the Schwarz
-# residual, far above 1e-15).  The refine criterion fires on step 2 and
+# residual, far above 1e-15).  The refine criterion is met at step 2 and
 # cuboid-1 is replaced by cuboid-1-phase2 before that step's Schwarz runs.
 #
-# Two time steps are required so there is a non-zero displacement state for
-# the criterion to see on the second evaluation.
+# Two time steps are required so that a non-zero displacement state exists at
+# the second evaluation of the criterion.
 
 type: multi
 domains: ["cuboid-1.yaml", "cuboid-2.yaml"]
