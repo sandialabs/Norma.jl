@@ -202,10 +202,13 @@ overrides a coupling datum on a shared node. The coupling conditions of
 this note either prescribe interface degrees of freedom (Dirichlet type) or
 add to the boundary force vector (Neumann type). The Newmark initial
 acceleration solves $~M_{ff}\, ~a_f = (~f^{\mathrm{ext}} - ~f^{\mathrm{int}})_f -
-~M_{fc}\, ~a_c$ for the free rows $f$ given the prescribed rows $c$; on a
-fresh start the rows held by a Schwarz coupling are excluded from the set
-$c$ of that correction, and included (the \emph{trusted} form) only in the
-refinement passes of Sec.~\ref{sec:initialization}.
+~M_{fc}\, ~a_c$ for the free rows $f$ given the prescribed rows $c$. The
+rows held by a Schwarz coupling carry the partner's projected
+acceleration, which is zero until the partner has computed its own. On a
+fresh start those rows are therefore excluded from the set $c$ of the
+correction; they are included only in the refinement passes of
+Sec.~\ref{sec:initialization} and in the coupled initial acceleration of
+Sec.~\ref{sec:initial}, once every subdomain has an acceleration.
 
 \paragraph{Roles.} In a Dirichlet--Neumann exchange the \emph{Dirichlet
 side} $D$ receives a kinematic datum on its interface nodes and the
@@ -456,8 +459,9 @@ acceleration of every dynamic subdomain with the coupling rows excluded
 from the correction of Sec.~\ref{sec:setting}. If the run is a restart, or
 a Robin--Robin interface has nonzero initial displacement or velocity, two
 refinement passes follow, each applying the boundary conditions from the
-updated histories and recomputing the initial accelerations in the trusted
-form. Matching pairs then compute the coupled initial acceleration of
+updated histories and recomputing the initial accelerations with the
+coupling rows included in the correction of Sec.~\ref{sec:setting}.
+Matching pairs then compute the coupled initial acceleration of
 Sec.~\ref{sec:initial}, and contact pairs evaluate their detection
 (Sec.~\ref{sec:contact}).
 
@@ -1139,7 +1143,8 @@ step without decaying. The coupled initial acceleration is a Schwarz
 iteration at $t = 0$ in which $D$ imposes the projected partner
 displacement, velocity, and acceleration, $N$ receives the d'Alembert
 reaction of $D$, and each side solves for its acceleration with the
-interface rows trusted. The imposed interface acceleration is relaxed with
+coupling rows included in the correction of Sec.~\ref{sec:setting}. The
+imposed interface acceleration is relaxed with
 the fixed factor, with the secant Aitken factor \eqref{eq:aitken-secant}
 under either Aitken option, or by Anderson acceleration, as the input
 selects. The iteration stops when the one-sided acceleration jump and the
