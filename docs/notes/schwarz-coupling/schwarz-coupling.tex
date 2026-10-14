@@ -922,8 +922,12 @@ interface force $~f_k$ on its interface rows, and no other loads,
   \label{eq:per-side}
 \end{equation}
 with $\Delta(\cdot)^n = (\cdot)^n - (\cdot)^{n-1}$ and $\tilde{E}_k$ the
-term of side $k$ in \eqref{eq:rate-invariant}. With $\gamma_k = 1/2$ the
-second term vanishes.
+term of side $k$ in \eqref{eq:rate-invariant}. For $~S_k$ positive
+definite the second term has the sign of $\gamma_k - 1/2$: an uncoupled
+side ($~f_k = 0$) dissipates $\tilde{E}_k$ for $\gamma_k > 1/2$, conserves
+it for $\gamma_k = 1/2$, and increases it at every step for
+$\gamma_k < 1/2$, which is the instability of the Newmark scheme below
+$\gamma = 1/2$. With $\gamma_k = 1/2$ the second term vanishes.
 
 \begin{proposition}[Equal steps]
 \label{prop:equal}
