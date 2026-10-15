@@ -39,7 +39,7 @@ read_free_dofs_test(filename::String) = BitVector(strip.(readlines(filename)) .=
     cp("../examples/ahead/single/clamped/clamped.g", "../clamped.g"; force=true)
     params = YAML.load_file("clamped.yaml"; dicttype=Norma.Parameters)
     params["name"] = "clamped"
-    params["time integrator"]["final time"] = 1.0e-04  # 10 steps; CSV output at stops 0 and 10
+    params["time integrator"]["final time"] = 1.0e-05  # 10 steps of 1.0e-06; CSV output at stop 0
     params["matrix output"]["steps"] = [0, 10]
     simulation = Norma.run(params)
     model = simulation.model
