@@ -83,7 +83,10 @@ const TOP_LEVEL_SINGLE_KEYS = Set([
     "CSV output interval",
     "CSV write sidesets",
     "mesh smoothing",
+    "matrix output",
 ])
+
+const MATRIX_OUTPUT_KEYS = Set(["matrices", "steps"])
 
 const TOP_LEVEL_MULTI_KEYS = Set([
     "type",
@@ -411,6 +414,12 @@ function validate_inexact_newton!(messages::Vector{String}, params::Parameters, 
     return warn_unknown_keys!(messages, block, INEXACT_NEWTON_KEYS, "inexact Newton", file)
 end
 
+function validate_matrix_output!(messages::Vector{String}, params::Parameters, file::String)
+    block = get(params, "matrix output", nothing)
+    block isa AbstractDict || return messages
+    return warn_unknown_keys!(messages, block, MATRIX_OUTPUT_KEYS, "matrix output", file)
+end
+
 function validate_adaptivity!(messages::Vector{String}, params::Parameters, file::String)
     adaptivity = get(params, "adaptivity", nothing)
     adaptivity isa AbstractDict || return messages
@@ -460,6 +469,7 @@ function validate_input_parameters(params::Parameters, file::AbstractString)
         validate_restart!(messages, params, file_name)
         validate_swaps!(messages, params, file_name)
         validate_adaptivity!(messages, params, file_name)
+        validate_matrix_output!(messages, params, file_name)
     end
     return messages
 end

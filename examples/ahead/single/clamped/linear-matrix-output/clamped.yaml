@@ -1,0 +1,80 @@
+# Linear clamped bar for reproducing the solution outside Norma (e.g. Python).
+#
+# Same problem as ../dynamic/clamped.yaml, but linear elastic so that K and M
+# are constant and the external (Python) solver can match Norma to solver
+# tolerance. With nu = 0 and the lateral faces fixed this is the 1D wave
+# equation in z, c = sqrt(E/rho) = 1000 m/s, with an exact d'Alembert solution.
+#
+# Files written for the external solver:
+#   clamped-stiffness-0000.mm          K, all DOFs (Matrix Market)
+#   clamped-mass.mm                    consistent M, all DOFs
+#   clamped-external-force-0000.csv    body + Neumann force (zero here)
+#   clamped-free-dofs-0000.csv         true = free, false = Dirichlet-constrained
+#   clamped-{disp,velo,acce}-0000.csv  initial conditions (from CSV output)
+#   clamped-{disp,velo,acce}-NNNN.csv  Norma reference solution every 1.0e-04
+#   clamped.e                          Norma solution, every step
+#
+# DOF 3*(node-1)+c holds component c (1=x, 2=y, 3=z) of node n (1-based,
+# Exodus order); each line of a nodal CSV is the x,y,z of one node.
+type: single
+input mesh file: ../clamped.g
+output mesh file: clamped.e
+CSV output interval: 1.0e-04
+matrix output:
+  matrices: [stiffness, mass, external force]
+  # K and M are constant for a linear problem and the external force is zero,
+  # so the initial stop is enough.
+  steps: [0]
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      clamped: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+09
+      Poisson's ratio: 0.0
+      density: 1000.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+  initial time: 0.0
+  final time: 1.0e-03
+  time step: 1.0e-05
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: z
+      function: "a=0.001; s=0.02; a*exp(-z*z/s/s/2)"
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  # Direct solves for Newton, and a tight tolerance for the CG solve of the
+  # initial acceleration, so an external direct solver can match closely.
+  linear solver: direct
+  linear solver relative tolerance: 1.0e-14
