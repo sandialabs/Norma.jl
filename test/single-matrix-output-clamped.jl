@@ -32,10 +32,10 @@ end
 
 read_free_dofs_test(filename::String) = BitVector(strip.(readlines(filename)) .== "true")
 
-# Runs examples/ahead/single/clamped/linear-matrix-output, the input used to
+# Runs examples/ahead/single/clamped/dynamic-linear-matrix-output, the input used to
 # generate data for an external solver, shortened to 10 steps.
 @testset "Single Matrix Output Clamped" begin
-    cp("../examples/ahead/single/clamped/linear-matrix-output/clamped.yaml", "clamped.yaml"; force=true)
+    cp("../examples/ahead/single/clamped/dynamic-linear-matrix-output/clamped.yaml", "clamped.yaml"; force=true)
     cp("../examples/ahead/single/clamped/clamped.g", "../clamped.g"; force=true)
     params = YAML.load_file("clamped.yaml"; dicttype=Norma.Parameters)
     params["name"] = "clamped"
