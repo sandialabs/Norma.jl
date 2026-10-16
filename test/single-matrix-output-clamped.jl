@@ -35,10 +35,13 @@ read_free_dofs_test(filename::String) = BitVector(strip.(readlines(filename)) .=
 # Runs examples/ahead/single/clamped/dynamic-linear-matrix-output, the input used to
 # generate data for an external solver, shortened to 10 steps.
 @testset "Single Matrix Output Clamped" begin
-    cp("../examples/ahead/single/clamped/dynamic-linear-matrix-output/clamped.yaml", "clamped.yaml"; force=true)
-    cp("../examples/ahead/single/clamped/clamped.g", "../clamped.g"; force=true)
-    params = YAML.load_file("clamped.yaml"; dicttype=Norma.Parameters)
+    # The input names its mesh relative to the example directory; give its
+    # absolute path so that nothing is copied outside this directory.
+    params = YAML.load_file(
+        "../examples/ahead/single/clamped/dynamic-linear-matrix-output/clamped.yaml"; dicttype=Norma.Parameters
+    )
     params["name"] = "clamped"
+    params["input mesh file"] = abspath("../examples/ahead/single/clamped/clamped.g")
     params["time integrator"]["final time"] = 1.0e-05  # 10 steps of 1.0e-06; CSV output at stop 0
     params["matrix output"]["steps"] = [0, 10]
     simulation = Norma.run(params)
@@ -84,8 +87,6 @@ read_free_dofs_test(filename::String) = BitVector(strip.(readlines(filename)) .=
             rm(file; force=true)
         end
     end
-    rm("clamped.yaml"; force=true)
-    rm("../clamped.g"; force=true)
     rm("clamped.e"; force=true)
 
     # Exact round trip of what Norma assembled.
@@ -138,30 +139,74 @@ read_free_dofs_test(filename::String) = BitVector(strip.(readlines(filename)) .=
 
     # Input parsing.
     Norma.NORMA_TEST_MODE[] = true
-    parse_block(block) = Norma.parse_matrix_output(Norma.Parameters("matrix output" => block))
-    default_options = parse_block(Norma.Parameters())
-    @test default_options.matrices == ["stiffness", "mass", "external force"]
-    @test Norma.is_matrix_output_stop(default_options, 0)
-    @test !Norma.is_matrix_output_stop(default_options, 1)
-    all_options = parse_block(Norma.Parameters("steps" => "all"))
-    @test Norma.is_matrix_output_stop(all_options, 7)
-    every_options = parse_block(Norma.Parameters("steps" => Norma.Parameters("every" => 5)))
-    @test Norma.is_matrix_output_stop(every_options, 0)
-    @test Norma.is_matrix_output_stop(every_options, 10)
-    @test !Norma.is_matrix_output_stop(every_options, 7)
-    list_options = parse_block(Norma.Parameters("matrices" => ["mass"], "steps" => [3, 8]))
-    @test list_options.matrices == ["mass"]
-    @test Norma.is_matrix_output_stop(list_options, 8)
-    @test !Norma.is_matrix_output_stop(list_options, 4)
-    @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("matrices" => ["damping"]))
-    @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("steps" => "sometimes"))
-    @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("steps" => Norma.Parameters("every" => 0)))
-    @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("steps" => [-1]))
-    @test_throws Norma.NormaAbortException parse_block("stiffness")
+    try
+        parse_block(block) = Norma.parse_matrix_output(Norma.Parameters("matrix output" => block))
+        default_options = parse_block(Norma.Parameters())
+        @test default_options.matrices == ["stiffness", "mass", "external force"]
+        @test Norma.is_matrix_output_stop(default_options, 0)
+        @test !Norma.is_matrix_output_stop(default_options, 1)
+        all_options = parse_block(Norma.Parameters("steps" => "all"))
+        @test Norma.is_matrix_output_stop(all_options, 7)
+        every_options = parse_block(Norma.Parameters("steps" => Norma.Parameters("every" => 5)))
+        @test Norma.is_matrix_output_stop(every_options, 0)
+        @test Norma.is_matrix_output_stop(every_options, 10)
+        @test !Norma.is_matrix_output_stop(every_options, 7)
+        list_options = parse_block(Norma.Parameters("matrices" => ["mass"], "steps" => [3, 8]))
+        @test list_options.matrices == ["mass"]
+        @test Norma.is_matrix_output_stop(list_options, 8)
+        @test !Norma.is_matrix_output_stop(list_options, 4)
+        @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("matrices" => ["damping"]))
+        @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("steps" => "sometimes"))
+        @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("steps" => Norma.Parameters("every" => 0)))
+        @test_throws Norma.NormaAbortException parse_block(Norma.Parameters("steps" => [-1]))
+        @test_throws Norma.NormaAbortException parse_block("stiffness")
 
-    # Schwarz (multi-domain) inputs are rejected.
-    multi_params = Norma.Parameters("type" => "multi", "matrix output" => Norma.Parameters())
-    @test_throws Norma.NormaAbortException Norma.reject_matrix_output_in_schwarz(multi_params, "multi.yaml")
-    @test Norma.reject_matrix_output_in_schwarz(Norma.Parameters("type" => "single"), "single.yaml") === nothing
-    Norma.NORMA_TEST_MODE[] = false
+        # Schwarz (multi-domain) inputs are rejected.
+        multi_params = Norma.Parameters("type" => "multi", "matrix output" => Norma.Parameters())
+        @test_throws Norma.NormaAbortException Norma.reject_matrix_output_in_schwarz(multi_params, "multi.yaml")
+        @test Norma.reject_matrix_output_in_schwarz(Norma.Parameters("type" => "single"), "single.yaml") === nothing
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+    end
+end
+
+# A quasi-static run with a Robin condition: without `matrices` the stiffness
+# and the external force are written and the mass is not; the stiffness, not
+# assembled before the first solve, is skipped at stop 0; and at the last stop
+# the dumped stiffness, which includes the Robin stiffness, and the dumped
+# force reproduce Norma's equilibrium on the free DOFs.
+@testset "Single Matrix Output Robin Quasi-Static" begin
+    params = YAML.load_file("../examples/single/static-solid/cube/robin-bc/cube.yaml"; dicttype=Norma.Parameters)
+    params["name"] = "cube-matrix-output"
+    params["input mesh file"] = abspath("../examples/single/static-solid/cube/neumann-bc/cube.g")
+    params["output mesh file"] = "cube-matrix-output.e"
+    params["matrix output"] = Norma.Parameters("steps" => [0, 10])
+    simulation = Norma.run(params)
+    model = simulation.model
+    @test !isfile("cube-matrix-output-stiffness-0000.mm")
+    @test isfile("cube-matrix-output-free-dofs-0000.csv")
+    @test isfile("cube-matrix-output-stiffness-0010.mm")
+    @test !isfile("cube-matrix-output-mass.mm")
+    @test !isfile("cube-matrix-output-lumped-mass.mm")
+    K = read_matrix_market_test("cube-matrix-output-stiffness-0010.mm")
+    f = vec(readdlm("cube-matrix-output-external-force-0010.csv", ',', Float64)')
+    free = read_free_dofs_test("cube-matrix-output-free-dofs-0010.csv")
+    for file in readdir()
+        startswith(file, "cube-matrix-output") && rm(file; force=true)
+    end
+    @test K == model.stiffness + Norma.build_robin_stiffness(model)
+    u = vec(model.displacement)
+    @test norm((K * u - f)[free]) <= 1.0e-10 * norm(f[free])
+
+    # An operator the run does not assemble aborts at setup.
+    params["matrix output"] = Norma.Parameters("matrices" => ["mass"])
+    Norma.NORMA_TEST_MODE[] = true
+    try
+        @test_throws Norma.NormaAbortException Norma.run(params)
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+        for file in readdir()
+            startswith(file, "cube-matrix-output") && rm(file; force=true)
+        end
+    end
 end

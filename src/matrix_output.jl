@@ -9,12 +9,12 @@
 # outside Norma. Requested with an input block such as
 #
 #   matrix output:
-#     matrices: [stiffness, mass, external force]   # default: all three
+#     matrices: [stiffness, mass, external force]   # default: those the run assembles
 #     steps: [0]                                    # default; or all, [0, 10], {every: 5}
 #
 # Files, with the simulation name as prefix and the stop index padded to 4:
 #
-#   <name>-stiffness-NNNN.mm        tangent stiffness K (Matrix Market)
+#   <name>-stiffness-NNNN.mm        tangent stiffness K plus the Robin stiffness (Matrix Market)
 #   <name>-mass.mm                  consistent mass M, written once
 #   <name>-lumped-mass.mm           lumped mass as a diagonal matrix, written once
 #   <name>-external-force-NNNN.csv  body + boundary (Neumann) force, nodal layout
@@ -25,9 +25,16 @@
 # the x,y,z values of one node. Matrices include every DOF, constrained or
 # not; the free-dofs file tells the two apart.
 #
-# Only monolithic (type: single) runs are supported; Schwarz subdomains abort.
+# The block is parsed and checked against the integrator and solver once, at
+# setup (prepare_matrix_output), so an invalid request aborts before the first
+# solve. Only monolithic (type: single) runs are supported; Schwarz subdomains
+# abort.
 
 const MATRIX_OUTPUT_NAMES = ("stiffness", "mass", "external force")
+
+# Key under which the parsed options are kept in the simulation parameters.
+const MATRIX_OUTPUT_OPTIONS_KEY = "_matrix output options"
+const MATRIX_OUTPUT_MASS_WRITTEN_KEY = "_matrix output mass written"
 
 struct MatrixOutputOptions
     matrices::Vector{String}
@@ -38,10 +45,12 @@ end
 
 _is_positive_integer(value) = value isa Integer && value > 0
 
-function parse_matrix_output(params::Parameters)
+# Parses the `matrix output` block. `available` is the list used when the block
+# gives no `matrices`: the operators that the run assembles.
+function parse_matrix_output(params::Parameters; available=collect(MATRIX_OUTPUT_NAMES))
     block = params["matrix output"]
     block isa AbstractDict || norma_abort("`matrix output` must be a block with `matrices` and/or `steps`")
-    matrices_param = get(block, "matrices", collect(MATRIX_OUTPUT_NAMES))
+    matrices_param = get(block, "matrices", available)
     matrices_param isa AbstractVector ||
         norma_abort("`matrix output: matrices` must be a list, e.g. [stiffness, mass, external force]")
     matrices = String[]
@@ -73,6 +82,43 @@ function parse_matrix_output(params::Parameters)
     end
     any(<(0), step_list) && norma_abort("`matrix output: steps` must not contain negative stop indices")
     return MatrixOutputOptions(matrices, all_steps, step_list, every)
+end
+
+# The stiffness is assembled by an implicit integrator (quasi-static or
+# Newmark) with the Hessian minimizer; a mass, consistent or lumped, by a
+# dynamic integrator (Newmark or central difference).
+function matrix_output_has_stiffness(integrator::TimeIntegrator, solver::Solver)
+    return (integrator isa QuasiStatic || integrator isa Newmark) && solver isa HessianMinimizer
+end
+matrix_output_has_mass(integrator::TimeIntegrator) = integrator isa Newmark || integrator isa CentralDifference
+
+# Parses the block, checks every requested operator against the integrator and
+# solver, and stores the options in `params`. Called once, at setup.
+function prepare_matrix_output(params::Parameters, model::Model, integrator::TimeIntegrator, solver::Solver)
+    haskey(params, "matrix output") || return nothing
+    model isa SolidMechanics ||
+        norma_abort("`matrix output` is only supported for the solid mechanics full-order model")
+    has_stiffness = matrix_output_has_stiffness(integrator, solver)
+    has_mass = matrix_output_has_mass(integrator)
+    available = String[]
+    has_stiffness && push!(available, "stiffness")
+    has_mass && push!(available, "mass")
+    push!(available, "external force")
+    options = parse_matrix_output(params; available=available)
+    run_description = "this run uses $(_integrator_name(integrator)) with $(_solver_name(solver))"
+    if "stiffness" in options.matrices && !has_stiffness
+        norma_abort(
+            "`matrix output: stiffness` needs an assembled stiffness matrix, which requires a quasi-static or " *
+            "Newmark time integrator with the Hessian minimizer solver; $run_description",
+        )
+    end
+    if "mass" in options.matrices && !has_mass
+        norma_abort(
+            "`matrix output: mass` needs a dynamic time integrator (Newmark or central difference); $run_description"
+        )
+    end
+    params[MATRIX_OUTPUT_OPTIONS_KEY] = options
+    return nothing
 end
 
 function is_matrix_output_stop(options::MatrixOutputOptions, stop::Integer)
@@ -112,6 +158,15 @@ function write_matrix_market(filename::String, A::SparseMatrixCSC{Float64,Int64}
     return nothing
 end
 
+# The stiffness that the Newton solve uses: the assembled tangent plus the
+# stiffness α W of the Robin conditions, which the solver adds to the Hessian
+# separately (solver.jl). HHT-α scales it by (1 - α) in the solve; the file
+# holds the unscaled matrix.
+function matrix_output_stiffness(model::SolidMechanics)
+    K_robin = build_robin_stiffness(model)
+    return nnz(K_robin) > 0 ? model.stiffness + K_robin : model.stiffness
+end
+
 function write_matrix_output(sim::SingleDomainSimulation)
     haskey(sim.params, "matrix output") || return nothing
     is_coupled(sim) && reject_matrix_output_in_schwarz(sim.params, sim.name)
@@ -125,7 +180,8 @@ end
 
 function write_matrix_output(sim::SingleDomainSimulation, model::SolidMechanics)
     params = sim.params
-    options = parse_matrix_output(params)
+    haskey(params, MATRIX_OUTPUT_OPTIONS_KEY) || prepare_matrix_output(params, model, sim.integrator, sim.solver)
+    options = params[MATRIX_OUTPUT_OPTIONS_KEY]
     stop = sim.controller.stop
     is_matrix_output_stop(options, stop) || return nothing
     norma_log(0, :output, "Matrix Market operators for $(sim.name) [MM]")
@@ -133,29 +189,30 @@ function write_matrix_output(sim::SingleDomainSimulation, model::SolidMechanics)
     index_string = "-" * string(stop; pad=4)
     num_dofs = length(model.free_dofs)
     if "stiffness" in options.matrices
-        if size(model.stiffness) != (num_dofs, num_dofs)
-            norma_abort(
-                "`matrix output: stiffness` needs an assembled stiffness matrix, which requires an " *
-                "implicit time integrator (quasi-static or Newmark) with the Hessian minimizer solver",
+        if size(model.stiffness) == (num_dofs, num_dofs)
+            write_matrix_market(
+                prefix * "stiffness" * index_string * ".mm",
+                matrix_output_stiffness(model),
+                "stiffness matrix K at stop $stop, time $(sim.controller.time)",
             )
+        else
+            # A quasi-static run assembles the stiffness in its first solve, so
+            # none exists at stop 0 unless initial equilibrium is requested.
+            norma_log(0, :output, "Stiffness not yet assembled at stop $stop; not written at this stop")
         end
-        write_matrix_market(
-            prefix * "stiffness" * index_string * ".mm",
-            model.stiffness,
-            "stiffness matrix K at stop $stop, time $(sim.controller.time)",
-        )
     end
-    if "mass" in options.matrices && get(params, "_matrix output mass written", false) == false
+    if "mass" in options.matrices && get(params, MATRIX_OUTPUT_MASS_WRITTEN_KEY, false) == false
         if size(model.mass) == (num_dofs, num_dofs)
             write_matrix_market(prefix * "mass.mm", model.mass, "consistent mass matrix M")
+            params[MATRIX_OUTPUT_MASS_WRITTEN_KEY] = true
         elseif length(model.lumped_mass) == num_dofs
             write_matrix_market(
                 prefix * "lumped-mass.mm", spdiagm(0 => model.lumped_mass), "lumped mass matrix M (diagonal)"
             )
+            params[MATRIX_OUTPUT_MASS_WRITTEN_KEY] = true
         else
-            norma_abort("`matrix output: mass` needs a dynamic time integrator; this simulation has no mass matrix")
+            norma_log(0, :output, "Mass not yet assembled at stop $stop; not written at this stop")
         end
-        params["_matrix output mass written"] = true
     end
     if "external force" in options.matrices
         external_force = copy(model.boundary_force)

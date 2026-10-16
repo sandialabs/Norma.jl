@@ -600,6 +600,7 @@ function SingleDomainSimulation(params::Parameters)
         integrator = create_time_integrator(params, model)
         solver = create_solver(params, model)
         norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+        prepare_matrix_output(params, model, integrator, solver)
         norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
         failed = false
         swaps = parse_swap_plans(params)
