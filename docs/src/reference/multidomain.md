@@ -293,9 +293,13 @@ f_N the interface force applied on N in the same iteration. For the
 standard exchange these values are reported only.
 
 **Matching exchange.** With `matching` both transfer operators are
-built from one cross mass matrix B, integrated over the facets of the side
-with more interface nodes, Π_D = W_D⁻¹ B, and the Neumann side's force transfer
-is Π_Dᵀ. The Neumann side receives Π_Dᵀ r_D, the d'Alembert reaction of the
+built from one cross mass matrix B, integrated over the facets of the
+Dirichlet side with the same quadrature as W_D, Π_D = W_D⁻¹ B, and the Neumann
+side's force transfer is Π_Dᵀ. Integrated on that side, the row sums of B equal
+those of W_D exactly, so Π_D reproduces constants to roundoff and the total
+force transferred to the Neumann side equals the total reaction of the
+Dirichlet side; the log reports the partition-of-unity error of Π_D and, for
+information, that of the unused projection onto the Neumann side. The Neumann side receives Π_Dᵀ r_D, the d'Alembert reaction of the
 Dirichlet side, so the two interface rows add to the row of the undecomposed
 problem. The Dirichlet side computes from its state (u_n, v_n, a_n) at the
 start of the step u_pre = u_n + Δt v_n + (½ − β) Δt² a_n and

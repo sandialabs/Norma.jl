@@ -659,12 +659,15 @@ relative error of the column sums of $~L$ against $~W_s \mathbf{1}$ exceeds
 $10^{-10}$. The classical Dirichlet--Neumann, Robin--Robin, and contact
 couplings build $~P_d$ and $~N_d$ independently on each side by these
 rules. The matching exchange instead builds both sides' transfers from one
-cross-mass matrix $~B$, integrated over the facets of the side with more
-interface nodes, with no alternative: $\Pi_1 = ~W_1^{-1} ~B$ and
-$\Pi_2 = ~W_2^{-1} ~B^T$, each side's force transfer the transpose of the
-partner's kinematic transfer, and the partition-of-unity error
-$\max(\max|\Pi_1 \mathbf{1} - \mathbf{1}|, \max|\Pi_2 \mathbf{1} - \mathbf{1}|)$
-logged. Only $\Pi_D$ and its transpose enter the matching exchange; the
+cross-mass matrix $~B$, integrated over the facets of the Dirichlet side
+with the same quadrature as $~W_D$, with no alternative: $\Pi_D = ~W_D^{-1} ~B$
+and the force transfer $\Pi_D^T$. On that side the row sums of $~B$ equal
+those of $~W_D$ exactly, because the trace basis of the Neumann side sums to
+one at every quadrature point, so $\Pi_D$ reproduces constants to roundoff
+and the total force transferred to the Neumann side equals the total
+reaction of the Dirichlet side. The partition-of-unity error
+$\max|\Pi_D \mathbf{1} - \mathbf{1}|$ is logged, with that of the unused
+projection $~W_N^{-1} ~B^T$ for information. Only $\Pi_D$ and its transpose enter the matching exchange; the
 projection onto the other side is never applied, which matters on curved
 or non-nested interfaces where it is inaccurate ($0.72$ on the cylinders
 of Sec.~\ref{sec:verification}, $1.2 \times 10^{-2}$ on the beam at mesh
@@ -1028,8 +1031,8 @@ have.
 \item Assign the Dirichlet role (Sec.~\ref{sec:roles}) with
   \code{default BC type}.
 \item Assemble $~B$, $~W_D$, and $~W_N$ of \eqref{eq:cross-mass} on the
-  reference configuration with the facet quadrature of the side with more
-  interface nodes, and form $\Pi_D$ of \eqref{eq:projector}
+  reference configuration, $~B$ with the facet quadrature of the Dirichlet
+  side, and form $\Pi_D$ of \eqref{eq:projector}
   (Sec.~\ref{sec:mass-matrices}). Check that $\Pi_D$ reproduces constants
   (the partition-of-unity error $\max |\Pi_D \mathbf{1} - \mathbf{1}|$ is at
   roundoff when the quadrature is exact).

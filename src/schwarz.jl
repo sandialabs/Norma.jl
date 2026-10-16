@@ -573,7 +573,14 @@ end
 # the reaction on the projected velocity imposed on the Dirichlet side. W_k is
 # stored as the square projector of side k and is the same matrix in the
 # constraint, in the projector, and in the force transfer. B is integrated over
-# the facets of the side with more interface nodes.
+# the facets of the Dirichlet side with the same quadrature as W_D, so that its
+# row sums equal those of W_D exactly: Π_D then reproduces constants to
+# roundoff and the force Π_Dᵀλ transferred to the Neumann side has the total
+# of λ. Integrated on the Neumann side, B would carry the quadrature error of
+# the product of the two trace bases into Π_D (1.2e-2 on the beam at mesh
+# ratio 1:0.75 and 0.72 on the cylinders). The projection onto the Neumann
+# side, W_N⁻¹Bᵀ, is never applied; its partition-of-unity error is logged for
+# information only.
 function compute_constrained_dn_projectors!(
     dst_model::SolidMechanics, dst_bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition
 )
@@ -602,7 +609,9 @@ function compute_constrained_dn_projectors!(
     W2 = get_square_projection_matrix(src_model, src_bc)
     n1 = size(W1, 1)
     n2 = size(W2, 1)
-    B = if n1 >= n2
+    # Integrate B over the facets of the Dirichlet side (the first argument of
+    # get_rectangular_projection_matrix is the side whose facets are integrated).
+    B = if dst_bc.is_dirichlet
         get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
     else
         Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
@@ -615,15 +624,18 @@ function compute_constrained_dn_projectors!(
     dst_bc.neumann_projector = Matrix(transpose(P2))
     src_bc.dirichlet_projector = P2
     src_bc.neumann_projector = Matrix(transpose(P1))
-    pu_error = max(maximum(abs.(P1 * ones(n2) .- 1.0)), maximum(abs.(P2 * ones(n1) .- 1.0)))
+    pu_error_1 = maximum(abs.(P1 * ones(n2) .- 1.0))
+    pu_error_2 = maximum(abs.(P2 * ones(n1) .- 1.0))
+    pu_error_D, pu_error_N = dst_bc.is_dirichlet ? (pu_error_1, pu_error_2) : (pu_error_2, pu_error_1)
     norma_logf(
         0,
         :info,
-        "Matching DN interface '%s'/'%s': %s matching, partition-of-unity error %.2e.",
+        "Matching DN interface '%s'/'%s': %s matching, partition-of-unity error of Π_D %.2e (unused projection onto N: %.2e).",
         dst_bc.name,
         src_bc.name,
         String(constraint),
-        pu_error,
+        pu_error_D,
+        pu_error_N,
     )
     return nothing
 end
