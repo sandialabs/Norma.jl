@@ -667,7 +667,21 @@ one at every quadrature point, so $\Pi_D$ reproduces constants to roundoff
 and the total force transferred to the Neumann side equals the total
 reaction of the Dirichlet side. The partition-of-unity error
 $\max|\Pi_D \mathbf{1} - \mathbf{1}|$ is logged, with that of the unused
-projection $~W_N^{-1} ~B^T$ for information. Only $\Pi_D$ and its transpose enter the matching exchange; the
+projection $~W_N^{-1} ~B^T$ for information. Before October 16, 2026, $~B$
+was integrated over the facets of the side with more interface nodes, which
+is the Dirichlet side in every run of Sec.~\ref{sec:verification}; with the
+coarser mesh as the Dirichlet side the two rules differ on facets that are
+not nested, and the earlier rule gave $\Pi_D$ a partition-of-unity error
+of $1.2\times 10^{-2}$ on the beam at ratio $1{:}0.75$ and $0.72$ on the
+cylinders. The energies are conserved to the same digits under either
+rule, since the identities of Sec.~\ref{sec:identity} hold for any $~B$;
+the error is in the solution: a rigid translation of the beam at $10$\,m/s
+for $1$\,ms then deviates by up to $3.6\%$ in the nodal velocities with
+$4.5\%$ of the kinetic energy turned into strain energy, and of the
+cylinders at $5$\,m/s for $0.2$\,ms by up to $67\%$ with $21\%$ of the
+kinetic energy turned into strain energy, against $5\times 10^{-11}$ and
+$2\times 10^{-10}$ with $~B$ on the Dirichlet side (run data in
+\code{\textasciitilde/Projects/Norma-Schwarz-Coupling/integration-side-2026-10}). Only $\Pi_D$ and its transpose enter the matching exchange; the
 projection onto the other side is never applied, which matters on curved
 or non-nested interfaces where it is inaccurate ($0.72$ on the cylinders
 of Sec.~\ref{sec:verification}, $1.2 \times 10^{-2}$ on the beam at mesh
