@@ -1021,8 +1021,11 @@ arrangement it is of the order of the impulse itself, and the energy $E$
 varies by $12$ to $51\%$ over the period of the first bending mode of the
 beam while $\tilde{E}$ is conserved (Sec.~\ref{sec:verify-subcycled}).
 $\tilde{E}$ weights the lowest mode least, so it does not detect the
-variation. The code does not enforce the assignment; it is a rule for the
-input (Sec.~\ref{sec:roles}).
+variation. The code does not change the assignment, which is the input's;
+since October 16, 2026 it warns at setup when the Dirichlet side has the
+finer step, is the explicit member of a mixed pair, or has fewer interface
+nodes than its partner with the same integrator and step
+(Sec.~\ref{sec:roles}).
 
 \paragraph{Scope.} Propositions~\ref{prop:equal} and~\ref{prop:subcycled}
 hold for a linear stiffness. For a nonlinear material the exchange still

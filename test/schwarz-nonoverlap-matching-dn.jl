@@ -562,3 +562,30 @@ end
         @test pu_N > 1.0e-4
     end
 end
+
+# The Dirichlet role is the input's; at setup the code warns when it is
+# assigned against the role rules: the fine-step side as the Dirichlet side,
+# or, at equal steps and integrators, the side with fewer interface nodes.
+@testset "Matching DN: Warning on the Dirichlet Role" begin
+    function setup_output(; kwargs...)
+        mktemp() do path, io
+            redirect_stdout(io) do
+                run_constrained_dn(false; initialize_only=true, kwargs...)
+            end
+            flush(io)
+            seekstart(io)
+            # The log wraps long lines; collapse the whitespace before matching.
+            replace(read(io, String), r"\s+" => " ")
+        end
+    end
+    # Coarser mesh (clamped part, 2:1) as the Dirichlet side at equal steps.
+    out = setup_output(; mesh_dir=nonconforming_beam, clamped_dirichlet=true)
+    @test occursin("fewer interface nodes", out)
+    out = setup_output(; mesh_dir=nonconforming_beam, clamped_dirichlet=false)
+    @test !occursin("[WARN]", out)
+    # Fine-step side (free part, 4:1) as the Dirichlet side.
+    out = setup_output(; free_substeps=4, clamped_dirichlet=false)
+    @test occursin("finer time step", out)
+    out = setup_output(; free_substeps=4, clamped_dirichlet=true)
+    @test !occursin("finer time step", out)
+end

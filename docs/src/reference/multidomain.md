@@ -379,7 +379,11 @@ diverges. The
 run aborts with
 `swap BC types`, with HHT-α, with reduced order models, and with
 `matching: displacement` unless both sides are Newmark with the same
-β > 0, γ, and time step.
+β > 0, γ, and time step. The roles are those of the input; at setup the
+code warns, without changing them, when the Dirichlet side has the finer
+time step, when it is the explicit member of a mixed pair at equal steps,
+or when it has fewer interface nodes than the partner with the same
+integrator and step.
 
 **Direct interface solve.** For a pair with `matching: velocity` of two central
 difference subdomains at equal steps, `interface solve: direct` computes the interface

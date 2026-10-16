@@ -618,6 +618,11 @@ function compute_constrained_dn_projectors!(
     end
     set_square_projector!(dst_bc, W1)
     set_square_projector!(src_bc, W2)
+    if dst_bc.is_dirichlet
+        warn_dirichlet_role(dst_sim, src_sim, dst_bc.name, src_bc.name, n1, n2)
+    else
+        warn_dirichlet_role(src_sim, dst_sim, src_bc.name, dst_bc.name, n2, n1)
+    end
     P1 = dst_bc.square_factor \ B
     P2 = src_bc.square_factor \ Matrix(transpose(B))
     dst_bc.dirichlet_projector = P1
@@ -637,6 +642,69 @@ function compute_constrained_dn_projectors!(
         pu_error_D,
         pu_error_N,
     )
+    return nothing
+end
+
+# Warns when the Dirichlet role of a matching pair is assigned against the
+# role rules (coupling note, assignment of the Dirichlet role), in their order
+# of precedence: with different time steps the coarse-step side is the
+# Dirichlet side (the impulse residual vanishes only then); with different
+# integrators the implicit side is the Dirichlet side (with the explicit side
+# as the Dirichlet side the gain of the iteration reaches -13 on the beam and
+# no fixed factor converges); with the same integrator and step the finer
+# mesh is the Dirichlet side (the gain then lies in [-1, 0], and grows with
+# the cube of the mesh ratio otherwise). The node count stands in for the
+# mesh size on the interface. The roles are not changed: they are the input's.
+function warn_dirichlet_role(
+    sim_D::SingleDomainSimulation, sim_N::SingleDomainSimulation, name_D::String, name_N::String, n_D::Int, n_N::Int
+)
+    Δt_D = sim_D.integrator.time_step
+    Δt_N = sim_N.integrator.time_step
+    pair = "Matching DN interface '$name_D'/'$name_N' ($(sim_D.name) is the Dirichlet side)"
+    if !isapprox(Δt_D, Δt_N; rtol=1.0e-12)
+        if Δt_D < Δt_N
+            norma_logf(
+                0,
+                :warn,
+                "%s: the Dirichlet side has the finer time step (%.3e against %.3e). The coarse-step side " *
+                "should be the Dirichlet side: with the fine-step side as the Dirichlet side the rate invariant " *
+                "is conserved but the interface impulse is not balanced, and the energy varies by the order of " *
+                "the impulse residual.",
+                pair,
+                Δt_D,
+                Δt_N,
+            )
+        end
+        return nothing
+    end
+    explicit_D = sim_D.integrator isa CentralDifference
+    explicit_N = sim_N.integrator isa CentralDifference
+    if explicit_D != explicit_N
+        if explicit_D
+            norma_logf(
+                0,
+                :warn,
+                "%s: the Dirichlet side is the explicit member of a mixed pair. The implicit side should be " *
+                "the Dirichlet side: with the explicit side as the Dirichlet side the gain of the Schwarz " *
+                "iteration reaches -13 on the cantilever beam and no fixed relaxation factor converges.",
+                pair,
+            )
+        end
+        return nothing
+    end
+    if n_D < n_N
+        norma_logf(
+            0,
+            :warn,
+            "%s: the Dirichlet side has fewer interface nodes (%d against %d). With the same integrator and " *
+            "step on both sides the finer mesh should be the Dirichlet side: the gain of the Schwarz iteration " *
+            "then lies in [-1, 0], and with the coarser mesh as the Dirichlet side it grows with the cube of " *
+            "the mesh ratio.",
+            pair,
+            n_D,
+            n_N,
+        )
+    end
     return nothing
 end
 
