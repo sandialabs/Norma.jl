@@ -682,10 +682,15 @@ cylinders at $5$\,m/s for $0.2$\,ms by up to $67\%$ with $21\%$ of the
 kinetic energy turned into strain energy, against $5\times 10^{-11}$ and
 $2\times 10^{-10}$ with $~B$ on the Dirichlet side (run data in
 \code{\textasciitilde/Projects/Norma-Schwarz-Coupling/integration-side-2026-10}). Only $\Pi_D$ and its transpose enter the matching exchange; the
-projection onto the other side is never applied, which matters on curved
-or non-nested interfaces where it is inaccurate ($0.72$ on the cylinders
-of Sec.~\ref{sec:verification}, $1.2 \times 10^{-2}$ on the beam at mesh
-ratio $1{:}0.75$, against $10^{-15}$ for $\Pi_D$).
+projection onto the other side, $~W_N^{-1} ~B^T$, is never applied. It
+reproduces constants only to the quadrature error of $~B$: with the finer
+mesh as the Dirichlet side, $\max|~W_N^{-1} ~B^T \mathbf{1} - \mathbf{1}|$
+is $1.2 \times 10^{-2}$ on the beam at mesh ratio $1{:}0.75$ and $0.72$ on
+the cylinders of Sec.~\ref{sec:verification}; with the coarser mesh as the
+Dirichlet side it is $0.28$ and $1.34$, and $1.14$ on the beam at mesh
+ratio $1{:}0.5$, where the facets are nested but the quadrature of the
+coarser side does not evaluate $~B$ exactly. The error of $\Pi_D$ is near
+$10^{-15}$ in every case.
 
 \paragraph{Displacement, not position.} A Dirichlet--Neumann transfer
 projects the partner's displacement, $~P_d ~u_s$. Projecting the current
