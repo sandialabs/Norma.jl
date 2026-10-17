@@ -19,7 +19,7 @@ docs/build/
 # Meshes written by the adaptivity loop and by the refinement stages of the plate example
 *-adapted-*.g
 examples/ems/plate/plate-stage-*.g
-CLAUDE.md
+CLAUDE.local.md
 
 # Claude Code session data
 .claude/
