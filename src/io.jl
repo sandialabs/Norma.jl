@@ -274,6 +274,7 @@ function write_stop(sim::SingleDomainSimulation; wall_time::Float64=0.0)
             write_sideset_stop_csv(sim, sim.model)
         end
     end
+    write_matrix_output(sim)
     return nothing
 end
 

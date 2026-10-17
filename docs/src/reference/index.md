@@ -37,6 +37,7 @@ A single-domain input has the following top-level sections:
 | `boundary conditions` | no | [Boundary conditions](boundary-conditions.md) |
 | `initial conditions` | no | [Initial conditions](initial-conditions.md) |
 | `Exodus output interval`, `CSV output interval`, `CSV write sidesets` | no | output cadence — [Mesh and output](mesh-and-io.md) |
+| `matrix output` | no | global stiffness, mass and force output — [Mesh and output](mesh-and-io.md) |
 | `restart`, `swaps` | no | restart and mesh swapping — [Multidomain and Schwarz coupling](multidomain.md) |
 
 ## A complete minimal example

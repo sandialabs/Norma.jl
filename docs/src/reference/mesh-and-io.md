@@ -58,6 +58,47 @@ the first as `<output mesh file>-s_0002`, `-s_0003`, and so on, which
 ParaView opens as one sequence.
 These field names are produced by the output writer and are not input keys.
 
+## Matrix output
+
+`matrix output` writes the assembled global operators of a monolithic
+(`type: single`) solid mechanics run, so the discrete problem can be
+reproduced outside Norma. It aborts in a Schwarz (`type: multi`) run.
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `matrices` | no | the operators the run assembles | operators to write: `stiffness`, `mass`, `external force` |
+| `steps` | no | `[0]` | stops at which to write: `all`, a stop index, a list of stop indices, or `{every: n}` |
+
+```yaml
+matrix output:
+  matrices: [stiffness, mass, external force]
+  steps: [0]
+```
+
+Files, prefixed with the simulation name and indexed by the stop:
+
+| File | Contents |
+|---|---|
+| `<name>-stiffness-NNNN.mm` | stiffness matrix K (tangent for nonlinear materials) plus the Robin stiffness α W, Matrix Market |
+| `<name>-mass.mm` | consistent mass matrix M, written once |
+| `<name>-lumped-mass.mm` | lumped mass as a diagonal matrix, written once (explicit or matrix-free dynamics) |
+| `<name>-external-force-NNNN.csv` | body force plus boundary (Neumann) force, one node per line |
+| `<name>-free-dofs-NNNN.csv` | one line per DOF: `true` free, `false` Dirichlet-constrained |
+
+Matrices include every DOF, constrained or not. DOF `3(n-1)+c` is component
+`c` (1 = x, 2 = y, 3 = z) of node `n` in Exodus order. The stiffness requires an
+implicit integrator (quasi-static or Newmark) with the Hessian minimizer, and
+the mass a dynamic integrator (Newmark or central difference). Without
+`matrices`, the stiffness is written when the run assembles it, the mass when
+the run is dynamic, and the external force always; an operator listed in
+`matrices` that the run does not assemble aborts at setup. A quasi-static run
+assembles the stiffness in its first solve, so at stop 0 the stiffness is not
+written unless `initial equilibrium` is set; the log says so. With HHT-α the
+Newton solve uses (1 − α) K; the file holds the unscaled K, and the external
+solver applies α. Initial conditions and reference solutions come from the
+regular CSV output. Example:
+`examples/ahead/single/clamped/dynamic-linear-matrix-output/`.
+
 ## Canonical examples
 
 - Basic Exodus output: any file under `examples/single/`

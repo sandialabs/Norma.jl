@@ -600,6 +600,7 @@ function SingleDomainSimulation(params::Parameters)
         integrator = create_time_integrator(params, model)
         solver = create_solver(params, model)
         norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+        prepare_matrix_output(params, model, integrator, solver)
         norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
         failed = false
         swaps = parse_swap_plans(params)
@@ -671,6 +672,7 @@ _log_materials(::Model, _) = nothing
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]
+    reject_matrix_output_in_schwarz(params, basename)
     domain_paths = params["domains"]
     process_multidomain_restart!(params)
     _reject_restart_with_swaps!(params, basename)
@@ -690,6 +692,7 @@ function MultiDomainSimulation(params::Parameters)
             norma_log(4, :domain, domain_name)
             subparams = YAML.load_file(domain_path; dicttype=Parameters)
             validate_input_parameters(subparams, domain_path)
+            reject_matrix_output_in_schwarz(subparams, domain_path)
             subparams["name"] = domain_name
             if haskey(params, "_multidomain_restart_index")
                 subparams["restart"] = Parameters("index" => params["_multidomain_restart_index"])

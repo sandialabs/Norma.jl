@@ -44,6 +44,7 @@ include("opinf/opinf_ics_bcs.jl")
 include("time_integrator.jl")
 include("solver.jl")
 include("io.jl")
+include("matrix_output.jl")
 include("simulation.jl")
 include("swap.jl")
 include("adapt.jl")                    # needs topology.jl, simulation.jl
