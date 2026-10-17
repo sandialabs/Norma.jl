@@ -127,6 +127,14 @@ See the [documentation](docs/) for the full list and details.
 
 ---
 
+## Citing Norma
+
+If you use Norma in published work, please cite it. The file
+[CITATION.cff](CITATION.cff) lists the authors and the version; GitHub
+renders it under "Cite this repository" in BibTeX and APA formats. Each
+release is archived on Zenodo with its own DOI; cite the release used to
+produce the results.
+
 ## License
 
 Norma is licensed under the BSD 3-Clause License. See [LICENSE.md](LICENSE.md)

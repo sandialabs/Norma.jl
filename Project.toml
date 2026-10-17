@@ -1,7 +1,7 @@
 name = "Norma"
 uuid = "b933802f-98f0-4369-86cc-558227202cec"
 version = "0.1.0"
-authors = ["Alejandro Mota <amota@sandia.gov>"]
+authors = ["Alejandro Mota <amota@sandia.gov>", "Irina K. Tezaur <ikalash@sandia.gov>", "Brian Phung", "Eric J. Parish", "Daria Koliesnikova", "Kevin Garanger", "Alejandro N. Diaz", "Craig M. Hamel", "Chris Wentland", "Lukas Ostien", "Julian Rimoli", "Trishit Mondal"]
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
