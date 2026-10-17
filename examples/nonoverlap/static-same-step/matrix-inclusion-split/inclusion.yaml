@@ -1,0 +1,14 @@
+type: multi
+domains: ["disk.yaml", "matrix.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 1.0
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-8
+absolute tolerance: 1.0e-14
+relaxation: anderson
+relaxation parameter: 0.2
+anderson depth: 20

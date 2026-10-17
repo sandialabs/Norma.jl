@@ -589,8 +589,24 @@ projected interface residual $\Pi_D(~g_i - ~x_i)$ of the displacement for
 the classical and contact exchanges (one set of coefficients then updates
 the displacement, velocity, and acceleration, each with its own history),
 of the matched quantity for the matching exchange, and the residual of the
-Robin datum for the Robin--Robin condition. The history of a pair is
-cleared at every stop and after a stall (Sec.~\ref{sec:matching-stopping}).
+Robin datum for the Robin--Robin condition. One least-squares problem is
+solved for all relaxed interfaces of the simulation: their traces are
+stacked into one vector $~t_i$, the matrices $\Delta ~T$ are stacked
+accordingly, and the coefficients $~\gamma$ update every interface, as in
+Sambataro and Tezaur~\cite{SambataroTezaurAnderson}. The interfaces are grouped by the relaxed quantity
+(interface displacement, interface velocity, or Robin datum), with one
+problem per group. Coefficients computed for each interface separately fit
+one secant model per interface, although the residual of an interface
+depends on the data of the others. On a disk in a matrix whose interface
+is coupled as four side sets (test 139, relaxation parameter $0.2$,
+depth $20$) they inverted an element, whereas the stacked problem
+converges in $23$ iterations and the interface as one side set in $21$
+(issue \#233). The stacked step is computed when the first relaxed
+interface of an iteration applies its datum, from the partner data at that
+moment; an interface whose partner is solved after that moment and before
+its own subdomain receives the partner data of the previous iteration. The
+histories are cleared at every stop and after a stall
+(Sec.~\ref{sec:matching-stopping}).
 On the beam of Sec.~\ref{sec:verification} ($1$\,ms, $\epsilon = 10^{-12}$)
 $\beta = 0.5$ needs $7.0$, $23.1$, and $7.9$ iterations per window on the
 implicit pair, on the mixed pair with the explicit side as the Dirichlet
@@ -2019,6 +2035,11 @@ integration framework for interface-coupled problems with applications to
 solid--solid interaction and air--sea models, \emph{Computer Methods in
 Applied Mechanics and Engineering}
 426 (2024) 116975.
+
+\bibitem{SambataroTezaurAnderson}
+G.~Sambataro, I.~Tezaur, On the role of Anderson's acceleration in
+non-overlapping substructuring method for heterogeneous coupling, draft
+(2026).
 
 \bibitem{WalkerNi2011}
 H.F.~Walker, P.~Ni, Anderson acceleration for fixed-point iterations,

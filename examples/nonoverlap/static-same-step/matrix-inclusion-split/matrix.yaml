@@ -1,0 +1,58 @@
+type: single
+input mesh file: matrix.g
+output mesh file: matrix.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      matrix: polymer
+    polymer:
+      model: neohookean
+      elastic modulus: 1440000000.0
+      Poisson's ratio: 0.3
+      density: 1000.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: outer
+      component: x
+      function: "0.005 * x"
+    - node set: outer
+      component: y
+      function: "0.0"
+    - node set: outer
+      component: z
+      function: "0.0"
+  Schwarz DN nonoverlap:
+    - side set: arc_ll
+      source: disk
+      source block: disk
+      source side set: arc_ll
+      default BC type: Neumann
+      swap BC types: false
+    - side set: arc_lr
+      source: disk
+      source block: disk
+      source side set: arc_lr
+      default BC type: Neumann
+      swap BC types: false
+    - side set: arc_ul
+      source: disk
+      source block: disk
+      source side set: arc_ul
+      default BC type: Neumann
+      swap BC types: false
+    - side set: arc_ur
+      source: disk
+      source block: disk
+      source side set: arc_ur
+      default BC type: Neumann
+      swap BC types: false
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

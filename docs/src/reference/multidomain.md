@@ -326,8 +326,22 @@ per stop on the implicit pair, the mixed pair with the explicit side as the
 Dirichlet side, and the subcycled 1:0.5 explicit pair with the coarse mesh as
 the Dirichlet side, against 8.9, 28.7, and 8.8 at β = 1, with the same
 energies; hence the default 0.5. The least-squares problem is solved by QR
-with the oldest column dropped while the condition number exceeds 1e10. It keeps its state per
-pair and per substep slot, clears it at every stop and after a stall, and
+with the oldest column dropped while the condition number exceeds 1e10. One
+least-squares problem is solved for all relaxed interfaces of the simulation,
+with their traces stacked into one vector, and its coefficients update every
+interface; interfaces are grouped by the relaxed quantity (interface
+displacement, interface velocity, or Robin datum), one problem per group. The
+residual of one interface depends on the data of the others, so coefficients
+computed for each interface separately fit wrong secant models: on a disk in a
+matrix whose interface is coupled as four side sets
+(`examples/nonoverlap/static-same-step/matrix-inclusion-split`, test 139) they
+inverted an element or did not converge in 500 iterations, against 23 for the
+stacked problem and 21 for the interface as one side set (issue #233). The
+stacked step is computed when the first relaxed interface of an iteration
+applies its datum, from the partner data at that moment, so an interface whose
+partner is solved after that moment and before its own subdomain receives the
+partner data of the previous iteration. It keeps its histories per
+interface, clears them at every stop and after a stall, and
 applies only to stops with a single substep (windowed stops use the fixed
 factor `relaxation parameter`, as for Aitken). On the cantilever it needed
 5 to 9 iterations per stop where recursive Aitken needed 5.8 to 20.9 and the
@@ -408,7 +422,8 @@ acceleration, the Neumann side receives the d'Alembert reaction, and each side
 recomputes its initial acceleration with the interface rows included. The
 Dirichlet datum is relaxed with `relaxation parameter`, under Aitken
 relaxation with the secant factor of the iteration's own iterates, or under
-Anderson acceleration by the same scheme on its own iterates, and the
+Anderson acceleration by the same scheme on its own iterates (one
+least-squares problem per pair, not stacked), and the
 iteration stops when the
 acceleration jump and the force residual are at or below `matching relative
 tolerance`. Without it the first step changes the conserved energy by up to 1%

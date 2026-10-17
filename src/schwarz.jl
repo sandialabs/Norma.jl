@@ -261,21 +261,35 @@ end
 
 # ---------------------------------------------------------------------------
 # Anderson acceleration (Walker and Ni 2011; the interface quasi-Newton form of
-# Degroote, Bathe, and Vierendeels 2009) of the constrained datum.
+# Degroote, Bathe, and Vierendeels 2009) of the relaxed interface data.
 #
-# The fixed-point map takes the datum x_k that the Dirichlet side used to the
-# partner field g_k = G(x_k) that the iteration returns. With the residuals
-# f_j = g_j - x_j, their projected interface traces t_j, and the differences
-# ΔT, ΔX, ΔF of the last m + 1 iterates (m the depth),
+# The fixed-point map takes the data x_k that the relaxed sides used to the
+# data g_k = G(x_k) that the iteration returns. With the residuals
+# f_j = g_j - x_j, their interface traces t_j, and the differences ΔT, ΔX, ΔF
+# of the last m + 1 iterates (m the depth),
 #   γ = argmin ‖t_k - ΔT γ‖,   x_{k+1} = x_k + β f_k - (ΔX + β ΔF) γ,
-# with β the mixing parameter (`relaxation parameter`). The coefficients come
-# from the traces, the quantity the Dirichlet side receives; the update is
-# applied to the whole partner field, as the relaxation is. The least-squares
-# problem is solved by QR of ΔT, dropping the oldest column while the
-# condition number of R exceeds ANDERSON_CONDITION_LIMIT. Without a difference
-# (first iteration) the update is x + β f, the fixed factor β. For a linear map
-# with β = 1 and a depth at least the iteration count, x_{k+1} = G of the k-th
-# GMRES iterate for (I - A) x = b started from x_0 (Walker and Ni, Theorem 2.2).
+# with β the mixing parameter (`relaxation parameter`). One least-squares
+# problem is solved for all relaxed interfaces, with their traces stacked
+# into one vector, and its coefficients update every interface, as in
+# Sambataro and Tezaur. Coefficients computed for each interface separately
+# fit one secant model per interface although the residual of an interface
+# depends on the data of the others: on an inclusion whose interface is
+# split into four side sets they failed to converge, against 23 iterations
+# for the stacked problem (issue #233). The interfaces are grouped by the
+# relaxed quantity (interface displacement, interface velocity, or Robin
+# datum), so that no least-squares problem combines quantities of different
+# units. The step is computed when the first relaxed interface of a Schwarz
+# iteration applies its datum, from the partner data at that moment; the
+# other interfaces read their results. An interface whose partner is solved
+# after that moment and before its own solve therefore receives the partner
+# data of the previous iteration. The coefficients come from the traces, and
+# the update is applied to the whole partner field, as the relaxation is.
+# The least-squares problem is solved by QR of ΔT, dropping the oldest column
+# while the condition number of R exceeds ANDERSON_CONDITION_LIMIT. Without a
+# difference (first iteration) the update is x + β f, the fixed factor β. For
+# a linear map with β = 1 and a depth at least the iteration count,
+# x_{k+1} = G of the k-th GMRES iterate for (I - A) x = b started from x_0
+# (Walker and Ni, Theorem 2.2).
 # ---------------------------------------------------------------------------
 
 const ANDERSON_CONDITION_LIMIT = 1.0e10
@@ -288,24 +302,84 @@ end
 
 AndersonHistory() = AndersonHistory(Vector{Float64}[], Vector{Float64}[], Vector{Float64}[])
 
-# Per controller, per interface, and per substep slot; cleared at every stop
-# with the rest of the relaxation state.
-const ANDERSON_STATE = IdDict{Any,Dict{Tuple{RelaxationKey,Int,Symbol},AndersonHistory}}()
-
-# One history per interface, substep slot, and relaxed field. The three
-# kinematic fields of an unconstrained pair are updated with the coefficients
-# of one residual trace, so they keep separate histories of iterates and
-# residuals and share the trace.
-function anderson_history!(controller, key::RelaxationKey, slot_k::Int, field::Symbol=:datum)
-    state = get!(() -> Dict{Tuple{RelaxationKey,Int,Symbol},AndersonHistory}(), ANDERSON_STATE, controller)
-    return get!(AndersonHistory, state, (key, slot_k, field))
+# Per controller: one history per interface and relaxed field, and the data
+# computed at the current Schwarz iteration, per interface. Cleared at every
+# stop with the rest of the relaxation state.
+mutable struct AndersonState
+    histories::Dict{Tuple{RelaxationKey,Int},AndersonHistory}
+    iteration::Int
+    data::Dict{RelaxationKey,Vector{Vector{Float64}}}
 end
 
+function AndersonState()
+    return AndersonState(
+        Dict{Tuple{RelaxationKey,Int},AndersonHistory}(), -1, Dict{RelaxationKey,Vector{Vector{Float64}}}()
+    )
+end
+
+const ANDERSON_STATE = IdDict{Any,AndersonState}()
+
 function reset_anderson_state!(controller)
-    haskey(ANDERSON_STATE, controller) && empty!(ANDERSON_STATE[controller])
+    delete!(ANDERSON_STATE, controller)
     return nothing
 end
 
+function keep_last!(history::AndersonHistory, n::Int)
+    while length(history.X) > n
+        popfirst!(history.X)
+        popfirst!(history.F)
+        popfirst!(history.T)
+    end
+    return nothing
+end
+
+# One Anderson step for a group of interfaces. Each entry holds the histories
+# of the relaxed fields of one interface, their current iterates xs, the data
+# gs that the iteration returned, and the trace t of the residual. All fields
+# of an interface share its trace, and all interfaces share the coefficients.
+# Returns the next iterates, per entry and field.
+function anderson_stacked_step!(entries, β::Float64, depth::Int)
+    for entry in entries, (history, x, g) in zip(entry.histories, entry.xs, entry.gs)
+        push!(history.X, copy(x))
+        push!(history.F, g .- x)
+        push!(history.T, copy(entry.t))
+    end
+    # An interface that entered the group later has fewer columns; the
+    # stacked differences use the columns that all interfaces have.
+    n = min(depth + 1, minimum(length(entry.histories[1].X) for entry in entries))
+    for entry in entries, history in entry.histories
+        keep_last!(history, n)
+    end
+    γ = Float64[]
+    while n >= 2
+        ΔT = reduce(
+            vcat,
+            [reduce(hcat, [h.T[j + 1] .- h.T[j] for j in 1:(n - 1)]) for h in first.(getfield.(entries, :histories))],
+        )
+        R = qr(ΔT).R
+        if any(iszero, diag(R)) || cond(UpperTriangular(R)) > ANDERSON_CONDITION_LIMIT
+            n -= 1
+            for entry in entries, history in entry.histories
+                keep_last!(history, n)
+            end
+            continue
+        end
+        γ = ΔT \ reduce(vcat, [entry.t for entry in entries])
+        break
+    end
+    return map(entries) do entry
+        map(entry.histories) do h
+            x_new = h.X[end] .+ β .* h.F[end]
+            for j in eachindex(γ)
+                x_new .-= γ[j] .* ((h.X[j + 1] .- h.X[j]) .+ β .* (h.F[j + 1] .- h.F[j]))
+            end
+            return x_new
+        end
+    end
+end
+
+# Anderson step of a single datum with its own history (coupled initial
+# acceleration of matching pairs).
 function anderson_step!(
     history::AndersonHistory,
     x::AbstractVector{Float64},
@@ -314,35 +388,90 @@ function anderson_step!(
     β::Float64,
     depth::Int,
 )
-    f = g .- x
-    push!(history.X, copy(x))
-    push!(history.F, f)
-    push!(history.T, copy(t))
-    while length(history.X) > depth + 1
-        popfirst!(history.X)
-        popfirst!(history.F)
-        popfirst!(history.T)
+    entry = (histories=[history], xs=[x], gs=[g], t=t)
+    return anderson_stacked_step!([entry], β, depth)[1][1]
+end
+
+# The relaxed data of one interface for the stacked step: the relaxed quantity,
+# the current iterates and returned data of its relaxed fields, and the trace
+# of the residual. Nothing when the interface is not relaxed by Anderson
+# acceleration at this iteration: not its relaxed side, an inactive contact
+# pair, a stop of several time slots, or no previous iterate yet.
+function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float64)
+    controller = bc.parent.controller
+    key = relaxation_key(bc)
+    if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+        bc.self_handle.id > bc.coupled_handle.id || return nothing
+    elseif is_swappable_dn_schwarz(bc)
+        bc.is_dirichlet || return nothing
+        bc isa SolidMechanicsContactSchwarzBoundaryCondition && !controller.active_contact && return nothing
+    else
+        return nothing
     end
-    while length(history.X) >= 2
-        n = length(history.X) - 1
-        ΔT = reduce(hcat, [history.T[j + 1] .- history.T[j] for j in 1:n])
-        R = qr(ΔT).R
-        if any(iszero, diag(R)) || cond(UpperTriangular(R)) > ANDERSON_CONDITION_LIMIT
-            popfirst!(history.X)
-            popfirst!(history.F)
-            popfirst!(history.T)
-            continue
-        end
-        γ = ΔT \ t
-        x_new = x .+ β .* f
-        for j in 1:n
-            ΔX = history.X[j + 1] .- history.X[j]
-            ΔF = history.F[j + 1] .- history.F[j]
-            x_new .-= γ[j] .* (ΔX .+ β .* ΔF)
-        end
-        return x_new
+    haskey(controller.lambda_time, key) && aitken_applies(controller, key) || return nothing
+    disp_slots = relaxation_slots!(controller.lambda_disp, key)
+    velo_slots = relaxation_slots!(controller.lambda_velo, key)
+    acce_slots = relaxation_slots!(controller.lambda_acce, key)
+    if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+        (isempty(disp_slots) || isempty(disp_slots[1])) && return nothing
+        x = disp_slots[1]
+        g = with_partner_state(() -> robin_datum(self_subsim_of(bc).model, bc), bc, time)
+        return (quantity=:robin, key=key, xs=[x], gs=[g], t=g .- x)
     end
-    return x .+ β .* f
+    disp, velo, acce, _ = partner_fields(bc, time)
+    if is_constrained_dn(bc)
+        relax_velocity = bc.constraint == :velocity
+        slots = relax_velocity ? velo_slots : disp_slots
+        (isempty(slots) || isempty(slots[1])) && return nothing
+        x = slots[1]
+        g = relax_velocity ? velo : disp
+        t = constrained_partner_trace(bc, g) .- constrained_partner_trace(bc, x)
+        return (quantity=relax_velocity ? :velocity : :displacement, key=key, xs=[x], gs=[g], t=t)
+    end
+    (isempty(disp_slots) || isempty(disp_slots[1])) && return nothing
+    xs = [disp_slots[1], velo_slots[1], acce_slots[1]]
+    t = constrained_partner_trace(bc, disp) .- constrained_partner_trace(bc, xs[1])
+    return (quantity=:displacement, key=key, xs=xs, gs=[disp, velo, acce], t=t)
+end
+
+# Next data of the interface of `bc` under Anderson acceleration, one vector
+# per relaxed field. The first call of a Schwarz iteration computes the
+# stacked step for every relaxed interface of the simulation.
+function anderson_data!(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float64)
+    controller = bc.parent.controller
+    state = get!(AndersonState, ANDERSON_STATE, controller)
+    if state.iteration != controller.iteration_number
+        empty!(state.data)
+        entries = []
+        for subsim in bc.parent.subsims, other in subsim.model.boundary_conditions
+            other isa SolidMechanicsSchwarzBoundaryCondition || continue
+            entry = anderson_entry(other, time)
+            entry === nothing || push!(entries, entry)
+        end
+        for quantity in unique(getfield.(entries, :quantity))
+            group = [
+                merge(e, (histories=[get!(AndersonHistory, state.histories, (e.key, i)) for i in eachindex(e.xs)],)) for
+                e in entries if e.quantity === quantity
+            ]
+            for (entry, data) in
+                zip(group, anderson_stacked_step!(group, controller.relaxation_parameter, controller.anderson_depth))
+                state.data[entry.key] = data
+            end
+            norma_logf(
+                1,
+                :schwarz,
+                "Anderson [iter=%d] %s: %d interfaces, %d columns",
+                controller.iteration_number,
+                quantity,
+                length(group),
+                length(group[1].histories[1].X) - 1,
+            )
+        end
+        state.iteration = controller.iteration_number
+    end
+    key = relaxation_key(bc)
+    haskey(state.data, key) || norma_abort("Anderson acceleration: no stacked data for interface $(key).")
+    return state.data[key]
 end
 
 # Recover interface velocity and acceleration consistent with a relaxed interface
@@ -383,15 +512,11 @@ end
 # (build_robin_schwarz_force) and its tangent α W to the stiffness
 # (build_robin_schwarz_stiffness). The side listed later in `domains` relaxes
 # its datum.
-function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition)
+# Unrelaxed Robin datum -t_src + α W u_src of this side, on its degrees of
+# freedom, from the partner state currently set on the partner integrator.
+function robin_datum(model::SolidMechanics, bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition)
     α = bc.robin_parameter
     W = bc.square_projector
-    parent_sim = bc.parent
-    controller = parent_sim.controller
-    iter = controller.iteration_number
-    coupled_index = bc.coupled_handle.id
-    this_index = bc.self_handle.id
-
     # Neumann part: -t_src projected
     neumann_force = get_dst_force(bc)
 
@@ -422,6 +547,17 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
             rhs[dof_i] = neumann_force[3 * (i_local - 1) + comp] + α_W_u[i_local]
         end
     end
+    return rhs
+end
+
+function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition)
+    parent_sim = bc.parent
+    controller = parent_sim.controller
+    iter = controller.iteration_number
+    coupled_index = bc.coupled_handle.id
+    this_index = bc.self_handle.id
+    global_from_local_map = bc.global_from_local_map
+    rhs = robin_datum(model, bc)
     if (this_index < coupled_index)  # side listed first: not relaxed
         datum = rhs
     else  # side listed later: relaxed
@@ -440,17 +576,11 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         # stored in lambda_disp; its unrelaxed (theta = 1) candidate is rhs, from
         # which the residual r = rhs - g is formed.
         if controller.relaxation_method === :anderson && aitken_applies(controller, key) && !isempty(g_stored)
-            # Anderson acceleration of the Robin datum; the datum lives on the
+            # Anderson acceleration of the Robin datum, stacked with the other
+            # relaxed Robin interfaces (anderson_data!); the datum lives on the
             # interface degrees of freedom only, so it is its own trace. A fresh
             # slot (g = 0) is not entered into the history.
-            datum = anderson_step!(
-                anderson_history!(controller, key, slot_k),
-                g,
-                rhs,
-                rhs .- g,
-                controller.relaxation_parameter,
-                controller.anderson_depth,
-            )
+            datum = copy(anderson_data!(bc, model.time)[1])
         else
             theta = controller.relaxation_parameter
             if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
@@ -1546,36 +1676,15 @@ function constrained_partner_trace(bc::SolidMechanicsSchwarzBoundaryCondition, f
     return vec(transpose(bc.dirichlet_projector * transpose(q_N)))
 end
 
-function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
-    # A direct pair leaves its interface rows free and unloaded during the step;
-    # direct_interface_stop! applies the interface force afterwards.
-    is_direct_dn(bc) && return nothing
-    parent_sim = bc.parent
-    controller = parent_sim.controller
-
-    # Skip application if contact is inactive
-    if bc isa SolidMechanicsContactSchwarzBoundaryCondition && !controller.active_contact
-        return nothing
-    end
-
-    coupled_subsim = coupled_subsim_of(bc)
-    coupled_integrator = coupled_subsim.integrator
-    coupled_model = coupled_subsim.model
-
-    # Save current state (copy data, not reference — aliased integrators share memory with model)
-    # For coupled RomModel, these are reduced states
-    saved_disp = copy(coupled_integrator.displacement)
-    saved_velo = copy(coupled_integrator.velocity)
-    saved_acce = copy(coupled_integrator.acceleration)
-
-    # Even for RomModel, this is full-dimensional
-    saved_∂Ω_f = get_internal_force(coupled_model)
-
-    # Fetch interpolation inputs
-    time = model.time
+# Partner kinematic fields and boundary force at time t, as apply_bc reads them:
+# interpolated from the partner history, the interface predictor at iteration 0,
+# the stop state, or zero.
+function partner_fields(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float64)
+    controller = bc.parent.controller
+    coupled_model = coupled_subsim_of(bc).model
     coupled_index = bc.coupled_handle.id
     coupled_num_dofs = length(coupled_model.free_dofs)
-
+    saved_∂Ω_f = get_internal_force(coupled_model)
     time_hist = controller.time_hist[coupled_index]
     disp_hist = controller.disp_hist[coupled_index]
     velo_hist = controller.velo_hist[coupled_index]
@@ -1629,6 +1738,70 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         interp_acce = zeros(coupled_num_dofs)
         interp_∂Ω_f = zeros(size(saved_∂Ω_f))
     end
+
+    return interp_disp, interp_velo, interp_acce, interp_∂Ω_f
+end
+
+# Evaluate f() with the partner of `bc` set to its state at time t, as
+# apply_bc sets it for an unrelaxed exchange, and restore the partner state.
+function with_partner_state(f, bc::SolidMechanicsSchwarzBoundaryCondition, time::Float64)
+    coupled_subsim = coupled_subsim_of(bc)
+    coupled_integrator = coupled_subsim.integrator
+    coupled_model = coupled_subsim.model
+    saved_disp = copy(coupled_integrator.displacement)
+    saved_velo = copy(coupled_integrator.velocity)
+    saved_acce = copy(coupled_integrator.acceleration)
+    saved_∂Ω_f = get_internal_force(coupled_model)
+    interp_disp, interp_velo, interp_acce, interp_∂Ω_f = partner_fields(bc, time)
+    set_internal_force!(coupled_model, interp_∂Ω_f)
+    coupled_integrator.displacement .= interp_disp
+    coupled_integrator.velocity .= interp_velo
+    coupled_integrator.acceleration .= interp_acce
+    if coupled_model isa RomModel
+        reconstruct_fom_fields!(coupled_integrator, coupled_subsim.solver, coupled_model)
+    end
+    result = f()
+    coupled_integrator.displacement .= saved_disp
+    coupled_integrator.velocity .= saved_velo
+    coupled_integrator.acceleration .= saved_acce
+    set_internal_force!(coupled_model, saved_∂Ω_f)
+    if coupled_model isa RomModel
+        reconstruct_fom_fields!(coupled_integrator, coupled_subsim.solver, coupled_model)
+    end
+    return result
+end
+
+function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
+    # A direct pair leaves its interface rows free and unloaded during the step;
+    # direct_interface_stop! applies the interface force afterwards.
+    is_direct_dn(bc) && return nothing
+    parent_sim = bc.parent
+    controller = parent_sim.controller
+
+    # Skip application if contact is inactive
+    if bc isa SolidMechanicsContactSchwarzBoundaryCondition && !controller.active_contact
+        return nothing
+    end
+
+    coupled_subsim = coupled_subsim_of(bc)
+    coupled_integrator = coupled_subsim.integrator
+    coupled_model = coupled_subsim.model
+
+    # Save current state (copy data, not reference — aliased integrators share memory with model)
+    # For coupled RomModel, these are reduced states
+    saved_disp = copy(coupled_integrator.displacement)
+    saved_velo = copy(coupled_integrator.velocity)
+    saved_acce = copy(coupled_integrator.acceleration)
+
+    # Even for RomModel, this is full-dimensional
+    saved_∂Ω_f = get_internal_force(coupled_model)
+
+    # Fetch interpolation inputs
+    time = model.time
+    coupled_index = bc.coupled_handle.id
+    coupled_num_dofs = length(coupled_model.free_dofs)
+
+    interp_disp, interp_velo, interp_acce, interp_∂Ω_f = partner_fields(bc, time)
 
     # Assign interpolated force
     set_internal_force!(coupled_model, interp_∂Ω_f)
@@ -1685,15 +1858,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 # pair makes the least-squares coefficient cancel the next update.
                 c_slots[slot_k] = copy(interp_c)
             elseif use_anderson
-                history = anderson_history!(controller, key, slot_k)
-                c_slots[slot_k] = anderson_step!(
-                    history,
-                    λ_c_prev,
-                    interp_c,
-                    trace_c .- trace_prev,
-                    controller.relaxation_parameter,
-                    controller.anderson_depth,
-                )
+                c_slots[slot_k] = copy(anderson_data!(bc, time)[1])
             else
                 θ = if controller.relaxation_method === :aitken_secant
                     relaxation_aitken_secant_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
@@ -1712,7 +1877,8 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         elseif use_anderson
             # Anderson acceleration of the three imposed kinematic fields. The
             # least-squares coefficients come from the projected interface trace
-            # of the displacement residual, and the same coefficients update the
+            # of the displacement residual, stacked with the traces of the other
+            # relaxed interfaces (anderson_data!), and the same coefficients update the
             # displacement, the velocity, and the acceleration, each with its own
             # history of iterates. A fresh slot has a residual of exactly zero
             # and is not entered into the history.
@@ -1721,18 +1887,10 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 velo_slots[slot_k] = copy(interp_velo)
                 acce_slots[slot_k] = copy(interp_acce)
             else
-                trace = constrained_partner_trace(bc, interp_disp) .- constrained_partner_trace(bc, λ_u_prev)
-                β = controller.relaxation_parameter
-                depth = controller.anderson_depth
-                disp_slots[slot_k] = anderson_step!(
-                    anderson_history!(controller, key, slot_k, :displacement), λ_u_prev, interp_disp, trace, β, depth
-                )
-                velo_slots[slot_k] = anderson_step!(
-                    anderson_history!(controller, key, slot_k, :velocity), λ_v_prev, interp_velo, trace, β, depth
-                )
-                acce_slots[slot_k] = anderson_step!(
-                    anderson_history!(controller, key, slot_k, :acceleration), λ_a_prev, interp_acce, trace, β, depth
-                )
+                fields = anderson_data!(bc, time)
+                disp_slots[slot_k] = copy(fields[1])
+                velo_slots[slot_k] = copy(fields[2])
+                acce_slots[slot_k] = copy(fields[3])
             end
         elseif controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover
