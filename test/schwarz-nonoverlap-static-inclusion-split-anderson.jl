@@ -34,3 +34,23 @@
     )
     @test num_relaxed == 4
 end
+
+# Order of the subdomains under Anderson acceleration (issue #233): a Neumann
+# side solved after the first subdomain with a relaxed Dirichlet side and before
+# its own Dirichlet partner is flagged. Pairs are (Dirichlet index, Neumann
+# index) in the order of `domains`. The cases are the four orders of the
+# five-subdomain inclusion of the issue (circle, pp, pn, nn, np): only the
+# order with every Dirichlet side first converged.
+@testset "Schwarz Nonoverlap Anderson Neumann Before Dirichlet" begin
+    flagged(pairs) = Set(Norma.neumann_before_dirichlet(pairs))
+    # Circle first, each rectangle the Dirichlet side toward the rectangles after it.
+    @test isempty(flagged([(1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (2, 5), (3, 4), (4, 5)]))
+    # Circle first, cyclic roles pp -> np -> nn -> pn -> pp.
+    @test flagged([(1, 2), (1, 3), (1, 4), (1, 5), (2, 5), (5, 4), (4, 3), (3, 2)]) == Set([(5, 4), (4, 3), (3, 2)])
+    # Circle last: every rectangle is a Neumann side solved before the circle.
+    @test flagged([(5, 1), (5, 2), (5, 3), (5, 4), (1, 2), (1, 4), (2, 3), (3, 4)]) ==
+        Set([(5, 1), (5, 2), (5, 3), (5, 4)])
+    # Two subdomains with the Neumann side first are not affected.
+    @test isempty(flagged([(2, 1)]))
+    @test isempty(flagged(Tuple{Int,Int}[]))
+end

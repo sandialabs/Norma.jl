@@ -340,7 +340,16 @@ stacked problem and 21 for the interface as one side set (issue #233). The
 stacked step is computed when the first relaxed interface of an iteration
 applies its datum, from the partner data at that moment, so an interface whose
 partner is solved after that moment and before its own subdomain receives the
-partner data of the previous iteration. It keeps its histories per
+partner data of the previous iteration. A Neumann side solved after the first
+relaxed Dirichlet side and before its own Dirichlet partner receives the
+reaction that the partner computed in the previous Schwarz iteration; the data
+it returns then depend on two Schwarz iterations, and the least-squares problem
+fits a relation that does not hold. List every Dirichlet side before its
+Neumann partner in `domains`; setup warns otherwise. Two subdomains are not
+affected in either order. On the five-subdomain inclusion of issue #233,
+cyclic roles on the rectangle–rectangle interfaces or the inclusion listed last
+did not converge in 512 Schwarz iterations, against 30 to 38 with every
+Dirichlet side first. It keeps its histories per
 interface, clears them at every stop and after a stall, and
 applies only to stops with a single substep (windowed stops use the fixed
 factor `relaxation parameter`, as for Aitken). On the cantilever it needed

@@ -433,6 +433,54 @@ end
 
 warn_restart_with_nonoverlap_schwarz(::SingleDomainSimulation) = nothing
 
+# Under Anderson acceleration the data of every relaxed interface are computed
+# when the first relaxed Dirichlet side of a Schwarz iteration applies its
+# datum (anderson_data! in schwarz.jl). A Neumann side solved after that
+# subdomain and before its own Dirichlet partner receives the reaction that the
+# partner computed in the previous Schwarz iteration, so the data it returns
+# depend on the data of two Schwarz iterations, and the least-squares problem
+# fits a relation that does not hold. On the five-subdomain inclusion of issue
+# #233 this order did not converge in 512 Schwarz iterations, against 30 to 38
+# with every Dirichlet side solved before its Neumann partner. A Neumann side
+# solved before the first relaxed Dirichlet side receives the reaction of the
+# current data and is not affected, which covers two subdomains in either
+# order. Given the relaxed pairs as (Dirichlet index, Neumann index) in the
+# order of `domains`, returns the offending ones.
+function neumann_before_dirichlet(pairs::Vector{Tuple{Int,Int}})
+    isempty(pairs) && return pairs
+    first_relaxed = minimum(first.(pairs))
+    return [(d, n) for (d, n) in pairs if first_relaxed <= n < d]
+end
+
+# Relaxed Dirichlet-Neumann pairs of the simulation under Anderson acceleration
+# that neumann_before_dirichlet flags. Pairs that swap roles and direct
+# interface solves are not relaxed and are not checked.
+function neumann_before_dirichlet_pairs(sim::MultiDomainSimulation)
+    sim.controller.relaxation_method === :anderson || return Tuple{Int,Int}[]
+    pairs = Tuple{Int,Int}[]
+    for subsim in sim.subsims, bc in subsim.model.boundary_conditions
+        bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition || continue
+        bc.is_dirichlet && !bc.swap_bcs && !is_direct_dn(bc) || continue
+        push!(pairs, (bc.self_handle.id, bc.coupled_handle.id))
+    end
+    return neumann_before_dirichlet(pairs)
+end
+
+function warn_neumann_before_dirichlet(sim::MultiDomainSimulation)
+    for (d, n) in neumann_before_dirichlet_pairs(sim)
+        norma_log(
+            0,
+            :warning,
+            "Schwarz DN nonoverlap: the Neumann side `$(sim.name_by_handle[n])` is solved before its Dirichlet " *
+            "partner `$(sim.name_by_handle[d])` and after the first subdomain with a relaxed Dirichlet side, so " *
+            "under Anderson acceleration it receives the partner's reaction of the previous Schwarz iteration; " *
+            "the iteration may converge slowly or not at all. List every Dirichlet side before its Neumann " *
+            "partner in `domains`.",
+        )
+    end
+    return nothing
+end
+
 # The restart refinement pass (see the Mfc correction in time_integrator.jl)
 # runs before detect_contact() re-establishes active_contact for the
 # restarted step, so apply_bc skips every Schwarz contact BC during that
@@ -484,6 +532,7 @@ function create_simulation(params::Parameters)
             validate_schwarz_tolerances(sim)
             validate_swap_criteria(sim)
             warn_restart_with_nonoverlap_schwarz(sim)
+            warn_neumann_before_dirichlet(sim)
             reject_restart_with_contact(sim)
             initialize_storage(sim)
         catch
