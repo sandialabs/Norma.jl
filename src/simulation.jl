@@ -1848,6 +1848,12 @@ function restore_stop_state(sim::MultiDomainSimulation)
         if subsim.model isa RomModel
             reconstruct_fom_fields!(subsim.integrator, subsim.solver, subsim.model)
         end
+        # The start of the stop is also the state from which a failed first
+        # substep is retried: restore_prev_state reads the buffers of
+        # save_curr_state, which otherwise still hold the end of the stop
+        # reached by the previous Schwarz iteration, displacement and internal
+        # variables alike.
+        save_curr_state(subsim)
     end
 end
 

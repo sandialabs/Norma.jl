@@ -3,6 +3,8 @@
 # the U.S. Government retains certain rights in this software. This software
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
+using YAML
+
 @testset "Schwarz Overlap Static Cuboid Hex8 Same Step" begin
     cp("../examples/overlap/static-same-step/cuboids/cuboids.yaml", "cuboids.yaml"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
@@ -91,6 +93,83 @@ end
     @test avg_stress_coarse[4] ≈ 0.0 atol = 1.0e-01
     @test avg_stress_coarse[5] ≈ 0.0 atol = 1.0e-01
     @test avg_stress_coarse[6] ≈ 0.0 atol = 1.0e-01
+end
+
+# A failed step is retried from the state it started from. Every Schwarz
+# iteration restarts the subdomains at the start of the stop, so a failed first
+# substep of an iteration must be retried from there too, with the internal
+# variables of that state, and not from the end of the stop the previous
+# iteration reached. The cuboids of Different Steps in J2 plasticity, with
+# adaptive steps on cuboid-1, whose first substep fails in Schwarz iteration 2.
+@testset "Schwarz Overlap Static Cuboid Hex8 Retry From Start Of Stop" begin
+    folder = "../examples/overlap/static-different-steps/cuboids"
+    for file in ("cuboid-1.g", "cuboid-2.g")
+        cp(joinpath(folder, file), file; force=true)
+    end
+    plastic = Dict{String,Any}(
+        "model" => "j2 plasticity",
+        "elastic modulus" => 1.0e9,
+        "Poisson's ratio" => 0.25,
+        "density" => 1000.0,
+        "yield stress" => 2.0e6,
+        "hardening modulus" => 1.0e8,
+    )
+    for file in ("cuboid-1.yaml", "cuboid-2.yaml")
+        params = YAML.load_file(joinpath(folder, file); dicttype=Norma.Parameters)
+        params["model"]["material"]["elastic"] = plastic
+        if file == "cuboid-1.yaml"
+            merge!(
+                params["time integrator"],
+                Dict(
+                    "minimum time step" => 0.0625,
+                    "maximum time step" => 0.5,
+                    "decrease factor" => 0.5,
+                    "increase factor" => 1.0,
+                ),
+            )
+        else
+            params["boundary conditions"]["Dirichlet"][3]["function"] = "0.02 * t"
+        end
+        YAML.write_file(file, params)
+    end
+    params = YAML.load_file(joinpath(folder, "cuboids.yaml"); dicttype=Norma.Parameters)
+    merge!(params, Dict("relative tolerance" => 1.0e-6, "absolute tolerance" => 1.0e-7, "maximum iterations" => 60))
+    params["name"] = "cuboids.yaml"
+    sim = Norma.create_simulation(params)
+    fine = sim.subsims[1]
+    controller = sim.controller
+    failed = false
+    retried = false
+    offset = NaN
+    same_state = false
+    Norma.SOLVE_ITERATION_OBSERVER[] = function (model, iteration)
+        (iteration == 0 && model === fine.model) || return nothing
+        if failed && !retried
+            # The first iterate of the retry: the free degrees of freedom keep
+            # the displacement the step starts from.
+            retried = true
+            u = fine.integrator.displacement - controller.stop_disp[1]
+            offset = maximum(abs, u[model.free_dofs])
+            same_state = model.state_old == model.stop_state_old
+        elseif !failed && controller.stop == 1 && controller.iteration_number == 2
+            failed = true
+            model.failed = true
+        end
+        return nothing
+    end
+    try
+        Norma.run(sim)
+    finally
+        Norma.SOLVE_ITERATION_OBSERVER[] = nothing
+        for file in ("cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e")
+            rm(file; force=true)
+        end
+    end
+    @test retried
+    @test offset == 0.0
+    @test same_state
+    @test fine.integrator.time ≈ 1.0
+    @test maximum(fine.model.displacement[3, :]) ≈ 0.015 rtol = 1.0e-3
 end
 
 @testset "Schwarz Overlap Static Cuboid Hex8 Weak DBC" begin
