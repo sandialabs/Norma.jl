@@ -38,7 +38,8 @@ authors:
     given-names: Julian
   - family-names: Mondal
     given-names: Trishit
-version: 0.1.0
+version: 1.0.0
+date-released: 2026-10-17
 license: BSD-3-Clause
 repository-code: "https://github.com/sandialabs/Norma.jl"
 url: "https://sandialabs.github.io/Norma.jl/dev/"
