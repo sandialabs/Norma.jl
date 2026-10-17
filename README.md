@@ -2,6 +2,7 @@
 [![docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://sandialabs.github.io/Norma.jl/dev/)
 [![codecov](https://codecov.io/gh/sandialabs/Norma.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/sandialabs/Norma.jl)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE.md)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23440198.svg)](https://doi.org/10.5281/zenodo.23440198)
 [![Julia version](https://img.shields.io/badge/Julia-%E2%89%A5%201.10-blueviolet)](https://julialang.org/downloads/)
 
 # Norma.jl
@@ -126,6 +127,16 @@ algorithms, with an emphasis on extensibility and experimentation:
 See the [documentation](docs/) for the full list and details.
 
 ---
+
+## Citing Norma
+
+If you use Norma in published work, please cite it. The file
+[CITATION.cff](CITATION.cff) lists the authors and the version; GitHub
+renders it under "Cite this repository" in BibTeX and APA formats. Each
+release is archived on Zenodo with its own DOI; cite the release used to
+produce the results. The DOI
+[10.5281/zenodo.23440198](https://doi.org/10.5281/zenodo.23440198) resolves
+to the latest release.
 
 ## License
 

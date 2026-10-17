@@ -573,7 +573,14 @@ end
 # the reaction on the projected velocity imposed on the Dirichlet side. W_k is
 # stored as the square projector of side k and is the same matrix in the
 # constraint, in the projector, and in the force transfer. B is integrated over
-# the facets of the side with more interface nodes.
+# the facets of the Dirichlet side with the same quadrature as W_D, so that its
+# row sums equal those of W_D exactly: Π_D then reproduces constants to
+# roundoff and the force Π_Dᵀλ transferred to the Neumann side has the total
+# of λ. Integrated on the Neumann side, B would carry the quadrature error of
+# the product of the two trace bases into Π_D (1.2e-2 on the beam at mesh
+# ratio 1:0.75 and 0.72 on the cylinders). The projection onto the Neumann
+# side, W_N⁻¹Bᵀ, is never applied; its partition-of-unity error is logged for
+# information only.
 function compute_constrained_dn_projectors!(
     dst_model::SolidMechanics, dst_bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition
 )
@@ -602,29 +609,102 @@ function compute_constrained_dn_projectors!(
     W2 = get_square_projection_matrix(src_model, src_bc)
     n1 = size(W1, 1)
     n2 = size(W2, 1)
-    B = if n1 >= n2
+    # Integrate B over the facets of the Dirichlet side (the first argument of
+    # get_rectangular_projection_matrix is the side whose facets are integrated).
+    B = if dst_bc.is_dirichlet
         get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
     else
         Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
     end
     set_square_projector!(dst_bc, W1)
     set_square_projector!(src_bc, W2)
+    if dst_bc.is_dirichlet
+        warn_dirichlet_role(dst_sim, src_sim, dst_bc.name, src_bc.name, n1, n2)
+    else
+        warn_dirichlet_role(src_sim, dst_sim, src_bc.name, dst_bc.name, n2, n1)
+    end
     P1 = dst_bc.square_factor \ B
     P2 = src_bc.square_factor \ Matrix(transpose(B))
     dst_bc.dirichlet_projector = P1
     dst_bc.neumann_projector = Matrix(transpose(P2))
     src_bc.dirichlet_projector = P2
     src_bc.neumann_projector = Matrix(transpose(P1))
-    pu_error = max(maximum(abs.(P1 * ones(n2) .- 1.0)), maximum(abs.(P2 * ones(n1) .- 1.0)))
+    pu_error_1 = maximum(abs.(P1 * ones(n2) .- 1.0))
+    pu_error_2 = maximum(abs.(P2 * ones(n1) .- 1.0))
+    pu_error_D, pu_error_N = dst_bc.is_dirichlet ? (pu_error_1, pu_error_2) : (pu_error_2, pu_error_1)
     norma_logf(
         0,
         :info,
-        "Matching DN interface '%s'/'%s': %s matching, partition-of-unity error %.2e.",
+        "Matching DN interface '%s'/'%s': %s matching, partition-of-unity error of Π_D %.2e (unused projection onto N: %.2e).",
         dst_bc.name,
         src_bc.name,
         String(constraint),
-        pu_error,
+        pu_error_D,
+        pu_error_N,
     )
+    return nothing
+end
+
+# Warns when the Dirichlet role of a matching pair is assigned against the
+# role rules (coupling note, assignment of the Dirichlet role), in their order
+# of precedence: with different time steps the coarse-step side is the
+# Dirichlet side (the impulse residual vanishes only then); with different
+# integrators the implicit side is the Dirichlet side (with the explicit side
+# as the Dirichlet side the gain of the iteration reaches -13 on the beam and
+# no fixed factor converges); with the same integrator and step the finer
+# mesh is the Dirichlet side (the gain then lies in [-1, 0], and grows with
+# the cube of the mesh ratio otherwise). The node count stands in for the
+# mesh size on the interface. The roles are not changed: they are the input's.
+function warn_dirichlet_role(
+    sim_D::SingleDomainSimulation, sim_N::SingleDomainSimulation, name_D::String, name_N::String, n_D::Int, n_N::Int
+)
+    Δt_D = sim_D.integrator.time_step
+    Δt_N = sim_N.integrator.time_step
+    pair = "Matching DN interface '$name_D'/'$name_N' ($(sim_D.name) is the Dirichlet side)"
+    if !isapprox(Δt_D, Δt_N; rtol=1.0e-12)
+        if Δt_D < Δt_N
+            norma_logf(
+                0,
+                :warn,
+                "%s: the Dirichlet side has the finer time step (%.3e against %.3e). The coarse-step side " *
+                "should be the Dirichlet side: with the fine-step side as the Dirichlet side the rate invariant " *
+                "is conserved but the interface impulse is not balanced, and the energy varies by the order of " *
+                "the impulse residual.",
+                pair,
+                Δt_D,
+                Δt_N,
+            )
+        end
+        return nothing
+    end
+    explicit_D = sim_D.integrator isa CentralDifference
+    explicit_N = sim_N.integrator isa CentralDifference
+    if explicit_D != explicit_N
+        if explicit_D
+            norma_logf(
+                0,
+                :warn,
+                "%s: the Dirichlet side is the explicit member of a mixed pair. The implicit side should be " *
+                "the Dirichlet side: with the explicit side as the Dirichlet side the gain of the Schwarz " *
+                "iteration reaches -13 on the cantilever beam and no fixed relaxation factor converges.",
+                pair,
+            )
+        end
+        return nothing
+    end
+    if n_D < n_N
+        norma_logf(
+            0,
+            :warn,
+            "%s: the Dirichlet side has fewer interface nodes (%d against %d). With the same integrator and " *
+            "step on both sides the finer mesh should be the Dirichlet side: the gain of the Schwarz iteration " *
+            "then lies in [-1, 0], and with the coarser mesh as the Dirichlet side it grows with the cube of " *
+            "the mesh ratio.",
+            pair,
+            n_D,
+            n_N,
+        )
+    end
     return nothing
 end
 

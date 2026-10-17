@@ -72,10 +72,10 @@ function run_constrained_dn(
     relaxation=nothing,
     edit_bc=nothing,
     edit_params=nothing,
+    clamped_mesh="cantilever-clamped.g",
 )
-    for f in ["cantilever-clamped.g", "cantilever-free.g"]
-        cp("$mesh_dir/$f", f; force=true)
-    end
+    cp("$mesh_dir/$clamped_mesh", "cantilever-clamped.g"; force=true)
+    cp("$mesh_dir/cantilever-free.g", "cantilever-free.g"; force=true)
     free_dt = dt / free_substeps
     constrained_dn_subdomain(
         "cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet, interface_solve, edit_bc
@@ -530,4 +530,62 @@ end
     for k in 1:k_max
         @test norm(anderson[k + 1] - G(gmres[k])) ≤ 1.0e-8 * norm(G(gmres[k]))
     end
+end
+
+# The cross-mass matrix B of a matching pair is integrated over the facets of
+# the Dirichlet side with the quadrature of W_D, so that Π_D = W_D⁻¹ B
+# reproduces constants to roundoff whichever side is the Dirichlet side. On
+# the 1:0.75 meshes (clamped part 8.467 mm, free part 6.35 mm) the facets are
+# not nested, so the matrix integrated on one side gives the projection onto
+# the other side a partition-of-unity error of about 1e-2: before 2026-10-16
+# B was integrated on the side with more nodes, and with the coarser mesh as
+# the Dirichlet side Π_D carried that error.
+@testset "Matching DN: Cross Mass Matrix on the Dirichlet Side" begin
+    for clamped_dirichlet in (false, true)
+        sim, _, _ = run_constrained_dn(
+            false;
+            mesh_dir=nonconforming_beam,
+            clamped_mesh="cantilever-clamped-ratio-0.75.g",
+            clamped_dirichlet,
+            initialize_only=true,
+        )
+        free, clamped = sim.subsims[1], sim.subsims[2]
+        bc_D = clamped_dirichlet ? dn_bc_of(clamped) : dn_bc_of(free)
+        bc_N = clamped_dirichlet ? dn_bc_of(free) : dn_bc_of(clamped)
+        @test bc_D.is_dirichlet && !bc_N.is_dirichlet
+        @test size(bc_D.dirichlet_projector, 1) != size(bc_D.dirichlet_projector, 2)
+        pu_D = maximum(abs.(bc_D.dirichlet_projector * ones(size(bc_D.dirichlet_projector, 2)) .- 1.0))
+        pu_N = maximum(abs.(bc_N.dirichlet_projector * ones(size(bc_N.dirichlet_projector, 2)) .- 1.0))
+        @test pu_D ≤ 1.0e-12
+        # The projection onto the Neumann side, which the exchange never
+        # applies, carries the quadrature error of the non-nested facets.
+        @test pu_N > 1.0e-4
+    end
+end
+
+# The Dirichlet role is the input's; at setup the code warns when it is
+# assigned against the role rules: the fine-step side as the Dirichlet side,
+# or, at equal steps and integrators, the side with fewer interface nodes.
+@testset "Matching DN: Warning on the Dirichlet Role" begin
+    function setup_output(; kwargs...)
+        mktemp() do path, io
+            redirect_stdout(io) do
+                run_constrained_dn(false; initialize_only=true, kwargs...)
+            end
+            flush(io)
+            seekstart(io)
+            # The log wraps long lines; collapse the whitespace before matching.
+            replace(read(io, String), r"\s+" => " ")
+        end
+    end
+    # Coarser mesh (clamped part, 2:1) as the Dirichlet side at equal steps.
+    out = setup_output(; mesh_dir=nonconforming_beam, clamped_dirichlet=true)
+    @test occursin("fewer interface nodes", out)
+    out = setup_output(; mesh_dir=nonconforming_beam, clamped_dirichlet=false)
+    @test !occursin("[WARN]", out)
+    # Fine-step side (free part, 4:1) as the Dirichlet side.
+    out = setup_output(; free_substeps=4, clamped_dirichlet=false)
+    @test occursin("finer time step", out)
+    out = setup_output(; free_substeps=4, clamped_dirichlet=true)
+    @test !occursin("finer time step", out)
 end

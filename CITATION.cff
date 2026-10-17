@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If you use Norma in published work, please cite it as below."
+type: software
+title: "Norma.jl"
+abstract: >-
+  A Julia code for testing algorithms for coupling and multiphysics,
+  primarily in solid mechanics and heat conduction: nonlinear finite
+  elements with implicit and explicit time integration, contact, reduced
+  order models by operator inference, and overlapping and nonoverlapping
+  Schwarz alternating methods.
+authors:
+  - family-names: Mota
+    given-names: Alejandro
+    email: amota@sandia.gov
+    affiliation: Sandia National Laboratories
+    orcid: "https://orcid.org/0000-0003-4268-5397"
+  - family-names: Tezaur
+    given-names: Irina K.
+    email: ikalash@sandia.gov
+    affiliation: Sandia National Laboratories
+  - family-names: Phung
+    given-names: Brian
+  - family-names: Parish
+    given-names: Eric J.
+  - family-names: Koliesnikova
+    given-names: Daria
+  - family-names: Garanger
+    given-names: Kevin
+  - family-names: Diaz
+    given-names: Alejandro N.
+  - family-names: Hamel
+    given-names: Craig M.
+  - family-names: Wentland
+    given-names: Chris
+  - family-names: Ostien
+    given-names: Lukas
+  - family-names: Rimoli
+    given-names: Julian
+  - family-names: Mondal
+    given-names: Trishit
+doi: 10.5281/zenodo.23440198
+version: 1.0.0
+date-released: 2026-10-17
+license: BSD-3-Clause
+repository-code: "https://github.com/sandialabs/Norma.jl"
+url: "https://sandialabs.github.io/Norma.jl/dev/"
+keywords:
+  - solid mechanics
+  - finite elements
+  - domain decomposition
+  - Schwarz alternating method
+  - multiphysics coupling
+  - reduced order models
+  - Julia

@@ -659,16 +659,38 @@ relative error of the column sums of $~L$ against $~W_s \mathbf{1}$ exceeds
 $10^{-10}$. The classical Dirichlet--Neumann, Robin--Robin, and contact
 couplings build $~P_d$ and $~N_d$ independently on each side by these
 rules. The matching exchange instead builds both sides' transfers from one
-cross-mass matrix $~B$, integrated over the facets of the side with more
-interface nodes, with no alternative: $\Pi_1 = ~W_1^{-1} ~B$ and
-$\Pi_2 = ~W_2^{-1} ~B^T$, each side's force transfer the transpose of the
-partner's kinematic transfer, and the partition-of-unity error
-$\max(\max|\Pi_1 \mathbf{1} - \mathbf{1}|, \max|\Pi_2 \mathbf{1} - \mathbf{1}|)$
-logged. Only $\Pi_D$ and its transpose enter the matching exchange; the
-projection onto the other side is never applied, which matters on curved
-or non-nested interfaces where it is inaccurate ($0.72$ on the cylinders
-of Sec.~\ref{sec:verification}, $1.2 \times 10^{-2}$ on the beam at mesh
-ratio $1{:}0.75$, against $10^{-15}$ for $\Pi_D$).
+cross-mass matrix $~B$, integrated over the facets of the Dirichlet side
+with the same quadrature as $~W_D$, with no alternative: $\Pi_D = ~W_D^{-1} ~B$
+and the force transfer $\Pi_D^T$. On that side the row sums of $~B$ equal
+those of $~W_D$ exactly, because the trace basis of the Neumann side sums to
+one at every quadrature point, so $\Pi_D$ reproduces constants to roundoff
+and the total force transferred to the Neumann side equals the total
+reaction of the Dirichlet side. The partition-of-unity error
+$\max|\Pi_D \mathbf{1} - \mathbf{1}|$ is logged, with that of the unused
+projection $~W_N^{-1} ~B^T$ for information. Before October 16, 2026, $~B$
+was integrated over the facets of the side with more interface nodes, which
+is the Dirichlet side in every run of Sec.~\ref{sec:verification}; with the
+coarser mesh as the Dirichlet side the two rules differ on facets that are
+not nested, and the earlier rule gave $\Pi_D$ a partition-of-unity error
+of $1.2\times 10^{-2}$ on the beam at ratio $1{:}0.75$ and $0.72$ on the
+cylinders. The energies are conserved to the same digits under either
+rule, since the identities of Sec.~\ref{sec:identity} hold for any $~B$;
+the error is in the solution: a rigid translation of the beam at $10$\,m/s
+for $1$\,ms then deviates by up to $3.6\%$ in the nodal velocities with
+$4.5\%$ of the kinetic energy turned into strain energy, and of the
+cylinders at $5$\,m/s for $0.2$\,ms by up to $67\%$ with $21\%$ of the
+kinetic energy turned into strain energy, against $5\times 10^{-11}$ and
+$2\times 10^{-10}$ with $~B$ on the Dirichlet side (run data in
+\code{\textasciitilde/Projects/Norma-Schwarz-Coupling/integration-side-2026-10}). Only $\Pi_D$ and its transpose enter the matching exchange; the
+projection onto the other side, $~W_N^{-1} ~B^T$, is never applied. It
+reproduces constants only to the quadrature error of $~B$: with the finer
+mesh as the Dirichlet side, $\max|~W_N^{-1} ~B^T \mathbf{1} - \mathbf{1}|$
+is $1.2 \times 10^{-2}$ on the beam at mesh ratio $1{:}0.75$ and $0.72$ on
+the cylinders of Sec.~\ref{sec:verification}; with the coarser mesh as the
+Dirichlet side it is $0.28$ and $1.34$, and $1.14$ on the beam at mesh
+ratio $1{:}0.5$, where the facets are nested but the quadrature of the
+coarser side does not evaluate $~B$ exactly. The error of $\Pi_D$ is near
+$10^{-15}$ in every case.
 
 \paragraph{Displacement, not position.} A Dirichlet--Neumann transfer
 projects the partner's displacement, $~P_d ~u_s$. Projecting the current
@@ -1004,8 +1026,11 @@ arrangement it is of the order of the impulse itself, and the energy $E$
 varies by $12$ to $51\%$ over the period of the first bending mode of the
 beam while $\tilde{E}$ is conserved (Sec.~\ref{sec:verify-subcycled}).
 $\tilde{E}$ weights the lowest mode least, so it does not detect the
-variation. The code does not enforce the assignment; it is a rule for the
-input (Sec.~\ref{sec:roles}).
+variation. The code does not change the assignment, which is the input's;
+since October 16, 2026 it warns at setup when the Dirichlet side has the
+finer step, is the explicit member of a mixed pair, or has fewer interface
+nodes than its partner with the same integrator and step
+(Sec.~\ref{sec:roles}).
 
 \paragraph{Scope.} Propositions~\ref{prop:equal} and~\ref{prop:subcycled}
 hold for a linear stiffness. For a nonlinear material the exchange still
@@ -1028,8 +1053,8 @@ have.
 \item Assign the Dirichlet role (Sec.~\ref{sec:roles}) with
   \code{default BC type}.
 \item Assemble $~B$, $~W_D$, and $~W_N$ of \eqref{eq:cross-mass} on the
-  reference configuration with the facet quadrature of the side with more
-  interface nodes, and form $\Pi_D$ of \eqref{eq:projector}
+  reference configuration, $~B$ with the facet quadrature of the Dirichlet
+  side, and form $\Pi_D$ of \eqref{eq:projector}
   (Sec.~\ref{sec:mass-matrices}). Check that $\Pi_D$ reproduces constants
   (the partition-of-unity error $\max |\Pi_D \mathbf{1} - \mathbf{1}|$ is at
   roundoff when the quadrature is exact).
