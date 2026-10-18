@@ -139,7 +139,7 @@ function initialize_writing(sim::SingleDomainSimulation)
 
     # get maximum number of quadrature points (per-block override on the model)
     blocks = Exodus.read_sets(output_mesh, Block)
-    max_num_int_points = 0
+    block_num_points = zeros(Int, length(blocks))
     for (block_index, block) in enumerate(blocks)
         if sim.model isa RomModel
             block_id = block.id
@@ -149,8 +149,9 @@ function initialize_writing(sim::SingleDomainSimulation)
         else
             num_points = sim.model.num_int_pts[block_index]
         end
-        max_num_int_points = max(max_num_int_points, num_points)
+        block_num_points[block_index] = num_points
     end
+    max_num_int_points = maximum(block_num_points; init=0)
 
     all_iv_names = sim.model isa RomModel ? String[] : collect_internal_variable_names(sim.model.materials)
     num_element_vars = (7 + length(all_iv_names)) * max_num_int_points + 1
@@ -181,6 +182,30 @@ function initialize_writing(sim::SingleDomainSimulation)
         push!(el_var_names, "energy_density")
     end
     Exodus.write_names(output_mesh, ElementVariable, el_var_names)
+    # Declaring the element variables of every block at once spares the
+    # Exodus library from defining each one on its first write, which rewrites
+    # the header of a classic netCDF file every time: minutes for a mesh with
+    # many blocks and a material with many internal variables. A block defines
+    # what write_stop_exodus writes for it: every variable of the integration
+    # points it has (the internal variables its material lacks are written as
+    # zeros), and stored_energy. The variables of points beyond its own stay
+    # undefined, as when each was defined on its first write, rather than read
+    # as zeros.
+    variables_per_point = 7 + length(all_iv_names)
+    truth_table = ones(Cint, num_element_vars, length(blocks))
+    for (block_index, num_points) in enumerate(block_num_points)
+        for point in (num_points + 1):max_num_int_points, k in 1:variables_per_point
+            truth_table[(point - 1) * variables_per_point + k, block_index] = 0
+        end
+    end
+    error_code = Exodus.LibExodus.ex_put_truth_table(
+        Exodus.get_file_id(output_mesh),
+        Exodus.LibExodus.EX_ELEM_BLOCK,
+        length(blocks),
+        num_element_vars,
+        vec(truth_table),
+    )
+    Exodus.exodus_error_check(output_mesh, error_code, "Norma.initialize_writing -> LibExodus.ex_put_truth_table")
     return nothing
 end
 
