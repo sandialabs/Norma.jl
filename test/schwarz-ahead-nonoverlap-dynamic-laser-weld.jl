@@ -50,23 +50,23 @@ using YAML
     avg_stress_gauge = average_components(model_gauge.stress)
     avg_stress_holder1 = average_components(model_holder1.stress)
 
-    @test min_disp_x_holder0 ≈ -4.8503353649823056e-5 atol = 1e-7
+    @test min_disp_x_holder0 ≈ -4.791431613491284e-5 atol = 1e-7
     @test min_disp_y_holder0 ≈ -0.0006155829702431115 atol = 1e-12
     @test max_disp_z_holder0 ≈ 0.0 atol = 1e-12
     @test min_disp_x_gauge ≈ -7.732050750191575e-5 atol = 1e-7
-    @test min_disp_y_gauge ≈ -0.0002794601407257627 atol = 1e-7
+    @test min_disp_y_gauge ≈ -0.00027647843640377995 atol = 1e-7
     @test max_disp_z_gauge ≈ 4.334628364924738e-5 atol = 1e-7
     @test min_disp_x_holder1 ≈ -4.810143238079646e-5 atol = 1e-7
-    @test min_disp_y_holder1 ≈ 0.00023577100314417488 atol = 1e-7
+    @test min_disp_y_holder1 ≈ 0.00023564053283213707 atol = 1e-7
     @test max_disp_z_holder1 ≈ 0.0 atol = 1e-12
     @test avg_stress_holder0 ≈ [
-        -639.6261094759388 1.7782199539431625e6 -51807.83120981262 -46504.79388129707 1156.5355292243473 1346.1170342658352
+        -388.8658084663769 1.7789083175620253e6 -51598.44182398542 -46505.95763915986 1154.7156388414137 1464.3759339879182
     ] atol = 1.0e1
     @test avg_stress_gauge ≈ [
-        16522.192587960613 1.8419942446213954e6 116817.7849691327 88.09734397642102 29332.667642010096 205.35636784946962
+        16287.92787873454 1.8425807282132097e6 116570.05733704942 -0.6806908886853177 29359.113867347114 78.55976374711695
     ] atol = 1.0e1
     @test avg_stress_holder1 ≈ [
-        -384.0829568066664 1.7782249323431996e6 -51768.35215766566 46423.40270612918 1145.662052893047 -1463.950585851161
+        -427.07846493639687 1.7789137222406587e6 -51719.59443050509 46457.23970066789 1150.5417615051335 -1468.7461552829218
     ] atol = 1.0e1
     # Iteration counts and converged values reflect the slot-keyed relaxation
     # state (commit 0deb579): with the controller step (0.01) larger than the

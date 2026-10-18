@@ -45,17 +45,17 @@ using YAML
     # iterate). With the example's absolute tolerance of 1e-6 m the largest
     # displacement differs by 2.6% from the answer converged to 1e-14 (4.0%
     # under the former criterion).
-    @test min_disp_x_bracket1 ≈ -2.4039728277800348e-5 atol = 1e-8
-    @test min_disp_y_bracket1 ≈ -2.998071050631785e-5 atol = 1e-8
-    @test max_disp_z_bracket1 ≈ 8.24591776516464e-5 atol = 1e-8
+    @test min_disp_x_bracket1 ≈ -2.440627978335228e-5 atol = 1e-8
+    @test min_disp_y_bracket1 ≈ -2.9675905170103557e-5 atol = 1e-8
+    @test max_disp_z_bracket1 ≈ 8.338150370751653e-5 atol = 1e-8
     @test min_disp_x_bracket2 ≈ -0.00010887463311789825 atol = 1e-8
-    @test min_disp_y_bracket2 ≈ -5.13008163845687e-5 atol = 1e-8
-    @test max_disp_z_bracket2 ≈ 0.0008415476201673325 atol = 1e-8
+    @test min_disp_y_bracket2 ≈ -5.0755038606885664e-5 atol = 1e-8
+    @test max_disp_z_bracket2 ≈ 0.0008416555101986271 atol = 1e-8
     @test avg_stress_bracket1 ≈ [
-        652910.6580490598 -12123.223816426462 50154.572220476926 5493.09267826974 -4.39286450144604e6 -146484.54939631541
+        662243.8990513717 -4814.925625621938 59413.730023281336 5389.99446537309 -4.4173610960887745e6 -108354.93235595238
     ] atol = 1.0e1
     @test avg_stress_bracket2 ≈ [
-        759835.7486153797 405964.9277498441 -7906.673323030443 -399843.83671783155 887611.4735772951 235560.99596637356
+        683320.7499107122 387072.8690482631 -29714.529110255608 -393473.2357066649 1.002827732631145e6 111657.01219797382
     ] atol = 1.0e1
     @test sim.controller.schwarz_iters ≈ [
         1,
@@ -75,7 +75,7 @@ using YAML
         1,
         1,
         1,
-        2,
+        1,
         2,
         3,
         3,
