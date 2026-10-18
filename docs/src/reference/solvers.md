@@ -31,7 +31,7 @@ solver:
 | `absolute tolerance` | yes | — | absolute residual-norm convergence tolerance |
 | `relative tolerance` | yes | — | relative residual-norm convergence tolerance |
 | `unconverged solve action` | no | `fail` (`warn` for matrix-free solvers) | what to do with a solve that exhausts `maximum iterations` without meeting either tolerance: `fail` marks the step failed, so adaptive time stepping retries it with a smaller step or the run aborts; `warn` reports it and continues |
-| `linear solver` | no | `cg` | `cg` (conjugate gradient) or `direct` (sparse Cholesky with a reused symbolic factorization; LU when the matrix is not positive definite) |
+| `linear solver` | no | `cg` | `cg` (conjugate gradient) or `direct` (sparse Cholesky with a reused symbolic factorization; LU when the matrix is not positive definite). Also the solver of the mass for the initial acceleration of `Newmark` |
 | `linear solver absolute tolerance` | no | `0.0` | absolute tolerance for the inner CG linear solve |
 | `linear solver relative tolerance` | no | `sqrt(eps)` | relative tolerance for the inner CG linear solve |
 | `use line search` | no | `false` | enable backtracking line search |
