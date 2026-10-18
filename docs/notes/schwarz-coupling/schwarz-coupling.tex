@@ -664,13 +664,15 @@ destination facet, and each piece is integrated with a seven-point
 triangle rule, which is exact for the product of two bilinear shape
 functions on planar facets. On interfaces of planar parallelogram facets
 $~L$ is therefore exact for any mesh ratio, the two integration directions
-give the same matrix, and $~P_d$ below reproduces linear fields. On other
-facets the rule, which integrates the destination shape functions in
-physical coordinates, is inexact, and the rows of $~L$ are scaled to the
-row sums of $~W_d$ (largest correction $5.7\times 10^{-3}$ on the paved
-cap facets of the nested cylinders, none on the beam), so that $~P_d$
-reproduces constants and the transposed transfer conserves the total
-force exactly on every interface. A facet that the projected
+give the same matrix, and $~P_d$ below reproduces linear fields. The boundary
+mass matrix $~W_d$ that enters the projectors is integrated facet by facet
+with the same quadrature as $~L$, so that the row sums of the two agree
+exactly on every facet, also where the rule, which integrates the shape
+functions in physical coordinates, is inexact (on the paved cap facets of
+the nested cylinders it differs from the facet's Gauss rule by up to
+$10^{-2}$; on the beam the two agree to roundoff); $~P_d$ therefore
+reproduces constants and the transposed transfer conserves the total force
+exactly on every interface. A facet that the projected
 source facets do not cover to a relative $10^{-8}$ of its area (a gap, a
 partial overlap, or a curved interface, on which the projected neighbors
 overlap or leave gaps of the order of the sagitta) is integrated with its

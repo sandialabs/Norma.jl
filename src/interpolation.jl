@@ -908,7 +908,8 @@ function get_src_integrated_rectangular_projection_matrix(
     src_model::SolidMechanics,
     src_bc::SolidMechanicsSchwarzBoundaryCondition,
 )
-    return Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
+    L, W_src = get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)
+    return Matrix(transpose(L)), W_src
 end
 
 # Rectangular interface projection matrix L_ij = ∫ N_dst_i N_src_j dΓ over the
@@ -922,9 +923,19 @@ end
 # and W⁻¹L reproduces linear fields. A facet that the pieces do not cover
 # (gap, partial overlap, or a curved interface on which a projection fails)
 # is integrated with its own Gauss rule and the containing-facet projection
-# of each quadrature point (add_facet_point_quadrature!), which keeps the
-# partition of unity of W⁻¹L for any quadrature but carries the quadrature
-# error of the kinks of the source basis inside the facet.
+# of each quadrature point (add_facet_point_quadrature!), which carries the
+# quadrature error of the kinks of the source basis inside the facet.
+#
+# Returns L and the destination's facet mass matrix W_ij = ∫ N_dst_i N_dst_j dΓ
+# integrated facet by facet with the same quadrature as L. Since the source
+# basis sums to one at every quadrature point, the row sums of L equal those
+# of this W exactly on every facet, so W⁻¹L reproduces constants and the
+# transposed transfer conserves the total force for any quadrature error.
+# On planar parallelogram facets this W equals the facet mass matrix of the
+# facet's own Gauss rule (get_square_projection_matrix) to roundoff; on other
+# facets, where the physical-coordinate rule is inexact, the two differ by
+# the quadrature error (up to 1e-2 on the paved cap facets of the nested
+# cylinders), and only this W is consistent with L.
 function get_rectangular_projection_matrix(
     dst_model::SolidMechanics,
     dst_bc::SolidMechanicsSchwarzBoundaryCondition,
@@ -941,6 +952,7 @@ function get_rectangular_projection_matrix(
     dst_coords = dst_model.reference
     dst_side_set_node_index = 1
     rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
+    square_projection_matrix = zeros(dst_num_nodes, dst_num_nodes)
     src_search = build_side_set_search(src_model, src_side_set_id)
     num_segmented = 0
     for dst_num_nodes_side in dst_num_nodes_sides
@@ -949,6 +961,7 @@ function get_rectangular_projection_matrix(
         dst_side_coordinates = dst_coords[:, dst_side_nodes]
         segmented = add_facet_segmented_quadrature!(
             rectangular_projection_matrix,
+            square_projection_matrix,
             dst_local_indices,
             dst_side_coordinates,
             src_search,
@@ -959,6 +972,7 @@ function get_rectangular_projection_matrix(
         else
             add_facet_point_quadrature!(
                 rectangular_projection_matrix,
+                square_projection_matrix,
                 dst_local_indices,
                 dst_side_coordinates,
                 src_search,
@@ -967,34 +981,7 @@ function get_rectangular_projection_matrix(
         end
         dst_side_set_node_index += dst_num_nodes_side
     end
-    # The segmented rule integrates the destination shape functions in
-    # physical coordinates, which is exact on parallelogram facets only; on
-    # other facets its row sums differ from those of the facet mass matrix W
-    # (up to 1e-2 on the distorted cap facets of the nested cylinders). Scale
-    # the rows to the row sums of W, so that W⁻¹L reproduces constants, and
-    # the transposed transfer conserves the total force, exactly on every
-    # interface; parallelogram facets are unchanged to roundoff.
-    W_row_sums = vec(sum(get_square_projection_matrix(dst_model, dst_bc); dims=2))
-    L_row_sums = vec(sum(rectangular_projection_matrix; dims=2))
-    largest_correction = 0.0
-    for i in 1:dst_num_nodes
-        L_row_sums[i] > 0.0 || continue
-        factor = W_row_sums[i] / L_row_sums[i]
-        largest_correction = max(largest_correction, abs(factor - 1.0))
-        rectangular_projection_matrix[i, :] .*= factor
-    end
     num_facets = length(dst_num_nodes_sides)
-    if largest_correction > 1.0e-12
-        norma_logf(
-            0,
-            :info,
-            "Interface transfer '%s'/'%s': row sums scaled to those of the boundary mass matrix on facets that " *
-            "are not parallelograms (largest correction %.1e).",
-            dst_bc.name,
-            src_bc.name,
-            largest_correction,
-        )
-    end
     if num_segmented < num_facets
         norma_logf(
             0,
@@ -1008,13 +995,14 @@ function get_rectangular_projection_matrix(
             num_facets,
         )
     end
-    return rectangular_projection_matrix
+    return rectangular_projection_matrix, square_projection_matrix
 end
 
 # The point rule: the facet's own Gauss points, each located on the source
 # side set by the containing-facet projection.
 function add_facet_point_quadrature!(
     L::Matrix{Float64},
+    W::Matrix{Float64},
     dst_local_indices::Vector{Int64},
     dst_side_coordinates::Matrix{Float64},
     src_search::SideSetSearch,
@@ -1038,6 +1026,7 @@ function add_facet_point_quadrature!(
         src_Nₚ, _, _ = interpolate(src_side_element_type, ξ)
         src_local_indices = get.(Ref(src_local_from_global_map), src_side_nodes, 0)
         L[dst_local_indices, src_local_indices] += dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
+        W[dst_local_indices, dst_local_indices] += dst_Nₚ * dst_Nₚ' * dst_j * dst_wₚ
     end
     return nothing
 end
@@ -1052,6 +1041,7 @@ const SEGMENT_COVERAGE_TOLERANCE = 1.0e-8
 # the pieces do not cover it.
 function add_facet_segmented_quadrature!(
     L::Matrix{Float64},
+    W::Matrix{Float64},
     dst_local_indices::Vector{Int64},
     dst_side_coordinates::Matrix{Float64},
     src_search::SideSetSearch,
@@ -1069,6 +1059,7 @@ function add_facet_segmented_quadrature!(
     margin = 0.5 * norm(dst_hi - dst_lo)
     ξ_rule, w_rule = barycentric_quadrature(Val(2), Val(6), Val(7))
     contributions = Vector{Tuple{Vector{Int64},Matrix{Float64}}}()
+    square_block = zeros(dst_num_nodes_side, dst_num_nodes_side)
     covered_area = 0.0
     @inbounds for src_facet in eachindex(src_search.facet_coords)
         lo = src_search.box_min[src_facet]
@@ -1112,7 +1103,9 @@ function add_facet_segmented_quadrature!(
                 slope > 0.5 || return false
                 dst_Nₚ = interpolate(get_element_type(2, dst_num_nodes_side), ξ_dst)[1]
                 src_Nₚ = interpolate(src_element_type, ξ_src)[1]
-                block += dst_Nₚ * src_Nₚ' * (2.0 * triangle_area * w_rule[q] / slope)
+                area = 2.0 * triangle_area * w_rule[q] / slope
+                block += dst_Nₚ * src_Nₚ' * area
+                square_block += dst_Nₚ * dst_Nₚ' * area
             end
         end
         covered_area += piece_area
@@ -1123,6 +1116,7 @@ function add_facet_segmented_quadrature!(
     for (src_local_indices, block) in contributions
         L[dst_local_indices, src_local_indices] += block
     end
+    W[dst_local_indices, dst_local_indices] += square_block
     return true
 end
 

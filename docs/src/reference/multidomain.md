@@ -301,11 +301,13 @@ facet, and each piece is integrated with a seven-point triangle rule, which
 is exact for the product of two bilinear shape functions on planar facets.
 On interfaces of planar parallelogram facets B is therefore exact for any
 mesh ratio, both integration sides give the same matrix, and Π_D reproduces
-linear fields. On other facets the physical-coordinate rule is inexact, so
-the rows of B are scaled to the row sums of W_D (largest correction 5.7e-3
-on the paved cap facets of the nested cylinders, 0 on the beam), which
-makes Π_D reproduce constants and the force transfer conserve the total
-force exactly on every interface
+linear fields. W_D is integrated facet by facet with the same
+quadrature as B, so that the row sums of the two agree exactly on every
+facet, also where the physical-coordinate rule is inexact (on the paved cap
+facets of the nested cylinders the two quadratures of W_D differ by up to
+1e-2; on the beam they agree to roundoff); Π_D therefore reproduces
+constants and the force transfer conserves the total force exactly on
+every interface
 (before 2026-10-18, with the facet's own Gauss rule on the facets of D,
 Π_D reproduced linear fields but the entries of B carried a quadrature
 error of 9e-3 to 1.1e-2 on the non-nested 1:0.75 beam interface, so the

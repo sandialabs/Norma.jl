@@ -747,15 +747,17 @@ function compute_constrained_dn_projectors!(
     dst_bc.constraint = src_bc.constraint = constraint
     check_constrained_integrators(dst_sim, src_sim, constraint)
     check_direct_interface_solve(dst_bc, src_bc, dst_sim, src_sim)
-    W1 = get_square_projection_matrix(dst_model, dst_bc)
-    W2 = get_square_projection_matrix(src_model, src_bc)
-    n1 = size(W1, 1)
-    n2 = size(W2, 1)
     # B in the orientation (rows of side 1, columns of side 2), integrated over
     # the facets of side 1 or of side 2 (the first argument of
-    # get_rectangular_projection_matrix is the side whose facets are integrated).
-    B_on_1 = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
-    B_on_2 = Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
+    # get_rectangular_projection_matrix is the side whose facets are integrated),
+    # each with the boundary mass matrix of the integrated side by the same
+    # quadrature, so that the row sums of B_on_1 equal those of W1 and the
+    # column sums of B_on_2 those of W2 exactly.
+    B_on_1, W1 = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    B_on_2_transposed, W2 = get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)
+    B_on_2 = Matrix(transpose(B_on_2_transposed))
+    n1 = size(W1, 1)
+    n2 = size(W2, 1)
     B_on_D, B_on_N = dst_bc.is_dirichlet ? (B_on_1, B_on_2) : (B_on_2, B_on_1)
     set_square_projector!(dst_bc, W1)
     set_square_projector!(src_bc, W2)
@@ -2059,7 +2061,7 @@ end
 # The Dirichlet and Neumann projectors of one interface use the same two
 # rectangular projection matrices; a cache shared between the two calls keeps
 # each from being computed twice.
-const RectangularProjectionCache = Dict{Symbol,Matrix{Float64}}
+const RectangularProjectionCache = Dict{Symbol,Tuple{Matrix{Float64},Matrix{Float64}}}
 
 function cached_rectangular_projection(
     cache::RectangularProjectionCache,
@@ -2096,11 +2098,13 @@ function compute_neumann_projector(
     # must match the source mass row sums — and when it fails (coarser
     # destination facets, non-nested interfaces), fall back to the
     # source-integrated L, which is conservative by construction.
-    L = cached_rectangular_projection(cache, :destination_integrated, dst_fom, dst_bc, src_fom, src_bc)
+    L, _ = cached_rectangular_projection(cache, :destination_integrated, dst_fom, dst_bc, src_fom, src_bc)
     src_lumped = H * ones(size(H, 2))
     conservation_error = maximum(abs.(vec(sum(L; dims=1)) - src_lumped)) / maximum(abs.(src_lumped))
     if conservation_error > 1.0e-10
-        L = cached_rectangular_projection(cache, :source_integrated, dst_fom, dst_bc, src_fom, src_bc)
+        # The source-integrated L comes with the source mass matrix of its
+        # own quadrature, whose row sums its column sums match exactly.
+        L, H = cached_rectangular_projection(cache, :source_integrated, dst_fom, dst_bc, src_fom, src_bc)
     end
     dst_bc.neumann_projector = L * (H \ I)
     return nothing
@@ -2124,11 +2128,13 @@ function compute_dirichlet_projector(
     # when it fails (non-nested facets, partial coverage), fall back to the
     # destination-integrated L, whose Dirichlet projector reproduces constants
     # for any quadrature by construction.
-    L = cached_rectangular_projection(cache, :source_integrated, dst_fom, dst_bc, src_fom, src_bc)
+    L, _ = cached_rectangular_projection(cache, :source_integrated, dst_fom, dst_bc, src_fom, src_bc)
     P = (W \ I) * L
     pu_error = maximum(abs.(P * ones(size(P, 2)) .- 1.0))
     if pu_error > 1.0e-10
-        L = cached_rectangular_projection(cache, :destination_integrated, dst_fom, dst_bc, src_fom, src_bc)
+        # The destination-integrated L comes with the destination mass matrix
+        # of its own quadrature, whose row sums equal those of L exactly.
+        L, W = cached_rectangular_projection(cache, :destination_integrated, dst_fom, dst_bc, src_fom, src_bc)
         P = (W \ I) * L
     end
     dst_bc.dirichlet_projector = P
