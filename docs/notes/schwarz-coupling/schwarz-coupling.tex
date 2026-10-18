@@ -657,10 +657,27 @@ side $s$ of a shared interface,
     \varphi^d_m(~x_q)\, \varphi^s_n(~\xi_s(~x_q))\, J_q\, w_q ,
   \label{eq:cross-dst}
 \end{equation}
-is integrated over the facets of the destination, each quadrature point
-located on the source by the projection of Sec.~\ref{sec:location}; the
-matrix integrated over the source facets is $(L^{s d})^T$. Two
-projections are built from these matrices:
+is integrated over the facets of the destination. Since October 18, 2026,
+the quadrature is segment based: each destination facet is split into its
+intersections with the source facets, projected onto the plane of the
+destination facet, and each piece is integrated with a seven-point
+triangle rule, which is exact for the product of two bilinear shape
+functions on planar facets. On planar interfaces $~L$ is therefore exact
+for any mesh ratio, the two integration directions give the same matrix,
+and $~P_d$ below reproduces linear fields. A facet that the projected
+source facets do not cover to a relative $10^{-8}$ of its area (a gap, a
+partial overlap, or a curved interface, on which the projected neighbors
+overlap or leave gaps of the order of the sagitta) is integrated with its
+own Gauss rule, each quadrature point located on the source by the
+projection of Sec.~\ref{sec:location}, and the setup log reports the
+count of such facets. That rule, which was the only one before, carries
+the quadrature error of the kinks of the source basis inside the facet:
+on the beam at ratio $1{:}0.75$ the largest entry of the transfer was in
+error by $8.8\times 10^{-2}$ at two refinement levels alike, and a
+uniform strain was reproduced with a strain error of $4.4\times 10^{-2}$
+that did not fall under refinement, while constants were reproduced to
+roundoff. The matrix integrated over the source facets is $(L^{s d})^T$.
+Two projections are built from these matrices:
 \begin{align}
   \text{Dirichlet projector}\quad & ~P_d = ~W_d^{-1} ~L, \label{eq:dirichlet-projector} \\
   \text{Neumann projector}\quad & ~N_d = ~L\, ~W_s^{-1}, \label{eq:neumann-projector}

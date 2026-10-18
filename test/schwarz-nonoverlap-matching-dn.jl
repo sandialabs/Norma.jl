@@ -532,15 +532,18 @@ end
     end
 end
 
-# The cross-mass matrix B of a matching pair is integrated over the facets of
-# the Dirichlet side with the quadrature of W_D, so that Π_D = W_D⁻¹ B
-# reproduces constants to roundoff whichever side is the Dirichlet side. On
-# the 1:0.75 meshes (clamped part 8.467 mm, free part 6.35 mm) the facets are
-# not nested, so the matrix integrated on one side gives the projection onto
-# the other side a partition-of-unity error of about 1e-2: before 2026-10-16
-# B was integrated on the side with more nodes, and with the coarser mesh as
-# the Dirichlet side Π_D carried that error.
-@testset "Matching DN: Cross Mass Matrix on the Dirichlet Side" begin
+# The cross-mass matrix B of a matching pair is integrated by segment-based
+# quadrature: each facet of the integration side is split into its
+# intersections with the facets of the other side, so that B is exact on
+# planar interfaces whatever the mesh ratio. On the 1:0.75 meshes (clamped
+# part 8.467 mm, free part 6.35 mm) the facets are not nested; with the
+# facet's own Gauss rule (before 2026-10-18) the matrix integrated on one side
+# gave the projection onto the other side a partition-of-unity error of about
+# 1e-2, and the Dirichlet projector did not reproduce linear fields. Checked:
+# both projections reproduce constants and the interface coordinates to
+# roundoff, and the force transfer carries the consistent nodal loads of a
+# uniform traction exactly.
+@testset "Matching DN: Cross Mass Matrix by Segmented Quadrature" begin
     for clamped_dirichlet in (false, true)
         sim, _, _ = run_constrained_dn(
             false;
@@ -552,14 +555,25 @@ end
         free, clamped = sim.subsims[1], sim.subsims[2]
         bc_D = clamped_dirichlet ? dn_bc_of(clamped) : dn_bc_of(free)
         bc_N = clamped_dirichlet ? dn_bc_of(free) : dn_bc_of(clamped)
+        model_D = clamped_dirichlet ? clamped.model : free.model
+        model_N = clamped_dirichlet ? free.model : clamped.model
         @test bc_D.is_dirichlet && !bc_N.is_dirichlet
-        @test size(bc_D.dirichlet_projector, 1) != size(bc_D.dirichlet_projector, 2)
-        pu_D = maximum(abs.(bc_D.dirichlet_projector * ones(size(bc_D.dirichlet_projector, 2)) .- 1.0))
-        pu_N = maximum(abs.(bc_N.dirichlet_projector * ones(size(bc_N.dirichlet_projector, 2)) .- 1.0))
-        @test pu_D ≤ 1.0e-12
-        # The projection onto the Neumann side, which the exchange never
-        # applies, carries the quadrature error of the non-nested facets.
-        @test pu_N > 1.0e-4
+        P_D = bc_D.dirichlet_projector
+        P_N = bc_N.dirichlet_projector
+        @test size(P_D, 1) != size(P_D, 2)
+        @test maximum(abs.(P_D * ones(size(P_D, 2)) .- 1.0)) ≤ 1.0e-12
+        @test maximum(abs.(P_N * ones(size(P_N, 2)) .- 1.0)) ≤ 1.0e-12
+        X_D = model_D.reference[:, bc_D.global_from_local_map]
+        X_N = model_N.reference[:, bc_N.global_from_local_map]
+        scale = maximum(abs.(X_D))
+        @test maximum(abs.(X_D' - P_D * X_N')) ≤ 1.0e-12 * scale
+        @test maximum(abs.(X_N' - P_N * X_D')) ≤ 1.0e-12 * scale
+        W_D = Norma.get_square_projection_matrix(model_D, bc_D)
+        W_N = Norma.get_square_projection_matrix(model_N, bc_N)
+        # Consistent nodal loads of a uniform traction on D transferred to N.
+        loads_D = W_D * ones(size(W_D, 1))
+        loads_N = W_N * ones(size(W_N, 1))
+        @test maximum(abs.(bc_N.neumann_projector * loads_D - loads_N)) ≤ 1.0e-12 * maximum(abs.(loads_N))
     end
 end
 

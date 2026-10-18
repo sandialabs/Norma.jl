@@ -294,19 +294,27 @@ standard exchange these values are reported only.
 
 **Matching exchange.** With `matching` both transfer operators are
 built from one cross mass matrix B, Π_D = W_D⁻¹ B, and the Neumann side's
-force transfer is Π_Dᵀ. B is integrated over the facets of the Neumann side
-when Π_D then reproduces constants to 1e-12, which happens when those facets
-each lie within a facet of the Dirichlet side (nested facets, the Neumann side
-the finer); that quadrature evaluates B exactly. Otherwise B is integrated over
-the facets of the Dirichlet side with the same quadrature as W_D: its row sums
-then equal those of W_D exactly, so Π_D reproduces constants to roundoff and
-the total force transferred to the Neumann side equals the total reaction of
-the Dirichlet side. On nested facets with the coarser mesh as the Dirichlet
-side, the Dirichlet-side quadrature does not evaluate B exactly, and the
-iteration contracts more slowly (61.9 against 44.5 Schwarz iterations per
-window on the beam at 1:0.5 with 4:1 steps, trapezoidal pair, fixed factor
-0.5). The log reports the side used, the partition-of-unity error of Π_D, and,
-for information, that of the unused projection onto the Neumann side. The Neumann side receives Π_Dᵀ r_D, the d'Alembert reaction of the
+force transfer is Π_Dᵀ. B = ∫ N_D N_Nᵀ dΓ is integrated by
+segment-based quadrature: each facet of the integration side is split into
+its intersections with the facets of the other side, in the plane of the
+facet, and each piece is integrated with a seven-point triangle rule, which
+is exact for the product of two bilinear shape functions on planar facets.
+On planar interfaces B is therefore exact for any mesh ratio, both
+integration sides give the same matrix, and Π_D reproduces linear fields
+(before 2026-10-18, with the facet's own Gauss rule, the entries of the
+transfer carried an error of up to 9e-2 on non-nested facets that did not
+fall under refinement, so uniform strain was not reproduced). A facet that
+the other side's facets do not cover to a relative 1e-8 of its area (gap,
+partial overlap, or a curved interface on which the projection of a
+quadrature point fails) is integrated with its own Gauss rule and the
+containing-facet projection of each point, and the log warns with the count
+of such facets. B is then taken on the Neumann side when Π_D reproduces
+constants to 1e-12 with it, and otherwise on the Dirichlet side, where its
+row sums equal those of W_D exactly for any quadrature, so Π_D reproduces
+constants to roundoff and the total force transferred to the Neumann side
+equals the total reaction of the Dirichlet side. The log reports the side
+used, the partition-of-unity error of Π_D, and, for information, that of the
+unused projection onto the Neumann side. The Neumann side receives Π_Dᵀ r_D, the d'Alembert reaction of the
 Dirichlet side, so the two interface rows add to the row of the undecomposed
 problem. The Dirichlet side computes from its state (u_n, v_n, a_n) at the
 start of the step u_pre = u_n + Δt v_n + (½ − β) Δt² a_n and
