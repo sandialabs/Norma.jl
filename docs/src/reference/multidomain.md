@@ -306,9 +306,13 @@ the rows of B are scaled to the row sums of W_D (largest correction 5.7e-3
 on the paved cap facets of the nested cylinders, 0 on the beam), which
 makes Π_D reproduce constants and the force transfer conserve the total
 force exactly on every interface
-(before 2026-10-18, with the facet's own Gauss rule, the entries of the
-transfer carried an error of up to 9e-2 on non-nested facets that did not
-fall under refinement, so uniform strain was not reproduced). A facet that
+(before 2026-10-18, with the facet's own Gauss rule on the facets of D,
+Π_D reproduced linear fields but the entries of B carried a quadrature
+error of 9e-3 to 1.1e-2 on the non-nested 1:0.75 beam interface, so the
+transposed force transfer distributed a uniform traction over the Neumann
+nodes with a strain error of 4e-3 that rose to 7e-3 under one refinement;
+with the segmented rule both uniform-strain patch tests are reproduced to
+roundoff, measured statically on rigel on October 18, 2026). A facet that
 the other side's facets do not cover to a relative 1e-8 of its area (gap,
 partial overlap, or a curved interface on which the projection of a
 quadrature point fails) is integrated with its own Gauss rule and the

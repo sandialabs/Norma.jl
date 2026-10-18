@@ -677,12 +677,15 @@ overlap or leave gaps of the order of the sagitta) is integrated with its
 own Gauss rule, each quadrature point located on the source by the
 projection of Sec.~\ref{sec:location}, and the setup log reports the
 count of such facets. That rule, which was the only one before, carries
-the quadrature error of the kinks of the source basis inside the facet:
-on the beam at ratio $1{:}0.75$ the largest entry of the transfer was in
-error by $8.8\times 10^{-2}$ at two refinement levels alike, and a
-uniform strain was reproduced with a strain error of $4.4\times 10^{-2}$
-that did not fall under refinement, while constants were reproduced to
-roundoff. The matrix integrated over the source facets is $(L^{s d})^T$.
+the quadrature error of the kinks of the source basis inside the facet.
+Integrated on the facets of the Dirichlet side it reproduces constants and
+linear fields, but the entries of $~B$ are in error by $9\times 10^{-3}$
+to $1.1\times 10^{-2}$ on the beam at ratio $1{:}0.75$, and the
+transposed force transfer distributes a uniform traction over the Neumann
+nodes with a strain error of $4\times 10^{-3}$ that rises to
+$7\times 10^{-3}$ when both meshes are refined once (static patch test of
+the matching exchange, October 18, 2026); with the segmented rule the same
+tests are reproduced to roundoff. The matrix integrated over the source facets is $(L^{s d})^T$.
 Two projections are built from these matrices:
 \begin{align}
   \text{Dirichlet projector}\quad & ~P_d = ~W_d^{-1} ~L, \label{eq:dirichlet-projector} \\
