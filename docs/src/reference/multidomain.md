@@ -299,8 +299,13 @@ segment-based quadrature: each facet of the integration side is split into
 its intersections with the facets of the other side, in the plane of the
 facet, and each piece is integrated with a seven-point triangle rule, which
 is exact for the product of two bilinear shape functions on planar facets.
-On planar interfaces B is therefore exact for any mesh ratio, both
-integration sides give the same matrix, and Π_D reproduces linear fields
+On interfaces of planar parallelogram facets B is therefore exact for any
+mesh ratio, both integration sides give the same matrix, and Π_D reproduces
+linear fields. On other facets the physical-coordinate rule is inexact, so
+the rows of B are scaled to the row sums of W_D (largest correction 5.7e-3
+on the paved cap facets of the nested cylinders, 0 on the beam), which
+makes Π_D reproduce constants and the force transfer conserve the total
+force exactly on every interface
 (before 2026-10-18, with the facet's own Gauss rule, the entries of the
 transfer carried an error of up to 9e-2 on non-nested facets that did not
 fall under refinement, so uniform strain was not reproduced). A facet that

@@ -967,7 +967,34 @@ function get_rectangular_projection_matrix(
         end
         dst_side_set_node_index += dst_num_nodes_side
     end
+    # The segmented rule integrates the destination shape functions in
+    # physical coordinates, which is exact on parallelogram facets only; on
+    # other facets its row sums differ from those of the facet mass matrix W
+    # (up to 1e-2 on the distorted cap facets of the nested cylinders). Scale
+    # the rows to the row sums of W, so that W⁻¹L reproduces constants, and
+    # the transposed transfer conserves the total force, exactly on every
+    # interface; parallelogram facets are unchanged to roundoff.
+    W_row_sums = vec(sum(get_square_projection_matrix(dst_model, dst_bc); dims=2))
+    L_row_sums = vec(sum(rectangular_projection_matrix; dims=2))
+    largest_correction = 0.0
+    for i in 1:dst_num_nodes
+        L_row_sums[i] > 0.0 || continue
+        factor = W_row_sums[i] / L_row_sums[i]
+        largest_correction = max(largest_correction, abs(factor - 1.0))
+        rectangular_projection_matrix[i, :] .*= factor
+    end
     num_facets = length(dst_num_nodes_sides)
+    if largest_correction > 1.0e-12
+        norma_logf(
+            0,
+            :info,
+            "Interface transfer '%s'/'%s': row sums scaled to those of the boundary mass matrix on facets that " *
+            "are not parallelograms (largest correction %.1e).",
+            dst_bc.name,
+            src_bc.name,
+            largest_correction,
+        )
+    end
     if num_segmented < num_facets
         norma_logf(
             0,
