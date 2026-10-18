@@ -702,15 +702,27 @@ end
 # work of the transferred reaction on the Neumann velocity equals the work of
 # the reaction on the projected velocity imposed on the Dirichlet side. W_k is
 # stored as the square projector of side k and is the same matrix in the
-# constraint, in the projector, and in the force transfer. B is integrated over
-# the facets of the Dirichlet side with the same quadrature as W_D, so that its
-# row sums equal those of W_D exactly: Π_D then reproduces constants to
-# roundoff and the force Π_Dᵀλ transferred to the Neumann side has the total
-# of λ. Integrated on the Neumann side, B would carry the quadrature error of
-# the product of the two trace bases into Π_D (1.2e-2 on the beam at mesh
-# ratio 1:0.75 and 0.72 on the cylinders). The projection onto the Neumann
-# side, W_N⁻¹Bᵀ, is never applied; its partition-of-unity error is logged for
-# information only.
+# constraint, in the projector, and in the force transfer. B is assembled
+# with the facet quadrature of either side. Integrated on the facets of the
+# Neumann side, it is exact when those facets each lie within a facet of the
+# Dirichlet side (nested facets, the Neumann side the finer), and Π_D then
+# reproduces constants to roundoff; that integration is used whenever Π_D
+# reproduces constants to NESTED_PARTITION_TOLERANCE with it. Otherwise B is
+# integrated over the facets of the Dirichlet side with the same quadrature as
+# W_D, so that its row sums equal those of W_D exactly: Π_D then reproduces
+# constants to roundoff and the force Π_Dᵀλ transferred to the Neumann side
+# has the total of λ. On facets that are not nested, B integrated on the
+# Neumann side carries the quadrature error of the product of the two trace
+# bases into Π_D (1.2e-2 on the beam at mesh ratio 1:0.75 and 0.72 on the
+# cylinders). On nested facets with the coarser mesh as the Dirichlet side,
+# B integrated on the Dirichlet side is not exact: Π_D then differs from the
+# L2 projection, and on the beam at 1:0.5 with 4:1 steps (clamped part, coarse
+# in mesh and step, the Dirichlet side) the trapezoidal pair needed 61.9
+# Schwarz iterations per window at a fixed factor of 0.5 against 44.5 with the
+# exact B. The projection onto the Neumann side, W_N⁻¹Bᵀ, is never applied;
+# its partition-of-unity error is logged for information only.
+const NESTED_PARTITION_TOLERANCE = 1.0e-12
+
 function compute_constrained_dn_projectors!(
     dst_model::SolidMechanics, dst_bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition
 )
@@ -739,15 +751,22 @@ function compute_constrained_dn_projectors!(
     W2 = get_square_projection_matrix(src_model, src_bc)
     n1 = size(W1, 1)
     n2 = size(W2, 1)
-    # Integrate B over the facets of the Dirichlet side (the first argument of
+    # B in the orientation (rows of side 1, columns of side 2), integrated over
+    # the facets of side 1 or of side 2 (the first argument of
     # get_rectangular_projection_matrix is the side whose facets are integrated).
-    B = if dst_bc.is_dirichlet
-        get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
-    else
-        Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
-    end
+    B_on_1 = get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    B_on_2 = Matrix(transpose(get_rectangular_projection_matrix(src_model, src_bc, dst_model, dst_bc)))
+    B_on_D, B_on_N = dst_bc.is_dirichlet ? (B_on_1, B_on_2) : (B_on_2, B_on_1)
     set_square_projector!(dst_bc, W1)
     set_square_projector!(src_bc, W2)
+    # Partition-of-unity error of Π_D with B integrated on the Neumann side.
+    pu_error_D_on_N = if dst_bc.is_dirichlet
+        maximum(abs.(dst_bc.square_factor \ (B_on_N * ones(n2)) .- 1.0))
+    else
+        maximum(abs.(src_bc.square_factor \ (transpose(B_on_N) * ones(n1)) .- 1.0))
+    end
+    nested = pu_error_D_on_N <= NESTED_PARTITION_TOLERANCE
+    B = nested ? B_on_N : B_on_D
     if dst_bc.is_dirichlet
         warn_dirichlet_role(dst_sim, src_sim, dst_bc.name, src_bc.name, n1, n2)
     else
@@ -765,10 +784,12 @@ function compute_constrained_dn_projectors!(
     norma_logf(
         0,
         :info,
-        "Matching DN interface '%s'/'%s': %s matching, partition-of-unity error of Π_D %.2e (unused projection onto N: %.2e).",
+        "Matching DN interface '%s'/'%s': %s matching, B integrated on the facets of the %s side, " *
+        "partition-of-unity error of Π_D %.2e (unused projection onto N: %.2e).",
         dst_bc.name,
         src_bc.name,
         String(constraint),
+        nested ? "Neumann" : "Dirichlet",
         pu_error_D,
         pu_error_N,
     )

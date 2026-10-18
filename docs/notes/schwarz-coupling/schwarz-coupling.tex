@@ -675,9 +675,16 @@ relative error of the column sums of $~L$ against $~W_s \mathbf{1}$ exceeds
 $10^{-10}$. The classical Dirichlet--Neumann, Robin--Robin, and contact
 couplings build $~P_d$ and $~N_d$ independently on each side by these
 rules. The matching exchange instead builds both sides' transfers from one
-cross-mass matrix $~B$, integrated over the facets of the Dirichlet side
-with the same quadrature as $~W_D$, with no alternative: $\Pi_D = ~W_D^{-1} ~B$
-and the force transfer $\Pi_D^T$. On that side the row sums of $~B$ equal
+cross-mass matrix $~B$, with $\Pi_D = ~W_D^{-1} ~B$ and the force transfer
+$\Pi_D^T$. $~B$ is integrated over the facets of the Neumann side when
+$\Pi_D$ then reproduces constants to $10^{-12}$, which happens when those
+facets each lie within a facet of the Dirichlet side; that quadrature
+evaluates $~B$ exactly. On nested facets with the coarser mesh as the
+Dirichlet side, the quadrature of the Dirichlet side does not, and the
+iteration of the beam at $1{:}0.5$ with $4{:}1$ steps (trapezoidal pair, fixed
+factor $0.5$) needs $61.9$ Schwarz iterations per window against $44.5$.
+Otherwise $~B$ is integrated over the facets of the Dirichlet side with the
+same quadrature as $~W_D$. On that side the row sums of $~B$ equal
 those of $~W_D$ exactly, because the trace basis of the Neumann side sums to
 one at every quadrature point, so $\Pi_D$ reproduces constants to roundoff
 and the total force transferred to the Neumann side equals the total
