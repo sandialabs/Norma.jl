@@ -1611,7 +1611,7 @@ function schwarz(sim::MultiDomainSimulation)
         compute_interface_predictor!(sim)
     end
 
-    constrained_stall = (Inf, 0)
+    constrained_stall = (Inf, 0, NaN)
     inexact = sim.controller.inexact_newton
     previous_residual = NaN
     floor_forced = false
@@ -2121,11 +2121,14 @@ matching_absolute_tolerance(sim::MultiDomainSimulation) = Float64(get(sim.params
 # maximized over the matching pairs, is stalled when it stays above the
 # tolerance and has not fallen 5% below its smallest value for STALL_ITERATIONS
 # consecutive iterations; with other couplings present, only iterations at which
-# the displacement update has converged are counted. A stall is handled as
-# `stalled interface jump action` directs. Returns whether every constrained pair has converged, and the
-# stall state (smallest value, iterations without decrease) for the next
-# iteration.
-function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tuple{Float64,Int})
+# the displacement update has converged are counted. An iteration is counted
+# only after the residual has fallen below its first finite value of the stop:
+# a residual that grows from the start of a stop is not a stall but a
+# divergence, and runs to `maximum iterations`. A stall is handled as
+# `stalled interface jump action` directs. Returns whether every constrained
+# pair has converged, and the stall state (smallest value, iterations without
+# decrease, first finite value) for the next iteration.
+function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tuple{Float64,Int,Float64})
     controller = sim.controller
     sides = dn_dirichlet_sides(sim)
     controller.interface_residual = NaN
@@ -2177,13 +2180,21 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
     controller.converged = false
     matching_only || displacement_converged || return false, stall
     # A residual is stalled when, over STALL_ITERATIONS consecutive counted
-    # iterations, it has not fallen 5% below the smallest value seen. Aitken factors make the residual non-monotone from
-    # one iteration to the next, so a single iteration without decrease is not
-    # a stall.
-    best, count = stall
+    # iterations, it has not fallen 5% below the smallest value seen. Aitken
+    # factors and Anderson acceleration make the residual non-monotone from one
+    # iteration to the next, so a single iteration without decrease is not a
+    # stall. Iterations are counted only once the residual has fallen below its
+    # first finite value: with a gain far below -1 (an explicit Dirichlet side)
+    # the residual grows over the first iterations of a stop, before the
+    # Anderson history is built, and counting them accepted residuals of order
+    # one (relative 1.6 to 2.6 on the beam with an explicit Dirichlet side,
+    # followed by an inverted element; before bf69527d these iterations were
+    # not counted because the displacement update had not converged).
+    best, count, initial = stall
+    isnan(initial) && isfinite(max_measure) && (initial = max_measure)
     if max_measure < 0.95 * best
         best, count = max_measure, 0
-    else
+    elseif best < initial
         count += 1
     end
     if count >= STALL_ITERATIONS
@@ -2208,9 +2219,9 @@ function apply_constrained_dn_criterion!(sim::MultiDomainSimulation, stall::Tupl
         )
         controller.converged = true
         reset_anderson_state!(controller)
-        return true, (best, count)
+        return true, (best, count, initial)
     end
-    return false, (best, count)
+    return false, (best, count, initial)
 end
 
 # True when the simulation has a Schwarz coupling and every Schwarz coupling
