@@ -1193,9 +1193,9 @@ displacement, velocity, and acceleration, $N$ receives the d'Alembert
 reaction of $D$, and each side solves for its acceleration with the
 coupling rows included in the correction of Sec.~\ref{sec:setting}. The
 imposed interface acceleration is relaxed with
-the fixed factor, with the secant Aitken factor \eqref{eq:aitken-secant}
-under either Aitken option, or by Anderson acceleration, as the input
-selects. The iteration stops when the one-sided acceleration jump and the
+the fixed factor, with the Aitken factor of the selected form,
+\eqref{eq:aitken-recursive} or \eqref{eq:aitken-secant}, or by Anderson
+acceleration, as the input selects. The iteration stops when the one-sided acceleration jump and the
 force residual of every pair are at or below $\epsilon$, or after
 \code{maximum iterations} with a warning. It converges in $2$ iterations
 on conforming meshes with identical integrators, $16$ to $24$ on

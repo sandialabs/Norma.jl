@@ -430,7 +430,8 @@ iteration at t = 0: the Dirichlet side imposes the projected partner
 acceleration, the Neumann side receives the d'Alembert reaction, and each side
 recomputes its initial acceleration with the interface rows included. The
 Dirichlet datum is relaxed with `relaxation parameter`, under Aitken
-relaxation with the secant factor of the iteration's own iterates, or under
+relaxation with the factor of the selected form (recursive or secant) from the
+iteration's own iterates, or under
 Anderson acceleration by the same scheme on its own iterates (one
 least-squares problem per pair, not stacked), and the
 iteration stops when the

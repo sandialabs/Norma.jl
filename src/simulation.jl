@@ -1335,8 +1335,8 @@ end
 # reaction of the Dirichlet side, and each side recomputes its acceleration with
 # the coupling rows included in the inertial correction (initialize with
 # include_schwarz_rows=true). The Dirichlet datum is relaxed with the fixed
-# factor `relaxation parameter` (also
-# under Aitken relaxation, which applies to the stops). The iteration stops when
+# factor `relaxation parameter`, with the Aitken factor of the selected form,
+# or by Anderson acceleration, as the input selects. The iteration stops when
 # the one-sided acceleration jump and the force residual of every matching
 # pair are at or below `matching relative tolerance`, or after `maximum
 # iterations`.
@@ -1357,9 +1357,10 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     previous = Dict{Int,Matrix{Float64}}()
     # Under Anderson relaxation the imposed acceleration of each pair is updated
     # by anderson_step! on its own iterates. Under Aitken relaxation the factor
-    # of each pair is the secant estimate
-    # from the last two iterates of the imposed interface acceleration, as in
-    # relaxation_aitken_secant_theta!; the input factor serves until two
+    # of each pair is formed by the selected form from the iterates of the
+    # imposed interface acceleration: the recursive form, as in
+    # relaxation_aitken_recursive_theta!, or the secant form, as in
+    # relaxation_aitken_secant_theta!. The input factor serves until two
     # residuals exist. The gain of this iteration is that of the stops with the
     # step taken to zero (a ratio of lumped or consistent masses), which for an
     # explicit coarse-mesh Dirichlet side lies outside the range of θ = 0.5.
@@ -1369,6 +1370,7 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
     anderson_depth = controller.anderson_depth
     previous_residual = Dict{Int,Matrix{Float64}}()
     previous_iterate = Dict{Int,Matrix{Float64}}()
+    previous_theta = Dict{Int,Float64}()
     norma_log(0, :acceleration, "Coupled initial acceleration of matching DN pairs (θ = $(θ))")
     for iteration in 1:controller.maximum_iterations
         for (subsim_index, subsim) in enumerate(sim.subsims)
@@ -1394,19 +1396,35 @@ function coupled_initial_acceleration!(sim::MultiDomainSimulation)
                     residual = imposed .- previous[k]
                     if aitken && haskey(previous_residual, k)
                         δ = residual .- previous_residual[k]
-                        d = previous[k] .- previous_iterate[k]
                         δ_sq = sum(abs2, δ)
                         iterate_sq = sum(abs2, previous[k])
-                        if aitken_resolved(δ_sq, iterate_sq) && aitken_resolved(sum(abs2, d), iterate_sq)
-                            θ_k = -sum(d .* δ) / δ_sq
+                        if controller.relaxation_method === :aitken_recursive
+                            θ_k = if aitken_resolved(δ_sq, iterate_sq)
+                                -previous_theta[k] * sum(previous_residual[k] .* δ) / δ_sq
+                            else
+                                previous_theta[k]
+                            end
+                        else
+                            d = previous[k] .- previous_iterate[k]
+                            if aitken_resolved(δ_sq, iterate_sq) && aitken_resolved(sum(abs2, d), iterate_sq)
+                                θ_k = -sum(d .* δ) / δ_sq
+                            end
                         end
                     end
                     previous_residual[k] = residual
                     previous_iterate[k] = copy(previous[k])
+                    previous_theta[k] = θ_k
                     imposed = θ_k .* imposed .+ (1.0 - θ_k) .* previous[k]
                     model.acceleration[:, bc.global_from_local_map] = imposed
                     if aitken
-                        norma_logf(0, :acceleration, "Initial iteration [%d] Aitken secant θ = %.4e", iteration, θ_k)
+                        norma_logf(
+                            0,
+                            :acceleration,
+                            "Initial iteration [%d] %s θ = %.4e",
+                            iteration,
+                            relaxation_method_name(controller.relaxation_method),
+                            θ_k,
+                        )
                     end
                 end
                 previous[k] = copy(imposed)
