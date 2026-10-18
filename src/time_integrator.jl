@@ -307,7 +307,17 @@ function initialize(
     # therefore correct in both cases.
     prescribed_acceleration = vec(model.acceleration)
     rhs_free = inertial_force[free] - model.mass[free, correction_rows] * prescribed_acceleration[correction_rows]
-    integrator.acceleration[free] = solve_linear(model.mass[free, free], rhs_free, atol, rtol)
+    # With `linear solver: direct` the mass matrix is factored, as the Newton
+    # systems are. Conjugate gradients at the linear solver tolerances leaves a
+    # relative error of about 1e-10 in the acceleration, which the coupled
+    # initial acceleration of a matching pair repeats at every iteration and
+    # cannot reduce below (a floor of 5e-10 on the beam against a tolerance of
+    # 1e-12).
+    integrator.acceleration[free] = if solver.linear_solver == "direct"
+        cholesky(Symmetric(model.mass[free, free])) \ rhs_free
+    else
+        solve_linear(model.mass[free, free], rhs_free, atol, rtol)
+    end
     return nothing
 end
 
