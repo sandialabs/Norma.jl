@@ -104,8 +104,8 @@ A prototyping framework for solid mechanics, multiphysics, and coupling
 algorithms, with an emphasis on extensibility and experimentation:
 
 - **Material models:** linear elastic, Saint-Venant–Kirchhoff, neohookean,
-  Seth-Hill, finite-deformation J2 plasticity, and anisotropic elasticity with
-  lattice orientations.
+  Seth-Hill, finite-deformation J2 plasticity, anisotropic elasticity with
+  lattice orientations, and LCM's anisotropic hyperelastic damage.
 - **Time integration:** quasi-static (with adaptive stepping), Newmark
   (implicit dynamic), and central difference (explicit dynamic).
 - **Solvers:** Newton (Hessian minimizer) with optional line search,

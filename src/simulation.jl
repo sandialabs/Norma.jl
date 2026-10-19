@@ -120,8 +120,8 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     # a standalone FOM model. apply_ics() then projects the restored FOM
     # displacement/velocity onto the reduced basis (see opinf_ics_bcs.jl). ROM
     # restart is therefore only as good as FOM restart — in particular it is
-    # still subject to the underlying J2-plasticity internal-variable
-    # limitation enforced in SolidMechanics().
+    # still subject to the internal-variable limitation (no material with
+    # internal state variables) enforced in SolidMechanics().
     #
     # Multi-domain (Schwarz-coupled) restart supports both FOM
     # (`solid mechanics`) and ROM subdomains — including mixed FOM-ROM
@@ -228,17 +228,30 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     return nothing
 end
 
-# The list of `material: <name>: model:` strings actually referenced by a
-# subdomain's `material: blocks:` mapping (block_name => material_name). Used
-# by process_multidomain_restart!() to reject restart for subdomains using
-# material models with internal state that the restart snapshot can't carry
-# (currently just `j2 plasticity`), without having to open the mesh or build
-# the full model. Mirrors the block -> material_name -> model resolution in
-# SolidMechanics() (model.jl) and create_material() (constitutive.jl).
-function _material_models_used(model_params::Parameters)
+# The models of the materials a model input uses (its `material: blocks:`
+# mapping) that carry internal state variables, which the restart snapshot
+# cannot carry: plastic deformation, damage. Each material is built from its
+# parameters and asked for its number of states, so a new material with state
+# is covered without a list to keep up to date. Used by SolidMechanics() and by
+# process_multidomain_restart!(), which runs before any model is built.
+function stateful_material_models(model_params::Parameters)
     material_params = get(model_params, "material", Parameters())
     blocks = get(material_params, "blocks", Parameters())
-    return [get(get(material_params, material_name, Parameters()), "model", "") for material_name in values(blocks)]
+    models = String[]
+    for material_name in unique(values(blocks))
+        props = get(material_params, material_name, nothing)
+        props === nothing && continue
+        number_states(create_material(props)) > 0 && push!(models, String(props["model"]))
+    end
+    return sort!(unique!(models))
+end
+
+function restart_internal_state_reason()
+    return "The restart snapshot only stores nodal displacement and velocity fields; internal state " *
+           "variables (e.g. plastic strain, back stress, damage) are not written to or read from the " *
+           "restart file, so resuming would silently discard " *
+           "the accumulated history. Remove the `restart:` block, or switch to a material model without " *
+           "internal state variables, until restart support for internal variables is implemented."
 end
 
 # Resolve and validate restart for a multi-domain (Schwarz) simulation. Run
@@ -263,7 +276,7 @@ end
 # MultiDomainSimulation()'s per-domain loop can hand each subdomain a
 # `restart: index: N` of its own — reusing process_restart!() unmodified for
 # the actual per-subdomain work (reading displacement/velocity, the
-# `j2 plasticity` check, building `restart_info`) once real subdomain
+# internal-state check, building `restart_info`) once real subdomain
 # construction happens.
 #
 # This has to happen before create_controller(params) builds the top-level
@@ -277,9 +290,10 @@ end
 # No-op when the top-level file has no `restart:` block. Aborts if a
 # subdomain file has its own `restart:` block instead (restart belongs at
 # the top level only, for Schwarz), if subdomains' checkpoints disagree on
-# what time the shared index lands on, or if a restarting subdomain uses the
-# `j2 plasticity` material model, for the same internal-state-variable reason
-# monolithic restart rejects it (see SolidMechanics() in model.jl). Both FOM
+# what time the shared index lands on, or if a restarting subdomain uses a
+# material model with internal state variables (`j2 plasticity`, `anisotropic
+# hyperelastic damage`), for the same reason monolithic restart rejects them
+# (see SolidMechanics() in model.jl). Both FOM
 # (`solid mechanics`) and ROM subdomains may restart, including mixed
 # FOM-ROM pairings.
 function process_multidomain_restart!(params::Parameters)
@@ -303,17 +317,14 @@ function process_multidomain_restart!(params::Parameters)
     for domain_path in domain_paths
         subparams = YAML.load_file(domain_path; dicttype=Parameters)
         model_params = get(subparams, "model", Parameters())
-        if "j2 plasticity" in _material_models_used(model_params)
+        stateful = stateful_material_models(model_params)
+        if !isempty(stateful)
             norma_abortf(
-                "Schwarz restart does not support the `j2 plasticity` material model " *
-                "(subdomain '%s'), for the same reason monolithic restart does not: the " *
-                "restart snapshot only stores nodal displacement and velocity fields; J2 " *
-                "plasticity's internal state variables (e.g. plastic strain, back stress) " *
-                "are not written to or read from the restart file, so resuming would " *
-                "silently discard the accumulated plastic history. Remove the `restart:` " *
-                "block, or switch to a material model without internal state variables, " *
-                "until restart support for internal variables is implemented.",
+                "Schwarz restart does not support material models with internal state variables " *
+                "(%s in subdomain '%s'), for the same reason monolithic restart does not. %s",
+                join(("`" * model * "`" for model in stateful), ", "),
                 domain_path,
+                restart_internal_state_reason(),
             )
         end
         haskey(subparams, "input mesh file") || norma_abort("Subdomain '$domain_path' has no `input mesh file`.")

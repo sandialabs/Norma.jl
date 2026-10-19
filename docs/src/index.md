@@ -70,6 +70,7 @@ Capabilities currently implemented:
 - Seth-Hill (generalized hyperelastic with tunable exponents)
 - J2 plasticity (finite deformation, multiplicative split, radial return, linear isotropic hardening)
 - Anisotropic linear elastic and anisotropic Saint-Venant–Kirchhoff, from isotropic to triclinic, with a lattice orientation per material or per element
+- Anisotropic hyperelastic damage (LCM's fiber-reinforced neo-Hookean model)
 
 **Time integration**
 

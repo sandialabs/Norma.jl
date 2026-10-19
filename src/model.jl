@@ -73,15 +73,12 @@ function SolidMechanics(params::Parameters)
         end
         push!(materials, material_model)
     end
-    if restart_info !== nothing && any(material isa J2Plasticity for material in materials)
-        norma_abort(
-            "Restart is not currently supported for the `j2 plasticity` material model. " *
-            "The restart snapshot only stores nodal displacement and velocity fields; " *
-            "J2 plasticity's internal state variables (e.g. plastic strain, back stress) " *
-            "are not written to or read from the restart file, so resuming would silently " *
-            "discard the accumulated plastic history. Remove the `restart:` block, or switch " *
-            "to a material model without internal state variables, until restart support for " *
-            "internal variables is implemented.",
+    if restart_info !== nothing
+        stateful = stateful_material_models(model_params)
+        isempty(stateful) || norma_abort(
+            "Restart is not currently supported for material models with internal state variables " *
+            "($(join(("`" * model * "`" for model in stateful), ", "))). " *
+            restart_internal_state_reason(),
         )
     end
     time = 0.0

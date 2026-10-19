@@ -1,0 +1,58 @@
+# A cube of the fiber-reinforced model with damage, with the material of the
+# documentation: a neo-Hookean matrix and one family of exponential fibers,
+# here along z. Pulled along z on rollers to a stretch of 1.08, the fibers
+# stiffen and damage, to 0.14 at the last step, and the matrix, whose damage
+# saturates at 0.1, to 0.0059. The axial stress peaks at a stretch of about
+# 1.105; past it the fibers soften, and the deformation localizes.
+type: single
+input mesh file: cube.g
+output mesh file: cube.e
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cube: reinforced
+    reinforced:
+      model: anisotropic hyperelastic damage
+      elastic modulus: 2.0e+05
+      Poisson's ratio: 0.3
+      density: 1000.0
+      matrix volume fraction: 0.5
+      matrix maximum damage: 0.1
+      matrix damage saturation: 1.0e+04
+      fibers:
+        - direction: [0.0, 0.0, 1.0]
+          k: 1.0e+04
+          q: 100.0
+          volume fraction: 0.5
+          maximum damage: 1.0
+          damage saturation: 1.0e+04
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 1.0
+  time step: 0.1
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.08 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-12
+  absolute tolerance: 1.0e-08
+  linear solver relative tolerance: 1.0e-12
+  linear solver absolute tolerance: 1.0e-10

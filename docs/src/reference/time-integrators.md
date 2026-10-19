@@ -106,7 +106,9 @@ element-size estimate is a characteristic diameter, so a value near 1.0 can
 exceed the true stability limit on hexahedral meshes. Values of about 0.5 or
 below are a conservative choice. The wave speed is that of the material's
 stiffness in the undeformed state (for the anisotropic models, the largest
-over all directions).
+over all directions), so a material that stiffens strongly with strain, such
+as the exponential fibers of `anisotropic hyperelastic damage`, can exceed it
+by orders of magnitude, which the CFL must allow for.
 
 ## Canonical examples
 
