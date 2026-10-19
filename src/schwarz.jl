@@ -1410,12 +1410,35 @@ end
 
 # Relative Euclidean difference between the reaction r_D of an overlap
 # matching side transferred by Pᵀ to the partner's nodes and the force
-# `applied` there.
-function overlap_force_residual(P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64})
+# `applied` there. The side listed first receives the partner's reaction of
+# the previous iteration, so its residual is the change of that reaction
+# between iterations; when the interface forces are at roundoff, as in a
+# body that still moves rigidly, their relative change is not a measure of
+# convergence. The difference is therefore taken relative to the larger of
+# the transferred force and the momentum flux of the receiving side, M v/Δt,
+# the scale of the forces that act on its rows.
+function overlap_force_residual(
+    P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64}, momentum_flux::Float64
+)
     transferred = project_components(transpose(P), r_D)
-    scale = norm(transferred)
+    scale = max(norm(transferred), momentum_flux)
     difference = norm(transferred - applied)
     return scale > 0.0 ? difference / scale : difference
+end
+
+# ‖M v‖/Δt of a subdomain, with the mass its integrator uses.
+function momentum_flux(sim::SingleDomainSimulation)
+    model = get_fom_model(sim)
+    v = vec(model.velocity)
+    p = if length(model.lumped_mass) == length(v)
+        model.lumped_mass .* v
+    elseif size(model.mass, 1) == length(v)
+        model.mass * v
+    else
+        return 0.0
+    end
+    Δt = sim.integrator.time_step
+    return Δt > 0.0 ? norm(p) / Δt : 0.0
 end
 
 function dn_one_sided_jump(
@@ -1464,7 +1487,7 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsConstra
         r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
-            force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :))
+            force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :), momentum_flux(n_sim))
         elseif W_N_factor !== nothing && size(W_N_factor, 1) == length(n_map)
             force_residual = dn_force_residual(W_N_factor, P, r_D, reshape(f_N, 3, :))
         end
@@ -1552,7 +1575,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
         r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
         r_D = nodal(extract_local_vector(bc, r_global, 3))
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
-            force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N)))
+            force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N), momentum_flux(n_sim)))
         else
             force_residual = max(force_residual, dn_force_residual(W_N_factor, P, r_D, nodal(f_N)))
         end
