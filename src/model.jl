@@ -99,6 +99,7 @@ function SolidMechanics(params::Parameters)
     num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
     num_int_pts = Vector{Int}(undef, num_blocks)
     block_data = Vector{ElementBlockData}(undef, num_blocks)
+    lattice_orientation = Vector{Vector{SMatrix{3,3,Float64,9}}}(undef, num_blocks)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
@@ -128,6 +129,12 @@ function SolidMechanics(params::Parameters)
             weights,
         )
         material = materials[block_index]
+        lattice_orientation[block_index] = if has_orientation(material)
+            material_props = material_params[material_blocks[block_name]]
+            block_lattice_orientations(material_props, input_mesh, block_id, num_block_elements)
+        else
+            SMatrix{3,3,Float64,9}[]
+        end
         num_states = number_states(material)
         if (num_states > 0)
             point_init_state = initial_state(material)
@@ -275,6 +282,7 @@ function SolidMechanics(params::Parameters)
         consistent_recovered_internal_variables,
         num_int_pts,
         block_data,
+        lattice_orientation,
         create_element_value_buffers(block_data),
         nothing,
         restart_info !== nothing,
@@ -401,13 +409,16 @@ function element_energies(
     metric::Union{MetricField,Nothing}=model.metric_field,
 )
     block = model.blocks[block_index]
+    material = model.materials[block_index]
+    Q = adaptivity_orientation(model, material, block_index)
     # The shape functions are stored untyped on the block, so the loop runs
     # behind a barrier that specializes on their concrete types; without it
     # every operation in it is dispatched at run time and allocates.
     return element_energies(
         model,
         block.element_type,
-        model.materials[block_index],
+        material,
+        Q,
         block.N,
         block.dN,
         block.weights,
@@ -418,10 +429,33 @@ function element_energies(
     )
 end
 
+# The lattice orientation with which the adaptivity loop evaluates the
+# energies of a block, whose new elements exist in no mesh: the block's one
+# orientation, or the identity for a material without one. The energy of a
+# material with internal state variables needs a state that new elements do
+# not have, and such a material has no stored energy method.
+function adaptivity_orientation(model::SolidMechanics, material::Material, block_index::Int)
+    number_states(material) > 0 && norma_abortf(
+        "The adaptivity of mesh smoothing evaluates the stored energy of new elements, which have no internal " *
+        "state, so the material of block %d, which has internal state variables, cannot be used with it.",
+        block_index,
+    )
+    has_orientation(material) || return SMatrix{3,3,Float64,9}(I)
+    orientations = model.lattice_orientation[block_index]
+    isempty(orientations) && return SMatrix{3,3,Float64,9}(I)
+    all(==(orientations[1]), orientations) || norma_abortf(
+        "The adaptivity of mesh smoothing creates new elements, so block %d needs one lattice orientation, " *
+        "not one per element.",
+        block_index,
+    )
+    return orientations[1]
+end
+
 function element_energies(
     model::SolidMechanics,
     element_type::ElementType,
     material::Material,
+    Q::SMatrix{3,3,Float64,9},
     N::SMatrix,
     dN::SArray,
     ip_weights::AbstractVector,
@@ -461,7 +495,10 @@ function element_energies(
                 break
             end
             F_U = F_M * F * F_M_inv
-            energy += strain_energy(material, F_U) * det(dXdξ) * ip_weights[point]
+            # An oriented material is evaluated in its lattice frame, as the
+            # assembly evaluates it.
+            W = has_orientation(material) ? strain_energy(material, Q' * F_U * Q) : strain_energy(material, F_U)
+            energy += W * det(dXdξ) * ip_weights[point]
         end
         energies[element] = energy
     end
@@ -654,7 +691,9 @@ function voigt_cauchy_from_stress(_::Solid, P::SMatrix{3,3,Float64,9}, F::SMatri
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
-function voigt_cauchy_from_stress(_::Linear_Elastic, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64)
+function voigt_cauchy_from_stress(
+    _::Union{Linear_Elastic,AnisotropicLinearElastic}, σ::SMatrix{3,3,Float64,9}, _::SMatrix{3,3,Float64,9}, _::Float64
+)
     return SVector{6,Float64}(σ[1, 1], σ[2, 2], σ[3, 3], σ[2, 3], σ[1, 3], σ[1, 2])
 end
 
@@ -1016,6 +1055,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         model.compute_mass = false
     end
     energy_tl = zeros(maxthreadid())
+    Δt = material_time_step(integrator)
     materials = model.materials
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
@@ -1056,6 +1096,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             ip_weights,
             element_block_connectivity,
             flags,
+            Δt,
         )
         ok || return nothing
     end
@@ -1085,6 +1126,19 @@ end
     return SMatrix{3,NN,T}(A)
 end
 
+# Lattice orientation of an element, the identity for materials without one.
+@inline function element_lattice_orientation(
+    model::SolidMechanics, material::Material, block_index::Int64, block_element_index::Int64
+)
+    has_orientation(material) || return SMatrix{3,3,Float64,9}(I)
+    return model.lattice_orientation[block_index][block_element_index]
+end
+
+# Time increment over which rate-dependent materials integrate: the current
+# step, or zero before the first step (the initial equilibrium solve and the
+# initial acceleration), while the previous time of the integrator is unset.
+material_time_step(integrator::TimeIntegrator) = isfinite(integrator.prev_time) ? integrator.time_step : 0.0
+
 # The constitutive call is guarded against domain errors from the material
 # models, but a try block inside the threaded loop body defeats type inference
 # for every variable live across it, so the guard lives in this small function
@@ -1098,17 +1152,16 @@ function guarded_constitutive!(
     block_element_index::Int64,
     point::Int64,
     need_tangent::Bool,
+    Δt::Float64,
 )
     try
-        if material isa Elastic
-            W, P, AA = constitutive(material, F; need_tangent=need_tangent)
-            return true, W, P, AA
-        else
-            state = model.state_old[block_index][block_element_index][point]
-            W, P, AA, state_new = constitutive(material, F, state; need_tangent=need_tangent)
+        Q = element_lattice_orientation(model, material, block_index, block_element_index)
+        state = model.state_old[block_index][block_element_index][point]
+        W, P, AA, state_new = constitutive_update(material, F, Q, state, Δt; need_tangent=need_tangent)
+        if number_states(material) > 0
             model.state[block_index][block_element_index][point] = state_new
-            return true, W, P, AA
         end
+        return true, W, P, AA
     catch e
         e isa _MATH_ERRORS || rethrow()
         norma_logf(4, :solve, "evaluate: caught %s in constitutive model", typeof(e))
@@ -1147,6 +1200,7 @@ function evaluate_element!(
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
     num_points::Int64,
+    Δt::Float64,
     block_weights::Union{Nothing,Vector{Vector{Float64}}},
 )
     node_indices = reset_element_threadlocal_arrays!(
@@ -1189,13 +1243,13 @@ function evaluate_element!(
         if anisotropic
             F_U = F_M * F * F_M_inv
             ok, W, P_U, AA_U = guarded_constitutive!(
-                model, material, F_U, block_index, block_element_index, point, flags.compute_stiffness
+                model, material, F_U, block_index, block_element_index, point, flags.compute_stiffness, Δt
             )
             P = F_M' * P_U * F_M_inv'
             AA = flags.compute_stiffness ? pull_back_tangent(AA_U, F_M, F_M_inv) : AA_U
         else
             ok, W, P, AA = guarded_constitutive!(
-                model, material, F, block_index, block_element_index, point, flags.compute_stiffness
+                model, material, F, block_index, block_element_index, point, flags.compute_stiffness, Δt
             )
         end
         if ok == false
@@ -1237,6 +1291,7 @@ function evaluate_block!(
     ip_weights::AbstractVector{T},
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
+    Δt::Float64,
 )::Bool where {NN,NP,T}
     num_block_elements = size(element_block_connectivity, 2)
     num_points = size(N, 2)
@@ -1265,6 +1320,7 @@ function evaluate_block!(
             element_block_connectivity,
             flags,
             num_points,
+            Δt,
             block_weights,
         )
     end

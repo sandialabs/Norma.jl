@@ -700,10 +700,13 @@ _material_name(m) = replace(string(typeof(m)), r"^.*\." => "")
 
 # Format a single material struct field as "name = value".  Floats get
 # scientific notation for readability; integers (e.g. SethHill's m, n)
-# print as-is.
+# print as-is; an elasticity tensor prints its nonzero Voigt constants.
 function _format_material_field(name::Symbol, value)
     if value isa AbstractFloat
         return @sprintf("%s = %.3e", String(name), value)
+    elseif value isa SArray{Tuple{3,3,3,3},Float64,4,81}
+        C = tensor_to_voigt(value)
+        return join((@sprintf("C%d%d = %.3e", a, b, C[a, b]) for a in 1:6 for b in a:6 if C[a, b] != 0.0), ", ")
     else
         return string(name) * " = " * string(value)
     end

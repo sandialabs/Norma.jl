@@ -219,16 +219,60 @@ const MATERIAL_PROPS_COMMON_KEYS = Set([
     "model", "elastic modulus", "Poisson's ratio", "bulk modulus", "Lamé's first constant", "shear modulus", "density"
 ])
 
-const MATERIAL_PROPS_MODEL_KEYS = Dict(
-    "seth-hill" => Set(["m", "n"]), "j2 plasticity" => Set(["yield stress", "hardening modulus"])
+# Keys of the anisotropic elastic models: the symmetry class, the lattice-frame
+# constants Cij (anisotropy.jl) and the lattice orientation.
+const ELASTIC_CONSTANT_KEYS = ["C$i$j" for i in 1:6 for j in i:6]
+const ANISOTROPIC_ELASTIC_KEYS = Set(vcat(["symmetry", "orientation"], ELASTIC_CONSTANT_KEYS))
+
+# The constants each symmetry class reads (anisotropic_elastic_constants); a
+# class ignores the others, e.g. C66 for hexagonal, where it is (C11 - C12)/2.
+const SYMMETRY_ELASTIC_CONSTANTS = Dict(
+    "isotropic" => String[],
+    "cubic" => ["C11", "C12", "C44"],
+    "hexagonal" => ["C11", "C12", "C13", "C33", "C44"],
+    "transversely isotropic" => ["C11", "C12", "C13", "C33", "C44"],
+    "tetragonal" => ["C11", "C12", "C13", "C33", "C44", "C66"],
+    "orthotropic" => ["C11", "C22", "C33", "C12", "C13", "C23", "C44", "C55", "C66"],
+    "triclinic" => ELASTIC_CONSTANT_KEYS,
 )
+
+function warn_unused_elastic_constants!(messages::Vector{String}, props::AbstractDict, label::String, file::String)
+    symmetry = lowercase(string(get(props, "symmetry", "")))
+    haskey(SYMMETRY_ELASTIC_CONSTANTS, symmetry) || return messages
+    used = SYMMETRY_ELASTIC_CONSTANTS[symmetry]
+    for key in sort!([k for k in keys(props) if k isa String && k in ELASTIC_CONSTANT_KEYS && !(k in used)])
+        message =
+            "Input file '$file': elastic constant \"$key\" of material \"$label\" is not used by $symmetry " *
+            "symmetry, which takes $(isempty(used) ? "the isotropic constants" : join(used, ", ")), and is ignored."
+        norma_log(0, :warning, message)
+        push!(messages, message)
+    end
+    return messages
+end
+
+const MATERIAL_PROPS_MODEL_KEYS = Dict(
+    "seth-hill" => Set(["m", "n"]),
+    "j2 plasticity" => Set(["yield stress", "hardening modulus"]),
+    "anisotropic linear elastic" => ANISOTROPIC_ELASTIC_KEYS,
+    "anisotropic Saint-Venant Kirchhoff" => ANISOTROPIC_ELASTIC_KEYS,
+)
+
+const ORIENTATION_KEYS = Set(["basis vectors", "Bunge Euler angles", "angle unit", "mesh variables", "time index"])
 
 # Material model names accepted by create_material (constitutive.jl). A
 # recognized model validates against the common keys plus its own extras; an
 # unrecognized model (the material parser's abort to report) validates
 # against the union so only genuinely foreign keys warn.
 const MATERIAL_MODEL_NAMES = Set([
-    "linear elastic", "Saint-Venant Kirchhoff", "neohookean", "r-neohookean", "seth-hill", "hencky", "j2 plasticity"
+    "linear elastic",
+    "Saint-Venant Kirchhoff",
+    "neohookean",
+    "r-neohookean",
+    "seth-hill",
+    "hencky",
+    "j2 plasticity",
+    "anisotropic linear elastic",
+    "anisotropic Saint-Venant Kirchhoff",
 ])
 
 const BC_ENTRY_KEYS = Dict(
@@ -352,6 +396,13 @@ function validate_material!(messages::Vector{String}, material_params::AbstractD
             union(MATERIAL_PROPS_COMMON_KEYS, values(MATERIAL_PROPS_MODEL_KEYS)...)
         end
         warn_unknown_keys!(messages, props, known, "material \"$label\"", file)
+        orientation = get(props, "orientation", nothing)
+        if orientation isa AbstractDict
+            warn_unknown_keys!(messages, orientation, ORIENTATION_KEYS, "orientation of material \"$label\"", file)
+        end
+        if material_model in ("anisotropic linear elastic", "anisotropic Saint-Venant Kirchhoff")
+            warn_unused_elastic_constants!(messages, props, label, file)
+        end
     end
     return messages
 end

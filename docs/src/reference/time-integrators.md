@@ -104,7 +104,9 @@ The `CFL` value scales an element-size-and-wave-speed estimate of the stable
 step; it is a safety factor rather than the exact operating Courant ratio. The
 element-size estimate is a characteristic diameter, so a value near 1.0 can
 exceed the true stability limit on hexahedral meshes. Values of about 0.5 or
-below are a conservative choice.
+below are a conservative choice. The wave speed is that of the material's
+stiffness in the undeformed state (for the anisotropic models, the largest
+over all directions).
 
 ## Canonical examples
 

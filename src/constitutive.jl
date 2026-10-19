@@ -663,6 +663,115 @@ function constitutive(material::Elastic, F::SMatrix{3,3,Float64,9}; need_tangent
     return W, P, AA
 end
 
+# ---------------------------------------------------------------------------
+# Anisotropic elasticity
+# ---------------------------------------------------------------------------
+#
+# The elastic constants are given in the lattice frame (anisotropy.jl), and
+# the model holds the lattice orientation Q of every element. The response
+# is evaluated in the lattice frame on F_L = Qᵀ F Q, and the stress and
+# tangent are rotated back:
+#
+#     W(F) = W_L(Qᵀ F Q),   P = Q P_L Qᵀ,   AA_ijkl = Q_ip Q_jq Q_kr Q_ls AA_L_pqrs.
+
+# Materials whose response depends on the lattice orientation.
+has_orientation(::Material) = false
+
+mutable struct AnisotropicLinearElastic <: Elastic
+    CC::SArray{Tuple{3,3,3,3},Float64,4,81}  # lattice-frame elasticity tensor
+    M::Float64                                # largest wave modulus ρ c²
+    ρ::Float64
+    function AnisotropicLinearElastic(params::Parameters)
+        CC = voigt_to_tensor(anisotropic_elastic_constants(params))
+        return new(CC, maximum_wave_modulus(CC), get(params, "density", 0.0))
+    end
+end
+
+mutable struct AnisotropicSaintVenantKirchhoff <: Elastic
+    CC::SArray{Tuple{3,3,3,3},Float64,4,81}  # lattice-frame elasticity tensor
+    M::Float64                                # largest wave modulus ρ c²
+    ρ::Float64
+    function AnisotropicSaintVenantKirchhoff(params::Parameters)
+        CC = voigt_to_tensor(anisotropic_elastic_constants(params))
+        return new(CC, maximum_wave_modulus(CC), get(params, "density", 0.0))
+    end
+end
+
+const AnisotropicElastic = Union{AnisotropicLinearElastic,AnisotropicSaintVenantKirchhoff}
+
+has_orientation(::AnisotropicElastic) = true
+
+get_p_wave_modulus(material::AnisotropicElastic) = material.M
+
+# Lattice-frame strain energies, generic in the element type for ForwardDiff.
+function strain_energy(material::AnisotropicLinearElastic, F::SMatrix{3,3,T,9}) where {T<:Number}
+    ∇u = F - I3
+    ϵ = 0.5 .* (∇u + ∇u')
+    return 0.5 * sum(ϵ .* double_contraction(material.CC, ϵ))
+end
+
+function strain_energy(material::AnisotropicSaintVenantKirchhoff, F::SMatrix{3,3,T,9}) where {T<:Number}
+    E = 0.5 .* (F' * F - I3)
+    return 0.5 * sum(E .* double_contraction(material.CC, E))
+end
+
+# Lattice-frame responses. As for linear elastic, the infinitesimal model
+# returns the Cauchy stress in place of P.
+function constitutive(material::AnisotropicLinearElastic, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
+    ∇u = F - I3
+    ϵ = 0.5 .* (∇u + ∇u')
+    σ = double_contraction(material.CC, ϵ)
+    W = 0.5 * sum(ϵ .* σ)
+    need_tangent || return W, σ, ZERO_TANGENT
+    return W, σ, material.CC
+end
+
+function constitutive(material::AnisotropicSaintVenantKirchhoff, F::SMatrix{3,3,Float64,9}; need_tangent::Bool=true)
+    E = 0.5 .* (F' * F - I3)
+    S = double_contraction(material.CC, E)
+    W = 0.5 * sum(E .* S)
+    P = F * S
+    need_tangent || return W, P, ZERO_TANGENT
+    return W, P, convect_tangent(material.CC, S, F)
+end
+
+# Sample-frame response of an elastic material in a lattice with orientation
+# Q. For an isotropic material this is the unrotated response.
+function constitutive(
+    material::Elastic,
+    F::SMatrix{3,3,Float64,9},
+    Q::SMatrix{3,3,Float64,9},
+    state_old::Vector{Float64},
+    Δt::Float64;
+    need_tangent::Bool=true,
+)
+    W, P_L, AA_L = constitutive(material, Q' * F * Q; need_tangent=need_tangent)
+    P = Q * P_L * Q'
+    need_tangent || return W, P, ZERO_TANGENT, state_old
+    return W, P, rotate_tensor4(Q, AA_L), state_old
+end
+
+# The constitutive update at one point for every kind of material: the
+# energy, stress, tangent and new internal state, given the lattice
+# orientation Q (used by oriented materials only), the internal state at the
+# start of the step (empty for elastic materials) and the time increment Δt
+# (used by rate-dependent materials only).
+function constitutive_update(
+    material::Material,
+    F::SMatrix{3,3,Float64,9},
+    Q::SMatrix{3,3,Float64,9},
+    state_old::Vector{Float64},
+    Δt::Float64;
+    need_tangent::Bool=true,
+)
+    has_orientation(material) && return constitutive(material, F, Q, state_old, Δt; need_tangent=need_tangent)
+    if material isa Elastic
+        W, P, AA = constitutive(material, F; need_tangent=need_tangent)
+        return W, P, AA, state_old
+    end
+    return constitutive(material, F, state_old; need_tangent=need_tangent)
+end
+
 # Deviatoric part of a matrix.  Used by the Simo-Hughes J2 model below.
 # Subtracts through UniformScaling rather than I(3): the latter builds a
 # Diagonal{Bool,Vector{Bool}}, which allocates, and this sits on the hot path
@@ -691,6 +800,10 @@ function create_material(params::Parameters)
         return Hencky(params)
     elseif model_name == "j2 plasticity"
         return J2Plasticity(params)
+    elseif model_name == "anisotropic linear elastic"
+        return AnisotropicLinearElastic(params)
+    elseif model_name == "anisotropic Saint-Venant Kirchhoff"
+        return AnisotropicSaintVenantKirchhoff(params)
     else
         norma_abort("Unknown material model : $model_name")
     end
@@ -711,6 +824,10 @@ function get_kinematics(material::Solid)
     elseif material isa Hencky
         return Finite
     elseif material isa J2Plasticity
+        return Finite
+    elseif material isa AnisotropicLinearElastic
+        return Infinitesimal
+    elseif material isa AnisotropicSaintVenantKirchhoff
         return Finite
     end
     norma_abort("Unknown material model : $(typeof(material))")

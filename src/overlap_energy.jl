@@ -267,16 +267,17 @@ function get_arlequin_weights(subsim::SingleDomainSimulation)
 end
 
 # Strain-energy density W(F) at a single point, recomputed exactly as evaluate()
-# does: the same constitutive call, branching on the material family and passing
-# the old internal state for history-dependent (inelastic) materials.  Only W is
-# needed here, so the tangent is skipped and the returned stress/new state are
-# discarded (this is a read-only re-integration, it must not advance state).
-function strain_energy_density(material::Material, F::SMatrix{3,3,Float64,9}, state_old::Vector{Float64})
-    if material isa Elastic
-        W, _, _ = constitutive(material, F; need_tangent=false)
-    else
-        W, _, _, _ = constitutive(material, F, state_old; need_tangent=false)
-    end
+# does: the same constitutive update, with the lattice orientation of the
+# element and the old internal state for history-dependent (inelastic)
+# materials.  Only W is needed here, so the tangent is skipped and the returned
+# stress/new state are discarded (this is a read-only re-integration, it must
+# not advance state).  The energy is written at stops, after the steps have
+# been committed, so the time increment is zero: a rate-dependent material
+# then returns the energy of its committed state.
+function strain_energy_density(
+    material::Material, F::SMatrix{3,3,Float64,9}, Q::SMatrix{3,3,Float64,9}, state_old::Vector{Float64}
+)
+    W, _, _, _ = constitutive_update(material, F, Q, state_old, 0.0; need_tangent=false)
     return W
 end
 
@@ -366,7 +367,8 @@ function blended_block_energy!(
             dNdX = dXdξ \ dNdξ
             F = element_current * dNdX'
             state_old = model.state_old[block_index][e][point]
-            W = strain_energy_density(material, F, state_old)
+            Q = element_lattice_orientation(model, material, block_index, e)
+            W = strain_energy_density(material, F, Q, state_old)
             stored += w * W * dvol
             if dynamic
                 Np = N[:, point]

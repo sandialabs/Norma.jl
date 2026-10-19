@@ -182,6 +182,9 @@ mutable struct SolidMechanics <: Model
     consistent_recovered_internal_variables::Matrix{Float64}
     num_int_pts::Vector{Int}
     blocks::Vector{ElementBlockData}
+    # Lattice orientation of every element, per block, for blocks whose
+    # material has one (anisotropy.jl); empty for the other blocks.
+    lattice_orientation::Vector{Vector{SMatrix{3,3,Float64,9}}}
     value_buffers::ElementValueBuffers
     matrix_pattern::Union{Nothing,MatrixPattern}
     # Tracks whether this model was constructed from restart

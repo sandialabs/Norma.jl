@@ -69,6 +69,7 @@ Capabilities currently implemented:
 - Neohookean
 - Seth-Hill (generalized hyperelastic with tunable exponents)
 - J2 plasticity (finite deformation, multiplicative split, radial return, linear isotropic hardening)
+- Anisotropic linear elastic and anisotropic Saint-Venant–Kirchhoff, from isotropic to triclinic, with a lattice orientation per material or per element
 
 **Time integration**
 
@@ -104,6 +105,10 @@ Capabilities currently implemented:
 - Neumann traction and follower pressure
 - Robin (mixed displacement–traction)
 - Inclined-surface (roller) support
+
+**Material points**
+
+- A material-point driver under mixed stress and strain control
 
 **Adaptive mesh swapping**
 
