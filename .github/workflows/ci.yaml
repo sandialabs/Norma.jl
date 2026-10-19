@@ -50,10 +50,7 @@ jobs:
           julia --color=no --project=format format/format.jl --check
 
   # The test matrix: every platform and Julia version, without coverage
-  # instrumentation. Coverage makes Julia about eleven times slower (one
-  # mid-size test takes 24 s without it and 4.5 min with it), which put the
-  # instrumented full suite at 2.75 to 5 h per job and over the 6 h job limit
-  # on a slow Ubuntu runner. Coverage is collected by the separate job below.
+  # instrumentation, which is collected by the separate job below.
   #
   # Pushes and pull requests run the quick set, which leaves out the long
   # AHeaD, swap, and restart cases and the neural-network OpInf test. Measured
@@ -133,14 +130,14 @@ jobs:
         env:
           PYTHON: python3
 
-  # Coverage from the quick test set on one platform. The quick set leaves out
-  # the long AHeaD, swap, and restart cases and the neural-network OpInf test,
-  # so it needs no Python and stays well inside the job limit even when
-  # instrumented. PyCall is still a test dependency, so Pkg.test builds it
-  # whenever the cached depot lacks a build of the resolved version.
+  # Coverage of the full suite on one platform, only on the scheduled daily
+  # run and on manual dispatch. Instrumentation cost a factor of 1.26 on the
+  # quick set on October 19, 2026 (1278 s against 1017 s of test time on Julia
+  # 1.13 ubuntu), so the instrumented full suite takes about 52 min there.
   coverage:
     name: Coverage - Julia 1.13 - ubuntu-latest
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Check out repository
@@ -151,25 +148,41 @@ jobs:
         with:
           version: '1.13'
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy
+          pip install git+https://github.com/sandialabs/norma-opinf.git@nnopinf_updates
+
       - name: Cache Julia artifacts
         uses: julia-actions/cache@v2
 
       - name: Build project
         uses: julia-actions/julia-buildpkg@v1
+        env:
+          PYTHON: python3
 
-      # Same as in the test jobs: Conda's module body requires its root
-      # environment directory, which the cache does not keep and only Conda's
-      # build script creates, so a PyCall build inside Pkg.test fails on the
-      # precompilation of Conda. Build Conda and then PyCall here, with
-      # automatic precompilation disabled, against the runner's Python.
+      # As in the test jobs: Conda's module body requires its root environment
+      # directory, which the cache does not keep and only Conda's build script
+      # creates, so a PyCall build inside Pkg.test fails on the precompilation
+      # of Conda. Build Conda and then PyCall here, with automatic
+      # precompilation disabled, against the Python set up above.
       - name: Build PyCall against the system Python
         run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("Conda"); Pkg.build("Conda"); Pkg.add("PyCall"); Pkg.build("PyCall")'
         env:
           PYTHON: python3
           JULIA_PKG_PRECOMPILE_AUTO: 0
 
-      - name: Run quick tests with coverage
-        run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--quick"])'
+      - name: Run the full suite with coverage
+        run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--with-nnopinf"])'
+        env:
+          PYTHON: python3
 
       - name: Process coverage
         uses: julia-actions/julia-processcoverage@v1
