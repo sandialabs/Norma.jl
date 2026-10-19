@@ -237,11 +237,14 @@ end
 # weighted by one half (ASSEMBLY_WEIGHT_CACHE in model.jl), so that the fixed
 # point of the Schwarz iteration is the blended constrained problem and the
 # window balance of the rate invariant cancels as for a nonoverlap matching
-# pair. Both sides are constrained, so both take one step per window: equal
-# time steps only. The fields mirror those of the nonoverlap condition that
-# the matching machinery reads: `is_dirichlet`, `constrained`, and
-# `swap_bcs` are fixed, `direct_solve` is false, and `transferred_force` holds
-# the force received on all nodes.
+# pair. Both sides are constrained. With different time steps the fine-step
+# side sets `matching at: window end`: it imposes the matched quantity at the
+# end of the window only and carries the ramp of its own reaction at its
+# interior substeps, while the coarse-step side takes one step per window.
+# `interface solve: direct` (both sides explicit) applies at equal steps only.
+# The fields mirror those of the nonoverlap condition that the matching
+# machinery reads: `is_dirichlet`, `constrained`, and `swap_bcs` are fixed,
+# and `transferred_force` holds the force received on all nodes.
 mutable struct SolidMechanicsOverlapMatchingSchwarzBoundaryCondition <:
                SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
     name::String
