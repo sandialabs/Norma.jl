@@ -138,3 +138,52 @@ function create_displacement(expression::String, mesh::ExodusDatabase, side_set_
     end
     return displacements
 end
+
+using YAML
+
+# The abort message of a restart of the cuboid restart example
+# (examples/ahead/single/cuboid/dynamic-restart, index 2) with `material` on
+# its one block, or nothing when the restart is accepted. With `schwarz`, the
+# restart check of two subdomains that use the material, which runs before
+# any model is built.
+function restart_abort_message(material::Norma.Parameters; schwarz::Bool=false)
+    folder = "../examples/ahead/single/cuboid/dynamic-restart"
+    cp(joinpath(folder, "cuboid-restart-in.e"), "material-restart-in.e"; force=true)
+    blocks = Norma.Parameters("blocks" => Norma.Parameters("cuboid" => "solid"), "solid" => material)
+    Norma.NORMA_TEST_MODE[] = true
+    try
+        if schwarz
+            YAML.write_file(
+                "material-restart-domain.yaml",
+                Dict(
+                    "input mesh file" => "material-restart-in.e",
+                    "model" => Dict("type" => "solid mechanics", "material" => blocks),
+                ),
+            )
+            params = Norma.Parameters(
+                "domains" => ["material-restart-domain.yaml", "material-restart-domain.yaml"],
+                "restart" => Norma.Parameters("index" => 2),
+                "final time" => 1.0,
+            )
+            Norma.process_multidomain_restart!(params)
+        else
+            params = YAML.load_file(joinpath(folder, "cuboid.yaml"); dicttype=Norma.Parameters)
+            params["name"] = "material-restart"
+            params["input mesh file"] = "material-restart-in.e"
+            params["output mesh file"] = "material-restart-out.e"
+            params["model"]["material"] = blocks
+            sim = Norma.create_simulation(params)
+            Exodus.close(sim.params["input_mesh"])
+            Exodus.close(sim.params["output_mesh"])
+        end
+        return nothing
+    catch error
+        error isa Norma.NormaAbortException || rethrow()
+        return error.msg
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+        for file in ("material-restart-in.e", "material-restart-out.e", "material-restart-domain.yaml")
+            rm(file; force=true)
+        end
+    end
+end

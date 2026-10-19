@@ -36,9 +36,10 @@ end
     cp("../examples/single/static-solid/cube/anisotropic/cube.g", "cube.g"; force=true)
     base = YAML.load_file("cube-shear.yaml"; dicttype=Norma.Parameters)
     base["name"] = "cube-shear.yaml"
-    function run_shear(orientation; mesh="cube.g")
+    function run_shear(orientation; mesh="cube.g", material_params=nothing)
         params = deepcopy(base)
         params["input mesh file"] = mesh
+        material_params === nothing || (params["model"]["material"]["copper"] = deepcopy(material_params))
         material = params["model"]["material"]["copper"]
         if orientation === nothing
             delete!(material, "orientation")
@@ -100,6 +101,42 @@ end
         @test stress_deviation(sim_angles, σ_ref) < 1.0e-10 * maximum(abs, σ_ref)
         @test stress_deviation(sim_matrix, σ_ref) < 1.0e-10 * maximum(abs, σ_ref)
         rm("cube-oriented.g"; force=true)
+    end
+
+    @testset "Fiber-Reinforced Damage Matches The Material Point" begin
+        # Fibers along [110] of the material frame, which the orientation
+        # rotates, are stretched by the shear and damage as it grows. The
+        # deformation is homogeneous, so every integration point follows the
+        # material point driver along the same steps.
+        ahd = Dict{String,Any}(
+            "model" => "anisotropic hyperelastic damage",
+            "elastic modulus" => 200.0,
+            "Poisson's ratio" => 0.3,
+            "density" => 1.0,
+            "matrix volume fraction" => 0.6,
+            "matrix maximum damage" => 0.2,
+            "matrix damage saturation" => 0.05,
+            "fibers" => [
+                Dict(
+                    "direction" => [1.0, 1.0, 0.0],
+                    "k" => 50.0,
+                    "q" => 5.0,
+                    "volume fraction" => 0.4,
+                    "maximum damage" => 0.9,
+                    "damage saturation" => 0.5,
+                ),
+            ],
+        )
+        orientation = Dict("Bunge Euler angles" => collect(φ), "angle unit" => "radians")
+        sim = run_shear(orientation; material_params=ahd)
+        material = Norma.create_material(Norma.Parameters(ahd))
+        times = collect(0.0:0.01:0.1)
+        history = Norma.material_point_history(
+            material, s -> SMatrix{3,3,Float64,9}([1.0 s 0; 0 1 0; 0 0 1]), times; orientation=Q
+        )
+        @test all(history.state[end][3:4] .> 0.0)
+        @test stress_deviation(sim, history.σ[end]) < 1.0e-10 * maximum(abs, history.σ[end])
+        @test all(p ≈ history.state[end] for element in sim.model.state_old[1] for p in element)
     end
 
     rm("cube-shear.yaml"; force=true)

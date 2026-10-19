@@ -5,8 +5,9 @@
 # top-level Norma.jl directory.
 
 # Extracts the reference ("gold") outputs of the elastic tests of LCM's
-# crystal plasticity into CSV files that the Norma tests read. It is not part
-# of the test suite; run it only to regenerate the fixtures:
+# crystal plasticity and of its anisotropic hyperelasticity tests into CSV
+# files that the Norma tests read. It is not part of the test suite; run it
+# only to regenerate the fixtures:
 #
 #   julia --project=. test/lcm-reference/extract.jl <LCM checkout> [output dir]
 #
@@ -26,6 +27,7 @@
 #   :quad4  a 2 × 2 tensor at 4 points is flattened into <field>_<a>_<b> with
 #           flat index f = 2 (b - 1) + (a - 1), point f ÷ 4 + 1 and row-major
 #           2 × 2 component f % 4 + 1; scalar fields are <field>_<q>
+#   :point  one material point (Material Point Simulator), no point suffix
 
 using Exodus
 using LinearAlgebra
@@ -33,18 +35,26 @@ using Printf
 using Statistics
 
 const CRYSTAL_PLASTICITY = "tests/LCM/CrystalPlasticity"
+const MATERIAL_POINT = "tests/LCM/MaterialPointSimulator"
 
 const CASES = [
     ("ElasticShear2d", :quad4, "$CRYSTAL_PLASTICITY/SingleElement2d/ElasticShear2d.gold.e"),
     ("ElasticShear3d", :hex8, "$CRYSTAL_PLASTICITY/SingleElement3d/ElasticShear3d.gold.e"),
     ("ElasticShearRotated3d", :hex8, "$CRYSTAL_PLASTICITY/SingleElement3d/ElasticShearRotated3d.gold.e"),
+    ("AHD-uniaxial", :point, "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-uniaxial.gold.exo"),
+    ("AHD-shear", :point, "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-shear.gold.exo"),
+    ("AHD-hydrostatic", :point, "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-hydrostatic.gold.exo"),
 ]
 
-# The LCM material file of each case, copied to materials/<case>.yaml.
+# The LCM material file of each case, copied to materials/<case>.yaml. The
+# Material Point Simulator cases keep their material in the input file.
 const MATERIAL_FILES = Dict(
     "ElasticShear2d" => "$CRYSTAL_PLASTICITY/SingleElement2d/CrystalElasticity2d_Material.yaml",
     "ElasticShear3d" => "$CRYSTAL_PLASTICITY/SingleElement3d/CrystalElasticity3d_Material.yaml",
     "ElasticShearRotated3d" => "$CRYSTAL_PLASTICITY/SingleElement3d/CrystalElasticityRotated3d_Material.yaml",
+    "AHD-uniaxial" => "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-uniaxial.yaml",
+    "AHD-shear" => "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-shear.yaml",
+    "AHD-hydrostatic" => "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-hydrostatic.yaml",
 )
 
 # Meshes of the cases that the FEM tests run, copied to meshes/ with the
@@ -67,7 +77,7 @@ end
 # nodal displacements over the element's nodes, which is exact for the
 # homogeneous deformations of these cases. Keyed by block id; each entry is
 # num_elements × 9 × num_steps, row-major. Nothing for meshes without
-# displacements.
+# displacements (the Material Point Simulator cases, which write F).
 function nodal_deformation_gradients(exo, block_ids, num_steps)
     nodal_names = read_names(exo, NodalVariable)
     coords = read_coordinates(exo)
@@ -124,6 +134,7 @@ end
 
 # Maps an LCM element-variable name to (column name, integration point).
 function column_and_point(name::AbstractString, layout::Symbol, tensor_fields::Set{String})
+    layout == :point && return String(name), 1
     stem, integers = trailing_integers(name)
     if stem in tensor_fields && length(integers) >= 2
         a, b = integers[end - 1], integers[end]
@@ -146,6 +157,7 @@ end
 # (:quad4). Per-slip-system scalars <field>_<s>_<q> also have two trailing
 # integers, but in 2D their point index only runs to 4.
 function tensor_fields_of(names::Vector{String}, layout::Symbol)
+    layout == :point && return Set{String}()
     first_indices = Dict{String,Set{Int}}()
     second_indices = Dict{String,Set{Int}}()
     for name in names
