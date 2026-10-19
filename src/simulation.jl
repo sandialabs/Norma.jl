@@ -1341,7 +1341,7 @@ end
 # pair are at or below `matching relative tolerance`, or after `maximum
 # iterations`.
 function coupled_initial_acceleration!(sim::MultiDomainSimulation)
-    pairs = SolidMechanicsNonOverlapSchwarzBoundaryCondition[]
+    pairs = SolidMechanicsConstrainedSchwarzBoundaryCondition[]
     for subsim in sim.subsims, bc in subsim.model.boundary_conditions
         is_constrained_dn(bc) && bc.is_dirichlet || continue
         if is_direct_dn(bc)
@@ -2383,6 +2383,7 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
                 bc.dirichlet_projector = W \ L
             elseif is_constrained_dn(bc)
                 compute_constrained_dn_projectors!(subsim.model, bc)
+                bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition && set_assembly_weights!(subsim)
             elseif is_swappable_dn_schwarz(bc)
                 cache = RectangularProjectionCache()
                 compute_dirichlet_projector(subsim.model, bc; cache=cache)

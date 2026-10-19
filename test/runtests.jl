@@ -178,6 +178,7 @@ const indexed_test_files = [
     (137, "schwarz-nonoverlap-windowed-stops.jl"),
     (138, "single-matrix-output-clamped.jl"),
     (139, "schwarz-nonoverlap-static-inclusion-split-anderson.jl"),
+    (140, "schwarz-overlap-matching.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

@@ -1284,7 +1284,7 @@ end
 # of find_point_in_mesh, as every facet did before 2026-10-19.
 function get_overlap_rectangular_projection_matrix(
     dst_model::SolidMechanics,
-    dst_bc::SolidMechanicsOverlapSchwarzBoundaryCondition,
+    dst_bc::SolidMechanicsOverlapCouplingSchwarzBoundaryCondition,
     src_model::SolidMechanics,
     coupled_block_name::String,
     tol::Float64,

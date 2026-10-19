@@ -321,6 +321,7 @@ const ANDERSON_STATE = IdDict{Any,AndersonState}()
 
 function reset_anderson_state!(controller)
     delete!(ANDERSON_STATE, controller)
+    delete!(OVERLAP_ANDERSON_HISTORIES, controller)
     return nothing
 end
 
@@ -397,9 +398,15 @@ end
 # of the residual. Nothing when the interface is not relaxed by Anderson
 # acceleration at this iteration: not its relaxed side, an inactive contact
 # pair, a stop of several time slots, or no previous iterate yet.
+# Anderson histories of the overlap matching interfaces of a controller, keyed
+# as the relaxation state is, and cleared with the Anderson state at every stop
+# (reset_anderson_state!).
+const OVERLAP_ANDERSON_HISTORIES = IdDict{Any,Dict{RelaxationKey,AndersonHistory}}()
+
 function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float64)
     controller = bc.parent.controller
     key = relaxation_key(bc)
+    bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition && return nothing
     if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
         bc.self_handle.id > bc.coupled_handle.id || return nothing
     elseif is_swappable_dn_schwarz(bc)
@@ -688,7 +695,7 @@ end
 # norm at every Schwarz iteration and at every stop of the energy output; before
 # the factorization was stored, each evaluation factored the dense matrix anew,
 # six times per residual.
-function set_square_projector!(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, W::Matrix{Float64})
+function set_square_projector!(bc::SolidMechanicsConstrainedSchwarzBoundaryCondition, W::Matrix{Float64})
     bc.square_projector = W
     bc.square_factor = cholesky(Symmetric(W))
     return nothing
@@ -722,6 +729,60 @@ end
 # exact B. The projection onto the Neumann side, W_N⁻¹Bᵀ, is never applied;
 # its partition-of-unity error is logged for information only.
 const NESTED_PARTITION_TOLERANCE = 1.0e-12
+
+# Transfer operators of an overlap matching pair: Π_k = W_k⁻¹ L_k on each
+# Schwarz boundary, with L_k the cross-mass matrix of Γ_k against the partner's
+# volume shape functions and W_k the facet mass matrix of Γ_k by the same
+# segmented quadrature (get_overlap_rectangular_projection_matrix), and each
+# side's force transfer the transpose of the partner's projector. Both sides
+# are built at the first call.
+function compute_constrained_dn_projectors!(
+    dst_model::SolidMechanics, dst_bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+)
+    size(dst_bc.dirichlet_projector, 1) > 0 && return nothing
+    dst_sim = self_subsim_of(dst_bc)
+    src_sim = coupled_subsim_of(dst_bc)
+    if !(dst_sim.model isa SolidMechanics) || !(src_sim.model isa SolidMechanics)
+        norma_abort("`Schwarz overlap matching` requires full order (solid mechanics) models on both sides.")
+    end
+    src_model = src_sim.model
+    src_bc = coupled_bc_of(dst_bc)
+    constraint = resolve_constraint(dst_bc, src_bc)
+    check_constrained_integrators(dst_sim, src_sim, constraint)
+    Δt_1 = dst_sim.integrator.time_step
+    Δt_2 = src_sim.integrator.time_step
+    if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
+        norma_abort(
+            "`Schwarz overlap matching` requires equal time steps, since both sides are constrained and " *
+            "each must take one step per window; subdomains '$(dst_sim.name)' and '$(src_sim.name)' " *
+            "use $(Δt_1) and $(Δt_2).",
+        )
+    end
+    for (model, bc) in ((dst_model, dst_bc), (src_model, src_bc))
+        partner = get_fom_model(coupled_subsim_of(bc))
+        L, W = get_overlap_rectangular_projection_matrix(model, bc, partner, bc.coupled_block_name, bc.search_tolerance)
+        set_square_projector!(bc, W)
+        bc.dirichlet_projector = bc.square_factor \ L
+    end
+    dst_bc.neumann_projector = Matrix(transpose(src_bc.dirichlet_projector))
+    src_bc.neumann_projector = Matrix(transpose(dst_bc.dirichlet_projector))
+    for bc in (dst_bc, src_bc)
+        P = bc.dirichlet_projector
+        norma_logf(
+            0,
+            :info,
+            "Overlap matching interface '%s' of %s: %s matching, %d constrained nodes against %d partner nodes, " *
+            "partition-of-unity error of Π %.2e.",
+            bc.name,
+            self_subsim_of(bc).name,
+            String(constraint),
+            size(P, 1),
+            size(P, 2),
+            maximum(abs.(P * ones(size(P, 2)) .- 1.0)),
+        )
+    end
+    return nothing
+end
 
 function compute_constrained_dn_projectors!(
     dst_model::SolidMechanics, dst_bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition
@@ -864,7 +925,7 @@ end
 # The matched quantity of a pair, the value of `matching`, which both sides
 # give and which must agree.
 function resolve_constraint(
-    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition, partner::SolidMechanicsNonOverlapSchwarzBoundaryCondition
+    bc::SolidMechanicsConstrainedSchwarzBoundaryCondition, partner::SolidMechanicsConstrainedSchwarzBoundaryCondition
 )
     if bc.constraint != partner.constraint
         norma_abort(
@@ -948,7 +1009,8 @@ end
 
 # True for the Dirichlet-Neumann condition with the constrained exchange.
 function is_constrained_dn(bc::SolidMechanicsBoundaryCondition)
-    return bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.constrained
+    return (bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && bc.constrained) ||
+           bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
 end
 
 # True for a constrained pair solved by the direct interface solve.
@@ -1264,6 +1326,16 @@ function dn_force_residual(
     return scale > 0.0 ? difference / scale : difference
 end
 
+# Relative Euclidean difference between the reaction r_D of an overlap
+# matching side transferred by Pᵀ to the partner's nodes and the force
+# `applied` there.
+function overlap_force_residual(P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64})
+    transferred = project_components(transpose(P), r_D)
+    scale = norm(transferred)
+    difference = norm(transferred - applied)
+    return scale > 0.0 ? difference / scale : difference
+end
+
 function dn_one_sided_jump(
     W::AbstractMatrix{Float64}, P::AbstractMatrix{Float64}, q_D::Matrix{Float64}, q_N::Matrix{Float64}
 )
@@ -1282,14 +1354,14 @@ end
 # order partner that is the RomModel, whose full order model carries the
 # kinematic fields but an empty list of boundary conditions. The fields are
 # therefore read from get_fom_model(n_sim) and the condition from n_sim.model.
-function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     n_sim = coupled_subsim_of(bc)
     n_model = get_fom_model(n_sim)
     n_bc = coupled_bc_of(bc)
     W_D = bc.square_projector
     P = bc.dirichlet_projector
     d_map = bc.global_from_local_map
-    n_map = n_bc.global_from_local_map
+    n_map = partner_node_map(bc)
     jv, jv_rms = dn_one_sided_jump(W_D, P, model.velocity[:, d_map], n_model.velocity[:, n_map])
     ju, ju_rms = dn_one_sided_jump(W_D, P, model.displacement[:, d_map], n_model.displacement[:, n_map])
     ja, ja_rms = dn_one_sided_jump(W_D, P, model.acceleration[:, d_map], n_model.acceleration[:, n_map])
@@ -1299,17 +1371,21 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsNonOver
     if n_bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition
         f_N = n_bc.transferred_force
         W_N_factor = n_bc.square_factor
+    elseif n_bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+        f_N = n_bc.transferred_force
+        W_N_factor = nothing
     else
         f_N = Float64[]
         W_N_factor = nothing
     end
-    if !isempty(f_N) &&
-        W_N_factor !== nothing &&
-        size(W_N_factor, 1) == length(n_map) &&
-        length(model.internal_force) == length(model.displacement)
+    if !isempty(f_N) && length(model.internal_force) == length(model.displacement)
         r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
-        force_residual = dn_force_residual(W_N_factor, P, r_D, reshape(f_N, 3, :))
+        if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+            force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :))
+        elseif W_N_factor !== nothing && size(W_N_factor, 1) == length(n_map)
+            force_residual = dn_force_residual(W_N_factor, P, r_D, reshape(f_N, 3, :))
+        end
     end
     return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms)
 end
@@ -1318,14 +1394,14 @@ end
 # projectors are built, with the full order model of that side, in the order of
 # the subdomains that hold it.
 function dn_dirichlet_sides(sim::MultiDomainSimulation)
-    sides = Tuple{SolidMechanics,SolidMechanicsNonOverlapSchwarzBoundaryCondition}[]
+    sides = Tuple{SolidMechanics,SolidMechanicsConstrainedSchwarzBoundaryCondition}[]
     for subsim in sim.subsims
         # The conditions belong to subsim.model (a RomModel for a reduced order
         # subdomain); the fields to its full order model.
         model = get_fom_model(subsim)
         model isa SolidMechanics || continue
         for bc in subsim.model.boundary_conditions
-            bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition || continue
+            bc isa SolidMechanicsConstrainedSchwarzBoundaryCondition || continue
             bc.is_dirichlet || continue
             size(bc.dirichlet_projector, 1) > 0 || continue
             size(bc.square_projector, 1) > 0 || continue
@@ -1349,7 +1425,7 @@ end
 # reaction interpolated linearly to that time. Each reported value is the
 # largest over the substeps. At equal steps there is one substep and the values
 # are those of dn_interface_residuals.
-function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     controller = sim.controller
     d_id = bc.self_handle.id
     n_id = bc.coupled_handle.id
@@ -1360,7 +1436,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
     W_D = bc.square_projector
     P = bc.dirichlet_projector
     d_map = bc.global_from_local_map
-    n_map = n_bc.global_from_local_map
+    n_map = partner_node_map(bc)
     t_start = controller.prev_time
     tol_t = 1.0e-12 * max(1.0, abs(controller.time))
     d_times = controller.time_hist[d_id]
@@ -1391,7 +1467,11 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsNonO
         f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t)
         r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
         r_D = nodal(extract_local_vector(bc, r_global, 3))
-        force_residual = max(force_residual, dn_force_residual(W_N_factor, P, r_D, nodal(f_N)))
+        if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+            force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N)))
+        else
+            force_residual = max(force_residual, dn_force_residual(W_N_factor, P, r_D, nodal(f_N)))
+        end
     end
     found || (force_residual = NaN)
     return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, NaN, NaN)
@@ -1450,7 +1530,7 @@ end
 
 # A pair under the displacement constraint requires both members to have taken
 # the same step; the explicit stable-step cap can shorten one of them.
-function check_constrained_time_steps(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function check_constrained_time_steps(bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     bc.constraint == :displacement || return nothing
     d_sim = self_subsim_of(bc)
     n_sim = coupled_subsim_of(bc)
@@ -1512,6 +1592,34 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchw
     end
 end
 
+# Overlap matching coupling: the side is constrained on its own Schwarz
+# boundary as the Dirichlet side of a nonoverlap matching pair, and receives on
+# all of its nodes the partner's reaction on the partner's Schwarz boundary
+# through the transpose of the partner's projector.
+function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+    coupling_weak_dbc(model, bc)
+    overlap_matching_nbc(model, bc)
+    return nothing
+end
+
+function overlap_matching_nbc(model::SolidMechanics, bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+    size(bc.neumann_projector, 1) > 0 || return nothing
+    nodal_force = get_dst_force(bc)
+    bc.transferred_force = nodal_force
+    history = bc.transferred_force_history
+    t_start = bc.parent.controller.prev_time
+    tol_t = 1.0e-12 * max(1.0, abs(model.time))
+    if !isempty(history) && model.time <= history[end][1]
+        filter!(entry -> entry[1] <= t_start + tol_t, history)
+    end
+    while length(history) >= 2 && history[2][1] <= t_start + tol_t
+        popfirst!(history)
+    end
+    push!(history, (model.time, nodal_force))
+    model.boundary_force .+= nodal_force
+    return nothing
+end
+
 function coupling_strong_dbc(model::SolidMechanics, bc::SolidMechanicsOverlapSchwarzBoundaryCondition)
     coupled_model_obj = coupled_subsim_of(bc).model
     get_coupled_field = if coupled_model_obj isa SolidMechanics
@@ -1570,7 +1678,7 @@ function coupling_weak_overlap_dbc(model::SolidMechanics, bc::SolidMechanicsOver
     end
 end
 
-function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     # Transfer the projected DISPLACEMENT, not the projected current position.
     # On a curved interface the two sides discretize the geometry as different
     # facet polyhedra, so the projector does not map the source reference onto
@@ -1601,7 +1709,7 @@ end
 # fields at the interface hold its state at the start of the step. At
 # initialization, before any step, the partner's projected fields are imposed
 # as in the unconstrained exchange.
-function constrained_step_in_progress(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
+function constrained_step_in_progress(bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     integrator = self_subsim_of(bc).integrator
     return isfinite(integrator.prev_time) && integrator.time > integrator.prev_time
 end
@@ -1624,7 +1732,7 @@ newmark_parameters(integrator::CentralDifference) = (0.0, integrator.γ)
 # free ones, so the receiver ends the step with these values.
 function impose_constrained_kinematics!(
     model::SolidMechanics,
-    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition,
+    bc::SolidMechanicsConstrainedSchwarzBoundaryCondition,
     nodal_disp::Matrix{Float64},
     nodal_velo::Matrix{Float64},
 )
@@ -1694,8 +1802,7 @@ end
 # Projected interface trace Π_D q_N of a partner field q (all degrees of
 # freedom of the Neumann side, interleaved components), as a vector.
 function constrained_partner_trace(bc::SolidMechanicsSchwarzBoundaryCondition, field::AbstractVector{Float64})
-    n_bc = coupled_bc_of(bc)
-    q_N = reshape(field, 3, :)[:, n_bc.global_from_local_map]
+    q_N = reshape(field, 3, :)[:, partner_node_map(bc)]
     return vec(transpose(bc.dirichlet_projector * transpose(q_N)))
 end
 
@@ -1880,6 +1987,23 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 # so its residual is exactly zero; entered into the history, that
                 # pair makes the least-squares coefficient cancel the next update.
                 c_slots[slot_k] = copy(interp_c)
+            elseif use_anderson && bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+                # Both sides of the overlap matching coupling are relaxed, and
+                # each is applied after its partner has solved in the iteration
+                # (Gauss-Seidel), so each side takes its own Anderson step at its
+                # application, on the partner data of the current iteration; the
+                # stacked step would read the second side's partner data before
+                # that partner solved.
+                histories = get!(Dict{RelaxationKey,AndersonHistory}, OVERLAP_ANDERSON_HISTORIES, controller)
+                history = get!(AndersonHistory, histories, key)
+                c_slots[slot_k] = anderson_step!(
+                    history,
+                    λ_c_prev,
+                    interp_c,
+                    trace_c .- trace_prev,
+                    controller.relaxation_parameter,
+                    controller.anderson_depth,
+                )
             elseif use_anderson
                 c_slots[slot_k] = copy(anderson_data!(bc, time)[1])
             else
@@ -2188,13 +2312,20 @@ function dalembert_inertia_minus_loads(model::SolidMechanics, a::AbstractVector{
     return inertial_force
 end
 
+# Partner nodes that the columns of the Dirichlet projector refer to: the
+# partner's interface nodes of a nonoverlap or contact pair, every node of the
+# partner for the overlap matching coupling, whose projector acts on the
+# partner's volume shape functions.
+partner_node_map(bc::SolidMechanicsSchwarzBoundaryCondition) = coupled_bc_of(bc).global_from_local_map
+function partner_node_map(bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+    return collect(1:size(get_fom_model(coupled_subsim_of(bc)).reference, 2))
+end
+
 function get_dst_curr_disp_velo_acce(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_sim = coupled_subsim_of(dst_bc)
     src_model = src_sim.model
     src_fom = src_model isa RomModel ? src_model.fom_model : src_model
-    src_bc_index = dst_bc.coupled_bc_index
-    src_bc = src_model.boundary_conditions[src_bc_index]
-    src_global_from_local_map = src_bc.global_from_local_map
+    src_global_from_local_map = partner_node_map(dst_bc)
     num_src_nodes = length(src_global_from_local_map)
     src_curr = zeros(3, num_src_nodes)
     src_refe = zeros(3, num_src_nodes)
@@ -2313,7 +2444,8 @@ function _create_bcs(subsim::SingleDomainSimulation)
                     subsim, coupled_subsim, input_mesh, bc_setting_params
                 )
                 push!(boundary_conditions, boundary_condition)
-            elseif bc_type in ("Schwarz overlap", "Schwarz DN nonoverlap", "Schwarz RR nonoverlap")
+            elseif bc_type in
+                ("Schwarz overlap", "Schwarz overlap matching", "Schwarz DN nonoverlap", "Schwarz RR nonoverlap")
                 sim = subsim.parent
                 coupled_subsim_name = bc_setting_params["source"]
                 coupled_subsim = sim.subsims[sim.handle_by_name[coupled_subsim_name].id]
@@ -2435,6 +2567,23 @@ function pair_schwarz_bcs(sim::MultiDomainSimulation)
 end
 
 function pair_bc(_::SolidMechanicsRegularBoundaryCondition, _::Int64) end
+
+function pair_bc(bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition, bc_index::Int64)
+    # The partner is the overlap matching condition of the coupled subdomain
+    # that couples back to this one.
+    coupled_bcs = coupled_subsim_of(bc).model.boundary_conditions
+    for (coupled_bc_index, coupled_bc) in enumerate(coupled_bcs)
+        coupled_bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition || continue
+        coupled_bc.coupled_handle.id == bc.self_handle.id || continue
+        bc.coupled_bc_index = coupled_bc_index
+        coupled_bc.coupled_bc_index = bc_index
+        return nothing
+    end
+    return norma_abort(
+        "`Schwarz overlap matching` on side set \"$(bc.name)\" has no partner condition of the same type " *
+        "on the coupled subdomain; both sides of the overlap must set it.",
+    )
+end
 
 function pair_bc(bc::SolidMechanicsSchwarzBoundaryCondition, bc_index::Int64)
     if bc isa SolidMechanicsOverlapCouplingSchwarzBoundaryCondition

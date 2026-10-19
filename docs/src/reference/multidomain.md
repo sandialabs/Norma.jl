@@ -253,6 +253,44 @@ against 4.4e-2 with the facet's own rule (test
 sections do not cover, or a curved one, takes the facet's Gauss rule with
 point location, and the setup log reports the count.
 
+### `Schwarz overlap matching`
+
+Energy-conserving two-sided overlap coupling (since 2026-10-19). Each
+subdomain is constrained on its own Schwarz boundary Γ_k to the L2
+projection W_k⁻¹L_k of the partner's matched quantity, with L_k the
+cross-mass matrix of Γ_k against the partner's volume shape functions by the
+segmented rule above, and derives the other two kinematic fields from its
+own Newmark relations as the Dirichlet side of a matching pair does. It
+receives on all of its nodes the partner's d'Alembert reaction on the
+partner's Schwarz boundary through the transpose of the partner's projector,
+−Π_jᵀρ_j. Mass, internal force, stiffness, and energy of every quadrature
+point inside the partner are weighted by one half in the assembly (constant
+weights; a point inside n partners has the weight 1/(1 + n)), so that the
+fixed point of the Schwarz iteration is the blended constrained problem, the
+window balance of the rate invariant cancels as for a nonoverlap matching
+pair, and the blended energy output and the rate invariant count the overlap
+once with the same weights. Both sides are constrained, so both take one step
+per window: equal time steps are required, and the coupled initial
+acceleration, the matching criterion (`matching relative tolerance`), and
+Anderson acceleration apply as for a matching pair, with the Anderson step
+of each side taken at its own application on the partner data of the
+current iteration. Both sides of the overlap must set the condition.
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `source block` | yes | — | partner element block that contains this side set |
+| `matching` | no | `velocity` | matched quantity, `velocity` or `displacement` |
+| `search tolerance` | no | `1.0e-6` | as for `Schwarz overlap` |
+
+Measured on the beam overlaps (example `cantilever-matching`, 1:0.75, and
+the conforming meshes) over 50 steps of 1 µs with Anderson acceleration at
+tolerance 1e-12: E and Ẽ conserved to 1e-11 for the trapezoidal and the
+central difference pair (test 140, `schwarz-overlap-matching.jl`); the
+transfer is exact (section above) and the two-sided static patch test passes
+to roundoff. The force transferred to a side is applied to all of its nodes
+and is part of its external forces; the reaction on Γ_k is the residual of
+the full equation including it.
+
 ### `Schwarz DN nonoverlap`
 
 Non-overlapping Dirichlet–Neumann coupling across a shared interface. The two

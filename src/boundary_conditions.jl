@@ -21,6 +21,9 @@ D = Differential(t)
 is_swappable_dn_schwarz(::SolidMechanicsBoundaryCondition) = false
 is_swappable_dn_schwarz(::SolidMechanicsContactSchwarzBoundaryCondition) = true
 is_swappable_dn_schwarz(::SolidMechanicsNonOverlapSchwarzBoundaryCondition) = true
+# The overlap matching coupling relaxes its constrained datum as the Dirichlet
+# side of a nonoverlap matching pair does; both of its sides are Dirichlet.
+is_swappable_dn_schwarz(::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition) = true
 
 # A prescription is static when its time derivative is identically zero.
 function is_static_prescription(velocity_expression)
@@ -401,6 +404,47 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     )
 end
 
+function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
+    mesh::ExodusDatabase,
+    side_set_name::String,
+    coupled_block_name::String,
+    tol::Float64,
+    side_set_id::Int64,
+    side_set_node_indices::Vector{Int64},
+    num_nodes_sides::Vector{Int64},
+    subsim::Simulation,
+    coupled_subsim::Simulation,
+    constraint::Symbol,
+)
+    local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
+    empty = Matrix{Float64}(undef, 0, 0)
+    return SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
+        side_set_name,
+        side_set_id,
+        side_set_node_indices,
+        num_nodes_sides,
+        local_from_global_map,
+        global_from_local_map,
+        coupled_block_name,
+        tol,
+        0,
+        empty,
+        empty,
+        empty,
+        nothing,
+        true,
+        false,
+        true,
+        constraint,
+        false,
+        Float64[],
+        Tuple{Float64,Vector{Float64}}[],
+        subsim.parent,
+        subsim.handle,
+        coupled_subsim.handle,
+    )
+end
+
 function SMCouplingSchwarzBC(
     subsim::SingleDomainSimulation,
     coupled_subsim::SingleDomainSimulation,
@@ -437,6 +481,31 @@ function SMCouplingSchwarzBC(
             subsim,
             use_weak,
             compute_overlap_l2_error,
+        )
+    elseif bc_type == "Schwarz overlap matching"
+        isempty(coupled_block_name) && norma_abort("`Schwarz overlap matching` requires `source block`.")
+        matching_name = String(get(bc_params, "matching", "velocity"))
+        constraint = if matching_name == "velocity"
+            :velocity
+        elseif matching_name == "displacement"
+            :displacement
+        else
+            norma_abort(
+                "Invalid `matching: $(matching_name)` on side set \"$(side_set_name)\". " *
+                "Valid values are `velocity` and `displacement`.",
+            )
+        end
+        SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
+            input_mesh,
+            side_set_name,
+            coupled_block_name,
+            tol,
+            side_set_id,
+            side_set_node_indices,
+            num_nodes_sides,
+            subsim,
+            coupled_subsim,
+            constraint,
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
