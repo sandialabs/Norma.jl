@@ -343,7 +343,9 @@ function lagrangian(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
     return SMatrix(Nmat), SArray(dNmat), w, ξ
 end
 
-function element_type_from_string(s::AbstractString)::ElementType
+function element_type_from_string(name::AbstractString)::ElementType
+    # Exodus writers differ in case (Cubit writes "tetra10").
+    s = uppercase(name)
     if s == "BAR2" || s == "BAR"
         return BAR2
     elseif s == "TRI3" || s == "TRI"
@@ -359,7 +361,7 @@ function element_type_from_string(s::AbstractString)::ElementType
     elseif s == "HEX8" || s == "HEX"
         return HEX8
     else
-        norma_abort("Unknown element type string: $s")
+        norma_abort("Unknown element type string: $name")
     end
 end
 

@@ -237,3 +237,22 @@ end
     @test Norma.interpolate(th5, kinked, 0.0) ≈ [0.5]
     @test Norma.interpolate(th5, kinked, 1.0) ≈ [0.5]
 end
+
+# Exodus writers differ in the case of element type names: Cubit writes
+# "tetra10" and "hex8". An unknown name is reported as the mesh gives it.
+@testset "Element Type Names In Any Case" begin
+    for (name, element_type) in (("tetra10", Norma.TETRA10), ("Hex8", Norma.HEX8), ("TETRA4", Norma.TETRA4))
+        @test Norma.element_type_from_string(name) == element_type
+    end
+    Norma.NORMA_TEST_MODE[] = true
+    message = try
+        Norma.element_type_from_string("wedge6")
+        ""
+    catch error
+        error isa Norma.NormaAbortException || rethrow()
+        error.msg
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+    end
+    @test occursin("wedge6", message)
+end

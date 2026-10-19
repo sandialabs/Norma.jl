@@ -47,6 +47,38 @@ end
     @test avg_stress[3] ≈ 1.0e+09 rtol = 1.0e-06
 end
 
+# The direct linear solver keeps sparse Cholesky for symmetric positive
+# definite matrices, and switches to LU for a nonsymmetric or an indefinite
+# matrix. A system with Inf or NaN, which a material can leave at a trial
+# iterate, gives a NaN step, which fails the next evaluation, instead of the
+# exception of LU that would end the run.
+@testset "Direct Linear Solver Factorizations" begin
+    n = 6
+    T = SymTridiagonal(fill(4.0, n), fill(-1.0, n - 1))
+    b = collect(1.0:n)
+    cases = (
+        ("symmetric positive definite", Norma.sparse(Matrix(T)), true),
+        ("nonsymmetric", Norma.sparse(Matrix(T) + diagm(1 => fill(0.5, n - 1))), false),
+        ("symmetric indefinite", Norma.sparse(Matrix(T) - 5.0 * I), false),
+    )
+    for (name, A, cholesky) in cases
+        cache = Norma.DirectSolverCache(nothing, Int64[], Int64[])
+        x = Norma.solve_linear_direct(cache, A, b)
+        @test x ≈ Matrix(A) \ b rtol = 1.0e-12
+        # Only a Cholesky factor is kept for reuse.
+        @test (cache.factor !== nothing) == cholesky
+    end
+    for value in (NaN, Inf)
+        A = Norma.sparse(Matrix(T))
+        A[2, 3] = value
+        cache = Norma.DirectSolverCache(nothing, Int64[], Int64[])
+        Norma.solve_linear_direct(cache, Norma.sparse(Matrix(T)), b)
+        @test all(isnan, Norma.solve_linear_direct(cache, A, b))
+        @test cache.factor === nothing
+        @test all(isnan, Norma.solve_linear_direct(cache, Norma.sparse(Matrix(T)), [NaN; b[2:end]]))
+    end
+end
+
 @testset "Single Static Solid Cube Line Search" begin
     cp("../examples/single/static-solid/cube/standard/cube-line-search.yaml", "cube-line-search.yaml"; force=true)
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
