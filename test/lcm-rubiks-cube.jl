@@ -39,8 +39,11 @@ end
 # on a local iterate and cut the step; it plays no part in a converged state.
 # The two codes' Newton iterates differ, so a step that LCM had to cut is not
 # always one that Norma would, and vice versa; without the cap, Norma takes
-# every step that LCM took.
-function run_lcm_fem_stops(case::String, mesh::String, dirichlet, times::Vector{Float64}, loaded::String)
+# every step that LCM took. With `composite`, every block is a composite tet
+# 10 (LCM's Use Composite Tet 10).
+function run_lcm_fem_stops(
+    case::String, mesh::String, dirichlet, times::Vector{Float64}, loaded::String; composite::Bool=false
+)
     lcm = YAML.load_file(lcm_material_file(case))["LCM"]
     material = Dict{String,Any}("blocks" => Dict{String,Any}())
     positions = Dict{Int,Vector{Int}}()
@@ -84,6 +87,9 @@ function run_lcm_fem_stops(case::String, mesh::String, dirichlet, times::Vector{
             "relative tolerance" => 1.0e-13,
         ),
     )
+    if composite
+        params["model"]["composite tet 10"] = collect(keys(material["blocks"]))
+    end
     sim = Norma.create_simulation(params)
     model = sim.model
     stresses = [deepcopy(model.stress)]
@@ -274,4 +280,26 @@ end
     lcm_averaged = lcm_axial_reaction(case, averaged.sim.model, order, 0.5)
     @test averaged.reactions[end] ≈ lcm_reaction[end] rtol = 1.0e-4
     @test 0.035 < averaged.reactions[end] / lcm_averaged[end] - 1 < 0.045
+
+    # The same grains with every cube cut into 6 TETRA10, as LCM's composite
+    # tet (Use Composite Tet 10, cubature degree 2) and Norma's composite
+    # tet 10, at LCM's 74 steps; the case keeps 6 of them. Both write the 4
+    # points in the same order, and LCM's F at every point is Norma's for
+    # LCM's nodal displacements. Over all 74 steps the stress agrees to
+    # 1.6e-8, the slips and Fp to 1.6e-8 and the reaction to 4.7e-9.
+    case = "RubiksCubeTet10"
+    times = lcm_step_times(case)
+    tets = run_lcm_fem_stops(case, "RubiksCubeTet10.g", RUBIKS_CUBE_DIRICHLET, times, "nodelist_2"; composite=true)
+    @test tets.sim.integrator.time ≈ times[end]
+    order, F_mismatch = lcm_point_order(case, tets.sim.model)
+    @test order == 1:4
+    @test F_mismatch < 1.0e-12
+    worst = lcm_fem_history_deviations(tets, case, order)
+    @test worst["Cauchy_Stress"][1] < 3.0e-8
+    @test worst["gamma"][1] < 5.0e-8
+    @test worst["Fp"][1] < 5.0e-8
+    lcm_reaction = lcm_axial_reaction(case, tets.sim.model, order, 0.5)
+    written = findall(isfinite, lcm_reaction)
+    @test length(written) == 6
+    @test maximum(abs, tets.reactions[written] - lcm_reaction[written]) < 1.0e-8 * maximum(abs, lcm_reaction[written])
 end

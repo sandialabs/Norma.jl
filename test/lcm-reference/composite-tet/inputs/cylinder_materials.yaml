@@ -1,0 +1,17 @@
+LCM:
+  ElementBlocks:
+    block_1:
+      material: rubber
+      Use Composite Tet 10: true
+  Materials:
+    rubber:
+      Material Model:
+        Model Name: Neohookean
+      Elastic Modulus:
+        Elastic Modulus Type: Constant
+        Value: 1000.0
+      Poissons Ratio:
+        Poissons Ratio Type: Constant
+        Value: 0.3
+      Output Cauchy Stress: true
+      Output Deformation Gradient: true
