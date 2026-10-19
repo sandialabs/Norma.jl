@@ -18,7 +18,7 @@ function _block_name_of(path::String)::String
     return name
 end
 
-function _make_transfer_model(mesh_path::String, scratch_name::String, npts_override)
+function _make_transfer_model(mesh_path::String, scratch_name::String, npts_override; method="consistent")
     block = _block_name_of(mesh_path)
     npts_yaml = npts_override === nothing ? "" : """
   num integration points:
@@ -37,7 +37,7 @@ CSV output interval: 0
 model:
   type: solid mechanics
   nodal recovery:
-    method: consistent
+    method: $method
 $npts_yaml  material:
     blocks:
       $block: elastic
@@ -110,5 +110,23 @@ end
     end
     for f in scratch_files
         rm(f; force=true)
+    end
+end
+
+# A model that recovers both the lumped and the consistent fields transfers
+# with the consistent mass, so the linear field still transfers exactly. A
+# transfer into or out of such a model threw a MethodError.
+@testset "Volumetric Field Transfer — both recovery methods" begin
+    hex8 = _make_transfer_model(
+        "../examples/single/static-solid/cube/standard/cube.g", "tx_both_hex8", nothing; method="both"
+    )
+    tet4 = _make_transfer_model("../examples/element-types/tet4/cube/cube.g", "tx_both_tet4", nothing; method="both")
+    @test tet4.recovery_data isa Norma.BothRecovery
+    for (src, dst) in ((hex8, tet4), (tet4, hex8))
+        _apply_linear!(src)
+        @test maximum(abs.(Norma.transfer_field(src, src.displacement, dst) .- _ref_linear(dst))) < 1.0e-12
+    end
+    for name in ("tx_both_hex8", "tx_both_tet4"), extension in (".yaml", ".g", ".e")
+        rm(name * extension; force=true)
     end
 end

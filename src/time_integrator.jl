@@ -312,9 +312,13 @@ function initialize(
     # relative error of about 1e-10 in the acceleration, which the coupled
     # initial acceleration of a matching pair repeats at every iteration and
     # cannot reduce below (a floor of 5e-10 on the beam against a tolerance of
-    # 1e-12).
+    # 1e-12). The consistent mass is not always positive definite: the
+    # default 5-point rule of the TETRA10 has a negative weight. Cholesky then
+    # fails, and LU factors it, as solve_linear_direct does.
     integrator.acceleration[free] = if solver.linear_solver == "direct"
-        cholesky(Symmetric(model.mass[free, free])) \ rhs_free
+        mass_free = model.mass[free, free]
+        factor = cholesky(Symmetric(mass_free); check=false)
+        issuccess(factor) ? factor \ rhs_free : lu(mass_free) \ rhs_free
     else
         solve_linear(model.mass[free, free], rhs_free, atol, rtol)
     end

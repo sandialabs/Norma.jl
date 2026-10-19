@@ -441,3 +441,7 @@ function _apply_inverse_mass!(nodal::Matrix{Float64}, rec::ConsistentRecovery)
     end
     return nothing
 end
+
+# A model that recovers with both masses projects a transferred field with the
+# consistent one, the L2 projection.
+_apply_inverse_mass!(nodal::Matrix{Float64}, rec::BothRecovery) = _apply_inverse_mass!(nodal, rec.consistent)
