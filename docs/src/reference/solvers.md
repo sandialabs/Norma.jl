@@ -29,7 +29,7 @@ solver:
 | `minimum iterations` | yes | — | minimum nonlinear iterations per step |
 | `maximum iterations` | yes | — | maximum nonlinear iterations per step |
 | `absolute tolerance` | yes | — | absolute residual-norm convergence tolerance |
-| `relative tolerance` | yes | — | relative residual-norm convergence tolerance |
+| `relative tolerance` | yes | — | relative residual-norm convergence tolerance, relative to the residual of the first iterate; with a quasi-static [predictor](time-integrators.md#Predictor), relative to the larger of that residual and the residual the iterate would have without the predictor |
 | `unconverged solve action` | no | `fail` (`warn` for matrix-free solvers) | what to do with a solve that exhausts `maximum iterations` without meeting either tolerance: `fail` marks the step failed, so adaptive time stepping retries it with a smaller step or the run aborts; `warn` reports it and continues |
 | `linear solver` | no | `cg` | `cg` (conjugate gradient, for symmetric positive definite matrices) or `direct` (sparse Cholesky with a reused symbolic factorization; sparse LU when the matrix is not symmetric, as the algorithmic tangent of crystal plasticity is, or not positive definite). Also the solver of the mass for the initial acceleration of `Newmark` |
 | `linear solver absolute tolerance` | no | `0.0` | absolute tolerance for the inner CG linear solve |

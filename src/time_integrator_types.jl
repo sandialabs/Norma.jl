@@ -26,6 +26,20 @@ mutable struct QuasiStatic <: StaticTimeIntegrator
     prev_∂Ω_f::Vector{Float64}
     stored_energy::Float64
     initial_equilibrium::Bool
+    # Displacement predictor of a step (`predictor`): :constant starts Newton
+    # from the previous solution, :linear extrapolates the increment of the
+    # last accepted step, :tangent solves for the response of the free DOFs
+    # to the increment of the prescribed ones with the stiffness of the last
+    # accepted step. The history is kept apart from the velocity, which the
+    # Schwarz couplings read.
+    predictor::Symbol
+    step_start_disp::Vector{Float64} # displacement the current step starts from
+    step_started::Bool # set by start_step!, cleared by the predictor that uses it
+    predicted_increment::Vector{Float64} # what the predictor added, empty if nothing
+    unpredicted_residual::Float64 # residual norm without it, if a matrix-free solver evaluated it
+    last_increment::Vector{Float64} # increment of the last accepted step
+    last_time_step::Float64 # its time step, zero before the first
+    last_stiffness::SparseMatrixCSC{Float64,Int64} # its converged stiffness, 0 × 0 before the first
 end
 
 mutable struct Newmark <: DynamicTimeIntegrator

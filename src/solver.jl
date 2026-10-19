@@ -837,6 +837,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     end
     residual = solver.gradient
     norm_residual = norm(residual[model.free_dofs])
+    solver.initial_norm = max(norm_residual, unpredicted_residual_norm(integrator, solver, model))
     if is_explicit_dynamic == false
         raw_status = "[WAIT]"
         status = colored_status(raw_status)
@@ -848,13 +849,12 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
             "|R|",
             norm_residual,
             "|r|",
-            1.0,
+            solver.initial_norm > 0.0 ? norm_residual / solver.initial_norm : 1.0,
             "E",
             solver.value,
             status,
         )
     end
-    solver.initial_norm = norm_residual
     notify_solve_observer(model, 0)
     iteration_number = 1
     solver.failed = solver.failed || model.failed

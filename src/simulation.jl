@@ -660,6 +660,7 @@ function SingleDomainSimulation(params::Parameters)
         _log_materials(model, input_mesh)
         integrator = create_time_integrator(params, model)
         solver = create_solver(params, model)
+        validate_predictor(integrator, solver)
         norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
         _warn_nonsymmetric_tangent(model, solver)
         prepare_matrix_output(params, model, integrator, solver)
@@ -691,7 +692,9 @@ is_coupled(sim::SingleDomainSimulation) = sim.parent !== nothing
 # Resolve a domain name to its stable handle within a MultiDomainSimulation.
 handle(sim::MultiDomainSimulation, name::String) = sim.handle_by_name[name]
 
-_integrator_name(::QuasiStatic) = "Quasi-static"
+function _integrator_name(ig::QuasiStatic)
+    return ig.predictor == :constant ? "Quasi-static" : "Quasi-static, $(ig.predictor) predictor"
+end
 _integrator_name(::Newmark) = "Newmark"
 _integrator_name(::CentralDifference) = "Central difference"
 _integrator_name(ig) = replace(string(typeof(ig)), r"^.*\." => "")
@@ -1170,6 +1173,7 @@ function advance_one_step(sim::SingleDomainSimulation)
         if !is_explicit
             norma_logf(4, :advance, "Time = [%.2e, %.2e] : Δt = %.2e", prev_time, time, time_step)
         end
+        start_step!(sim.integrator)
         apply_bcs(sim)
         # Defense-in-depth: constitutive model evaluate() catches math errors
         # and sets model.failed.  This outer catch handles the same errors if
@@ -1182,6 +1186,7 @@ function advance_one_step(sim::SingleDomainSimulation)
             sim.failed = sim.model.failed = sim.solver.failed = true
         end
         if sim.failed == false
+            accept_step!(sim.integrator, sim.solver)
             increase_time_step(sim)
             commit_state(sim)
             save_curr_state(sim)

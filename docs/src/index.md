@@ -75,7 +75,7 @@ Capabilities currently implemented:
 
 **Time integration**
 
-- Quasi-static (with adaptive stepping)
+- Quasi-static (with adaptive stepping, and an optional `linear` or `tangent` predictor of each step)
 - Newmark (implicit dynamic)
 - Central difference (explicit dynamic)
 
