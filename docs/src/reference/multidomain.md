@@ -297,11 +297,19 @@ built from one cross mass matrix B, Π_D = W_D⁻¹ B, and the Neumann side's
 force transfer is Π_Dᵀ. B = ∫ N_D N_Nᵀ dΓ is integrated by
 segment-based quadrature: each facet of the integration side is split into
 its intersections with the facets of the other side, in the plane of the
-facet, and each piece is integrated with a seven-point triangle rule, which
-is exact for the product of two bilinear shape functions on planar facets.
-On interfaces of planar parallelogram facets B is therefore exact for any
-mesh ratio, both integration sides give the same matrix, and Π_D reproduces
-linear fields. W_D is integrated facet by facet with the same
+facet, and each piece is integrated with a seven-point triangle rule of
+degree five. The facets may be TRI3, QUAD4, or straight-sided TRI6 (the
+facets of TETRA10) on either side, in any combination: the shape functions
+of a triangle are polynomials of degree one or two in the plane for any
+triangle shape, those of a parallelogram QUAD4 of degree two, so the product
+of two shape functions is of degree at most four on such facets. On
+interfaces of planar triangles and parallelograms B is therefore exact for
+any mesh ratio, both integration sides give the same matrix, and Π_D
+reproduces linear fields (measured on the 1:0.75 beam with the free part
+remeshed in TET4 and in TET10 against the HEX8 clamped part, both roles:
+constants and linear fields to 5e-15, uniform traction transferred to
+7e-16; October 18, 2026, data in
+~/Projects/Norma-Schwarz-Coupling/element-topology-2026-10). W_D is integrated facet by facet with the same
 quadrature as B, so that the row sums of the two agree exactly on every
 facet, also where the physical-coordinate rule is inexact (on the paved cap
 facets of the nested cylinders the two quadratures of W_D differ by up to
@@ -317,7 +325,9 @@ with the segmented rule both uniform-strain patch tests are reproduced to
 roundoff, measured statically on rigel on October 18, 2026). A facet that
 the other side's facets do not cover to a relative 1e-8 of its area (gap,
 partial overlap, or a curved interface on which the projection of a
-quadrature point fails) is integrated with its own Gauss rule and the
+quadrature point fails), or a TRI6 facet whose midside nodes depart from
+the edge midpoints by more than 1e-8 of the longest edge (a curved facet),
+is integrated with its own Gauss rule and the
 containing-facet projection of each point, and the log warns with the count
 of such facets. B is then taken on the Neumann side when Π_D reproduces
 constants to 1e-12 with it, and otherwise on the Dirichlet side, where its

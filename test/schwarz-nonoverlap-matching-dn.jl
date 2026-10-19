@@ -33,8 +33,10 @@ function constrained_dn_subdomain(
     swap_roles::Bool=false,
     interface_solve::String="iterative",
     edit_bc=nothing,
+    edit_sub=nothing,
 )
     sub = YAML.load_file("$constrained_dn_example/$name.yaml"; dicttype=Norma.Parameters)
+    edit_sub === nothing || edit_sub(name, sub)
     if explicit
         sub["time integrator"] = Norma.Parameters(
             "type" => "central difference", "time step" => own_dt, "CFL" => 1.0, "γ" => 0.5
@@ -73,15 +75,25 @@ function run_constrained_dn(
     edit_bc=nothing,
     edit_params=nothing,
     clamped_mesh="cantilever-clamped.g",
+    free_mesh="cantilever-free.g",
+    edit_sub=nothing,
 )
     cp("$mesh_dir/$clamped_mesh", "cantilever-clamped.g"; force=true)
-    cp("$mesh_dir/cantilever-free.g", "cantilever-free.g"; force=true)
+    cp("$mesh_dir/$free_mesh", "cantilever-free.g"; force=true)
     free_dt = dt / free_substeps
     constrained_dn_subdomain(
-        "cantilever-free", explicit, constraint, dt, free_dt; swap_roles=clamped_dirichlet, interface_solve, edit_bc
+        "cantilever-free",
+        explicit,
+        constraint,
+        dt,
+        free_dt;
+        swap_roles=clamped_dirichlet,
+        interface_solve,
+        edit_bc,
+        edit_sub,
     )
     constrained_dn_subdomain(
-        "cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet, interface_solve, edit_bc
+        "cantilever-clamped", explicit, constraint, dt; swap_roles=clamped_dirichlet, interface_solve, edit_bc, edit_sub
     )
     params = Norma.Parameters(
         "type" => "multi",
@@ -575,6 +587,103 @@ end
         loads_N = W_N * ones(size(W_N, 1))
         @test maximum(abs.(bc_N.neumann_projector * loads_D - loads_N)) ≤ 1.0e-12 * maximum(abs.(loads_N))
     end
+end
+
+# Quadratic facets: the TRI6 facets of TETRA10 elements are integrated by the
+# segmented rule when they are straight-sided, against the QUAD4 facets of a
+# HEX8 side (the 1:0.75 clamped part against a TET10 free part) and against
+# TRI6 facets (the TET10 cuboids of the AHeaD example). A curved TRI6 facet
+# is refused and takes the point rule.
+@testset "Matching DN: Segmented Quadrature on Quadratic Facets" begin
+    function checks(sim, clamped_dirichlet)
+        a, b = sim.subsims[1], sim.subsims[2]
+        D, N = clamped_dirichlet ? (b, a) : (a, b)
+        bc_D, bc_N = dn_bc_of(D), dn_bc_of(N)
+        @test bc_D.is_dirichlet && !bc_N.is_dirichlet
+        P_D, P_N = bc_D.dirichlet_projector, bc_N.dirichlet_projector
+        @test maximum(abs.(P_D * ones(size(P_D, 2)) .- 1.0)) ≤ 1.0e-12
+        @test maximum(abs.(P_N * ones(size(P_N, 2)) .- 1.0)) ≤ 1.0e-12
+        X_D = D.model.reference[:, bc_D.global_from_local_map]
+        X_N = N.model.reference[:, bc_N.global_from_local_map]
+        scale = maximum(abs.(X_D))
+        @test maximum(abs.(X_D' - P_D * X_N')) ≤ 1.0e-12 * scale
+        @test maximum(abs.(X_N' - P_N * X_D')) ≤ 1.0e-12 * scale
+        W_D = Norma.get_square_projection_matrix(D.model, bc_D)
+        W_N = Norma.get_square_projection_matrix(N.model, bc_N)
+        loads_D = W_D * ones(size(W_D, 1))
+        loads_N = W_N * ones(size(W_N, 1))
+        @test maximum(abs.(bc_N.neumann_projector * loads_D - loads_N)) ≤ 1.0e-12 * maximum(abs.(loads_N))
+        return nothing
+    end
+    function captured(f)
+        mktemp() do path, io
+            sim = redirect_stdout(io) do
+                f()
+            end
+            flush(io)
+            seekstart(io)
+            sim, replace(read(io, String), r"\s+" => " ")
+        end
+    end
+    # HEX8 against TET10 on the beam, either side as the Dirichlet side. The
+    # default five-point rule of TETRA10 gives an indefinite consistent mass,
+    # which the direct factorization of the initial acceleration rejects; the
+    # fourteen-point rule of degree four is positive definite.
+    function tet10_quadrature(name, sub)
+        name == "cantilever-free" && (sub["model"]["num integration points"] = Dict("cantilever_free" => 14))
+        return nothing
+    end
+    for clamped_dirichlet in (false, true)
+        sim, out = captured() do
+            sim, _, _ = run_constrained_dn(
+                false;
+                mesh_dir=nonconforming_beam,
+                clamped_mesh="cantilever-clamped-ratio-0.75.g",
+                free_mesh="cantilever-free-tet10.g",
+                clamped_dirichlet,
+                initialize_only=true,
+                edit_sub=tet10_quadrature,
+            )
+            sim
+        end
+        @test !occursin("Interface transfer", out)
+        checks(sim, clamped_dirichlet)
+    end
+    # TET10 against TET10 on the cuboids of the AHeaD example.
+    tet10_dir = "../examples/ahead/nonoverlap/cuboid"
+    for name in ("cuboid-1", "cuboid-2")
+        sub = YAML.load_file("$tet10_dir/dynamic-tet10/$name.yaml"; dicttype=Norma.Parameters)
+        sub["input mesh file"] = "$tet10_dir/cuboid-tet10-$(name[end]).g"
+        sub["boundary conditions"]["Schwarz DN nonoverlap"][1]["matching"] = "velocity"
+        YAML.write_file("$name.yaml", sub)
+    end
+    params = YAML.load_file("$tet10_dir/dynamic-tet10/cuboids.yaml"; dicttype=Norma.Parameters)
+    params["name"] = "cuboids-tet10"
+    delete!(params, "relative tolerance")
+    delete!(params, "absolute tolerance")
+    params["matching relative tolerance"] = 1.0e-12
+    sim, out = captured() do
+        sim = Norma.create_simulation(params)
+        Norma.sync_control_time(sim)
+        Norma.initialize(sim)
+        sim
+    end
+    @test !occursin("Interface transfer", out)
+    # domains: cuboid-2 (Neumann) first, cuboid-1 (Dirichlet) second.
+    checks(sim, true)
+    for subsim in sim.subsims
+        Exodus.close(subsim.params["input_mesh"])
+        Exodus.close(subsim.params["output_mesh"])
+    end
+    foreach(f -> rm(f; force=true), ["cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.e", "cuboid-2.e"])
+    # A TRI6 facet with a midside node off the edge midpoint is curved.
+    straight = [0.0 1.0 0.0 0.5 0.5 0.0; 0.0 0.0 1.0 0.0 0.5 0.5; 0.0 0.0 0.0 0.0 0.0 0.0]
+    @test Norma.is_segmentable_facet(straight)
+    @test Norma.facet_midside_departure(straight) == 0.0
+    curved = copy(straight)
+    curved[3, 5] = 1.0e-6
+    @test Norma.facet_midside_departure(curved) ≈ 1.0e-6 / sqrt(2.0)
+    @test !Norma.is_segmentable_facet(curved)
 end
 
 # The Dirichlet role is the input's; at setup the code warns when it is

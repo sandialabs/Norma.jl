@@ -917,14 +917,19 @@ end
 # destination facet is split into the pieces on which the source basis is
 # smooth, the intersections of the facet with the source facets in the plane
 # of the destination facet, and each piece is integrated with a seven-point
-# triangle rule. The product of two bilinear shape functions on planar
-# parallelogram facets is a polynomial of degree four, so L is exact there
-# whatever the mesh ratio, both integration directions give the same matrix,
-# and W⁻¹L reproduces linear fields. A facet that the pieces do not cover
-# (gap, partial overlap, or a curved interface on which a projection fails)
-# is integrated with its own Gauss rule and the containing-facet projection
-# of each quadrature point (add_facet_point_quadrature!), which carries the
-# quadrature error of the kinks of the source basis inside the facet.
+# triangle rule of degree five. The facets may be TRI3, QUAD4, or
+# straight-sided TRI6 on either side. The shape functions of a triangle are
+# polynomials of degree one (TRI3) or two (TRI6) in the plane for any
+# triangle shape, and those of a parallelogram QUAD4 are of degree two, so
+# the product of two shape functions is of degree at most four on such
+# facets, L is exact there whatever the mesh ratio, both integration
+# directions give the same matrix, and W⁻¹L reproduces linear fields. A
+# facet that the pieces do not cover (gap, partial overlap, or a curved
+# interface on which a projection fails), or a TRI6 facet whose midside
+# nodes are not at the edge midpoints (a curved facet), is integrated with
+# its own Gauss rule and the containing-facet projection of each quadrature
+# point (add_facet_point_quadrature!), which carries the quadrature error of
+# the kinks of the source basis inside the facet.
 #
 # Returns L and the destination's facet mass matrix W_ij = ∫ N_dst_i N_dst_j dΓ
 # integrated facet by facet with the same quadrature as L. Since the source
@@ -987,8 +992,8 @@ function get_rectangular_projection_matrix(
             0,
             :warn,
             "Interface transfer '%s'/'%s': %d of %d facets are not covered by the projected facets of the other " *
-            "side (gap, partial overlap, or curved interface) and were integrated with the facet's Gauss rule, " *
-            "which is inexact where the facets of the two sides are not nested.",
+            "side (gap, partial overlap, or curved interface) or are curved quadratic facets, and were integrated " *
+            "with the facet's Gauss rule, which is inexact where the facets of the two sides are not nested.",
             dst_bc.name,
             src_bc.name,
             num_facets - num_segmented,
@@ -1031,10 +1036,12 @@ function add_facet_point_quadrature!(
     return nothing
 end
 
-# Relative area below which a clipped piece is discarded, and relative
-# coverage error above which a facet falls back to the point rule.
+# Relative area below which a clipped piece is discarded, relative coverage
+# error above which a facet falls back to the point rule, and relative
+# departure of the midside nodes above which a TRI6 facet is curved.
 const SEGMENT_AREA_TOLERANCE = 1.0e-12
 const SEGMENT_COVERAGE_TOLERANCE = 1.0e-8
+const SEGMENT_STRAIGHT_TOLERANCE = 1.0e-8
 
 # Segment-based quadrature of one destination facet with three or four nodes.
 # Returns false, having added nothing, when the facet is of another type or
@@ -1048,7 +1055,7 @@ function add_facet_segmented_quadrature!(
     src_local_from_global_map::Dict{Int64,Int64},
 )
     dst_num_nodes_side = size(dst_side_coordinates, 2)
-    dst_num_nodes_side == 3 || dst_num_nodes_side == 4 || return false
+    is_segmentable_facet(dst_side_coordinates) || return false
     dst_nodes = facet_static_nodes(dst_side_coordinates)
     center, e1, e2, plane_normal = facet_plane(dst_side_coordinates)
     dst_polygon = project_polygon(dst_side_coordinates, center, e1, e2)
@@ -1074,7 +1081,7 @@ function add_facet_segmented_quadrature!(
         separated && continue
         src_side_coordinates = src_search.facet_coords[src_facet]
         src_num_nodes_side = size(src_side_coordinates, 2)
-        src_num_nodes_side == 3 || src_num_nodes_side == 4 || return false
+        is_segmentable_facet(src_side_coordinates) || return false
         src_polygon = project_polygon(src_side_coordinates, center, e1, e2)
         polygon_area(src_polygon) > SEGMENT_AREA_TOLERANCE * dst_area || continue
         piece = clip_convex_polygon(src_polygon, dst_polygon)
@@ -1122,7 +1129,39 @@ end
 
 function facet_static_nodes(coordinates::Matrix{Float64})
     n = size(coordinates, 2)
-    return n == 4 ? SMatrix{3,4,Float64,12}(coordinates) : SMatrix{3,3,Float64,9}(coordinates)
+    if n == 4
+        return SMatrix{3,4,Float64,12}(coordinates)
+    elseif n == 6
+        return SMatrix{3,6,Float64,18}(coordinates)
+    else
+        return SMatrix{3,3,Float64,9}(coordinates)
+    end
+end
+
+# Number of corner nodes of a facet: its polygon is formed by its first
+# corners in the Exodus node order (TRI3 and TRI6: three; QUAD4: four).
+num_facet_corners(num_nodes::Int64) = num_nodes == 4 ? 4 : 3
+
+# Largest relative departure of the midside nodes of a TRI6 facet from the
+# midpoints of its edges (Exodus order: node 4 on edge 1-2, 5 on 2-3, 6 on
+# 3-1), relative to the longest edge. Zero for a straight-sided facet.
+function facet_midside_departure(coordinates::Matrix{Float64})
+    x = [SVector{3,Float64}(coordinates[:, i]) for i in 1:6]
+    edges = ((1, 2, 4), (2, 3, 5), (3, 1, 6))
+    diameter = maximum(norm(x[b] - x[a]) for (a, b, _) in edges)
+    departure = maximum(norm(x[m] - 0.5 * (x[a] + x[b])) for (a, b, m) in edges)
+    return diameter > 0.0 ? departure / diameter : 0.0
+end
+
+# A facet the segmented rule integrates: TRI3, QUAD4, or a TRI6 with its
+# midside nodes at the edge midpoints, on which the shape functions are
+# polynomials in the plane. A curved TRI6 facet takes the point rule.
+function is_segmentable_facet(coordinates::Matrix{Float64})
+    n = size(coordinates, 2)
+    n == 3 && return true
+    n == 4 && return true
+    n == 6 && return facet_midside_departure(coordinates) ≤ SEGMENT_STRAIGHT_TOLERANCE
+    return false
 end
 
 function project_onto_facet_nodes(nodes::SMatrix{3,N,Float64}, x::SVector{3,Float64}) where {N}
@@ -1133,8 +1172,8 @@ end
 # a facet: the normal of the diagonals of a quadrilateral or of the edges of
 # a triangle.
 function facet_plane(coordinates::Matrix{Float64})
-    n = size(coordinates, 2)
-    center = SVector{3,Float64}(sum(coordinates; dims=2) / n)
+    n = num_facet_corners(size(coordinates, 2))
+    center = SVector{3,Float64}(sum(coordinates[:, 1:n]; dims=2) / n)
     x = [SVector{3,Float64}(coordinates[:, i]) for i in 1:n]
     d1 = n == 4 ? x[3] - x[1] : x[2] - x[1]
     d2 = n == 4 ? x[4] - x[2] : x[3] - x[1]
@@ -1146,7 +1185,8 @@ function facet_plane(coordinates::Matrix{Float64})
     return center, e1, e2, normal
 end
 
-# Nodes of a facet projected onto the plane, as a counterclockwise polygon.
+# Corner nodes of a facet projected onto the plane, as a counterclockwise
+# polygon.
 function project_polygon(
     coordinates::Matrix{Float64}, center::SVector{3,Float64}, e1::SVector{3,Float64}, e2::SVector{3,Float64}
 )
@@ -1154,7 +1194,7 @@ function project_polygon(
         SVector{2,Float64}(
             dot(SVector{3,Float64}(coordinates[:, i]) - center, e1),
             dot(SVector{3,Float64}(coordinates[:, i]) - center, e2),
-        ) for i in 1:size(coordinates, 2)
+        ) for i in 1:num_facet_corners(size(coordinates, 2))
     ]
     polygon_area(polygon) < 0.0 && reverse!(polygon)
     return polygon
