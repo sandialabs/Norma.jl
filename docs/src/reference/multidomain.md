@@ -230,6 +230,29 @@ the shared overlap region.
 | `weak` | no | `false` | weak (integrated) rather than pointwise transfer |
 | `compute overlap L2 relative error` | no | `""` | report the overlap L2 relative error of `disp`, `velo`, or `acce` (drives the overlap-error mesh-swap criterion) |
 
+With `weak: true` the datum on the subdomain's Schwarz boundary Γ is the
+L2 projection W⁻¹L of the partner's field, with W the facet mass matrix of
+Γ and L the cross-mass matrix of Γ against the partner's volume shape
+functions. Since 2026-10-19, L and W are integrated by the segmented rule of
+the matching exchange (below): in the plane of each facet the partner's
+elements appear as the polygons in which the plane cuts them (the convex
+hull of the crossings of the element's corner edges with the plane, and a
+face lying on the plane is counted once, from the side of the facet normal),
+the facet is clipped by each, and the pieces take the seven-point rule of
+degree five with each point located in the element by the inverse
+isoparametric map. On affine elements (tetrahedra, parallelepiped
+hexahedra) and triangular or parallelogram facets this is exact, the
+projection reproduces constants and linear fields, and its transpose
+carries a uniform traction exactly: on the 1:0.75 beam overlap the
+projector agrees with an independent cut integration to 5e-15, and the
+static patch test of the two-sided surface coupling (gist 6478a5bf,
+`patch.jl`, C2b) gives a strain error of 1e-12 at both refinement levels,
+against 4.4e-2 with the facet's own rule (test
+`schwarz-overlap-dynamic-cantilever-weak.jl`; results in
+~/Projects/Norma-Overlap-Energy/patch-norma-2026-10-19). A facet the
+sections do not cover, or a curved one, takes the facet's Gauss rule with
+point location, and the setup log reports the count.
+
 ### `Schwarz DN nonoverlap`
 
 Non-overlapping Dirichlet–Neumann coupling across a shared interface. The two

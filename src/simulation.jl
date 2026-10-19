@@ -2377,11 +2377,10 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
             elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
                 coupled_model = get_fom_model(coupled_subsim_of(bc))
                 fom_model = get_fom_model(subsim)
-                W = get_square_projection_matrix(fom_model, bc)
-                L = get_overlap_rectangular_projection_matrix(
+                L, W = get_overlap_rectangular_projection_matrix(
                     fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
                 )
-                bc.dirichlet_projector = (W \ I) * L
+                bc.dirichlet_projector = W \ L
             elseif is_constrained_dn(bc)
                 compute_constrained_dn_projectors!(subsim.model, bc)
             elseif is_swappable_dn_schwarz(bc)
