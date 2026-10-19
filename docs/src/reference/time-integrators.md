@@ -88,6 +88,9 @@ time integrator:
   predictor: tangent
 ```
 
+The polycrystals of `examples/crystal-plasticity` take LCM's steps of 5 × 10⁻⁴
+with `tangent`; their README lists the steps each predictor cuts.
+
 A predictor changes the iterate Newton starts from, not the solution it
 converges to. Since it lowers the residual of that iterate, the `relative
 tolerance` is measured from the residual the iterate would have without the
@@ -170,6 +173,7 @@ by orders of magnitude, which the CFL must allow for.
 ## Canonical examples
 
 - Quasi-static: `examples/single/static-solid`
+- Quasi-static with the tangent predictor: `examples/crystal-plasticity/rubiks-cube/rubiks-cube.yaml`
 - Newmark: `examples/single/implicit-dynamic-solid`
 - Central difference: `examples/single/explicit-dynamic-solid`
 - Adaptive stepping: `examples/adaptive-time-stepping/`

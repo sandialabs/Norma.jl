@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A periodic polycrystal of 25 grains in the unit cube, meshed
+     with tetrahedra. microstructpy_to_exodus.jl converts the mesh. -->
+<input>
+    <material>
+        <name> grains </name>
+        <shape> sphere </shape>
+        <size>
+            <dist_type> uniform </dist_type>
+            <loc> 0.35 </loc>
+            <scale> 0.2 </scale>
+        </size>
+    </material>
+
+    <domain>
+        <shape> cube </shape>
+        <side_length> 1 </side_length>
+        <corner> (0, 0, 0) </corner>
+        <periodic> xyz </periodic>
+    </domain>
+
+    <settings>
+        <directory> polycrystal-tets </directory>
+        <verbose> False </verbose>
+        <rng_seeds>
+            <size> 1 </size>
+            <position> 1 </position>
+        </rng_seeds>
+        <periodic_margin> auto </periodic_margin>
+        <edge_opt> True </edge_opt>
+        <edge_opt_n_iter> 10 </edge_opt_n_iter>
+        <mesh_min_angle> 15 </mesh_min_angle>
+        <mesh_max_volume> 0.005 </mesh_max_volume>
+        <plot_axes> False </plot_axes>
+        <filetypes>
+            <seeds> txt </seeds>
+            <poly> txt </poly>
+            <tri> txt </tri>
+            <seeds_plot> png </seeds_plot>
+            <poly_plot> png </poly_plot>
+            <tri_plot> png </tri_plot>
+        </filetypes>
+    </settings>
+</input>

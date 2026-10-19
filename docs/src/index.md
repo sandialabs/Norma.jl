@@ -108,9 +108,11 @@ Capabilities currently implemented:
 - Robin (mixed displacement–traction)
 - Inclined-surface (roller) support
 
-**Material points**
+**Material points and polycrystals**
 
 - A material-point driver under mixed stress and strain control
+- Taylor and Sachs estimates of polycrystals
+- Polycrystal meshes with a lattice orientation per element: LCM's RubiksCube and MicroStructPy Voronoi polycrystals, on rollers (`examples/crystal-plasticity`)
 
 **Adaptive mesh swapping**
 

@@ -119,6 +119,8 @@ algorithms, with an emphasis on extensibility and experimentation:
   multi-time-step coupling, and Schwarz contact.
 - **Boundary conditions:** Dirichlet, Neumann traction and follower pressure,
   Robin, and inclined-surface (roller) support.
+- **Polycrystals:** a material-point driver, Taylor and Sachs estimates, and
+  polycrystal examples with a lattice orientation per element.
 - **Adaptive mesh swapping**, **nodal field recovery**, and **Exodus/CSV output**.
 - **Mesh improvement:** energy-minimization smoothing of tetrahedral meshes
   toward a prescribed size or anisotropic metric field, alternated with edge

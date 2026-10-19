@@ -21,6 +21,7 @@
 # active rotation that carries the sample axes onto the lattice axes.
 
 using LinearAlgebra
+using Random
 using StaticArrays
 
 const VOIGT_PAIRS = ((1, 1), (2, 2), (3, 3), (2, 3), (1, 3), (1, 2))
@@ -234,6 +235,35 @@ function orientation_from_bunge_angles(φ1::Real, Φ::Real, φ2::Real)::SMatrix{
     Rx = @SMatrix [1.0 0.0 0.0; 0.0 c -s; 0.0 s c]
     Rz2 = @SMatrix [c2 -s2 0.0; s2 c2 0.0; 0.0 0.0 1.0]
     return Rz1 * Rx * Rz2
+end
+
+# Bunge Euler angles (φ1, Φ, φ2) in radians of a rotation Q, the inverse of
+# orientation_from_bunge_angles. At Φ = 0 or π only φ1 ± φ2 is defined, and
+# φ2 is taken as zero.
+function bunge_angles(Q::AbstractMatrix{<:Real})
+    Φ = acos(clamp(Q[3, 3], -1.0, 1.0))
+    if sin(Φ) > 1.0e-10
+        φ1 = atan(Q[1, 3], -Q[2, 3])
+        φ2 = atan(Q[3, 1], Q[3, 2])
+    else
+        φ1 = atan(Q[2, 1], Q[1, 1])
+        φ2 = 0.0
+    end
+    return mod2pi(φ1), Φ, mod2pi(φ2)
+end
+
+# A rotation drawn uniformly over SO(3), from the unit quaternion of three
+# uniform numbers (Shoemake, Graphics Gems III, 1992): the lattice
+# orientation of a grain of an untextured polycrystal.
+function uniform_random_rotation(rng::AbstractRNG)::SMatrix{3,3,Float64,9}
+    u1, u2, u3 = rand(rng), rand(rng), rand(rng)
+    a, b = sqrt(1 - u1), sqrt(u1)
+    w, x, y, z = a * sin(2π * u2), a * cos(2π * u2), b * sin(2π * u3), b * cos(2π * u3)
+    return @SMatrix [
+        1-2(y^2+z^2) 2(x*y-z*w) 2(x*z+y*w)
+        2(x*y+z*w) 1-2(x^2+z^2) 2(y*z-x*w)
+        2(x*z-y*w) 2(y*z+x*w) 1-2(x^2+y^2)
+    ]
 end
 
 # Q from the three lattice axes expressed in the sample frame (LCM's `Basis
