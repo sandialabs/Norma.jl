@@ -477,13 +477,13 @@ function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, atol::Flo
 end
 
 # Sparse Cholesky of the reduced system, with LU when the matrix is not
-# symmetric or not positive definite. Cholesky only reads the upper triangle,
-# so a nonsymmetric matrix must not reach it. The symbolic analysis is reused
-# across Newton iterations while the pattern is unchanged. A material
-# evaluated at a trial iterate can leave Inf or NaN in the system, which LU
-# rejects with an exception that would end the run; the step is NaN instead,
-# as Cholesky returns it, and the next evaluation fails, so that the time step
-# is cut.
+# symmetric (the algorithmic tangent of crystal plasticity) or not positive
+# definite. Cholesky only reads the upper triangle, so a nonsymmetric matrix
+# must not reach it. The symbolic analysis is reused across Newton iterations
+# while the pattern is unchanged. A material evaluated at a trial iterate can
+# leave Inf or NaN in the system, which LU rejects with an exception that
+# would end the run; the step is NaN instead, as Cholesky returns it, and the
+# next evaluation fails, so that the time step is cut.
 function solve_linear_direct(cache::DirectSolverCache, A::SparseMatrixCSC{Float64,Int64}, b::Vector{Float64})
     if all(isfinite, nonzeros(A)) == false || all(isfinite, b) == false
         norma_log(4, :solve, "Direct linear solver: the system is not finite")

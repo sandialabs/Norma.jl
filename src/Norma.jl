@@ -28,6 +28,7 @@ include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model, Sw
 include("input_validation.jl")
 include("anisotropy.jl")                # anisotropic elastic constants, lattice orientations
 include("constitutive.jl")
+include("crystal_plasticity.jl")         # needs anisotropy.jl, constitutive.jl
 include("interpolation.jl")
 include("spatial_search.jl")          # needs interpolation.jl, model_types.jl
 include("three_field.jl")          # needs constitutive.jl, interpolation.jl

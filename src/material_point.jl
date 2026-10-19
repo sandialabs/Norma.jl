@@ -51,8 +51,8 @@ function add_free(F::SMatrix{3,3,Float64,9}, free_indices::Vector{CartesianIndex
     return SMatrix(G)
 end
 
-# A Newton correction that a material cannot take, one at which it throws a
-# math error, is halved up to this many times.
+# A Newton correction that a material cannot take, beyond the range of a
+# crystal plasticity flow rule for example, is halved up to this many times.
 const MAXIMUM_CORRECTION_HALVINGS = 10
 
 error_message(error::Exception) = error isa DomainError ? error.msg : sprint(showerror, error)

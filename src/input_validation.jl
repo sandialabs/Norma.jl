@@ -255,6 +255,10 @@ const MATERIAL_PROPS_MODEL_KEYS = Dict(
     "j2 plasticity" => Set(["yield stress", "hardening modulus"]),
     "anisotropic linear elastic" => ANISOTROPIC_ELASTIC_KEYS,
     "anisotropic Saint-Venant Kirchhoff" => ANISOTROPIC_ELASTIC_KEYS,
+    "crystal plasticity" => union(
+        ANISOTROPIC_ELASTIC_KEYS,
+        Set(["integration scheme", "residual", "slip predictor", "local solver", "slip families"]),
+    ),
     "anisotropic hyperelastic damage" =>
         Set(["matrix volume fraction", "matrix maximum damage", "matrix damage saturation", "fibers", "orientation"]),
 )
@@ -262,6 +266,68 @@ const MATERIAL_PROPS_MODEL_KEYS = Dict(
 const FIBER_KEYS = Set(["direction", "k", "q", "volume fraction", "maximum damage", "damage saturation"])
 
 const ORIENTATION_KEYS = Set(["basis vectors", "Bunge Euler angles", "angle unit", "mesh variables", "time index"])
+
+# Keys inside the crystal plasticity blocks (crystal_plasticity.jl). The flow
+# rules and hardening laws are checked against the keys of their type, or of
+# every type when the type is unknown (the constructor rejects that).
+const SLIP_FAMILY_KEYS = Set(["slip systems", "c/a ratio", "flow rule", "hardening law", "maximum slip rate"])
+const SLIP_SYSTEM_KEYS = Set(["direction", "normal", "initial hardening state"])
+const FLOW_RULE_KEYS = Dict(
+    "power law" => Set(["type", "reference slip rate", "rate exponent"]),
+    "power law with drag" => Set(["type", "reference slip rate", "rate exponent", "drag coefficient"]),
+    "thermal activation" =>
+        Set(["type", "reference slip rate", "activation energy", "thermal resistance", "p exponent", "q exponent"]),
+    "none" => Set(["type"]),
+)
+const HARDENING_LAW_KEYS = Dict(
+    "linear minus recovery" => Set(["type", "initial hardening state", "hardening modulus", "recovery modulus"]),
+    "saturation" => Set([
+        "type",
+        "initial hardening state",
+        "hardening rate",
+        "initial saturation stress",
+        "saturation exponent",
+        "reference slip rate",
+    ]),
+    "dislocation density" => Set([
+        "type",
+        "initial hardening state",
+        "geometric factor",
+        "generation factor",
+        "annihilation factor",
+        "shear modulus",
+        "burgers vector magnitude",
+    ]),
+    "none" => Set(["type", "initial hardening state"]),
+)
+const LOCAL_SOLVER_KEYS = Set(["absolute tolerance", "relative tolerance", "minimum iterations", "maximum iterations"])
+
+function validate_crystal_plasticity!(messages::Vector{String}, props::AbstractDict, label::String, file::String)
+    solver = get(props, "local solver", nothing)
+    if solver isa AbstractDict
+        warn_unknown_keys!(messages, solver, LOCAL_SOLVER_KEYS, "local solver of material \"$label\"", file)
+    end
+    families = get(props, "slip families", nothing)
+    families isa AbstractVector || return messages
+    for (f, family) in enumerate(families)
+        family isa AbstractDict || continue
+        section = "slip family $f of material \"$label\""
+        warn_unknown_keys!(messages, family, SLIP_FAMILY_KEYS, section, file)
+        for (key, table) in (("flow rule", FLOW_RULE_KEYS), ("hardening law", HARDENING_LAW_KEYS))
+            block = get(family, key, nothing)
+            block isa AbstractDict || continue
+            known = get(table, lowercase(string(get(block, "type", ""))), union(values(table)...))
+            warn_unknown_keys!(messages, block, known, "$key of $section", file)
+        end
+        systems = get(family, "slip systems", nothing)
+        systems isa AbstractVector || continue
+        for (k, system) in enumerate(systems)
+            system isa AbstractDict || continue
+            warn_unknown_keys!(messages, system, SLIP_SYSTEM_KEYS, "slip system $k of $section", file)
+        end
+    end
+    return messages
+end
 
 # Material model names accepted by create_material (constitutive.jl). A
 # recognized model validates against the common keys plus its own extras; an
@@ -278,6 +344,7 @@ const MATERIAL_MODEL_NAMES = Set([
     "anisotropic linear elastic",
     "anisotropic Saint-Venant Kirchhoff",
     "anisotropic hyperelastic damage",
+    "crystal plasticity",
 ])
 
 const BC_ENTRY_KEYS = Dict(
@@ -405,9 +472,10 @@ function validate_material!(messages::Vector{String}, material_params::AbstractD
         if orientation isa AbstractDict
             warn_unknown_keys!(messages, orientation, ORIENTATION_KEYS, "orientation of material \"$label\"", file)
         end
-        if material_model in ("anisotropic linear elastic", "anisotropic Saint-Venant Kirchhoff")
+        if material_model in ("anisotropic linear elastic", "anisotropic Saint-Venant Kirchhoff", "crystal plasticity")
             warn_unused_elastic_constants!(messages, props, label, file)
         end
+        material_model == "crystal plasticity" && validate_crystal_plasticity!(messages, props, label, file)
         fibers = get(props, "fibers", nothing)
         if fibers isa AbstractVector
             for (f, fiber) in enumerate(fibers)

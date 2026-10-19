@@ -71,6 +71,7 @@ Capabilities currently implemented:
 - J2 plasticity (finite deformation, multiplicative split, radial return, linear isotropic hardening)
 - Anisotropic linear elastic and anisotropic Saint-Venant–Kirchhoff, from isotropic to triclinic, with a lattice orientation per material or per element
 - Anisotropic hyperelastic damage (LCM's fiber-reinforced neo-Hookean model)
+- Crystal plasticity (LCM's model: F = Fe Fp with the exponential map, power-law, drag and thermally activated flow, four hardening laws, explicit or implicit integration with the exact tangent)
 
 **Time integration**
 
