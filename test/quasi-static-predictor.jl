@@ -114,6 +114,88 @@ end
     @test linear.model.displacement ≈ constant.model.displacement rtol = 1.0e-6
 end
 
+# LCM's RubiksCube with one element per grain (rubiks-cube-1.g), from the
+# example input. At fixed time steps, a step that fails cannot be cut, and the
+# run aborts; with `adaptive`, it is halved as in the example.
+function predictor_rubiks_cube(predictor, time_step, final_time; adaptive=false)
+    folder = "../examples/crystal-plasticity/rubiks-cube"
+    cp(joinpath(folder, "rubiks-cube-1.g"), "rubiks-cube-1.g"; force=true)
+    params = YAML.load_file(joinpath(folder, "rubiks-cube.yaml"); dicttype=Norma.Parameters)
+    params["name"] = "rubiks-cube-predictor.yaml"
+    params["input mesh file"] = "rubiks-cube-1.g"
+    params["output mesh file"] = "rubiks-cube-predictor.e"
+    params["Exodus output interval"] = 0.0
+    integrator = params["time integrator"]
+    if adaptive
+        integrator["maximum time step"] = time_step
+    else
+        for key in ("minimum time step", "maximum time step", "decrease factor", "increase factor")
+            delete!(integrator, key)
+        end
+    end
+    integrator["time step"] = time_step
+    integrator["final time"] = final_time
+    integrator["predictor"] = predictor
+    try
+        sim = Norma.run(params)
+        return sim, Norma.NEWTON_ITERATION_COUNT[]
+    finally
+        rm("rubiks-cube-1.g"; force=true)
+        rm("rubiks-cube-predictor.e"; force=true)
+    end
+end
+
+@testset "Quasi-Static Predictor Crystal Plasticity" begin
+    # Steps of 2.5e-4 through the onset of flow, which the constant predictor
+    # also takes: every predictor converges to the same solution.
+    constant, constant_iterations = predictor_rubiks_cube("constant", 2.5e-4, 2.0e-3)
+    eqps(sim) = [state[end] for block in sim.model.state_old for element in block for state in element]
+    @test maximum(eqps(constant)) > 1.0e-4
+    for predictor in ("linear", "tangent")
+        sim, iterations = predictor_rubiks_cube(predictor, 2.5e-4, 2.0e-3)
+        @test sim.integrator.time ≈ 2.0e-3
+        @test sim.model.displacement ≈ constant.model.displacement rtol = 1.0e-8
+        @test eqps(sim) ≈ eqps(constant) rtol = 1.0e-6
+        @test iterations < constant_iterations
+    end
+    # LCM's steps of 5e-4: from the second step on, the constant predictor
+    # strains the elements next to the loaded face beyond the range of the
+    # flow rule, and the run aborts.
+    Norma.norma_log(0, :info, "Testing a failed step at a fixed time step. Mock code abort ...")
+    Norma.NORMA_TEST_MODE[] = true
+    try
+        @test_throws Norma.NormaAbortException predictor_rubiks_cube("constant", 5.0e-4, 1.0e-3)
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+    end
+    for predictor in ("linear", "tangent")
+        sim, _ = predictor_rubiks_cube(predictor, 5.0e-4, 1.0e-3)
+        @test sim.integrator.time ≈ 1.0e-3
+    end
+    # With adaptive time stepping, both predictors cut the step at the onset
+    # of flow, [1e-3, 1.5e-3], and retry it with half the step from its start
+    # and the history of the last accepted step: they take the same steps and
+    # reach the same solution.
+    adaptive = Dict{String,Any}()
+    for predictor in ("linear", "tangent")
+        times = Float64[]
+        Norma.SOLVE_ITERATION_OBSERVER[] = function (model, iteration)
+            iteration == 0 && push!(times, model.time)
+            return nothing
+        end
+        sim = try
+            first(predictor_rubiks_cube(predictor, 5.0e-4, 2.0e-3; adaptive=true))
+        finally
+            Norma.SOLVE_ITERATION_OBSERVER[] = nothing
+        end
+        @test sim.integrator.time ≈ 2.0e-3
+        @test any(t -> isapprox(t, 1.25e-3; rtol=1.0e-9), times)
+        adaptive[predictor] = sim
+    end
+    @test adaptive["linear"].model.displacement ≈ adaptive["tangent"].model.displacement rtol = 1.0e-8
+    @test eqps(adaptive["linear"]) ≈ eqps(adaptive["tangent"]) rtol = 1.0e-6
+end
+
 # The overlapping Schwarz cuboids of examples/overlap/static-different-steps,
 # whose subdomains take 2 and 3 steps per stop. Every Schwarz iteration
 # restarts the subdomains from the start of the stop, which the predictors

@@ -10,27 +10,50 @@ The data come from LCM commit `3e3af13` (2026-10-16), which includes the
 crystal plasticity fixes of
 [sandialabs/LCM#127](https://github.com/sandialabs/LCM/issues/127). The first
 line of each file names its source: the gold file and the last LCM commit
-that changed it. LCM is distributed under the BSD license reproduced in
-`LICENSE-LCM.txt`.
+that changed it, or the output of an LCM run and the LCM commit of the run.
+LCM is distributed under the BSD license reproduced in `LICENSE-LCM.txt`.
 
 ## Regenerating
 
 ```bash
-julia --project=. test/lcm-reference/extract.jl <path to an LCM checkout>
+julia --project=. test/lcm-reference/extract.jl <path to an LCM checkout> [--runs <folder of LCM runs>]
 ```
+
+LCM ships no gold file for its polycrystal, RubiksCube. The `RubiksCube`
+cases are therefore taken from runs of LCM `3e3af13` (Trilinos `373b9b89`,
+serial GCC 13.4 release build), with `--runs` pointing at the folder that holds
+the runs' outputs and material files:
+
+- `RubiksCube`: `RubiksCube_Implicit.yaml` as LCM ships it.
+- `RubiksCube_NoAverage`: `inputs/RubiksCube_Implicit_NoAvg.yaml`, the same
+  input with `Weighted Volume Average J` and `Volume Average Pressure` set to
+  false in every block of its materials.
+
+The materials of each run are `materials/<case>.yaml`, which the inputs call
+`<input>_Materials.yaml`. These cases keep only the steps and elements their
+test reads (see [Cases](#Cases)); `--every-step` writes all of them instead,
+with their nodal files.
 
 ## Format
 
-Each case has a comma-separated file. Lines starting with `#` are comments.
+Each case has up to three comma-separated files. Lines starting with `#` are
+comments.
 
 - `<case>.csv` holds the element variables, one row per
   `(step, block, element, point)`. When the integration points of an element
   agree to a relative 1e-9, they are collapsed into one row with `point = 0`.
   The comment line gives the largest relative spread between points.
+- `<case>-nodal.csv` holds the nodal coordinates and nodal variables, one row
+  per `(step, node)`, for the case whose test reads them,
+  `RubiksCube_NoAverage`.
+- `<case>-times.csv` gives the time of every LCM step, for the cases that
+  keep only some steps; a comment line in `<case>.csv` lists those it keeps.
 - `materials/<case>.yaml` is the LCM material file of the case (the input
   file itself for the Material Point Simulator cases).
-- `meshes/` holds LCM meshes that the tests read, with the block and node
-  set names LCM gives them by default, `block_<id>` and `nodelist_<id>`.
+- `meshes/` holds the LCM meshes the FEM tests run (`single-crystal-lcm.jl`,
+  `lcm-rubiks-cube.jl`),
+  with the block and node set names LCM gives them by default, `block_<id>`
+  and `nodelist_<id>`.
 
 The element files of the FEM cases also carry `F_nodal_k`, the deformation
 gradient of each element from the affine fit of its nodal displacements,
@@ -54,7 +77,8 @@ time; their time step is the `Step Size` of the LCM input (0.001 for
 ## Cases
 
 The mesh of every FEM case is a unit cube of one or two HEX8 elements, except
-the 2D cases (one QUAD4 element, plane strain).
+the 2D cases (one QUAD4 element, plane strain) and RubiksCube (27 HEX8
+elements, one per grain).
 
 | Case | What it exercises |
 |---|---|
@@ -72,6 +96,7 @@ the 2D cases (one QUAD4 element, plane strain).
 | `DislocationDensityHardening` | FCC rotated 45° about z, dislocation-density hardening, constant true strain rate |
 | `DislocationDensityTwoFamilies` | The same 12 systems as a second slip family, after an inactive first family; reproduces `DislocationDensityHardening` |
 | `QuadSlipDislocationDensityTraction` | Loading along [011], traction controlled |
+| `RubiksCube`, `RubiksCube_NoAverage` | 27 FCC grains, Linear Minus Recovery hardening, pulled along x on rollers with LCM's adaptive steps; with and without LCM's volume averaging of J and pressure. Not homogeneous: the 8 points of every element are kept, in LCM's order, and LCM numbers the output nodes its own way. `RubiksCube` keeps the last step of the 9 elements on the loaded face x = 0.5, which give the axial reaction; `RubiksCube_NoAverage` keeps every 4th of its 31 steps and the last, which include the steps of its largest deviations from Norma |
 | `CP-uniaxial` | Material point: FCC, single slip, uniaxial strain |
 | `AHD-uniaxial`, `AHD-shear`, `AHD-hydrostatic` | Material point: fiber-reinforced hyperelastic model with damage |
 
