@@ -1,10 +1,10 @@
 # LCM reference data
 
-Reference ("gold") outputs of the elastic crystal plasticity tests and the
-anisotropic hyperelasticity tests of [LCM](https://github.com/sandialabs/LCM),
-the Albany-based code from which Norma's anisotropic elasticity and
-anisotropic hyperelastic damage models are ported. The Norma tests compare
-against these files, so they need neither an LCM build nor `exodiff`.
+Reference ("gold") outputs of the crystal plasticity and anisotropic
+hyperelasticity tests of [LCM](https://github.com/sandialabs/LCM), the
+Albany-based code from which Norma's anisotropic elasticity and crystal
+plasticity models are ported. The Norma tests compare against these files, so
+they need neither an LCM build nor `exodiff`.
 
 The data come from LCM commit `3e3af13` (2026-10-16), which includes the
 crystal plasticity fixes of
@@ -36,23 +36,43 @@ The element files of the FEM cases also carry `F_nodal_k`, the deformation
 gradient of each element from the affine fit of its nodal displacements,
 which is exact for the homogeneous deformations of these cases, and a
 comment line with the Exodus block names, which the materials files refer to.
+`lcm_crystal_plasticity.jl` translates the LCM materials to Norma's input and
+replays every case at the material point along LCM's deformation and times.
 
 Tensors are numbered row-major as 3 × 3 tensors in every file: `Cauchy_Stress_k`
-is σ[(k - 1) ÷ 3 + 1, (k - 1) % 3 + 1]. The same holds for `F` and `Strain`.
-The 2D case carries only the in-plane components 1, 2, 4 and 5.
+is σ[(k - 1) ÷ 3 + 1, (k - 1) % 3 + 1]. The same holds for `F`, `Fp`,
+`Velocity_Gradient_Plastic` (Lp) and `Strain`. The 2D cases carry only the
+in-plane components 1, 2, 4 and 5. Per-slip-system variables are
+`gamma_<s>`, `gamma_dot_<s>`, `tau_<s>` (resolved shear stress) and
+`tau_hard_<s>` (slip resistance, or dislocation density for the Dislocation
+Density hardening law).
 
-The material point cases (`AHD-*`) write the step index as the time; their
-time step is the `Step Size` of the LCM input, 0.01.
+The material point cases (`CP-uniaxial`, `AHD-*`) write the step index as the
+time; their time step is the `Step Size` of the LCM input (0.001 for
+`CP-uniaxial`, 0.01 for `AHD-*`).
 
 ## Cases
 
-The mesh of every FEM case is a unit cube of one HEX8 element, except the 2D
-case (one QUAD4 element, plane strain).
+The mesh of every FEM case is a unit cube of one or two HEX8 elements, except
+the 2D cases (one QUAD4 element, plane strain).
 
 | Case | What it exercises |
 |---|---|
 | `ElasticShear2d`, `ElasticShear3d` | Cubic elasticity, lattice aligned with the axes, simple shear |
 | `ElasticShearRotated3d` | Cubic elasticity, lattice from Bunge angles (0.12, 0.03, 0.28) rad, simple shear |
+| `PlasticShear2d` | Two in-plane slip systems, linear power law, no hardening |
+| `SingleSlip_Explicit`, `SingleSlip_Implicit` | Single slip, two blocks with different orientations, power law, no hardening |
+| `SingleSlipHard_Explicit`, `SingleSlipHard_Implicit` | Single slip with linear hardening |
+| `SingleSlipSaturation` | Single slip with saturation hardening, slip-hardness residual |
+| `MultiSlipPlaneHard_Implicit` | FCC, 12 systems, Linear Minus Recovery hardening, adaptive steps |
+| `MultiSlipPlaneHard_Implicit_Active_Sets` | The same with only the 8 active systems, fixed steps |
+| `MinisolverStep_*` | The multi-slip problem with LCM's local solvers (Newton, Newton with line search, trust region; conjugate gradient and regularized line search are not registered LCM tests). No test reads `MinisolverStep_ConjugateGradient`: LCM writes only every fifth of its steps, which a material point cannot replay. It is kept as LCM's reference for its conjugate-gradient local solver |
+| `ThermallyActivatedSlip` | BCC, 12 systems, thermally activated flow, saturation hardening |
+| `MultiFamily` | Three slip families with different hardening laws |
+| `DislocationDensityHardening` | FCC rotated 45° about z, dislocation-density hardening, constant true strain rate |
+| `DislocationDensityTwoFamilies` | The same 12 systems as a second slip family, after an inactive first family; reproduces `DislocationDensityHardening` |
+| `QuadSlipDislocationDensityTraction` | Loading along [011], traction controlled |
+| `CP-uniaxial` | Material point: FCC, single slip, uniaxial strain |
 | `AHD-uniaxial`, `AHD-shear`, `AHD-hydrostatic` | Material point: fiber-reinforced hyperelastic model with damage |
 
 ## History

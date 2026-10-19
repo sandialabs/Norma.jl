@@ -48,10 +48,11 @@ end
 end
 
 # The direct linear solver keeps sparse Cholesky for symmetric positive
-# definite matrices, and switches to LU for a nonsymmetric or an indefinite
-# matrix. A system with Inf or NaN, which a material can leave at a trial
-# iterate, gives a NaN step, which fails the next evaluation, instead of the
-# exception of LU that would end the run.
+# definite matrices, and switches to LU for a nonsymmetric matrix, such as
+# the algorithmic tangent of crystal plasticity, or an indefinite one. A
+# system with Inf or NaN, which a material can leave at a trial iterate, gives
+# a NaN step, which fails the next evaluation, instead of the exception of LU
+# that would end the run.
 @testset "Direct Linear Solver Factorizations" begin
     n = 6
     T = SymTridiagonal(fill(4.0, n), fill(-1.0, n - 1))
