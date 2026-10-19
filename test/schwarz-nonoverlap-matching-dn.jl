@@ -686,6 +686,35 @@ end
     @test !Norma.is_segmentable_facet(curved)
 end
 
+# A subcycled Dirichlet side with `matching at: window end` imposes the matched
+# velocity at the end of the window only and carries at its interior substeps
+# the ramp of its own window reaction: the window balance of the rate invariant
+# cancels and the impulse of the ramp equals the impulse the coarse side
+# receives, so the fine-step side can be the Dirichlet side, which the substep
+# constraint excludes (rate invariant conserved, impulse residual of the order
+# of the impulse). The beam with the free part subcycled 4:1 as the Dirichlet
+# side, 50 windows, Anderson acceleration on the datum and the reaction.
+@testset "Matching DN: Window-End Constraint on a Subcycled Dirichlet Side" begin
+    for explicit in (false, true)
+        sim, header, data = run_constrained_dn(
+            explicit;
+            free_substeps=4,
+            clamped_dirichlet=false,
+            relaxation="anderson",
+            edit_bc=bc -> (bc["matching at"] = "window end"),
+            edit_params=p -> (p["anderson depth"]=10; p["relaxation parameter"]=0.5),
+        )
+        @test !sim.failed
+        i_E = findfirst(==("total_energy"), header)
+        i_R = findfirst(==("rate_invariant_total"), header)
+        i_I = findfirst(startswith("impulse_residual_relative"), header)
+        E0, R0 = data[1][i_E], data[1][i_R]
+        @test maximum(abs(row[i_E] / E0 - 1.0) for row in data) ≤ 1.0e-2
+        @test maximum(abs(row[i_R] / R0 - 1.0) for row in data) ≤ 1.0e-10
+        @test maximum(row[i_I] for row in data[2:end]) ≤ 1.0e-12
+    end
+end
+
 # The Dirichlet role is the input's; at setup the code warns when it is
 # assigned against the role rules: the fine-step side as the Dirichlet side,
 # or, at equal steps and integrators, the side with fewer interface nodes.

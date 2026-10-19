@@ -322,6 +322,7 @@ const ANDERSON_STATE = IdDict{Any,AndersonState}()
 function reset_anderson_state!(controller)
     delete!(ANDERSON_STATE, controller)
     delete!(OVERLAP_ANDERSON_HISTORIES, controller)
+    delete!(OVERLAP_WINDOW_STEPS, controller)
     return nothing
 end
 
@@ -398,10 +399,64 @@ end
 # of the residual. Nothing when the interface is not relaxed by Anderson
 # acceleration at this iteration: not its relaxed side, an inactive contact
 # pair, a stop of several time slots, or no previous iterate yet.
+# Scale of the window-end reaction residual in the joint Anderson step of a
+# window-end-constrained side, set at its first step and kept for the run.
+const WINDOW_REACTION_SCALE = Dict{RelaxationKey,Float64}()
+
 # Anderson histories of the overlap matching interfaces of a controller, keyed
-# as the relaxation state is, and cleared with the Anderson state at every stop
+# as the relaxation state is and by field (1 the datum, 2 the window-end
+# reaction), and the iteration at which a window-end-constrained interface took
+# its joint step; both cleared with the Anderson state at every stop
 # (reset_anderson_state!).
-const OVERLAP_ANDERSON_HISTORIES = IdDict{Any,Dict{RelaxationKey,AndersonHistory}}()
+const OVERLAP_ANDERSON_HISTORIES = IdDict{Any,Dict{Tuple{RelaxationKey,Int},AndersonHistory}}()
+const OVERLAP_WINDOW_STEPS = IdDict{Any,Dict{RelaxationKey,Int}}()
+function overlap_anderson_histories(controller)
+    return get!(Dict{Tuple{RelaxationKey,Int},AndersonHistory}, OVERLAP_ANDERSON_HISTORIES, controller)
+end
+overlap_window_steps(controller) = get!(Dict{RelaxationKey,Int}, OVERLAP_WINDOW_STEPS, controller)
+
+# Joint Anderson step of a window-end-constrained overlap matching side at its
+# first interior substep of an iteration: on the datum of the window end and
+# on the window-end reaction that forms the ramp, with the reaction residual
+# scaled once per interface to the datum residual. The datum goes into the
+# slot of the window end, which the application at the end substep reads.
+function overlap_matching_window_step!(bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+    controller = bc.parent.controller
+    key = relaxation_key(bc)
+    iter = controller.iteration_number
+    get(overlap_window_steps(controller), key, -1) == iter && return nothing
+    isempty(bc.window_end_reaction) && return nothing
+    length(bc.window_end_reaction_raw) == length(bc.window_end_reaction) || return nothing
+    t_end = controller.time
+    slot_k = relaxation_slot!(controller, key, t_end)
+    relax_velocity = bc.constraint == :velocity
+    c_slots = relaxation_slots!(relax_velocity ? controller.lambda_velo : controller.lambda_disp, key)
+    ensure_slot!(c_slots, slot_k)
+    isempty(c_slots[slot_k]) && return nothing
+    disp, velo, _, _ = partner_fields(bc, t_end)
+    interp_c = relax_velocity ? velo : disp
+    λ_c_prev = c_slots[slot_k]
+    t = constrained_partner_trace(bc, interp_c) .- constrained_partner_trace(bc, λ_c_prev)
+    x_λ = bc.window_end_reaction
+    g_λ = bc.window_end_reaction_raw
+    t_λ = g_λ .- x_λ
+    scale = get!(WINDOW_REACTION_SCALE, key) do
+        n_t, n_λ = norm(t), norm(t_λ)
+        return n_t > 0.0 && n_λ > 0.0 ? n_t / n_λ : 1.0
+    end
+    histories = overlap_anderson_histories(controller)
+    entry = (
+        histories=[get!(AndersonHistory, histories, (key, 1)), get!(AndersonHistory, histories, (key, 2))],
+        xs=[λ_c_prev, x_λ],
+        gs=[interp_c, g_λ],
+        t=vcat(t, scale .* t_λ),
+    )
+    data = anderson_stacked_step!([entry], controller.relaxation_parameter, controller.anderson_depth)[1]
+    c_slots[slot_k] = copy(data[1])
+    bc.window_end_reaction = copy(data[2])
+    overlap_window_steps(controller)[key] = iter
+    return nothing
+end
 
 function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float64)
     controller = bc.parent.controller
@@ -425,7 +480,9 @@ function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
         g = with_partner_state(() -> robin_datum(self_subsim_of(bc).model, bc), bc, time)
         return (quantity=:robin, key=key, xs=[x], gs=[g], t=g .- x)
     end
-    disp, velo, acce, _ = partner_fields(bc, time)
+    # The datum of a single-slot interface is that of the window end, whatever
+    # the time of the application that triggered the step.
+    disp, velo, acce, _ = partner_fields(bc, controller.time)
     if is_constrained_dn(bc)
         relax_velocity = bc.constraint == :velocity
         slots = relax_velocity ? velo_slots : disp_slots
@@ -433,7 +490,23 @@ function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
         x = slots[1]
         g = relax_velocity ? velo : disp
         t = constrained_partner_trace(bc, g) .- constrained_partner_trace(bc, x)
-        return (quantity=relax_velocity ? :velocity : :displacement, key=key, xs=[x], gs=[g], t=t)
+        quantity = relax_velocity ? :velocity : :displacement
+        if bc.window_end_constraint &&
+            !isempty(bc.window_end_reaction) &&
+            length(bc.window_end_reaction_raw) == length(bc.window_end_reaction)
+            # Joint step on the datum and the window-end reaction: the residual
+            # of the reaction is scaled once per interface to the size of the
+            # datum's residual, so that both enter the least squares.
+            x_λ = bc.window_end_reaction
+            g_λ = bc.window_end_reaction_raw
+            t_λ = g_λ .- x_λ
+            scale = get!(WINDOW_REACTION_SCALE, key) do
+                n_t, n_λ = norm(t), norm(t_λ)
+                return n_t > 0.0 && n_λ > 0.0 ? n_t / n_λ : 1.0
+            end
+            return (quantity=quantity, key=key, xs=[x, x_λ], gs=[g, g_λ], t=vcat(t, scale .* t_λ))
+        end
+        return (quantity=quantity, key=key, xs=[x], gs=[g], t=t)
     end
     (isempty(disp_slots) || isempty(disp_slots[1])) && return nothing
     xs = [disp_slots[1], velo_slots[1], acce_slots[1]]
@@ -752,10 +825,13 @@ function compute_constrained_dn_projectors!(
     Δt_1 = dst_sim.integrator.time_step
     Δt_2 = src_sim.integrator.time_step
     if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
-        norma_abort(
-            "`Schwarz overlap matching` requires equal time steps, since both sides are constrained and " *
-            "each must take one step per window; subdomains '$(dst_sim.name)' and '$(src_sim.name)' " *
-            "use $(Δt_1) and $(Δt_2).",
+        fine_bc = Δt_1 < Δt_2 ? dst_bc : src_bc
+        fine_sim = Δt_1 < Δt_2 ? dst_sim : src_sim
+        fine_bc.window_end_constraint || norma_abort(
+            "`Schwarz overlap matching` with different time steps requires `matching at: window end` on the " *
+            "fine-step side ('$(fine_sim.name)', side set '$(fine_bc.name)'): both sides are constrained, " *
+            "and a side that takes several steps per window matches at the window end and carries the ramp " *
+            "of its own reaction at its interior substeps.",
         )
     end
     for (model, bc) in ((dst_model, dst_bc), (src_model, src_bc))
@@ -831,9 +907,9 @@ function compute_constrained_dn_projectors!(
     nested = pu_error_D_on_N <= NESTED_PARTITION_TOLERANCE
     B = nested ? B_on_N : B_on_D
     if dst_bc.is_dirichlet
-        warn_dirichlet_role(dst_sim, src_sim, dst_bc.name, src_bc.name, n1, n2)
+        warn_dirichlet_role(dst_sim, src_sim, dst_bc.name, src_bc.name, n1, n2; window_end=dst_bc.window_end_constraint)
     else
-        warn_dirichlet_role(src_sim, dst_sim, src_bc.name, dst_bc.name, n2, n1)
+        warn_dirichlet_role(src_sim, dst_sim, src_bc.name, dst_bc.name, n2, n1; window_end=src_bc.window_end_constraint)
     end
     P1 = dst_bc.square_factor \ B
     P2 = src_bc.square_factor \ Matrix(transpose(B))
@@ -870,13 +946,19 @@ end
 # the cube of the mesh ratio otherwise). The node count stands in for the
 # mesh size on the interface. The roles are not changed: they are the input's.
 function warn_dirichlet_role(
-    sim_D::SingleDomainSimulation, sim_N::SingleDomainSimulation, name_D::String, name_N::String, n_D::Int, n_N::Int
+    sim_D::SingleDomainSimulation,
+    sim_N::SingleDomainSimulation,
+    name_D::String,
+    name_N::String,
+    n_D::Int,
+    n_N::Int;
+    window_end::Bool=false,
 )
     Δt_D = sim_D.integrator.time_step
     Δt_N = sim_N.integrator.time_step
     pair = "Matching DN interface '$name_D'/'$name_N' ($(sim_D.name) is the Dirichlet side)"
     if !isapprox(Δt_D, Δt_N; rtol=1.0e-12)
-        if Δt_D < Δt_N
+        if Δt_D < Δt_N && !window_end
             norma_logf(
                 0,
                 :warn,
@@ -1448,6 +1530,8 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
     jv = ju = jv_rms = ju_rms = 0.0
     for (k, t) in enumerate(d_times)
         t > t_start + tol_t || continue
+        # A window-end-constrained side matches at the end of the window only.
+        bc.window_end_constraint && k < length(d_times) && continue
         v_N = interpolate(n_times, controller.velo_hist[n_id], t)
         u_N = interpolate(n_times, controller.disp_hist[n_id], t)
         r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], nodal(v_N)[:, n_map])
@@ -1501,8 +1585,13 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
     W_N_factor = n_bc.square_factor
     W_N_factor === nothing && return nan
     length(d_times) >= 2 || return nan
-    # Dirichlet side: reaction at each of its snapshots, trapezoid in time.
+    # Dirichlet side: reaction at each of its snapshots, trapezoid in time. A
+    # window-end-constrained side carries the ramp at its interior substeps.
     function reaction(k)
+        if bc.window_end_constraint && k < length(d_times)
+            # The ramp is the force on the rows; the reaction here is its negative.
+            return reshape(-window_ramp(bc, d_times[k]), 3, :)
+        end
         a_k = controller.acce_hist[d_id][k]
         r_global = -(controller.∂Ω_f_hist[d_id][k] + dalembert_inertia_minus_loads(d_model, a_k))
         return reshape(extract_local_vector(bc, r_global, 3), 3, :)
@@ -1690,6 +1779,10 @@ function coupling_weak_dbc(model::SolidMechanics, bc::SolidMechanicsConstrainedS
     # forms coincide because the L2 projection reproduces linear functions.
     # (Contact keeps position transfer: closure there is coincidence of the
     # CURRENT surfaces, see contact_weak_dbc.)
+    if interior_substep(bc)
+        apply_window_ramp!(model, bc)
+        return nothing
+    end
     _, nodal_disp, nodal_velo, nodal_acce = get_dst_curr_disp_velo_acce(bc)
     global_from_local_map = bc.global_from_local_map
     if bc.constrained && constrained_step_in_progress(bc)
@@ -1712,6 +1805,96 @@ end
 function constrained_step_in_progress(bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     integrator = self_subsim_of(bc).integrator
     return isfinite(integrator.prev_time) && integrator.time > integrator.prev_time
+end
+
+# True at an interior substep of the window of a side with `matching at:
+# window end`: the step in progress does not end at the controller's stop time.
+function interior_substep(bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
+    bc.window_end_constraint || return false
+    constrained_step_in_progress(bc) || return false
+    integrator = self_subsim_of(bc).integrator
+    stop_time = bc.parent.controller.time
+    return !isapprox(integrator.time, stop_time; rtol=1.0e-6, atol=1.0e-12)
+end
+
+# Reaction of a constrained side on its interface rows at its current state:
+# the rows of M a + f_int - f_body - f_boundary, in interleaved components of
+# the interface nodes.
+function window_reaction(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
+    length(model.internal_force) == length(model.displacement) || return Float64[]
+    r_global = model.internal_force + dalembert_inertia_minus_loads(model)
+    return extract_local_vector(bc, r_global, 3)
+end
+
+# Interface force of a window-end-constrained side at time t of the window:
+# the linear ramp between its window-start and window-end reactions.
+function window_ramp(bc::SolidMechanicsConstrainedSchwarzBoundaryCondition, t::Float64)
+    controller = bc.parent.controller
+    λ0 = bc.window_start_reaction
+    λ1 = isempty(bc.window_end_reaction) ? λ0 : bc.window_end_reaction
+    t0, t1 = controller.prev_time, controller.time
+    s = t1 > t0 ? clamp((t - t0) / (t1 - t0), 0.0, 1.0) : 1.0
+    return (1.0 - s) .* λ0 .+ s .* λ1
+end
+
+# Interior substep of a window-end-constrained side: its interface rows are
+# free and carry the ramp of its own window reaction as an applied force.
+function apply_window_ramp!(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
+    isempty(bc.window_start_reaction) && return nothing
+    force = window_ramp(bc, self_subsim_of(bc).integrator.time)
+    for (i_local, i_global) in enumerate(bc.global_from_local_map)
+        global_range = (3 * (i_global - 1) + 1):(3 * i_global)
+        local_range = (3 * (i_local - 1) + 1):(3 * i_local)
+        @inbounds model.boundary_force[global_range] += force[local_range]
+    end
+    return nothing
+end
+
+# Record the reaction of every window-end-constrained side of a subdomain at
+# the end of its pass over the window (subcycle), for the ramp of the next
+# Schwarz iteration and the window start of the next stop.
+function record_window_end_reactions!(subsim::SingleDomainSimulation)
+    model = subsim.model
+    model isa SolidMechanics || return nothing
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsConstrainedSchwarzBoundaryCondition && bc.window_end_constraint || continue
+        bc.is_dirichlet || continue
+        reaction = window_reaction(model, bc)
+        bc.window_end_reaction_raw = copy(reaction)
+        # The ramp of the next iteration is formed from the relaxed reaction:
+        # the interior substeps respond to the ramp and the end constraint
+        # undoes that response, a loop with a gain of about -(m - 1) for m
+        # substeps that the relaxation of the datum does not pass through.
+        # Under Anderson acceleration the reaction is a second field of the
+        # interface's entry and is set with the datum at the next iteration.
+        controller = bc.parent.controller
+        θ = controller.relaxation_parameter
+        anderson = controller.relaxation_method === :anderson
+        if !anderson && controller.iteration_number > 0 && length(bc.window_end_reaction) == length(reaction)
+            reaction = θ .* reaction .+ (1.0 - θ) .* bc.window_end_reaction
+        end
+        bc.window_end_reaction = reaction
+    end
+    return nothing
+end
+
+# At the start of a stop the converged reaction of the previous stop becomes
+# the window-start reaction; at the first stop it is the reaction of the
+# initial state after the coupled initial acceleration.
+function start_window_reactions!(sim::MultiDomainSimulation)
+    for subsim in sim.subsims
+        model = subsim.model
+        model isa SolidMechanics || continue
+        for bc in model.boundary_conditions
+            bc isa SolidMechanicsConstrainedSchwarzBoundaryCondition && bc.window_end_constraint || continue
+            bc.is_dirichlet || continue
+            if isempty(bc.window_end_reaction)
+                bc.window_end_reaction = window_reaction(model, bc)
+            end
+            bc.window_start_reaction = copy(bc.window_end_reaction)
+        end
+    end
+    return nothing
 end
 
 # Newmark parameters (β, γ) of a receiver; central difference is β = 0.
@@ -1941,7 +2124,28 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     # reaction (set_internal_force! above), which the kinematic blend below
     # never touches, so relaxation state kept there is dead — it would only
     # compute and log a spurious second θ per iteration.
-    if is_swappable_dn_schwarz(bc) && bc.is_dirichlet
+    relaxed_application = is_swappable_dn_schwarz(bc) && bc.is_dirichlet
+    if relaxed_application && is_constrained_dn(bc) && interior_substep(bc)
+        # An interior substep of a window-end-constrained side imposes no
+        # datum. Under Anderson acceleration the window-end reaction that
+        # forms its ramp is the second field of the interface's entry, set
+        # with the datum from the joint step of this iteration.
+        relaxed_application = false
+        key = relaxation_key(bc)
+        if controller.relaxation_method === :anderson &&
+            controller.iteration_number > 0 &&
+            aitken_applies(controller, key) &&
+            !isempty(relaxation_slots!(controller.lambda_velo, key)) &&
+            !isempty(relaxation_slots!(controller.lambda_velo, key)[1])
+            if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+                overlap_matching_window_step!(bc)
+            else
+                fields = anderson_data!(bc, time)
+                length(fields) >= 2 && (bc.window_end_reaction = copy(fields[2]))
+            end
+        end
+    end
+    if relaxed_application
         iter = controller.iteration_number
         # Per-substep-time relaxation slot (see relaxation_slot!): the previous
         # iterate must come from the previous Schwarz iteration at the SAME time. A
@@ -1993,17 +2197,20 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 # (Gauss-Seidel), so each side takes its own Anderson step at its
                 # application, on the partner data of the current iteration; the
                 # stacked step would read the second side's partner data before
-                # that partner solved.
-                histories = get!(Dict{RelaxationKey,AndersonHistory}, OVERLAP_ANDERSON_HISTORIES, controller)
-                history = get!(AndersonHistory, histories, key)
-                c_slots[slot_k] = anderson_step!(
-                    history,
-                    λ_c_prev,
-                    interp_c,
-                    trace_c .- trace_prev,
-                    controller.relaxation_parameter,
-                    controller.anderson_depth,
-                )
+                # that partner solved. A window-end-constrained side took its
+                # joint step at its first interior substep, and its slot holds
+                # the datum already.
+                if get(overlap_window_steps(controller), key, -1) != iter
+                    history = get!(AndersonHistory, overlap_anderson_histories(controller), (key, 1))
+                    c_slots[slot_k] = anderson_step!(
+                        history,
+                        λ_c_prev,
+                        interp_c,
+                        trace_c .- trace_prev,
+                        controller.relaxation_parameter,
+                        controller.anderson_depth,
+                    )
+                end
             elseif use_anderson
                 c_slots[slot_k] = copy(anderson_data!(bc, time)[1])
             else

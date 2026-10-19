@@ -20,16 +20,22 @@ using LinearAlgebra
 const overlap_matching_example = "../examples/overlap/dynamic-same-step/cantilever-matching"
 const overlap_conforming_example = "../examples/overlap/dynamic-same-step/cantilever-conforming"
 
-function run_overlap_matching(explicit::Bool, conforming::Bool; num_steps::Int=50)
+function run_overlap_matching(explicit::Bool, conforming::Bool; num_steps::Int=50, free_substeps::Int=1)
     meshes = conforming ? overlap_conforming_example : overlap_matching_example
     for name in ("cantilever-free", "cantilever-clamped")
         cp("$meshes/$name.g", "$name.g"; force=true)
         sub = YAML.load_file("$overlap_matching_example/$name.yaml"; dicttype=Norma.Parameters)
+        step = name == "cantilever-free" ? 1.0e-6 / free_substeps : 1.0e-6
         if explicit
             sub["time integrator"] = Norma.Parameters(
-                "type" => "central difference", "time step" => 1.0e-6, "CFL" => 1.0, "γ" => 0.5
+                "type" => "central difference", "time step" => step, "CFL" => 1.0, "γ" => 0.5
             )
             sub["solver"] = Norma.Parameters("type" => "explicit solver", "step" => "explicit")
+        else
+            sub["time integrator"]["time step"] = step
+        end
+        if free_substeps > 1 && name == "cantilever-free"
+            sub["boundary conditions"]["Schwarz overlap matching"][1]["matching at"] = "window end"
         end
         YAML.write_file("$name.yaml", sub)
     end
@@ -98,6 +104,24 @@ end
         iterations = [parse(Int, m.captures[1]) for m in eachmatch(r"Performed (\d+) Schwarz Iteration", out)]
         @test length(iterations) == 50
         @test maximum(iterations) ≤ 40
+    end
+end
+
+# Different time steps: the free part subcycled 4:1 with `matching at: window
+# end` on its boundary; the rate invariant is conserved to the stopping error
+# for both pairs.
+@testset "Schwarz Overlap Matching: Subcycled Free Part (window-end constraint)" begin
+    for explicit in (true, false)
+        sim, out, header, data = run_overlap_matching(explicit, true; free_substeps=4)
+        @test !sim.failed
+        i_E = findfirst(==("total_energy"), header)
+        i_R = findfirst(==("rate_invariant_total"), header)
+        E0, R0 = data[1][i_E], data[1][i_R]
+        @test maximum(abs(row[i_E] / E0 - 1.0) for row in data) ≤ 1.0e-2
+        @test maximum(abs(row[i_R] / R0 - 1.0) for row in data) ≤ 1.0e-9
+        iterations = [parse(Int, m.captures[1]) for m in eachmatch(r"Performed (\d+) Schwarz Iteration", out)]
+        @test length(iterations) == 50
+        @test maximum(iterations) ≤ 60
     end
 end
 

@@ -1803,6 +1803,7 @@ function save_stop_state(sim::MultiDomainSimulation)
     controller = sim.controller
     num_domains = sim.num_domains
     subsims = sim.subsims
+    start_window_reactions!(sim)
     if controller.use_interface_predictor
         for i in 1:num_domains
             if !isempty(controller.stop_disp[i])
@@ -1930,6 +1931,7 @@ function subcycle(sim::MultiDomainSimulation)
                 break
             end
         end
+        record_window_end_reactions!(subsim)
     end
     return nothing
 end

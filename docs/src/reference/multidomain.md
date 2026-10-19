@@ -280,7 +280,42 @@ current iteration. Both sides of the overlap must set the condition.
 |---|---|---|---|
 | `source block` | yes | — | partner element block that contains this side set |
 | `matching` | no | `velocity` | matched quantity, `velocity` or `displacement` |
+| `matching at` | no | `every substep` | `window end` on the fine-step side of a pair with different steps (below) |
 | `search tolerance` | no | `1.0e-6` | as for `Schwarz overlap` |
+
+**Different time steps (`matching at: window end`).** Both sides of the
+overlap matching coupling are constrained, so with different steps one
+constraint sits on the subcycled side. Constrained at every substep to the
+partner's interpolated velocity, that side is over-constrained in time, its
+substep reactions oscillate, and no single force on the coarse side is
+consistent with both the rate invariant (which pairs force increments) and
+the impulse (which pairs force averages): this is the arrangement the
+nonoverlap role rule excludes (rate invariant conserved, impulse residual of
+the order of the impulse, energy varying by its order). With `matching at:
+window end` the subcycled side imposes the matched velocity at the end of the
+window only; at its interior substeps its interface rows are free and carry
+the linear ramp in time between its reaction at the window start (the
+converged one of the previous stop) and at the window end (its last pass).
+The force increments of its substeps then add up to the change of its
+reaction and the window balance cancels, and the impulse of the ramp equals
+the impulse the coarse side receives: both conserved, as with the coarse-step
+side constrained. The interior substeps respond to the ramp and the end
+substep undoes that response, a loop with a gain of about −(m − 1) for m
+substeps that the relaxation of the datum does not pass through; under
+Anderson acceleration the window-end reaction is a second field of the
+interface's step (joint step on datum and reaction, the reaction residual
+scaled once per interface to the datum residual), and the iteration converges
+at two to four times the count of the coarse-step-constrained arrangement.
+Fixed relaxation damps the reaction with the same factor; 0.5 diverges. The
+same key applies to the Dirichlet side of a nonoverlap matching pair, which
+lifts role rule 1 (coarse-step side as the Dirichlet side) from a requirement
+to a preference for the iteration count. Measured on the beam, free part
+subcycled 4:1 as the constrained side, 1 ms, Anderson 0.5, 1e-12
+(~/Projects/Norma-Overlap-Energy/window-end-2026-10-19): nonoverlap EE
+13.5/17 iterations, δẼ 9e-14, impulse residual 2e-16, E within 1.1e-3; II
+24.8/41, δẼ 5e-12, impulse 2e-16, E within 4.0e-3; overlap EE 13.5/16
+(conforming) and 17.1/23 (1:0.75), δẼ ≤ 1e-11; overlap II 21.4/33 and
+23.5/36, δẼ 1.4e-10. Tests 136 and 140.
 
 Measured on the beam overlaps (example `cantilever-matching`, 1:0.75, and
 the conforming meshes) over 50 steps of 1 µs with Anderson acceleration at
@@ -317,6 +352,7 @@ every relaxation parameter; use Aitken relaxation
 | `default BC type` | no | `Dirichlet` | this side's role: `Dirichlet` or `Neumann` (the two sides must be opposite) |
 | `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles once per controller stop, before its Schwarz iteration |
 | `matching` | no | — | selects the matching exchange and its matched quantity, `velocity` or `displacement`: the Dirichlet side imposes the projected matched quantity of the Neumann side and derives the other two kinematic fields from its own Newmark relations, and the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides with the same value, and requires the top-level `matching relative tolerance`. Without it the pair uses the standard exchange, which imposes the projected displacement, velocity, and acceleration together. The keys `constrained` and `constraint`, which selected this exchange before October 2026, abort |
+| `matching at` | no | `every substep` | `window end`: a subcycled Dirichlet side matches at the window end only and carries the ramp of its own reaction at interior substeps (see `Schwarz overlap matching`) |
 | `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a pair with `matching: velocity` of two central difference subdomains at equal time steps, set on both sides |
 
 A matching pair sets `matching` on both sides and the controller file sets

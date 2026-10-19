@@ -199,6 +199,25 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
     # The same force at every substep of the current stop, with its time, for
     # the per-substep force residual of a subcycled constrained pair.
     transferred_force_history::Vector{Tuple{Float64,Vector{Float64}}}
+    # Input key `matching at: window end`: a subcycled Dirichlet side imposes
+    # the matched quantity at the end of the window only, and at its interior
+    # substeps its interface rows carry the linear ramp in time between its
+    # reactions at the two ends of the window (window_start_reaction, the
+    # converged reaction of the previous stop, and window_end_reaction, the
+    # reaction at the end of its last pass). The force increments of its
+    # substeps then add up to the change of its reaction and the window balance
+    # of the rate invariant cancels, and the impulse of the ramp equals the
+    # impulse the coarse side receives: a fine-step Dirichlet side conserves
+    # both, as the coarse-step Dirichlet side does. With `every substep` (the
+    # default) the matched quantity is imposed at every substep from the
+    # partner's interpolated history.
+    window_end_constraint::Bool
+    window_start_reaction::Vector{Float64}
+    # The window-end reaction that forms the ramp of the current iteration
+    # (relaxed or Anderson-accelerated) and the one measured at the end of
+    # the last pass.
+    window_end_reaction::Vector{Float64}
+    window_end_reaction_raw::Vector{Float64}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle
@@ -241,6 +260,12 @@ mutable struct SolidMechanicsOverlapMatchingSchwarzBoundaryCondition <:
     direct_solve::Bool
     transferred_force::Vector{Float64}
     transferred_force_history::Vector{Tuple{Float64,Vector{Float64}}}
+    # As for the nonoverlap condition: the fine-step side of an overlap matching
+    # pair with different steps must set `matching at: window end`.
+    window_end_constraint::Bool
+    window_start_reaction::Vector{Float64}
+    window_end_reaction::Vector{Float64}
+    window_end_reaction_raw::Vector{Float64}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle

@@ -372,6 +372,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     constrained::Bool=false,
     constraint::Symbol=:unset,
     direct_solve::Bool=false,
+    window_end_constraint::Bool=false,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -398,9 +399,24 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         direct_solve,
         Float64[],
         Tuple{Float64,Vector{Float64}}[],
+        window_end_constraint,
+        Float64[],
+        Float64[],
+        Float64[],
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,
+    )
+end
+
+# The value of `matching at`: `every substep` (default) or `window end`.
+function parse_window_end_constraint(bc_params::Parameters, side_set_name::String)
+    value = String(get(bc_params, "matching at", "every substep"))
+    value == "every substep" && return false
+    value == "window end" && return true
+    return norma_abort(
+        "Invalid `matching at: $(value)` on side set \"$(side_set_name)\". " *
+        "Valid values are `every substep` and `window end`.",
     )
 end
 
@@ -415,6 +431,7 @@ function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
     subsim::Simulation,
     coupled_subsim::Simulation,
     constraint::Symbol,
+    window_end_constraint::Bool,
 )
     local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
     empty = Matrix{Float64}(undef, 0, 0)
@@ -439,6 +456,10 @@ function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
         false,
         Float64[],
         Tuple{Float64,Vector{Float64}}[],
+        window_end_constraint,
+        Float64[],
+        Float64[],
+        Float64[],
         subsim.parent,
         subsim.handle,
         coupled_subsim.handle,
@@ -506,6 +527,7 @@ function SMCouplingSchwarzBC(
             subsim,
             coupled_subsim,
             constraint,
+            parse_window_end_constraint(bc_params, side_set_name),
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")
@@ -558,6 +580,10 @@ function SMCouplingSchwarzBC(
                 "`swap BC types: true`: the matching exchange keeps the Dirichlet side fixed.",
             )
         end
+        window_end_constraint = parse_window_end_constraint(bc_params, side_set_name)
+        if window_end_constraint && !constrained
+            norma_abort("`matching at: window end` on side set \"$(side_set_name)\" requires `matching`.")
+        end
         SolidMechanicsNonOverlapSchwarzBoundaryCondition(
             input_mesh,
             side_set_name,
@@ -572,6 +598,7 @@ function SMCouplingSchwarzBC(
             constrained,
             constraint,
             direct_solve,
+            window_end_constraint,
         )
     elseif bc_type == "Schwarz RR nonoverlap"
         # Classical Robin-Robin transmission condition t + α W u = g, with
