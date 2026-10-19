@@ -712,6 +712,14 @@ end
         @test maximum(abs(row[i_E] / E0 - 1.0) for row in data) ≤ 1.0e-2
         @test maximum(abs(row[i_R] / R0 - 1.0) for row in data) ≤ 1.0e-10
         @test maximum(row[i_I] for row in data[2:end]) ≤ 1.0e-12
+        # The criterion tests the end value of the ramp that the interior
+        # substeps applied against the reaction at the end of the window; in
+        # the last, converged window the two agree to the tolerance.
+        bc_D, _ = dn_bc_pair(sim)
+        @test bc_D.window_end_constraint
+        @test length(bc_D.window_ramp_end) == length(bc_D.window_end_reaction_raw)
+        r = bc_D.window_end_reaction_raw
+        @test norm(r - bc_D.window_ramp_end) ≤ 1.0e-10 * norm(r)
     end
 end
 

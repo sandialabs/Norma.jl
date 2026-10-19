@@ -218,6 +218,10 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
     # the last pass.
     window_end_reaction::Vector{Float64}
     window_end_reaction_raw::Vector{Float64}
+    # The end value of the ramp that the interior substeps of the current
+    # iteration applied; the stopping criterion compares it with the
+    # reaction measured at the end of the window.
+    window_ramp_end::Vector{Float64}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle
@@ -266,6 +270,10 @@ mutable struct SolidMechanicsOverlapMatchingSchwarzBoundaryCondition <:
     window_start_reaction::Vector{Float64}
     window_end_reaction::Vector{Float64}
     window_end_reaction_raw::Vector{Float64}
+    # The end value of the ramp that the interior substeps of the current
+    # iteration applied; the stopping criterion compares it with the
+    # reaction measured at the end of the window.
+    window_ramp_end::Vector{Float64}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle

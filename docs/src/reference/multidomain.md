@@ -307,7 +307,7 @@ Anderson acceleration the window-end reaction is a second field of the
 interface's step (joint step on datum and reaction, the reaction residual
 scaled once per interface to the datum residual), and the iteration converges
 at two to four times the count of the coarse-step-constrained arrangement.
-Fixed relaxation damps the reaction with the same factor: 0.5 and 0.25 diverge, and 0.1 reaches 4e-12 but not 1e-12 within 256 iterations on the first stop, so Anderson acceleration is the method for this constraint. The
+Fixed relaxation damps the reaction with the same factor: 0.5 and 0.25 diverge, and 0.1 reaches 4e-12 but not 1e-12 within 256 iterations on the first stop, so Anderson acceleration is the method for this constraint. The stopping criterion measures the jump at the window end only and adds to the force residual the difference between the reaction at the window end and the end value of the ramp that the interior substeps applied, in the W⁻¹ norm of the constrained side relative to the reaction: the window balance of the rate invariant contains that difference, so a window is converged only when it is at the tolerance. At mesh ratio 1:0.5 with the fine-mesh, fine-step side constrained, an intermediate iterate inverted an element with mixing 0.5 for both pairs and with 0.25 for the implicit pair (October 19, 2026). The
 same key applies to the Dirichlet side of a nonoverlap matching pair, which
 lifts role rule 1 (coarse-step side as the Dirichlet side) from a requirement
 to a preference for the iteration count. Measured on the beam, free part
