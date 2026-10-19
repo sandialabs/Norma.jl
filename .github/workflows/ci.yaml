@@ -93,12 +93,13 @@ jobs:
       # explicitly here so its shared deps.jl is configured against `python`
       # rather than falling back to the Conda backend (which isn't provisioned).
       # This also overrides any Conda-configured deps.jl restored from cache.
-      # Automatic precompilation is disabled for the add: Conda's module body
-      # requires its root environment directory, which only its build script
-      # creates, so precompiling before the build fails with a spurious error.
-      # The test step precompiles everything afterwards.
+      # Conda's module body requires its root environment directory, which
+      # only Conda's build script creates and which the cache does not keep,
+      # so Conda is built first, before the PyCall build loads it, with
+      # automatic precompilation disabled until then. The test step
+      # precompiles everything afterwards.
       - name: Build PyCall against the system Python
-        run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("PyCall"); Pkg.build("PyCall")'
+        run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("Conda"); Pkg.build("Conda"); Pkg.add("PyCall"); Pkg.build("PyCall")'
         env:
           PYTHON: python
           JULIA_PKG_PRECOMPILE_AUTO: 0
@@ -135,10 +136,10 @@ jobs:
       # Same as in the test jobs: Conda's module body requires its root
       # environment directory, which the cache does not keep and only Conda's
       # build script creates, so a PyCall build inside Pkg.test fails on the
-      # precompilation of Conda. Build PyCall here, with automatic
-      # precompilation disabled, against the runner's Python.
+      # precompilation of Conda. Build Conda and then PyCall here, with
+      # automatic precompilation disabled, against the runner's Python.
       - name: Build PyCall against the system Python
-        run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("PyCall"); Pkg.build("PyCall")'
+        run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("Conda"); Pkg.build("Conda"); Pkg.add("PyCall"); Pkg.build("PyCall")'
         env:
           PYTHON: python3
           JULIA_PKG_PRECOMPILE_AUTO: 0
