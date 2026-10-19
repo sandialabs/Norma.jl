@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A periodic polycrystal of 3 grains in the unit cube, meshed coarsely
+     with tetrahedra, for test/periodic.jl. With MicroStructPy at commit
+     46c3179 of its develop branch (github.com/kip-hart/MicroStructPy),
+         microstructpy periodic-polycrystal.xml
+     writes periodic-polycrystal/trimesh.txt, which is periodic-trimesh.txt. -->
+<input>
+    <material>
+        <name> grains </name>
+        <shape> sphere </shape>
+        <size>
+            <dist_type> uniform </dist_type>
+            <loc> 0.85 </loc>
+            <scale> 0.05 </scale>
+        </size>
+    </material>
+
+    <domain>
+        <shape> cube </shape>
+        <side_length> 1 </side_length>
+        <corner> (0, 0, 0) </corner>
+        <periodic> xyz </periodic>
+    </domain>
+
+    <settings>
+        <directory> periodic-polycrystal </directory>
+        <verbose> False </verbose>
+        <rng_seeds>
+            <size> 1 </size>
+            <position> 1 </position>
+        </rng_seeds>
+        <periodic_margin> auto </periodic_margin>
+        <edge_opt> True </edge_opt>
+        <edge_opt_n_iter> 10 </edge_opt_n_iter>
+        <mesh_min_angle> 10 </mesh_min_angle>
+        <mesh_max_volume> 0.1 </mesh_max_volume>
+        <plot_axes> False </plot_axes>
+        <filetypes>
+            <seeds> txt </seeds>
+            <poly> txt </poly>
+            <tri> txt </tri>
+        </filetypes>
+    </settings>
+</input>

@@ -139,7 +139,7 @@ function create_displacement(expression::String, mesh::ExodusDatabase, side_set_
     return displacements
 end
 
-# Polycrystals (polycrystal.jl).
+# Polycrystals (polycrystal.jl and periodic.jl).
 using Random
 using Statistics
 
