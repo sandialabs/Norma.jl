@@ -4,29 +4,84 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
+# The composite tetrahedron's values vanish at points of its rules where some
+# shape functions are zero: with the 5-point rule every point lies where the
+# corner functions vanish, so a quadrature over the block's own points would
+# give the corner nodes neither mass nor load, and with 4 or 5 points the
+# element mass from those points has rank 4 of 10. Its recovery therefore
+# uses the exact mass on the sub-tetrahedra, and loads a field given at the
+# integration points through the function linear over the parent tetrahedron
+# that fits the point values (exactly with 4 points, by least squares with 5
+# or 14). The composite space contains the linear functions, so that function
+# is integrated exactly against the shape functions by the element mass:
+# b = M_e Λ_nodes Λ_points⁺ f, and a constant or linear field is recovered
+# exactly with every rule.
+
+# Nodal values at the 10 nodes of the linear fit of values at the integration
+# points: a 10 × G matrix.
+function composite_tetra10_point_fit(num_points::Integer)
+    _, _, _, ξ = composite_tetra10(Val(num_points))
+    barycentric(p) = (1.0 - p[1] - p[2] - p[3], p[1], p[2], p[3])
+    Λ_points = [barycentric(ξ[:, q])[k] for q in 1:num_points, k in 1:4]
+    Λ_nodes = [barycentric(COMPOSITE_TETRA10_POINTS[:, a])[k] for a in 1:10, k in 1:4]
+    return Λ_nodes * pinv(Λ_points)
+end
+
+# The density-free mass of one composite tetrahedron, exact on its
+# sub-tetrahedra (composite_tetra10_mass_rule).
+function composite_tetra10_element_mass(element_reference_position::AbstractMatrix{Float64}, rule)
+    N, dN, w, _ = rule
+    M = zeros(10, 10)
+    for p in eachindex(w)
+        dvol = det(SMatrix{3,3,Float64,9}(dN[:, :, p] * element_reference_position')) * w[p]
+        Np = N[:, p]
+        @inbounds for j in 1:10, i in 1:10
+            M[i, j] += Np[i] * Np[j] * dvol
+        end
+    end
+    return M
+end
+
+# The load of the integration point values onto the nodes of one composite
+# tetrahedron: b = G f with G = M_e P (10 × G), P from composite_tetra10_point_fit.
+function composite_tetra10_point_load(element_reference_position, fit, rule)
+    return composite_tetra10_element_mass(element_reference_position, rule) * fit
+end
+
 # Geometry-only scalar lumped mass for L2 projection of QP fields to nodes:
 #   m_i = Σ_e Σ_q N_i(ξ_q) w_q |J(ξ_q)|
 # Density-free by design — the same projection works regardless of material
 # density per block, which matters for multi-material problems.
 function build_recovery_mass_lumped(
-    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}, element_types::Vector{ElementType}
 )::Vector{Float64}
     n_nodes = size(reference, 2)
     m = zeros(Float64, n_nodes)
     blocks = Exodus.read_sets(input_mesh, Block)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        # The block's own integration points, as for the right-hand sides, so
+        # that a constant field is recovered exactly.
+        element_type = element_types[block_index]
         num_points = num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
+        composite = element_type == COMPOSITE_TETRA10
+        rule = composite ? composite_tetra10_mass_rule() : nothing
         for block_element_index in 1:num_block_elements
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
             element_reference_position = reference[:, node_indices]
+            if composite
+                # The row sums of the exact mass, positive at every node.
+                M_e = composite_tetra10_element_mass(element_reference_position, rule)
+                @inbounds for i in 1:num_element_nodes
+                    m[node_indices[i]] += sum(@view M_e[i, :])
+                end
+                continue
+            end
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
@@ -42,16 +97,14 @@ function build_recovery_mass_lumped(
 end
 
 function build_recovery_mass_consistent(
-    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}, element_types::Vector{ElementType}
 )::SparseMatrixCSC{Float64,Int64}
     n_nodes = size(reference, 2)
     blocks = Exodus.read_sets(input_mesh, Block)
     nnz_estimate = 0
-    for block in blocks
+    for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
-        _, num_element_nodes = get_element_dim_nodes(element_type)
+        _, num_element_nodes = get_element_dim_nodes(element_types[block_index])
         num_block_elements = size(get_block_connectivity(input_mesh, block_id), 1)
         nnz_estimate += num_block_elements * num_element_nodes * num_element_nodes
     end
@@ -61,20 +114,26 @@ function build_recovery_mass_consistent(
     idx = 0
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        # The block's own integration points, as for the right-hand sides, so
+        # that a constant field is recovered exactly.
+        element_type = element_types[block_index]
         num_points = num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
         M_e = Matrix{Float64}(undef, num_element_nodes, num_element_nodes)
+        composite = element_type == COMPOSITE_TETRA10
+        rule = composite ? composite_tetra10_mass_rule() : nothing
         for block_element_index in 1:num_block_elements
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
             element_reference_position = reference[:, node_indices]
             fill!(M_e, 0.0)
-            for point in 1:num_points
+            if composite
+                M_e .= composite_tetra10_element_mass(element_reference_position, rule)
+            end
+            for point in 1:(composite ? 0 : num_points)
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
                 dXdξ = SMatrix{3,3,Float64,9}(dNdξ * element_reference_position')
@@ -105,9 +164,9 @@ end
 # higher-order quadrature) yield a zero recovered value there rather than
 # aborting the run.
 function _build_lumped_recovery(
-    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}, element_types::Vector{ElementType}
 )::LumpedRecovery
-    m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts)
+    m = build_recovery_mass_lumped(input_mesh, reference, num_int_pts, element_types)
     inv_m = zeros(Float64, length(m))
     @inbounds for i in eachindex(m)
         m[i] > 0.0 && (inv_m[i] = 1.0 / m[i])
@@ -118,25 +177,29 @@ end
 # Consistent recovery operator: cache a Cholesky factorization of the SPD
 # consistent mass matrix for per-component back-substitution at output time.
 function _build_consistent_recovery(
-    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+    input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}, element_types::Vector{ElementType}
 )::ConsistentRecovery
-    M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts)
+    M = build_recovery_mass_consistent(input_mesh, reference, num_int_pts, element_types)
     return ConsistentRecovery(M, cholesky(Symmetric(M)))
 end
 
 function build_recovery_data(
-    kind::Symbol, input_mesh::ExodusDatabase, reference::Matrix{Float64}, num_int_pts::Vector{Int}
+    kind::Symbol,
+    input_mesh::ExodusDatabase,
+    reference::Matrix{Float64},
+    num_int_pts::Vector{Int},
+    element_types::Vector{ElementType},
 )::AbstractRecoveryData
     if kind === :none
         return NoRecovery()
     elseif kind === :lumped
-        return _build_lumped_recovery(input_mesh, reference, num_int_pts)
+        return _build_lumped_recovery(input_mesh, reference, num_int_pts, element_types)
     elseif kind === :consistent
-        return _build_consistent_recovery(input_mesh, reference, num_int_pts)
+        return _build_consistent_recovery(input_mesh, reference, num_int_pts, element_types)
     elseif kind === :both
         return BothRecovery(
-            _build_lumped_recovery(input_mesh, reference, num_int_pts),
-            _build_consistent_recovery(input_mesh, reference, num_int_pts),
+            _build_lumped_recovery(input_mesh, reference, num_int_pts, element_types),
+            _build_consistent_recovery(input_mesh, reference, num_int_pts, element_types),
         )
     else
         norma_abort("Unknown nodal recovery method: '$kind' (expected :none, :lumped, :consistent, or :both)")
@@ -260,19 +323,22 @@ function _assemble_l2_rhs_stress!(nodal::Matrix{Float64}, model::SolidMechanics)
     blocks = Exodus.read_sets(input_mesh, Block)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        element_type = model.blocks[block_index].element_type
         num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
         block_stress = model.stress[block_index]
+        composite = element_type == COMPOSITE_TETRA10
+        fit, rule =
+            composite ? (composite_tetra10_point_fit(num_points), composite_tetra10_mass_rule()) : (nothing, nothing)
         for block_element_index in 1:num_block_elements
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
             element_reference_position = model.reference[:, node_indices]
             element_stress = block_stress[block_element_index]
+            G = composite ? composite_tetra10_point_load(element_reference_position, fit, rule) : nothing
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
@@ -281,7 +347,7 @@ function _assemble_l2_rhs_stress!(nodal::Matrix{Float64}, model::SolidMechanics)
                 qp_stress = element_stress[point]
                 @inbounds for i in 1:num_element_nodes
                     n = node_indices[i]
-                    NiJxW = Np[i] * dvol
+                    NiJxW = composite ? G[i, point] : Np[i] * dvol
                     for c in 1:6
                         nodal[c, n] += NiJxW * qp_stress[c]
                     end
@@ -309,19 +375,22 @@ function _assemble_l2_rhs_internal_variables!(
         end
         any(>(0), block_iv_local) || continue
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        element_type = model.blocks[block_index].element_type
         num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
         block_state = model.state[block_index]
+        composite = element_type == COMPOSITE_TETRA10
+        fit, rule =
+            composite ? (composite_tetra10_point_fit(num_points), composite_tetra10_mass_rule()) : (nothing, nothing)
         for block_element_index in 1:num_block_elements
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
             element_reference_position = model.reference[:, node_indices]
             element_state = block_state[block_element_index]
+            G = composite ? composite_tetra10_point_load(element_reference_position, fit, rule) : nothing
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
@@ -330,7 +399,7 @@ function _assemble_l2_rhs_internal_variables!(
                 qp_state = element_state[point]
                 @inbounds for i in 1:num_element_nodes
                     n = node_indices[i]
-                    NiJxW = Np[i] * dvol
+                    NiJxW = composite ? G[i, point] : Np[i] * dvol
                     for k in 1:n_iv
                         local_idx = block_iv_local[k]
                         local_idx == 0 && continue
@@ -352,19 +421,22 @@ function _assemble_l2_rhs_von_mises!(nodal::Matrix{Float64}, model::SolidMechani
     blocks = Exodus.read_sets(input_mesh, Block)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        element_type = model.blocks[block_index].element_type
         num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
         block_stress = model.stress[block_index]
+        composite = element_type == COMPOSITE_TETRA10
+        fit, rule =
+            composite ? (composite_tetra10_point_fit(num_points), composite_tetra10_mass_rule()) : (nothing, nothing)
         for block_element_index in 1:num_block_elements
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
             element_reference_position = model.reference[:, node_indices]
             element_stress = block_stress[block_element_index]
+            G = composite ? composite_tetra10_point_load(element_reference_position, fit, rule) : nothing
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
@@ -373,7 +445,7 @@ function _assemble_l2_rhs_von_mises!(nodal::Matrix{Float64}, model::SolidMechani
                 σ = element_stress[point]   # Voigt: xx, yy, zz, yz, xz, xy
                 σ_vm = von_mises_from_voigt(σ)
                 @inbounds for i in 1:num_element_nodes
-                    nodal[1, node_indices[i]] += Np[i] * dvol * σ_vm
+                    nodal[1, node_indices[i]] += (composite ? G[i, point] : Np[i] * dvol) * σ_vm
                 end
             end
         end
@@ -386,18 +458,21 @@ function _assemble_l2_rhs_deformation_gradient!(nodal::Matrix{Float64}, model::S
     blocks = Exodus.read_sets(input_mesh, Block)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        element_type = model.blocks[block_index].element_type
         num_points = model.num_int_pts[block_index]
         N, dN, ip_weights = isoparametric(element_type, num_points)
         element_block_connectivity = get_block_connectivity(input_mesh, block_id)
         num_block_elements, num_element_nodes = size(element_block_connectivity)
+        composite = element_type == COMPOSITE_TETRA10
+        fit, rule =
+            composite ? (composite_tetra10_point_fit(num_points), composite_tetra10_mass_rule()) : (nothing, nothing)
         for block_element_index in 1:num_block_elements
             connectivity_indices =
                 ((block_element_index - 1) * num_element_nodes + 1):(block_element_index * num_element_nodes)
             node_indices = element_block_connectivity[connectivity_indices]
             element_reference_position = model.reference[:, node_indices]
             element_current_position = element_reference_position + model.displacement[:, node_indices]
+            G = composite ? composite_tetra10_point_load(element_reference_position, fit, rule) : nothing
             for point in 1:num_points
                 Np = N[:, point]
                 dNdξ = dN[:, :, point]
@@ -408,7 +483,7 @@ function _assemble_l2_rhs_deformation_gradient!(nodal::Matrix{Float64}, model::S
                 F = SMatrix{3,3,Float64,9}(element_current_position * dNdX')
                 @inbounds for i in 1:num_element_nodes
                     n = node_indices[i]
-                    NiJxW = Np[i] * dvol
+                    NiJxW = composite ? G[i, point] : Np[i] * dvol
                     # Column-major flattening: F[1,1], F[2,1], F[3,1], F[1,2], ...
                     for col in 1:3
                         base = 3 * (col - 1)

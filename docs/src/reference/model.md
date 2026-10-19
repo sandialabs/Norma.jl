@@ -46,6 +46,137 @@ model:
     ...
 ```
 
+## Composite tet 10
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `composite tet 10` | no | `false` | `true` for every TETRA10 block, or a list of block names (or a map of block names to booleans): those blocks use the composite 10-node tetrahedron |
+
+The composite tetrahedron is LCM's element for `Use Composite Tet 10: true`,
+as Intrepid2's `Basis_HGRAD_TET_COMP12_FEM` implements it. That is the base
+formulation of J. T. Ostien, J. W. Foulk, A. Mota and M. G. Veilleux, "A
+10-node composite tetrahedral finite element for solid mechanics", IJNME
+107:1145–1170, 2016 (doi:10.1002/nme.5218). J. W. Foulk III, J. T. Ostien,
+B. Talamini, M. R. Tupek, N. K. Crane, A. Mota and M. G. Veilleux extend it in
+"Extending a 10-node composite tetrahedral finite element for solid
+mechanics", IJNME 122:3845–3875, 2021 (doi:10.1002/nme.6684).
+[Differences from the papers](#Differences-from-the-papers) lists where
+Norma departs from them, mostly as LCM does. It runs on a TETRA10 mesh. `true` on a mesh without TETRA10 blocks switches nothing, with a
+warning, and the values of a map of block names must be `true` or `false`. A
+composite block and a standard TETRA10 block that share a face do not
+conform: on a face the composite functions are piecewise linear on its four
+sub-triangles and the standard ones quadratic, so only a linear displacement
+is continuous across it. A connected mesh should use one of the two.
+
+- **Shape functions.** The tetrahedron is split into 12 sub-tetrahedra:
+  - the 4 corner tetrahedra of its regular refinement;
+  - the 8 cones from its centroid over the faces of the inner octahedron.
+
+  The shape functions are piecewise linear on them. At the centroid, those of
+  the edge nodes are 1/6 and those of the corner nodes are 0.
+- **Gradients.** The deformation gradient, the internal force and the tangent
+  use the gradients' L2 projection onto linear polynomials over the parent
+  tetrahedron, as LCM does: the closed form of the 2016 paper (§3.2.1),
+  which assumes edge nodes at the midpoints. That is an assumed deformation
+  gradient, linear over a straight-sided element.
+- **Integration points.** The block uses the integration points of the
+  parent tetrahedron. The default is the 4-point rule, which is the rule of
+  the paper and LCM's `Cubature Degree: 2`. `num integration points` may
+  choose 5 (LCM's default, degree 3, with a negative centroid weight) or 14.
+- **Mass.** The mass is integrated exactly on the sub-tetrahedra, as in the
+  2021 paper (eq. 50).
+  - On a straight-sided tetrahedron, the consistent mass is LCM's analytic
+    composite tet mass (`Use Analytic Mass`): V ρ / 1440 times a sparse
+    matrix. On a curved one, the two differ.
+  - The lumped mass is its row sums: on a straight-sided tetrahedron,
+    V ρ (3, 14) / 96 at the corner and edge nodes, LCM's `Lump Analytic Mass`.
+    It is positive, unlike the row sums of the quadratic TETRA10, so explicit
+    dynamics can use it.
+  - The explicit stable step uses the same estimate as the other elements,
+    CFL · h / c, with h computed from all 10 nodes.
+  - For a single element, the critical step is 0.13 to 0.38 h/c over the
+    shapes tried, against 0.16 to 0.45 for a TETRA4 of the same shape.
+- **Interpolation.** Nodal recovery, field transfer, Schwarz coupling and the
+  search for a point in the mesh all use the composite shape functions.
+  - A transfer onto composite blocks integrates the nodal source with the
+    exact mass rule. With consistent recovery, it is the L2 projection onto
+    the composite space, so a field of that space comes back unchanged.
+  - A point lies in a composite element only when it lies in one of its
+    sub-tetrahedra. The standard tetrahedra also accept points beyond some of
+    their faces and extrapolate to them; the composite tet does not, so a
+    point outside a composite mesh, such as a Schwarz boundary node beyond its
+    surface, is not found.
+  - The overlap matching coupling rejects composite blocks: it weights the
+    volume element at the integration points, which the exact mass rule does
+    not use.
+- **Faces.** Neumann and Robin conditions, and the non-overlapping Schwarz
+  coupling, integrate over the faces with the quadratic TRI6 shape functions,
+  as LCM does for its Neumann conditions. These are not the composite
+  element's face functions, so the nodal loads are not consistent with the
+  element: under a uniform traction, the stress in the elements at the loaded
+  face is off by about half of the traction, at every mesh size. The total
+  force is right on straight faces, and prescribed displacements are not
+  affected.
+- **Patch test.** An affine displacement is reproduced exactly on distorted
+  straight-sided tetrahedra.
+  - On curved tetrahedra (edge nodes off the chords), the projected
+    gradients are not those of the geometry, so the patch test holds only in
+    the limit. On a warped cube, the stress error halves with the element
+    size. The operator of the 2021 paper passes it; Norma, like LCM, keeps
+    that of the 2016 paper.
+  - The standard TETRA10 passes it on the same mesh.
+- **Accuracy.** On a thick-walled cylinder, the displacement converges at
+  second order.
+  - As ν → 1/2 on a fixed mesh, the element partially locks, as both papers
+    report for this formulation: with 4 elements through the wall, its error
+    grows from 0.008 of the inner displacement at ν = 0.3 to 0.26 at
+    ν = 0.499999. Norma has neither paper's remedy.
+  - The TETRA4's error grows without bound on the same mesh (9.7 at
+    ν = 0.499999).
+  - The error of the quadratic TETRA10 grows too, to 0.064, about 4 times
+    less, on this displacement-driven problem.
+
+`test/composite-tet10-lcm.jl` and `test/lcm-rubiks-cube.jl` compare it with
+LCM on these cases:
+- LCM's ClampedSDBC1DCt test and a Neohookean cylinder of curved elements,
+  which agree to round-off;
+- LCM's ProjectTet10 gold, which agrees to LCM's residual tolerance (1e-10),
+  and its nodal projection of a linear field;
+- the crystal-plasticity RubiksCube cut into TETRA10, whose stresses, slips
+  and Fp agree to about 2e-8, as on the hexahedral RubiksCube.
+
+LCM's implicit Newmark (Tempus d-form) starts from a zero acceleration,
+whereas Norma solves for the initial acceleration. Implicit dynamic runs
+therefore differ by that start, unless the initial state is in equilibrium.
+
+```yaml
+model:
+  type: solid mechanics
+  composite tet 10: [grain_1, grain_2]
+  material:
+    ...
+```
+
+### Differences from the papers
+
+!!! warning "Loads on composite faces"
+    Tractions, pressures, Robin conditions and the non-overlapping Schwarz
+    coupling load composite blocks through TRI6 face functions, as LCM does.
+    The stress in the elements at a loaded face is then wrong by a fraction of
+    order one (about half of a uniform traction), and refining the mesh does
+    not reduce it. Conditions on the displacement do not have this error.
+
+Norma's composite tet 10 is LCM's. It departs from the papers where LCM
+does, and in one place from LCM:
+
+| | The papers | Norma | LCM |
+|---|---|---|---|
+| Face loads | The element's own face functions, piecewise linear on four sub-triangles (2016, eq. 17) | TRI6 face functions (see above) | As Norma |
+| Curved elements | The projection of the true gradients, weighted by the sub-tetrahedra Jacobians, and integration weights from a composite Jacobian (2021, §3.2 and §3.4), which pass the patch test on curved elements | The closed form of 2016 (§3.2.1), which assumes edge nodes at the midpoints: on a curved element, F̄ is not linear and the patch test holds only in the limit | As Norma |
+| Near incompressibility | The volume-averaged F̄* and p̄* (2016, §3.4); a five-field functional with a stabilization (2021, §3.6–3.7) | Neither: the element partially locks as ν → 1/2 | F̄* and p̄* as the block options `Weighted Volume Average J` and `Volume Average Pressure` |
+| Stress with 5 or 14 points | The projected stress P̄ (2016, eqs. 37–40, for 4 and 5 points) | The stress of F̄ at each point. The nodal forces are the same, and with 4 points so is the stress | As Norma |
+| Mass on curved elements | Exact on the sub-tetrahedra (2021, eq. 50) | As the 2021 paper | The straight-sided matrix scaled by the element volume, a few percent off on a curved element |
+
 ## Nodal recovery
 
 Optional. Enables L2-projection recovery of element quantities to the nodes for
@@ -348,6 +479,7 @@ See `examples/ems/` for smoothing cases.
 ## Canonical examples
 
 - Basic model/material block: `examples/single/static-solid`
+- Composite tet 10: `examples/element-types/composite-tet10/cube/cube.yaml`
 - Mesh smoothing: `examples/ems/cube/cube.yaml`
 - Anisotropic smoothing: `examples/ems/tube/tube-metric.yaml`
 - Metric given as a tensor: `examples/ems/cube/cube-tensor.yaml`

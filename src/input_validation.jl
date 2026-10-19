@@ -169,6 +169,7 @@ const MODEL_KEYS = Set([
     "type",
     "material",
     "num integration points",
+    "composite tet 10",
     "smooth reference",
     "size field",
     "metric field",

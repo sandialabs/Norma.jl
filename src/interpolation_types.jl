@@ -12,4 +12,9 @@
     TETRA4
     TETRA10
     HEX8
+    # The 10-node composite tetrahedron of LCM (`Use Composite Tet 10`): a
+    # TETRA10 mesh block whose interpolation is piecewise linear on 12
+    # sub-tetrahedra. It is never read from a mesh; a block is switched to it
+    # with the `composite tet 10` model key.
+    COMPOSITE_TETRA10
 end

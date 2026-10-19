@@ -303,9 +303,12 @@ function _stress_recovery_criterion_met(c::StressRecoverySwapCriterion, model::S
             return (rec.lumped, rec.consistent)
         end
         norma_log(1, :swap, "StressRecoverySwapCriterion: building lumped and consistent recovery data")
-        new_lumped = build_recovery_data(:lumped, model.mesh, model.reference, model.num_int_pts)::LumpedRecovery
-        new_consistent =
-            build_recovery_data(:consistent, model.mesh, model.reference, model.num_int_pts)::ConsistentRecovery
+        new_lumped = build_recovery_data(
+            :lumped, model.mesh, model.reference, model.num_int_pts, block_element_types(model)
+        )::LumpedRecovery
+        new_consistent = build_recovery_data(
+            :consistent, model.mesh, model.reference, model.num_int_pts, block_element_types(model)
+        )::ConsistentRecovery
         return (new_lumped, new_consistent)
     end
     difference = _recovered_stress_difference(lumped, consistent, model)
@@ -964,7 +967,9 @@ end
 function _ensure_recovery_for_swap!(model::SolidMechanics)
     if model.recovery_data isa NoRecovery
         norma_log(0, :swap, "Building consistent recovery on demand for state transfer")
-        model.recovery_data = build_recovery_data(:consistent, model.mesh, model.reference, model.num_int_pts)
+        model.recovery_data = build_recovery_data(
+            :consistent, model.mesh, model.reference, model.num_int_pts, block_element_types(model)
+        )
     end
     return nothing
 end

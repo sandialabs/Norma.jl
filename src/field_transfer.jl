@@ -10,6 +10,10 @@
 # located via find_point_in_mesh (looping src blocks), the source field is
 # interpolated at the recovered parametric coordinates, and the result is
 # L2-projected onto the destination basis using dst_model.recovery_data.
+# A composite tet 10 destination integrates the load with the exact mass rule
+# on its sub-tetrahedra instead of its own points, so that, with the exact
+# mass of its consistent recovery, the transfer is the L2 projection onto the
+# composite space: a field of that space comes back unchanged.
 function transfer_field(
     src_model::SolidMechanics,
     src_nodal_field::AbstractMatrix{Float64},
@@ -31,8 +35,7 @@ function transfer_field(
 
     src_element_types = Dict{Int,ElementType}()
     for bid in src_block_ids
-        et_str = Exodus.read_block_parameters(src_model.mesh, Int32(bid))[1]
-        src_element_types[bid] = element_type_from_string(et_str)
+        src_element_types[bid] = block_element_type(src_model, bid)
     end
 
     dst_mesh = dst_model.mesh
@@ -40,12 +43,17 @@ function transfer_field(
     point_buf = Vector{Float64}(undef, 3)
     for (dst_block_index, dst_block) in enumerate(dst_blocks)
         dst_block_id = dst_block.id
-        dst_et_str = Exodus.read_block_parameters(dst_mesh, dst_block_id)[1]
-        dst_et = element_type_from_string(dst_et_str)
+        dst_et = dst_model.blocks[dst_block_index].element_type
         dst_npts = dst_model.num_int_pts[dst_block_index]
         N_dst, dN_dst, dst_w = isoparametric(dst_et, dst_npts)
         dst_conn = get_block_connectivity(dst_mesh, dst_block_id)
         n_dst_elem, n_dst_nodes_per_elem = size(dst_conn)
+        if dst_et == COMPOSITE_TETRA10
+            # The block's own points would load only the linear fit of the
+            # source over each element.
+            N_dst, dN_dst, dst_w, _ = composite_tetra10_mass_rule()
+            dst_npts = length(dst_w)
+        end
         for e in 1:n_dst_elem
             conn_idx = ((e - 1) * n_dst_nodes_per_elem + 1):(e * n_dst_nodes_per_elem)
             node_indices = dst_conn[conn_idx]
@@ -128,8 +136,7 @@ function _sample_nodal_at_dst_qps!(dst::SolidMechanics, nodal_iv::AbstractMatrix
     blocks = Exodus.read_sets(input_mesh, Block)
     for (block_index, block) in enumerate(blocks)
         block_id = block.id
-        element_type_string = Exodus.read_block_parameters(input_mesh, block_id)[1]
-        element_type = element_type_from_string(element_type_string)
+        element_type = dst.blocks[block_index].element_type
         num_points = dst.num_int_pts[block_index]
         N, _, _ = isoparametric(element_type, num_points)
 

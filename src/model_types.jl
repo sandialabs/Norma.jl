@@ -74,6 +74,11 @@ struct ElementBlockData
     N::Any
     dN::Any
     weights::Any
+    # The rule the mass is integrated with: the integration points above,
+    # except for the composite tetrahedron (composite_tetra10_mass_rule).
+    mass_N::Any
+    mass_dN::Any
+    mass_weights::Any
 end
 
 # Anisotropic target for energetic mesh smoothing: a metric tensor field
