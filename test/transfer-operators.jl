@@ -36,7 +36,7 @@
     dst_T_real = create_force(expression_force, dst_mesh, dst_side_set_id, t)
     Norma.norma_log(0, :info, "Destination side set:    $(length(dst_T_real)) nodes")
     H = Norma.get_square_projection_matrix(src_model, src_bc)
-    L = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    L, _ = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
     dst_T = L * (H \ I) * src_T
     rel_er_tr = norm(dst_T - dst_T_real) / norm(dst_T_real)
     Norma.norma_logf(0, :summary, "Relative error (traction):     %.4e", rel_er_tr)
@@ -47,7 +47,7 @@
     dst_U_real = create_displacement(expression_disp, dst_mesh, dst_side_set_id, t)
     Norma.norma_log(0, :info, "Destination side set:    $(length(dst_U_real)) nodes")
     W = Norma.get_square_projection_matrix(dst_model, dst_bc)
-    L = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    L, _ = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
     dst_U = (W \ I) * L * src_U
     rel_er_disp = norm(dst_U - dst_U_real) / norm(dst_U_real)
     Norma.norma_logf(0, :summary, "Relative error (displacement): %.4e", rel_er_disp)
@@ -58,8 +58,8 @@
     # Neumann transfer L * H^-1 conserves the total of any nodal force —
     # including a point load, for which the nearest-node facet search used to
     # corrupt the transfer on this non-conforming 2:1 mesh pair.
-    L_dst = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
-    L_src = Norma.get_src_integrated_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    L_dst, _ = Norma.get_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
+    L_src, _ = Norma.get_src_integrated_rectangular_projection_matrix(dst_model, dst_bc, src_model, src_bc)
     @test (W \ L_dst) * ones(size(L_dst, 2)) ≈ ones(size(L_dst, 1)) atol = 1.0e-10
     point_load = zeros(size(L_src, 2))
     point_load[1] = 1.0
