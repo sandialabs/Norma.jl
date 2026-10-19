@@ -281,6 +281,7 @@ current iteration. Both sides of the overlap must set the condition.
 | `source block` | yes | — | partner element block that contains this side set |
 | `matching` | no | `velocity` | matched quantity, `velocity` or `displacement` |
 | `matching at` | no | `every substep` | `window end` on the fine-step side of a pair with different steps (below) |
+| `interface solve` | no | `iterative` | `direct` on both sides: two central difference sides at equal steps solve both reactions from one symmetric block system per step, [A₁ −B; −Bᵀ A₂] with A_k = m_Γk⁻¹ + Π_k m_j⁻¹ Π_kᵀ and B the coupling of the rows the two transfers share, factored once; no Schwarz iteration, the velocity constraint on both boundaries to roundoff (test 140) |
 | `search tolerance` | no | `1.0e-6` | as for `Schwarz overlap` |
 
 **Different time steps (`matching at: window end`).** Both sides of the

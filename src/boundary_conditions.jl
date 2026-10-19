@@ -409,6 +409,17 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     )
 end
 
+# The value of `interface solve`: `iterative` (default) or `direct`.
+function parse_direct_solve(bc_params::Parameters, side_set_name::String)
+    value = String(get(bc_params, "interface solve", "iterative"))
+    value == "iterative" && return false
+    value == "direct" && return true
+    return norma_abort(
+        "Invalid `interface solve: $(value)` on side set \"$(side_set_name)\". " *
+        "Valid values are `iterative` and `direct`.",
+    )
+end
+
 # The value of `matching at`: `every substep` (default) or `window end`.
 function parse_window_end_constraint(bc_params::Parameters, side_set_name::String)
     value = String(get(bc_params, "matching at", "every substep"))
@@ -432,6 +443,7 @@ function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
     coupled_subsim::Simulation,
     constraint::Symbol,
     window_end_constraint::Bool,
+    direct_solve::Bool=false,
 )
     local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
     empty = Matrix{Float64}(undef, 0, 0)
@@ -453,7 +465,7 @@ function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
         false,
         true,
         constraint,
-        false,
+        direct_solve,
         Float64[],
         Tuple{Float64,Vector{Float64}}[],
         window_end_constraint,
@@ -528,6 +540,7 @@ function SMCouplingSchwarzBC(
             coupled_subsim,
             constraint,
             parse_window_end_constraint(bc_params, side_set_name),
+            parse_direct_solve(bc_params, side_set_name),
         )
     elseif bc_type == "Schwarz DN nonoverlap"
         default_bc_type = get(bc_params, "default BC type", "Dirichlet")

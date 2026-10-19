@@ -20,7 +20,9 @@ using LinearAlgebra
 const overlap_matching_example = "../examples/overlap/dynamic-same-step/cantilever-matching"
 const overlap_conforming_example = "../examples/overlap/dynamic-same-step/cantilever-conforming"
 
-function run_overlap_matching(explicit::Bool, conforming::Bool; num_steps::Int=50, free_substeps::Int=1)
+function run_overlap_matching(
+    explicit::Bool, conforming::Bool; num_steps::Int=50, free_substeps::Int=1, direct::Bool=false
+)
     meshes = conforming ? overlap_conforming_example : overlap_matching_example
     for name in ("cantilever-free", "cantilever-clamped")
         cp("$meshes/$name.g", "$name.g"; force=true)
@@ -37,6 +39,7 @@ function run_overlap_matching(explicit::Bool, conforming::Bool; num_steps::Int=5
         if free_substeps > 1 && name == "cantilever-free"
             sub["boundary conditions"]["Schwarz overlap matching"][1]["matching at"] = "window end"
         end
+        direct && (sub["boundary conditions"]["Schwarz overlap matching"][1]["interface solve"] = "direct")
         YAML.write_file("$name.yaml", sub)
     end
     params = YAML.load_file("$overlap_matching_example/cantilever.yaml"; dicttype=Norma.Parameters)
@@ -122,6 +125,28 @@ end
         iterations = [parse(Int, m.captures[1]) for m in eachmatch(r"Performed (\d+) Schwarz Iteration", out)]
         @test length(iterations) == 50
         @test maximum(iterations) ≤ 60
+    end
+end
+
+# Direct interface solve of the pair, two central difference sides at equal
+# steps: one solve per step for both reactions, no Schwarz iteration, the
+# velocity constraint on both boundaries at roundoff, and the same
+# conservation as the iteration.
+@testset "Schwarz Overlap Matching: Direct Interface Solve (EE)" begin
+    for conforming in (true, false)
+        sim, out, header, data = run_overlap_matching(true, conforming; direct=true)
+        @test !sim.failed
+        @test occursin("Direct interface solve of the overlap matching pair", out)
+        @test !occursin("Performed", out)
+        i_E = findfirst(==("total_energy"), header)
+        i_R = findfirst(==("rate_invariant_total"), header)
+        E0, R0 = data[1][i_E], data[1][i_R]
+        @test maximum(abs(row[i_E] / E0 - 1.0) for row in data) ≤ 1.0e-12
+        @test maximum(abs(row[i_R] / R0 - 1.0) for row in data) ≤ 1.0e-12
+        for (k, name) in enumerate(header)
+            startswith(name, "velocity_jump_") && !occursin("rms", name) || continue
+            @test maximum(row[k] for row in data[2:end]) ≤ 1.0e-13
+        end
     end
 end
 

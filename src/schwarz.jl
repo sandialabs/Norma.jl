@@ -822,6 +822,10 @@ function compute_constrained_dn_projectors!(
     src_bc = coupled_bc_of(dst_bc)
     constraint = resolve_constraint(dst_bc, src_bc)
     check_constrained_integrators(dst_sim, src_sim, constraint)
+    check_direct_interface_solve(dst_bc, src_bc, dst_sim, src_sim)
+    if dst_bc.direct_solve && (dst_bc.window_end_constraint || src_bc.window_end_constraint)
+        norma_abort("`interface solve: direct` and `matching at: window end` exclude each other.")
+    end
     Δt_1 = dst_sim.integrator.time_step
     Δt_2 = src_sim.integrator.time_step
     if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
@@ -1068,8 +1072,8 @@ end
 # difference subdomains at equal steps under the velocity constraint; both
 # sides must request it.
 function check_direct_interface_solve(
-    bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition,
-    partner::SolidMechanicsNonOverlapSchwarzBoundaryCondition,
+    bc::SolidMechanicsConstrainedSchwarzBoundaryCondition,
+    partner::SolidMechanicsConstrainedSchwarzBoundaryCondition,
     sim_1::SingleDomainSimulation,
     sim_2::SingleDomainSimulation,
 )
@@ -1296,6 +1300,13 @@ function direct_interface_stop!(sim::MultiDomainSimulation)
     for subsim in sim.subsims, bc in subsim.model.boundary_conditions
         is_direct_dn(bc) && bc.is_dirichlet || continue
         γΔt = subsim.integrator.γ * subsim.integrator.time_step
+        if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+            # Both sides are constrained: the pair is solved once, from the
+            # side listed first.
+            bc.self_handle.id < bc.coupled_handle.id || continue
+            direct_overlap_pair_step!(bc, :velocity, γΔt)
+            continue
+        end
         λ = direct_interface_force(bc, :velocity, γΔt)
         apply_direct_interface_force!(bc, λ, γΔt)
     end
@@ -1308,6 +1319,171 @@ end
 # constraint a_D = Π_D a_N with the same matrix, after the interface
 # displacement and velocity of the Dirichlet side are set to the projected
 # initial values of the partner.
+function direct_initial_acceleration!(bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+    bc.self_handle.id < bc.coupled_handle.id || return nothing
+    # The displacement and velocity of both boundaries are set to the projected
+    # initial values of the partner before the acceleration constraint is solved.
+    for side in (bc, coupled_bc_of(bc))
+        model = self_subsim_of(side).model
+        partner = coupled_subsim_of(side).model
+        P = side.dirichlet_projector
+        for field in (:displacement, :velocity)
+            q = getfield(model, field)
+            q_partner = getfield(partner, field)
+            for comp in 1:3
+                q[comp, side.global_from_local_map] = P * q_partner[comp, :]
+            end
+        end
+    end
+    direct_overlap_pair_step!(bc, :acceleration, 1.0)
+    for side in (bc, coupled_bc_of(bc))
+        r = dn_interface_residuals(self_subsim_of(side).model, side)
+        norma_logf(
+            0,
+            :acceleration,
+            "Direct initial acceleration %s/%s: acceleration jump %.2e, force residual %.2e",
+            r.dirichlet_name,
+            r.neumann_name,
+            r.acceleration_jump,
+            r.force_residual,
+        )
+    end
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+# Direct interface solve of an overlap matching pair of two central difference
+# subdomains at equal steps. Both sides are constrained: λ₁ on the rows of Γ₁
+# of side 1 and λ₂ on the rows of Γ₂ of side 2 are the unknowns, side k also
+# receives -Π_jᵀ λ_j on all of its nodes, and the velocity constraints at the
+# end of the step on both boundaries give the symmetric block system
+#   [ A₁  -B ] [λ₁]   1   [Π₁ v₂ - C₁ v₁]
+#   [-Bᵀ  A₂ ] [λ₂] = --- [Π₂ v₁ - C₂ v₂],   A_k = m_Γk⁻¹ + Π_k m_j⁻¹ Π_kᵀ,
+#                     γΔt
+#   B = C₁ m₁⁻¹ Π₂ᵀ + Π₁ m₂⁻¹ C₂ᵀ,
+# with v the free velocities of the step and m the lumped masses (zero
+# inverse on degrees of freedom that other Dirichlet conditions hold). B
+# couples the rows of Γ₁ that Π₂ reaches and those of Γ₂ that Π₁ reaches, and
+# vanishes when the two boundaries are farther apart than one element. The
+# matrix is constant and factored once per component.
+# ---------------------------------------------------------------------------
+
+struct DirectOverlapFactor
+    factors::Vector{Any}                      # Cholesky factor of the block matrix per component
+    inverse_mass_1::Vector{Vector{Float64}}   # of all nodes of side 1, per component
+    inverse_mass_2::Vector{Vector{Float64}}   # of all nodes of side 2, per component
+end
+
+const DIRECT_OVERLAP_CACHE = IdDict{Any,DirectOverlapFactor}()
+
+# Inverse lumped mass of every node of a model for one component, zero where
+# a Dirichlet condition holds the degree of freedom.
+function full_inverse_mass(model::SolidMechanics, comp::Int, fixed::BitVector)
+    m = model.lumped_mass
+    n = size(model.reference, 2)
+    return [fixed[3 * (k - 1) + comp] ? 0.0 : 1.0 / m[3 * (k - 1) + comp] for k in 1:n]
+end
+
+function direct_overlap_factor(bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+    return get!(DIRECT_OVERLAP_CACHE, bc) do
+        bc_1, bc_2 = bc, coupled_bc_of(bc)
+        model_1 = self_subsim_of(bc_1).model
+        model_2 = self_subsim_of(bc_2).model
+        P_1, P_2 = bc_1.dirichlet_projector, bc_2.dirichlet_projector
+        Γ_1, Γ_2 = bc_1.global_from_local_map, bc_2.global_from_local_map
+        fixed_1, fixed_2 = prescribed_dofs(model_1), prescribed_dofs(model_2)
+        t0 = time()
+        factors = Any[]
+        inverse_mass_1 = Vector{Float64}[]
+        inverse_mass_2 = Vector{Float64}[]
+        for comp in 1:3
+            inv_1 = full_inverse_mass(model_1, comp, fixed_1)
+            inv_2 = full_inverse_mass(model_2, comp, fixed_2)
+            push!(inverse_mass_1, inv_1)
+            push!(inverse_mass_2, inv_2)
+            n_1, n_2 = length(Γ_1), length(Γ_2)
+            A_1 = P_1 * (inv_2 .* transpose(P_1))
+            A_2 = P_2 * (inv_1 .* transpose(P_2))
+            for (i, node) in enumerate(Γ_1)
+                A_1[i, i] += inv_1[node]
+            end
+            for (i, node) in enumerate(Γ_2)
+                A_2[i, i] += inv_2[node]
+            end
+            # B = C₁ m₁⁻¹ Π₂ᵀ + Π₁ m₂⁻¹ C₂ᵀ: the rows Γ₁ of m₁⁻¹ Π₂ᵀ and the
+            # columns Γ₂ of Π₁ m₂⁻¹.
+            B = (inv_1[Γ_1] .* transpose(P_2)[Γ_1, :]) + (P_1[:, Γ_2] .* transpose(inv_2[Γ_2]))
+            H = [A_1 -B; -transpose(B) A_2]
+            F = cholesky(Symmetric(H); check=false)
+            if !issuccess(F)
+                norma_abort(
+                    "The direct interface matrix of the overlap matching pair '$(bc_1.name)'/'$(bc_2.name)' is not " *
+                    "positive definite (component $comp): a constrained degree of freedom is held by Dirichlet " *
+                    "conditions on both sides.",
+                )
+            end
+            push!(factors, F)
+        end
+        norma_logf(
+            0,
+            :setup,
+            "Direct interface solve of the overlap matching pair '%s'/'%s': %d + %d constrained nodes, three " *
+            "factorizations in %.2f s.",
+            bc_1.name,
+            bc_2.name,
+            length(Γ_1),
+            length(Γ_2),
+            time() - t0,
+        )
+        return DirectOverlapFactor(factors, inverse_mass_1, inverse_mass_2)
+    end
+end
+
+# One step of the direct solve of the pair: the reactions from the velocity
+# (or acceleration) constraints on both boundaries after the free step, and
+# the correction of both sides: Δa_k = m_k⁻¹ (C_kᵀ λ_k - Π_jᵀ λ_j) on all of
+# its nodes and Δv_k = velocity_factor Δa_k. The forces received from the
+# partner are recorded as the iterated exchange does.
+function direct_overlap_pair_step!(
+    bc::SolidMechanicsOverlapMatchingSchwarzBoundaryCondition, field::Symbol, scale::Float64
+)
+    factor = direct_overlap_factor(bc)
+    bc_1, bc_2 = bc, coupled_bc_of(bc)
+    model_1 = self_subsim_of(bc_1).model
+    model_2 = self_subsim_of(bc_2).model
+    P_1, P_2 = bc_1.dirichlet_projector, bc_2.dirichlet_projector
+    Γ_1, Γ_2 = bc_1.global_from_local_map, bc_2.global_from_local_map
+    n_1, n_2 = length(Γ_1), length(Γ_2)
+    q_1 = getfield(model_1, field)
+    q_2 = getfield(model_2, field)
+    f_1 = zeros(3, size(model_1.reference, 2))   # force received by side 1 from λ₂
+    f_2 = zeros(3, size(model_2.reference, 2))   # force received by side 2 from λ₁
+    velocity_factor = field == :velocity ? scale : 0.0
+    for comp in 1:3
+        rhs = vcat(P_1 * q_2[comp, :] .- q_1[comp, Γ_1], P_2 * q_1[comp, :] .- q_2[comp, Γ_2]) ./ scale
+        λ = factor.factors[comp] \ rhs
+        λ_1 = λ[1:n_1]
+        λ_2 = λ[(n_1 + 1):(n_1 + n_2)]
+        f_1[comp, :] = -(transpose(P_2) * λ_2)
+        f_2[comp, :] = -(transpose(P_1) * λ_1)
+        force_1 = copy(f_1[comp, :])
+        force_2 = copy(f_2[comp, :])
+        force_1[Γ_1] .+= λ_1
+        force_2[Γ_2] .+= λ_2
+        Δa_1 = factor.inverse_mass_1[comp] .* force_1
+        Δa_2 = factor.inverse_mass_2[comp] .* force_2
+        model_1.acceleration[comp, :] .+= Δa_1
+        model_2.acceleration[comp, :] .+= Δa_2
+        model_1.velocity[comp, :] .+= velocity_factor .* Δa_1
+        model_2.velocity[comp, :] .+= velocity_factor .* Δa_2
+    end
+    bc_1.transferred_force = vec(f_1)
+    bc_2.transferred_force = vec(f_2)
+    model_1.boundary_force .+= vec(f_1)
+    model_2.boundary_force .+= vec(f_2)
+    return nothing
+end
+
 function direct_initial_acceleration!(bc::SolidMechanicsNonOverlapSchwarzBoundaryCondition)
     d_model = self_subsim_of(bc).model
     n_model = coupled_subsim_of(bc).model
