@@ -111,7 +111,8 @@ jobs:
   # Coverage from the quick test set on one platform. The quick set leaves out
   # the long AHeaD, swap, and restart cases and the neural-network OpInf test,
   # so it needs no Python and stays well inside the job limit even when
-  # instrumented.
+  # instrumented. PyCall is still a test dependency, so Pkg.test builds it
+  # whenever the cached depot lacks a build of the resolved version.
   coverage:
     name: Coverage - Julia 1.13 - ubuntu-latest
     runs-on: ubuntu-latest
@@ -130,6 +131,17 @@ jobs:
 
       - name: Build project
         uses: julia-actions/julia-buildpkg@v1
+
+      # Same as in the test jobs: Conda's module body requires its root
+      # environment directory, which the cache does not keep and only Conda's
+      # build script creates, so a PyCall build inside Pkg.test fails on the
+      # precompilation of Conda. Build PyCall here, with automatic
+      # precompilation disabled, against the runner's Python.
+      - name: Build PyCall against the system Python
+        run: julia --color=no -e 'using Pkg; Pkg.activate(; temp=true); Pkg.add("PyCall"); Pkg.build("PyCall")'
+        env:
+          PYTHON: python3
+          JULIA_PKG_PRECOMPILE_AUTO: 0
 
       - name: Run quick tests with coverage
         run: julia --color=no --project=. -e 'using Pkg; Pkg.test(; coverage=true, test_args=["--quick"])'
