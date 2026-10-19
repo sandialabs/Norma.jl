@@ -206,6 +206,12 @@ function initialize_writing(sim::SingleDomainSimulation)
         vec(truth_table),
     )
     Exodus.exodus_error_check(output_mesh, error_code, "Norma.initialize_writing -> LibExodus.ex_put_truth_table")
+    # A periodic cell writes F̄ and the volume average P̄ of the first
+    # Piola-Kirchhoff stress as global variables.
+    if periodic_boundary_condition(sim.model) !== nothing
+        Exodus.write_number_of_variables(output_mesh, GlobalVariable, length(PERIODIC_GLOBAL_NAMES))
+        Exodus.write_names(output_mesh, GlobalVariable, PERIODIC_GLOBAL_NAMES)
+    end
     return nothing
 end
 
@@ -441,6 +447,12 @@ function write_stop_exodus(sim::SingleDomainSimulation, model::SolidMechanics)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "disp_x", disp_x)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "disp_y", disp_y)
     Exodus.write_values(output_mesh, NodalVariable, time_index, "disp_z", disp_z)
+    if periodic_boundary_condition(model) !== nothing
+        F = periodic_deformation_gradient(model)
+        P = periodic_stress(model)
+        averages = vcat([F[c] for (_, c) in PERIODIC_COMPONENTS], [P[c] for (_, c) in PERIODIC_COMPONENTS])
+        Exodus.write_values(output_mesh, GlobalVariable, time_index, averages)
+    end
     # Energetic mesh smoothing size field, sampled at each node's current
     # position X = reference + displacement (see initialize_writing).
     if model isa SolidMechanics && model.mesh_smoothing == true && model.size_field !== nothing

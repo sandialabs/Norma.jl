@@ -221,6 +221,16 @@ function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechani
         if model.failed == true
             norma_abort("Finite element model failed to establish initial equlibrium")
         end
+    else
+        # A periodic cell starts from the affine field of F̄ at the initial
+        # time, which the initial equilibrium would predict. From the corners
+        # alone, `tangent` would leave F̄ - I on the elements next to them at
+        # the first step, and `linear` would extrapolate it into the second.
+        affine = periodic_affine_increment!(model)
+        if affine !== nothing
+            integrator.displacement .+= affine
+            update_periodic_dependents!(model)
+        end
     end
     return nothing
 end
@@ -294,6 +304,12 @@ validate_predictor(::TimeIntegrator, ::Solver) = nothing
 
 function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     empty!(integrator.predicted_increment)
+    # On a periodic cell, the increment of F̄ applied to the whole cell. It is
+    # the prediction of `constant`, and of a step the predictor does not
+    # predict, such as the first step of `linear`. A step the predictor
+    # predicts gets the whole field from it, so the increment is not added
+    # twice.
+    affine = periodic_affine_increment!(model)
     # Only the solve of a step uses the predictor; the initial equilibrium
     # solve has no step to start from.
     started = integrator.step_started
@@ -305,6 +321,7 @@ function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
     else
         nothing
     end
+    δ === nothing && (δ = affine)
     δ === nothing && return nothing
     integrator.unpredicted_residual = evaluate_unpredicted_residual(integrator, solver, model)
     integrator.displacement .+= δ

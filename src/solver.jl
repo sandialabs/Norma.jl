@@ -248,6 +248,10 @@ end
 
 function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
     assert_no_exact_surface_bcs(model, "Newton (HessianMinimizer)")
+    # Periodic cell: the dependent nodes follow the independent ones before the
+    # assembly, and the residual and tangent are condensed onto the
+    # independent degrees of freedom after it. No-ops without a Periodic BC.
+    update_periodic_dependents!(model)
     evaluate(model, integrator, solver)
     if model.failed == true
         return nothing
@@ -267,6 +271,7 @@ function evaluate(integrator::QuasiStatic, solver::HessianMinimizer, model::Soli
     rs_internal_force = build_robin_schwarz_force(model)
     solver.gradient = model.internal_force + rs_internal_force - external_force
     solver.hessian = K_total
+    condense_periodic_bcs!(model, solver)
     return nothing
 end
 

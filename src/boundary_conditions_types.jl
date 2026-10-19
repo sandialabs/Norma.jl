@@ -93,6 +93,53 @@ mutable struct SolidMechanicsSurfaceBoundaryCondition <: SolidMechanicsRegularBo
     penalty::Float64             # used only when enforcement == :penalty
 end
 
+using SparseArrays
+
+# Periodic condition (input key `Periodic`) on a box cell whose opposite faces
+# are pairs of node sets, the second the image of the first under a
+# translation along a coordinate axis. Every node of the second set follows its
+# image on the first, u(X⁺) = u(X⁻) + (F̄ - I)(X⁺ - X⁻), with F̄ the macroscopic
+# deformation gradient. The condition eliminates the displacements of these
+# dependent nodes: each is that of its independent image plus the relative
+# displacements of the corners it is away from it, Σ_k n_k (u(C_k) - u(O)). The
+# origin O, the node common to the first sets of all pairs, is held fixed,
+# and its image C_k across pair k carries the column of F̄ - I along the axis
+# of the pair: u(C_k) - u(O) = (F̄ - I) L_k e_k. A component of F̄ is either
+# prescribed, F̄_ij(t), or free with the matching component of the volume
+# average of the first Piola-Kirchhoff stress prescribed, P̄_ij(t), through a
+# force on the corner. The transformation A maps the independent degrees of
+# freedom to all of them, u = A u, and condenses the residual and the tangent
+# to Aᵀ r and Aᵀ K A.
+mutable struct SolidMechanicsPeriodicBoundaryCondition <: SolidMechanicsRegularBoundaryCondition
+    name::String
+    axes::Vector{Int64}             # coordinate axis of each pair of node sets
+    pair_names::Vector{Vector{String}}  # names of the node sets of each pair
+    lengths::Vector{Float64}        # period L_k along that axis
+    volume::Float64                 # volume of the cell
+    origin::Int64
+    corners::Vector{Int64}          # C_k, the image of the origin across pair k
+    dependent_nodes::Vector{Int64}
+    independent_nodes::Vector{Int64}  # image on the first sets of each dependent node
+    periods::Matrix{Int64}          # n_k of each dependent node, pairs × dependent nodes
+    components::Vector{CartesianIndex{2}}  # components (i, j) of F̄ along the periodic axes
+    component_pairs::Vector{Int64}  # pair k whose axis is j, for each component
+    stress_controlled::Vector{Bool}
+    component_funs::Vector{Function}  # F̄_ij(t), or P̄_ij(t) if stress controlled
+    displacement_gradient::Matrix{Float64}  # F̄ - I at the last application
+    # The increment of the prescribed components of F̄ since the last solve,
+    # which the solve's prediction applies to the whole cell (see
+    # periodic_affine_increment!).
+    pending_increment::Matrix{Float64}
+    # The translation of the origin since the last solve, which the
+    # prediction applies to the whole cell too, and the displacement of the
+    # origin before the last application, from which it is measured.
+    pending_translation::Vector{Float64}
+    origin_displacement::Vector{Float64}
+    transformation::SparseMatrixCSC{Float64,Int64}  # A
+    transformation_transpose::SparseMatrixCSC{Float64,Int64}
+    checked::Bool  # whether the prescribed conditions were checked against it
+end
+
 mutable struct SolidMechanicsRobinBoundaryCondition <: SolidMechanicsNeumannRobinBoundaryCondition
     name::String
     offset::Int64

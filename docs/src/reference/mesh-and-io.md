@@ -62,7 +62,8 @@ These field names are produced by the output writer and are not input keys.
 
 `matrix output` writes the assembled global operators of a monolithic
 (`type: single`) solid mechanics run, so the discrete problem can be
-reproduced outside Norma. It aborts in a Schwarz (`type: multi`) run.
+reproduced outside Norma. It aborts in a Schwarz (`type: multi`) run and with
+a `Periodic` boundary condition.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|

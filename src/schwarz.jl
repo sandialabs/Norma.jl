@@ -2857,6 +2857,12 @@ function _create_bcs(subsim::SingleDomainSimulation)
             elseif bc_type == "Robin"
                 boundary_condition = SolidMechanicsRobinBoundaryCondition(input_mesh, bc_setting_params)
                 push!(boundary_conditions, boundary_condition)
+            elseif bc_type == "Periodic"
+                if length(bc_type_params) > 1
+                    norma_abort("A model has at most one Periodic boundary condition, with up to three node set pairs.")
+                end
+                boundary_condition = SolidMechanicsPeriodicBoundaryCondition(subsim, input_mesh, bc_setting_params)
+                push!(boundary_conditions, boundary_condition)
             elseif bc_type == "Schwarz contact"
                 sim = subsim.parent
                 sim.controller.schwarz_contact = true
@@ -2895,6 +2901,10 @@ function apply_bcs(model::SolidMechanics)
     for boundary_condition in model.boundary_conditions
         apply_bc(model, boundary_condition)
     end
+    # A periodic cell sets its corners and dependent nodes from the final
+    # displacement of its origin. A no-op without a Periodic BC.
+    finalize_periodic_bcs!(model)
+    return nothing
 end
 
 function assign_velocity!(

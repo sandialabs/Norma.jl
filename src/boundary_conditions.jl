@@ -747,7 +747,9 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsSurfaceBoundaryCondit
     return nothing
 end
 
-function apply_robin_bcs_internal_force!(model::SolidMechanics)
+# The spring forces of the Robin conditions, added to `force`, by default the
+# internal force.
+function apply_robin_bcs_internal_force!(model::SolidMechanics, force::AbstractVector{Float64}=model.internal_force)
     for bc in model.boundary_conditions
         bc isa SolidMechanicsRobinBoundaryCondition || continue
         ss_node_index = 1
@@ -760,7 +762,7 @@ function apply_robin_bcs_internal_force!(model::SolidMechanics)
                 dof_i = 3 * (node_i - 1) + bc.offset
                 for (j, node_j) in enumerate(side_nodes)
                     u_j = model.displacement[bc.offset, node_j]
-                    model.internal_force[dof_i] += K_side[i, j] * u_j
+                    force[dof_i] += K_side[i, j] * u_j
                 end
             end
         end
@@ -792,13 +794,15 @@ function build_robin_stiffness(model::SolidMechanics)
 end
 
 # Add the analytic surface penalty force ∂P/∂x = κ g ∇g (of the constraint
-# P = ½ κ g²) to the internal force at each constrained node, with g and ∇g
-# evaluated at the node's current position X = reference + displacement.  Being
-# the gradient of ½ κ g², the force drives g → 0 (the node onto the surface)
-# while leaving tangential motion free — a soft inclined roller.  Mirrors
-# apply_robin_bcs_internal_force!: called after evaluate() has assembled the
-# smoothing internal force.
-function apply_surface_penalty_internal_force!(model::SolidMechanics)
+# P = ½ κ g²) to `force`, by default the internal force, at each constrained
+# node, with g and ∇g evaluated at the node's current position
+# X = reference + displacement.  Being the gradient of ½ κ g², the force drives
+# g → 0 (the node onto the surface) while leaving tangential motion free — a
+# soft inclined roller.  Mirrors apply_robin_bcs_internal_force!: called after
+# evaluate() has assembled the smoothing internal force.
+function apply_surface_penalty_internal_force!(
+    model::SolidMechanics, force::AbstractVector{Float64}=model.internal_force
+)
     for bc in model.boundary_conditions
         (bc isa SolidMechanicsSurfaceBoundaryCondition && bc.enforcement == :penalty) || continue
         for node_index in bc.node_indices
@@ -810,9 +814,9 @@ function apply_surface_penalty_internal_force!(model::SolidMechanics)
             grad = bc.level_set_grad(args)
             factor = bc.penalty * g
             base = 3 * (node_index - 1)
-            model.internal_force[base + 1] += factor * grad[1]
-            model.internal_force[base + 2] += factor * grad[2]
-            model.internal_force[base + 3] += factor * grad[3]
+            force[base + 1] += factor * grad[1]
+            force[base + 2] += factor * grad[2]
+            force[base + 3] += factor * grad[3]
         end
     end
     return nothing
@@ -954,6 +958,713 @@ function assert_no_exact_surface_bcs(model::SolidMechanics, solver_desc::String)
                 "(steepest descent or lbfgs); $solver_desc is not supported. Use enforcement: penalty instead.",
             )
         end
+    end
+    return nothing
+end
+
+# --- Periodic cell (SolidMechanicsPeriodicBoundaryCondition) -------------------
+
+# Components of the macroscopic deformation gradient by name: `xy` is F̄₁₂,
+# in the row of x and the column of y.
+const PERIODIC_COMPONENTS = (
+    "xx" => CartesianIndex(1, 1),
+    "xy" => CartesianIndex(1, 2),
+    "xz" => CartesianIndex(1, 3),
+    "yx" => CartesianIndex(2, 1),
+    "yy" => CartesianIndex(2, 2),
+    "yz" => CartesianIndex(2, 3),
+    "zx" => CartesianIndex(3, 1),
+    "zy" => CartesianIndex(3, 2),
+    "zz" => CartesianIndex(3, 3),
+)
+
+# Names of F̄ and P̄ as global variables of the Exodus output.
+const PERIODIC_GLOBAL_NAMES = vcat(
+    ["F_" * name for (name, _) in PERIODIC_COMPONENTS], ["P_" * name for (name, _) in PERIODIC_COMPONENTS]
+)
+
+# The nodes of a pair of node sets are matched within this distance, relative
+# to the diameter of the mesh.
+const PERIODIC_MATCH_TOLERANCE = 1.0e-6
+
+# A component expression compiled to a function of the time alone.
+function periodic_component_function(expression, label::String)
+    num = Num(eval(Meta.parse(string(expression))))
+    if any(variable -> !isequal(variable, Symbolics.unwrap(t)), Symbolics.get_variables(num))
+        norma_abort("Periodic boundary condition: `$label` must be a function of t alone, got \"$expression\".")
+    end
+    fun = eval(build_function(num, [t, x, y, z]; expression=Val(false)))
+    return time -> Float64(fun((time, 0.0, 0.0, 0.0)))
+end
+
+# The image in `upper` of every node of `lower` under the translation `shift`.
+# The nodes of `upper` are binned in cells of the size of the tolerance, so a
+# node within the tolerance of a point lies in the cell of the point or in one
+# of its 26 neighbors.
+function match_periodic_nodes(
+    reference::Matrix{Float64},
+    lower::Vector{Int64},
+    upper::Vector{Int64},
+    shift::SVector{3,Float64},
+    tolerance::Float64,
+    names::Vector{String},
+)
+    cell(X) = (floor(Int64, X[1] / tolerance), floor(Int64, X[2] / tolerance), floor(Int64, X[3] / tolerance))
+    grid = Dict{NTuple{3,Int64},Vector{Int64}}()
+    for node in upper
+        push!(get!(grid, cell(view(reference, :, node)), Int64[]), node)
+    end
+    images = similar(lower)
+    taken = falses(size(reference, 2))
+    for (index, node) in enumerate(lower)
+        target = SVector{3,Float64}(view(reference, :, node)) + shift
+        center = cell(target)
+        image = 0
+        distance = tolerance
+        for i in -1:1, j in -1:1, k in -1:1
+            for candidate in get(grid, (center[1] + i, center[2] + j, center[3] + k), Int64[])
+                candidate_distance = norm(SVector{3,Float64}(view(reference, :, candidate)) - target)
+                if candidate_distance <= distance
+                    image = candidate
+                    distance = candidate_distance
+                end
+            end
+        end
+        if image == 0
+            norma_abortf(
+                "Periodic boundary condition: node %d of node set %s, at (%.6e, %.6e, %.6e), has no image in " *
+                "node set %s. The mesh must conform across the periodic faces.",
+                node,
+                names[1],
+                reference[1, node],
+                reference[2, node],
+                reference[3, node],
+                names[2],
+            )
+        end
+        if taken[image]
+            norma_abortf(
+                "Periodic boundary condition: node %d of node set %s is the image of two nodes of node set %s.",
+                image,
+                names[2],
+                names[1],
+            )
+        end
+        taken[image] = true
+        images[index] = image
+    end
+    return images
+end
+
+# Nodes linked by the pairs form classes of periodic images. A breadth-first
+# walk of each class gives every node its position in periods along each
+# pair, relative to the first node of the class, and checks that the
+# positions are consistent.
+function periodic_image_classes(lowers::Vector{Vector{Int64}}, uppers::Vector{Vector{Int64}})
+    num_pairs = length(lowers)
+    links = Dict{Int64,Vector{NTuple{3,Int64}}}()
+    for k in 1:num_pairs, (a, b) in zip(lowers[k], uppers[k])
+        push!(get!(links, a, NTuple{3,Int64}[]), (b, k, 1))
+        push!(get!(links, b, NTuple{3,Int64}[]), (a, k, -1))
+    end
+    position = Dict{Int64,Vector{Int64}}()
+    classes = Vector{Vector{Int64}}()
+    for start in sort!(collect(keys(links)))
+        haskey(position, start) && continue
+        position[start] = zeros(Int64, num_pairs)
+        members = [start]
+        head = 1
+        while head <= length(members)
+            node = members[head]
+            head += 1
+            for (other, k, step) in links[node]
+                other_position = copy(position[node])
+                other_position[k] += step
+                if haskey(position, other) == false
+                    position[other] = other_position
+                    push!(members, other)
+                elseif position[other] != other_position
+                    norma_abort(
+                        "Periodic boundary condition: node $other is reached through the pairs at two different " *
+                        "positions of the periodic lattice. The node sets of the pairs are inconsistent.",
+                    )
+                end
+            end
+        end
+        push!(classes, members)
+    end
+    return classes, position
+end
+
+# The lower of nodes a and b by x, then y, then z, with coordinates within
+# `tolerance` equal; a if they coincide.
+function lower_node(reference::Matrix{Float64}, a::Int64, b::Int64, tolerance::Float64)
+    for j in 1:3
+        difference = reference[j, b] - reference[j, a]
+        abs(difference) > tolerance && return difference < 0.0 ? b : a
+    end
+    return a
+end
+
+function SolidMechanicsPeriodicBoundaryCondition(
+    sim::SingleDomainSimulation, input_mesh::ExodusDatabase, bc_params::Parameters
+)
+    if sim.parent !== nothing
+        norma_abort("Periodic boundary conditions apply to single-domain simulations only.")
+    end
+    integrator_params = get(sim.params, "time integrator", Parameters())
+    integrator_type = get(integrator_params, "type", "")
+    solver_type = get(get(sim.params, "solver", Parameters()), "type", "")
+    if integrator_type != "quasi static" || solver_type != "Hessian minimizer"
+        norma_abort(
+            "Periodic boundary conditions require the `quasi static` time integrator and the " *
+            "`Hessian minimizer` solver.",
+        )
+    end
+    # The solve condenses the stiffness onto the independent degrees of
+    # freedom, which the matrices of `matrix output` would not describe.
+    if haskey(sim.params, "matrix output")
+        norma_abort(
+            "`matrix output` does not support periodic boundary conditions: the solve uses the stiffness " *
+            "condensed onto the independent degrees of freedom, which the written matrices do not describe.",
+        )
+    end
+    model = sim.model
+    model isa SolidMechanics || norma_abort("Periodic boundary conditions apply to solid mechanics models only.")
+    reference = model.reference
+    num_nodes = size(reference, 2)
+    diameter = norm(maximum(reference; dims=2) - minimum(reference; dims=2))
+    tolerance = PERIODIC_MATCH_TOLERANCE * diameter
+
+    pair_names = get(bc_params, "node set pairs", nothing)
+    if !(pair_names isa AbstractVector) ||
+        isempty(pair_names) ||
+        length(pair_names) > 3 ||
+        any(pair -> !(pair isa AbstractVector) || length(pair) != 2, pair_names)
+        norma_abort(
+            "Periodic boundary condition: `node set pairs` must list one to three pairs of node sets, " *
+            "such as [[nsx-, nsx+], [nsy-, nsy+], [nsz-, nsz+]].",
+        )
+    end
+    lowers = Vector{Int64}[]
+    uppers = Vector{Int64}[]
+    pair_axes = Int64[]
+    lengths = Float64[]
+    for pair in pair_names
+        names = String.(pair)
+        lower, upper = (
+            Int64.(Exodus.read_node_set_nodes(input_mesh, node_set_id_from_name(n, input_mesh))) for n in names
+        )
+        if length(lower) != length(upper)
+            norma_abortf(
+                "Periodic boundary condition: node sets %s and %s have %d and %d nodes; the mesh must conform " *
+                "across the periodic faces.",
+                names[1],
+                names[2],
+                length(lower),
+                length(upper),
+            )
+        end
+        # The translation between the two node sets, from their centroids.
+        shift = vec(sum(reference[:, upper]; dims=2) - sum(reference[:, lower]; dims=2)) / length(lower)
+        axis = argmax(abs.(shift))
+        if any(j -> j != axis && abs(shift[j]) > tolerance, 1:3) || shift[axis] <= tolerance
+            norma_abortf(
+                "Periodic boundary condition: node set %s must be the image of node set %s under a translation " *
+                "along the positive x, y or z axis; the translation is (%.6e, %.6e, %.6e).",
+                names[2],
+                names[1],
+                shift...,
+            )
+        end
+        if axis in pair_axes
+            norma_abort("Periodic boundary condition: two pairs of node sets are periodic along the same axis.")
+        end
+        period = shift[axis]
+        exact_shift = SVector{3,Float64}(ntuple(j -> j == axis ? period : 0.0, 3))
+        push!(lowers, lower)
+        push!(uppers, match_periodic_nodes(reference, lower, upper, exact_shift, tolerance, names))
+        push!(pair_axes, axis)
+        push!(lengths, period)
+    end
+    num_pairs = length(pair_axes)
+
+    # The origin is the node common to the first node sets of all pairs, and
+    # the corners are its images. With one or two pairs the common nodes form
+    # a face or an edge, and the origin is the lowest of them by x, then y,
+    # then z, with coordinates within the matching tolerance equal: the common
+    # nodes share their coordinates along the pair axes only up to roundoff,
+    # which must not pick the origin.
+    common = reduce(intersect, lowers)
+    if isempty(common)
+        norma_abort(
+            "Periodic boundary condition: the first node sets of the pairs have no node in common, so the cell " *
+            "has no corner to hold fixed.",
+        )
+    end
+    origin = reduce((a, b) -> lower_node(reference, a, b, tolerance), common)
+    corners = [uppers[k][findfirst(==(origin), lowers[k])] for k in 1:num_pairs]
+
+    # Every class of images has one independent node, the one of the lowest
+    # position along every pair; the others, except the corners, depend on it.
+    classes, position = periodic_image_classes(lowers, uppers)
+    dependent_nodes = Int64[]
+    independent_nodes = Int64[]
+    periods = Vector{Int64}[]
+    for members in classes
+        lowest = reduce((a, b) -> min.(a, b), (position[n] for n in members))
+        index = findfirst(n -> position[n] == lowest, members)
+        index === nothing && norma_abort(
+            "Periodic boundary condition: the images of node $(members[1]) have no lowest image along every pair."
+        )
+        independent = members[index]
+        for node in members
+            (node == independent || node in corners) && continue
+            push!(dependent_nodes, node)
+            push!(independent_nodes, independent)
+            push!(periods, position[node] - lowest)
+        end
+    end
+    period_matrix = isempty(periods) ? zeros(Int64, num_pairs, 0) : reduce(hcat, periods)
+
+    # u = A u: the identity on the independent degrees of freedom, and on those
+    # of a dependent node the image plus n_k (u(C_k) - u(O)).
+    is_dependent = falses(num_nodes)
+    is_dependent[dependent_nodes] .= true
+    rows = Int64[]
+    columns = Int64[]
+    values = Float64[]
+    for node in 1:num_nodes, i in 1:3
+        is_dependent[node] && continue
+        push!(rows, 3 * (node - 1) + i)
+        push!(columns, 3 * (node - 1) + i)
+        push!(values, 1.0)
+    end
+    for (index, node) in enumerate(dependent_nodes), i in 1:3
+        row = 3 * (node - 1) + i
+        push!(rows, row)
+        push!(columns, 3 * (independent_nodes[index] - 1) + i)
+        push!(values, 1.0)
+        for k in 1:num_pairs
+            n = period_matrix[k, index]
+            n == 0 && continue
+            append!(rows, (row, row))
+            append!(columns, (3 * (corners[k] - 1) + i, 3 * (origin - 1) + i))
+            append!(values, (n, -n))
+        end
+    end
+    transformation = dropzeros!(sparse(rows, columns, values, 3 * num_nodes, 3 * num_nodes))
+
+    # Volume of the box: the periods along the periodic axes and the extent of
+    # the mesh along the others.
+    extent = vec(maximum(reference; dims=2) - minimum(reference; dims=2))
+    volume = prod(j in pair_axes ? lengths[findfirst(==(j), pair_axes)] : extent[j] for j in 1:3)
+
+    # Control of the components of F̄ along the periodic axes.
+    labels = Dict(name => component for (name, component) in PERIODIC_COMPONENTS)
+    deformation = get(bc_params, "deformation gradient", Parameters())
+    stress = get(bc_params, "stress", Parameters())
+    for (key, entries) in (("deformation gradient", deformation), ("stress", stress))
+        entries isa AbstractDict ||
+            norma_abort("Periodic boundary condition: `$key` must map components xx, xy, ..., zz to functions of t.")
+        for name in keys(entries)
+            haskey(labels, name) || norma_abort(
+                "Periodic boundary condition: unknown component `$name` of `$key`; " *
+                "the components are xx, xy, xz, yx, yy, yz, zx, zy and zz.",
+            )
+            if labels[name][2] ∉ pair_axes
+                norma_abort(
+                    "Periodic boundary condition: component `$name` of `$key` is in the column of the " *
+                    "$(("x", "y", "z")[labels[name][2]]) axis, which is not periodic.",
+                )
+            end
+            if key == "stress" && haskey(deformation, name)
+                norma_abort(
+                    "Periodic boundary condition: component `$name` is in both `deformation gradient` and `stress`."
+                )
+            end
+        end
+    end
+    components = CartesianIndex{2}[]
+    component_pairs = Int64[]
+    stress_controlled = Bool[]
+    component_funs = Function[]
+    for (name, component) in PERIODIC_COMPONENTS
+        k = findfirst(==(component[2]), pair_axes)
+        k === nothing && continue
+        push!(components, component)
+        push!(component_pairs, k)
+        if haskey(stress, name)
+            push!(stress_controlled, true)
+            push!(component_funs, periodic_component_function(stress[name], "stress: $name"))
+        else
+            push!(stress_controlled, false)
+            identity_value = component[1] == component[2] ? "1.0" : "0.0"
+            expression = get(deformation, name, identity_value)
+            push!(component_funs, periodic_component_function(expression, "deformation gradient: $name"))
+        end
+    end
+    # With F̄_ij and F̄_ji both free, a rigid rotation in the ij plane costs no
+    # energy and the tangent is singular.
+    for (index, component) in enumerate(components)
+        stress_controlled[index] && component[1] < component[2] || continue
+        transpose_index = findfirst(==(CartesianIndex(component[2], component[1])), components)
+        if transpose_index !== nothing && stress_controlled[transpose_index]
+            names = Dict(c => n for (n, c) in PERIODIC_COMPONENTS)
+            norma_abort(
+                "Periodic boundary condition: components $(names[component]) and " *
+                "$(names[CartesianIndex(component[2], component[1])]) are both under `stress`, which leaves " *
+                "the rigid rotation free. Prescribe one of them in `deformation gradient`.",
+            )
+        end
+    end
+    norma_logf(
+        0,
+        :setup,
+        "Periodic: %d pair(s), %d dependent nodes, origin node %d, volume %.6e",
+        num_pairs,
+        length(dependent_nodes),
+        origin,
+        volume,
+    )
+    return SolidMechanicsPeriodicBoundaryCondition(
+        "periodic",
+        pair_axes,
+        [String.(pair) for pair in pair_names],
+        lengths,
+        volume,
+        origin,
+        corners,
+        dependent_nodes,
+        independent_nodes,
+        period_matrix,
+        components,
+        component_pairs,
+        stress_controlled,
+        component_funs,
+        zeros(3, 3),
+        zeros(3, 3),
+        zeros(3),
+        zeros(3),
+        transformation,
+        sparse(transpose(transformation)),
+        false,
+    )
+end
+
+periodic_boundary_condition(model::Model) = nothing
+
+function periodic_boundary_condition(model::SolidMechanics)
+    index = findfirst(bc -> bc isa SolidMechanicsPeriodicBoundaryCondition, model.boundary_conditions)
+    return index === nothing ? nothing : model.boundary_conditions[index]
+end
+
+# F̄ - I from the corners: u(C_k) - u(O) = (F̄ - I) L_k e_k. The columns of the
+# axes that are not periodic are zero.
+function periodic_displacement_gradient(model::SolidMechanics, bc::SolidMechanicsPeriodicBoundaryCondition)
+    H = zeros(3, 3)
+    for (k, axis) in enumerate(bc.axes), i in 1:3
+        H[i, axis] = (model.displacement[i, bc.corners[k]] - model.displacement[i, bc.origin]) / bc.lengths[k]
+    end
+    return H
+end
+
+# The macroscopic deformation gradient F̄, the volume average of F over the
+# cell. Its columns along the periodic axes are those the corners carry, which
+# for a periodic field equal that average. With one or two pairs, the other
+# columns, which the condition does not control, are averaged over the
+# elements.
+function periodic_deformation_gradient(model::SolidMechanics)
+    bc = periodic_boundary_condition(model)
+    bc === nothing && norma_abort("The model has no periodic boundary condition.")
+    H = periodic_displacement_gradient(model, bc)
+    other_axes = setdiff(1:3, bc.axes)
+    if !isempty(other_axes)
+        H[:, other_axes] = integrated_displacement_gradient(model)[:, other_axes] / bc.volume
+    end
+    return I + H
+end
+
+# ∫ ∇u dV over the elements, by their quadrature.
+function integrated_displacement_gradient(model::SolidMechanics)
+    H = zeros(3, 3)
+    for block in model.blocks
+        # Function barrier over the static shape function tables of the block.
+        H += integrated_displacement_gradient(model, block.N, block.dN, block.weights, block.connectivity)
+    end
+    return H
+end
+
+function integrated_displacement_gradient(
+    model::SolidMechanics, N::SMatrix, dN::SArray, weights::AbstractVector, connectivity::Matrix{Int64}
+)
+    H = zeros(SMatrix{3,3,Float64,9})
+    for element in axes(connectivity, 2)
+        nodes = view(connectivity, :, element)
+        X = gather_nodal(model.reference, nodes, N)
+        u = gather_nodal(model.displacement, nodes, N)
+        for point in eachindex(weights)
+            dNdξ = dN[:, :, point]
+            dXdξ = dNdξ * X'
+            H += u * (dXdξ \ dNdξ)' * (det(dXdξ) * weights[point])
+        end
+    end
+    return Matrix(H)
+end
+
+# The volume average of the first Piola-Kirchhoff stress over the cell,
+# (1/V) Σ_a f_a ⊗ X_a over the internal forces of all nodes. The shape
+# functions interpolate X exactly, so the sum is ∫ P dV of the finite element
+# field. The forces of the Robin and penalty Surface conditions, which
+# evaluate adds to the internal force, are not those of the material and are
+# left out.
+function periodic_stress(model::SolidMechanics)
+    bc = periodic_boundary_condition(model)
+    bc === nothing && norma_abort("The model has no periodic boundary condition.")
+    P = zeros(3, 3)
+    springs = zeros(length(model.internal_force))
+    apply_robin_bcs_internal_force!(model, springs)
+    apply_surface_penalty_internal_force!(model, springs)
+    force = model.internal_force - springs
+    for node in axes(model.reference, 2), j in 1:3, i in 1:3
+        P[i, j] += force[3 * (node - 1) + i] * model.reference[j, node]
+    end
+    return P / bc.volume
+end
+
+# Prescribed conditions may hold the origin and the nodes of the first node
+# sets that are on no second node set, but not the nodes that the periodic
+# condition moves: the dependent nodes and the corners. With two or three
+# pairs, a first node set also holds its edges on the second node sets of the
+# other pairs, so a condition on a whole first node set is rejected too.
+function check_periodic_conflicts!(model::SolidMechanics, bc::SolidMechanicsPeriodicBoundaryCondition)
+    moved = falses(size(model.reference, 2))
+    moved[bc.dependent_nodes] .= true
+    moved[bc.corners] .= true
+    for other in model.boundary_conditions
+        nodes = if other isa SolidMechanicsDirichletBoundaryCondition
+            other.node_set_node_indices
+        elseif other isa SolidMechanicsSideSetDirichletBoundaryCondition
+            other.node_indices
+        else
+            continue
+        end
+        held = filter(node -> moved[node], nodes)
+        isempty(held) && continue
+        norma_abort(
+            "The Dirichlet boundary condition on \"$(other.name)\" prescribes " *
+            "$(join(periodic_nodes_held(bc, held), ", ", " and ")), which the periodic boundary condition " *
+            "determines: a node of the second node set of a pair follows its image on the first, and a corner " *
+            "carries a column of F̄. A Dirichlet condition may hold the origin and the nodes of the first node " *
+            "sets that are on no second node set; with two or three pairs, a first node set also holds its " *
+            "edges on the second node sets of the other pairs.",
+        )
+    end
+    check_periodic_rotations(model, bc)
+    bc.checked = true
+    return nothing
+end
+
+# What the nodes `held`, which the periodic condition moves, are: nodes of the
+# second node set of a pair, or corners.
+function periodic_nodes_held(bc::SolidMechanicsPeriodicBoundaryCondition, held::Vector{Int64})
+    held_set = Set(held)
+    descriptions = String[]
+    for k in eachindex(bc.axes)
+        on_second = any(
+            index -> bc.periods[k, index] > 0 && bc.dependent_nodes[index] in held_set, eachindex(bc.dependent_nodes)
+        )
+        on_second && push!(descriptions, "nodes of $(bc.pair_names[k][2])")
+    end
+    for (k, corner) in enumerate(bc.corners)
+        corner in held_set && push!(descriptions, "the corner across [$(join(bc.pair_names[k], ", "))]")
+    end
+    return descriptions
+end
+
+# The rigid rotation in the plane of axes a and b, u = W (X - X_O) with
+# W_ba = -W_ab = 1, is periodic with F̄ - I = W and leaves the origin in place.
+# A prescribed component of F̄ in that plane holds it. The constructor rejects
+# both components of a plane under `stress`. With one or two pairs, a plane
+# with an axis that is not periodic has one component of F̄, or none, and if
+# none is prescribed another condition has to hold the rotation. Otherwise the
+# rotation costs no energy, the tangent is singular, and F̄ ends with an
+# arbitrary rotation.
+function check_periodic_rotations(model::SolidMechanics, bc::SolidMechanicsPeriodicBoundaryCondition)
+    X = model.reference .- model.reference[:, bc.origin]
+    tolerance = PERIODIC_MATCH_TOLERANCE * maximum(abs, X)
+    axis_names = ("x", "y", "z")
+    component_names = Dict(c => n for (n, c) in PERIODIC_COMPONENTS)
+    for (a, b) in ((1, 2), (1, 3), (2, 3))
+        in_plane = findall(c -> c == CartesianIndex(a, b) || c == CartesianIndex(b, a), bc.components)
+        length(in_plane) == 2 && continue
+        any(index -> !bc.stress_controlled[index], in_plane) && continue
+        rotation = zeros(size(X))
+        rotation[a, :] = -X[b, :]
+        rotation[b, :] = X[a, :]
+        holds_periodic_mode(model, rotation, tolerance) && continue
+        # An axis of the plane that is not periodic: a node away from the
+        # origin along it can hold the rotation.
+        away, other = a ∉ bc.axes ? (a, b) : (b, a)
+        plane = axis_names[a] * "–" * axis_names[b]
+        reason, alternative = if isempty(in_plane)
+            "neither $(axis_names[a]) nor $(axis_names[b]) is periodic, so no component of F̄ holds it", ""
+        else
+            name = component_names[bc.components[only(in_plane)]]
+            "$(axis_names[away]) is not periodic, and $name, the one component of F̄ in that plane, is under " *
+            "`stress`",
+            ", or prescribe $name in `deformation gradient`"
+        end
+        norma_abort(
+            "Periodic boundary condition: the rigid rotation in the $plane plane is free: $reason. The tangent is " *
+            "then singular. Hold the rotation with a Dirichlet condition on component $(axis_names[other]) of a " *
+            "node away from the origin along $(axis_names[away])$alternative.",
+        )
+    end
+    return nothing
+end
+
+# Whether a condition other than the periodic one holds the displacement field
+# `mode` (3 × nodes): a Dirichlet or Robin condition on a component the field
+# moves at one of the condition's nodes, or a Surface condition whose normal
+# the field moves along.
+function holds_periodic_mode(model::SolidMechanics, mode::Matrix{Float64}, tolerance::Float64)
+    moves(component, nodes) = any(node -> abs(mode[component, node]) > tolerance, nodes)
+    for other in model.boundary_conditions
+        if other isa SolidMechanicsDirichletBoundaryCondition
+            moves(other.offset, other.node_set_node_indices) && return true
+        elseif other isa SolidMechanicsSideSetDirichletBoundaryCondition
+            moves(other.offset, other.node_indices) && return true
+        elseif other isa SolidMechanicsRobinBoundaryCondition
+            moves(other.offset, other.side_set_node_indices) && return true
+        elseif other isa SolidMechanicsSurfaceBoundaryCondition
+            for node in other.node_indices
+                x = model.reference[:, node] + model.displacement[:, node]
+                normal = other.level_set_grad([model.time, x[1], x[2], x[3]])
+                abs(dot(normal, mode[:, node])) > tolerance * norm(normal) && return true
+            end
+        end
+    end
+    return false
+end
+
+# The dependent nodes from the independent ones, u = A u. Called before every
+# assembly, line search trials included, so that every evaluation sees a
+# periodic field. It moves no other degree of freedom, so it leaves a state
+# whose dependent nodes already follow as it is, such as the start of a step
+# that the tangent predictor evaluates.
+function update_periodic_dependents!(model::SolidMechanics)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsPeriodicBoundaryCondition || continue
+        displacement = vec(model.displacement)
+        displacement .= bc.transformation * displacement
+    end
+    return nothing
+end
+
+# The corners with prescribed components of F̄, from the origin, and then the
+# dependent nodes. Called once all the conditions are applied, so that the
+# corners follow the origin also where a Dirichlet condition prescribes it.
+# The translation of the origin is recorded for the prediction of the solve,
+# with the increment of F̄.
+function finalize_periodic_bcs!(model::SolidMechanics)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsPeriodicBoundaryCondition || continue
+        u = model.displacement
+        bc.pending_translation += u[:, bc.origin] - bc.origin_displacement
+        for (index, component) in enumerate(bc.components)
+            bc.stress_controlled[index] && continue
+            k = bc.component_pairs[index]
+            i = component[1]
+            u[i, bc.corners[k]] = u[i, bc.origin] + bc.displacement_gradient[component] * bc.lengths[k]
+        end
+    end
+    update_periodic_dependents!(model)
+    return nothing
+end
+
+# The translation of the origin and the increment of F̄ since the last solve
+# applied to the whole cell, Δu_O + ΔF̄ (X - X_O) on the free degrees of
+# freedom, or nothing if neither has changed; both are then cleared. It is the
+# affine part of the solution: from it, Newton starts from the fluctuation of
+# the previous step, without the increment concentrating on the elements next
+# to the faces, or next to the origin and its images when a Dirichlet
+# condition moves the origin. It is the prediction of the quasi-static solve
+# when the predictor of the time integrator has none (see predict). The
+# prescribed degrees of freedom already hold their values, and the dependent
+# ones follow the independent ones at the next evaluation. The increments
+# accumulate over applications without a solve, so that the solve applies all
+# of them.
+function periodic_affine_increment!(model::SolidMechanics)
+    bc = periodic_boundary_condition(model)
+    bc === nothing && return nothing
+    increment = bc.pending_increment
+    translation = bc.pending_translation
+    bc.pending_increment = zeros(3, 3)
+    bc.pending_translation = zeros(3)
+    any(!iszero, increment) || any(!iszero, translation) || return nothing
+    X = model.reference
+    return vec(translation .+ increment * (X .- X[:, bc.origin])) .* model.free_dofs
+end
+
+# A model that takes over a converged state (transfer_state!) predicts
+# nothing from its earlier applications, which saw another state: that of a
+# swap's new model, at zero displacement before the state was copied in. The
+# next application measures the increments from the converged state.
+function clear_periodic_increments!(model::Model)
+    bc = periodic_boundary_condition(model)
+    bc === nothing && return nothing
+    bc.pending_increment = zeros(3, 3)
+    bc.pending_translation = zeros(3)
+    return nothing
+end
+
+# The residual and the tangent on the independent degrees of freedom: Aᵀ r and
+# Aᵀ K A. The rows of the dependent ones are zero, and they are not free.
+function condense_periodic_bcs!(model::SolidMechanics, solver::HessianMinimizer)
+    for bc in model.boundary_conditions
+        bc isa SolidMechanicsPeriodicBoundaryCondition || continue
+        solver.gradient = bc.transformation_transpose * solver.gradient
+        solver.hessian = bc.transformation_transpose * (solver.hessian * bc.transformation)
+    end
+    return nothing
+end
+
+# Applies F̄(t) and the stress on its free components, and holds the origin,
+# the prescribed components of the corners and the dependent nodes;
+# finalize_periodic_bcs! sets their displacements once all the conditions are
+# applied. The origin keeps its displacement, zero unless a Dirichlet
+# condition prescribes it. The free components keep their previous values.
+# The increment of F̄ is recorded for the prediction of the solve, which
+# applies it to the whole cell (periodic_affine_increment!). The increments
+# are measured from the state before the application: the Dirichlet
+# conditions, which may move the origin, are applied after this one
+# (bc_type_rank), and finalize_periodic_bcs! records the translation.
+function apply_bc(model::SolidMechanics, bc::SolidMechanicsPeriodicBoundaryCondition)
+    bc.checked || check_periodic_conflicts!(model, bc)
+    previous = periodic_displacement_gradient(model, bc)
+    bc.origin_displacement = model.displacement[:, bc.origin]
+    H = copy(previous)
+    for (index, component) in enumerate(bc.components)
+        bc.stress_controlled[index] && continue
+        H[component] = bc.component_funs[index](model.time) - (component[1] == component[2] ? 1.0 : 0.0)
+    end
+    bc.pending_increment += H - previous
+    bc.displacement_gradient = H
+    for i in 1:3
+        model.free_dofs[3 * (bc.origin - 1) + i] = false
+    end
+    for (index, component) in enumerate(bc.components)
+        k = bc.component_pairs[index]
+        dof = 3 * (bc.corners[k] - 1) + component[1]
+        if bc.stress_controlled[index]
+            model.boundary_force[dof] += bc.volume / bc.lengths[k] * bc.component_funs[index](model.time)
+        else
+            model.free_dofs[dof] = false
+        end
+    end
+    for node in bc.dependent_nodes, i in 1:3
+        model.free_dofs[3 * (node - 1) + i] = false
     end
     return nothing
 end

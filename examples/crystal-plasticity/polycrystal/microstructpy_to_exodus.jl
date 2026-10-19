@@ -29,7 +29,8 @@
 # cover both faces one to one, and the sides of the elements on one face map
 # onto those on the other. For a periodic axis, the node set of the upper face
 # lists the images of the nodes of the lower face in order: the i-th node of
-# nsx+ is the image of the i-th node of nsx-.
+# nsx+ is the image of the i-th node of nsx-. Norma's `Periodic` boundary
+# condition pairs the nodes of the two sets.
 
 using Exodus
 using LinearAlgebra
@@ -289,7 +290,8 @@ function main(args)
     return nothing
 end
 
-# Run as a script; test/polycrystal.jl includes the file and calls main.
+# Run as a script; test/polycrystal.jl and test/periodic.jl include the file and
+# call main.
 if abspath(PROGRAM_FILE) == @__FILE__
     main(ARGS)
 end
