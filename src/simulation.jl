@@ -1341,7 +1341,7 @@ end
 # pair are at or below `matching relative tolerance`, or after `maximum
 # iterations`.
 function coupled_initial_acceleration!(sim::MultiDomainSimulation)
-    pairs = SolidMechanicsNonOverlapSchwarzBoundaryCondition[]
+    pairs = SolidMechanicsConstrainedSchwarzBoundaryCondition[]
     for subsim in sim.subsims, bc in subsim.model.boundary_conditions
         is_constrained_dn(bc) && bc.is_dirichlet || continue
         if is_direct_dn(bc)
@@ -1803,6 +1803,7 @@ function save_stop_state(sim::MultiDomainSimulation)
     controller = sim.controller
     num_domains = sim.num_domains
     subsims = sim.subsims
+    start_window_reactions!(sim)
     if controller.use_interface_predictor
         for i in 1:num_domains
             if !isempty(controller.stop_disp[i])
@@ -1936,6 +1937,7 @@ function subcycle(sim::MultiDomainSimulation)
                 break
             end
         end
+        record_window_end_reactions!(subsim)
     end
     return nothing
 end
@@ -2383,13 +2385,13 @@ function initialize_bc_projectors(sim::MultiDomainSimulation)
             elseif bc isa SolidMechanicsOverlapSchwarzBoundaryCondition && bc.use_weak
                 coupled_model = get_fom_model(coupled_subsim_of(bc))
                 fom_model = get_fom_model(subsim)
-                W = get_square_projection_matrix(fom_model, bc)
-                L = get_overlap_rectangular_projection_matrix(
+                L, W = get_overlap_rectangular_projection_matrix(
                     fom_model, bc, coupled_model, bc.coupled_block_name, bc.search_tolerance
                 )
-                bc.dirichlet_projector = (W \ I) * L
+                bc.dirichlet_projector = W \ L
             elseif is_constrained_dn(bc)
                 compute_constrained_dn_projectors!(subsim.model, bc)
+                bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition && set_assembly_weights!(subsim)
             elseif is_swappable_dn_schwarz(bc)
                 cache = RectangularProjectionCache()
                 compute_dirichlet_projector(subsim.model, bc; cache=cache)

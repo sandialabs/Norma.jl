@@ -131,6 +131,32 @@ function arlequin_weight(
     return w
 end
 
+# Constant weights of the overlap matching coupling: a point inside n partners
+# has the weight 1/(1 + n), so that the weights of the subdomains sharing a
+# point sum to one; outside every partner the weight is one. These are the
+# weights of the assembly of such a subdomain (ASSEMBLY_WEIGHT_CACHE), and
+# the blended energy and the rate invariant use the same.
+function constant_overlap_weight(x::Vector{Float64}, partners::Vector{OverlapPartner})
+    inside = count(p -> point_in_model_reference(x, p.partner_model, p.tol), partners)
+    return 1.0 / (1.0 + inside)
+end
+
+# True when the subdomain couples by the overlap matching coupling, whose
+# weights are the constant ones.
+function uses_constant_overlap_weights(subsim::SingleDomainSimulation)
+    return any(bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition for bc in subsim.model.boundary_conditions)
+end
+
+# Store the per-quadrature-point weights of a subdomain's assembly: the
+# constant overlap weights of the overlap matching coupling. Every assembled
+# quantity is then weighted, so the matrices are rebuilt.
+function set_assembly_weights!(subsim::SingleDomainSimulation)
+    model = subsim.model
+    ASSEMBLY_WEIGHT_CACHE[model] = get_arlequin_weights(subsim).weights
+    model.compute_mass = model.compute_lumped_mass = model.compute_stiffness = true
+    return nothing
+end
+
 # The weight, or NaN where the overlap is degenerate; the threaded setup uses
 # this form and reports the degeneracy serially afterwards.
 function arlequin_weight_or_nan(x::Vector{Float64}, model::SolidMechanics, partners::Vector{OverlapPartner}, h::Float64)
@@ -195,9 +221,10 @@ function compute_arlequin_weights(subsim::SingleDomainSimulation)
         get_facet_grid(p.partner_model, p.partner_side_set_id)
         get_facet_grid(model, p.own_side_set_id)
     end
+    constant = uses_constant_overlap_weights(subsim)
     weights = Vector{Vector{Vector{Float64}}}(undef, length(model.blocks))
     for (block_index, block) in enumerate(model.blocks)
-        weights[block_index] = compute_block_arlequin_weights(model, block, partners)
+        weights[block_index] = compute_block_arlequin_weights(model, block, partners, constant)
     end
     # Report a degenerate overlap serially, with the full diagnostic.
     for (block_index, block) in enumerate(model.blocks), e in 1:block.num_elements
@@ -214,7 +241,7 @@ end
 # Function barrier on the block's static shape functions. The grids are read
 # only, so the elements are classified in parallel.
 function compute_block_arlequin_weights(
-    model::SolidMechanics, block::ElementBlockData, partners::Vector{OverlapPartner}
+    model::SolidMechanics, block::ElementBlockData, partners::Vector{OverlapPartner}, constant::Bool=false
 )
     N = block.N
     conn = block.connectivity
@@ -226,7 +253,8 @@ function compute_block_arlequin_weights(
         element_weights = Vector{Float64}(undef, num_points)
         for point in 1:num_points
             x = Vector{Float64}(element_reference * N[:, point])
-            element_weights[point] = arlequin_weight_or_nan(x, model, partners, h)
+            element_weights[point] =
+                constant ? constant_overlap_weight(x, partners) : arlequin_weight_or_nan(x, model, partners, h)
         end
         block_weights[e] = element_weights
     end
@@ -417,13 +445,14 @@ end
 
 # SE(v), SE(a), and the consistent-mass term ½ aᵀ M a of a linear elastic
 # subdomain, integrated with the element quadrature of evaluate().
-function quadratic_energies(model::SolidMechanics)
+function quadratic_energies(model::SolidMechanics, weights::Union{Nothing,Vector{Vector{Vector{Float64}}}}=nothing)
     se_v_tl = zeros(maxthreadid())
     se_a_tl = zeros(maxthreadid())
     kin_a_tl = zeros(maxthreadid())
     for (block_index, block) in enumerate(model.blocks)
         material = model.materials[block_index]
-        quadratic_block_energies!(se_v_tl, se_a_tl, kin_a_tl, model, block, material)
+        block_weights = weights === nothing ? nothing : weights[block_index]
+        quadratic_block_energies!(se_v_tl, se_a_tl, kin_a_tl, model, block, material, block_weights)
     end
     return sum(se_v_tl), sum(se_a_tl), sum(kin_a_tl)
 end
@@ -436,6 +465,7 @@ function quadratic_block_energies!(
     model::SolidMechanics,
     block::ElementBlockData,
     material::Linear_Elastic,
+    block_weights::Union{Nothing,Vector{Vector{Float64}}}=nothing,
 )
     N = block.N
     dN = block.dN
@@ -455,6 +485,7 @@ function quadratic_block_energies!(
             dNdξ = dN[:, :, point]
             dXdξ = dNdξ * element_reference'
             dvol = det(dXdξ) * ip_weights[point]
+            block_weights === nothing || (dvol *= block_weights[e][point])
             dNdX = dXdξ \ dNdξ
             F_v = SMatrix{3,3,Float64,9}(I) + element_velocity * dNdX'
             F_a = SMatrix{3,3,Float64,9}(I) + element_acceleration * dNdX'
@@ -494,7 +525,11 @@ function subdomain_rate_invariant(subsim::SingleDomainSimulation)
     integrator = subsim.integrator
     Δt = integrator.time_step
     β, γ = integrator isa CentralDifference ? (0.0, integrator.γ) : (integrator.β, integrator.γ)
-    se_v, se_a, kin_a_consistent = quadratic_energies(model)
+    # The rate invariant of an overlap matching subdomain is blended with the
+    # constant weights of its assembly, so that the overlap is counted once as
+    # in the coupled problem; its lumped mass carries the same weights.
+    weights = uses_constant_overlap_weights(subsim) ? get_arlequin_weights(subsim).weights : nothing
+    se_v, se_a, kin_a_consistent = quadratic_energies(model, weights)
     staggered_interface = NaN
     staggered_interior = NaN
     if integrator isa CentralDifference
@@ -526,8 +561,8 @@ function dn_jump_columns(sim::MultiDomainSimulation)
         push!(values, r.displacement_jump, r.velocity_jump)
         push!(names, "displacement_jump_rms_" * pair, "velocity_jump_rms_" * pair)
         push!(values, r.displacement_jump_rms, r.velocity_jump_rms)
-        # Interface impulse residual of a constrained pair over the stop.
-        if is_constrained_dn(bc)
+        # Interface impulse residual of a constrained nonoverlap pair over the stop.
+        if bc isa SolidMechanicsNonOverlapSchwarzBoundaryCondition && is_constrained_dn(bc)
             net, relative = is_direct_dn(bc) ? (fill(NaN, 3), NaN) : dn_impulse_residual(sim, bc)
             for (comp, label) in enumerate(("x", "y", "z"))
                 push!(names, "impulse_residual_" * label * "_" * pair)

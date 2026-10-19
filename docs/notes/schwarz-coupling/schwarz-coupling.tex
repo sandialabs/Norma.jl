@@ -661,10 +661,20 @@ is integrated over the facets of the destination. Since October 18, 2026,
 the quadrature is segment based: each destination facet is split into its
 intersections with the source facets, projected onto the plane of the
 destination facet, and each piece is integrated with a seven-point
-triangle rule, which is exact for the product of two bilinear shape
-functions on planar facets. On interfaces of planar parallelogram facets
-$~L$ is therefore exact for any mesh ratio, the two integration directions
-give the same matrix, and $~P_d$ below reproduces linear fields. The boundary
+triangle rule of degree five. The facets may be three-node triangles,
+four-node quadrilaterals, or straight-sided six-node triangles (the facets
+of ten-node tetrahedra) on either side, in any combination: the shape
+functions of a triangle are polynomials of degree one or two in the plane
+for any triangle shape, those of a parallelogram quadrilateral of degree
+two, so their products are of degree at most four on such facets. On
+interfaces of planar triangles and parallelograms $~L$ is therefore exact
+for any mesh ratio, the two integration directions give the same matrix,
+and $~P_d$ below reproduces linear fields (checked to roundoff on the beam
+at ratio $1{:}0.75$ with the free part remeshed in linear and in quadratic
+tetrahedra against the hexahedral clamped part, October 18, 2026). A
+six-node facet whose midside nodes depart from the edge midpoints by more
+than $10^{-8}$ of its longest edge is curved and takes the fallback rule
+below. The boundary
 mass matrix $~W_d$ that enters the projectors is integrated facet by facet
 with the same quadrature as $~L$, so that the row sums of the two agree
 exactly on every facet, also where the rule, which integrates the shape

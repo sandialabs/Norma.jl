@@ -1116,6 +1116,18 @@ function guarded_constitutive!(
     end
 end
 
+# Per-quadrature-point weights of the assembly of a subdomain of an overlap
+# matching coupling (overlap_energy.jl): weights[block][element][point], one
+# half inside the partner and one outside, multiplying the volume element of
+# every assembled quantity. Keyed by model, as the Arlequin weight cache is;
+# a model absent from the cache is assembled with unit weights.
+const ASSEMBLY_WEIGHT_CACHE = IdDict{SolidMechanics,Vector{Vector{Vector{Float64}}}}()
+
+function assembly_block_weights(model::SolidMechanics, block_index::Int64)
+    weights = get(ASSEMBLY_WEIGHT_CACHE, model, nothing)
+    return weights === nothing ? nothing : weights[block_index]
+end
+
 function evaluate_element!(
     model::SolidMechanics,
     energy_tl::Vector{Float64},
@@ -1135,6 +1147,7 @@ function evaluate_element!(
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
     num_points::Int64,
+    block_weights::Union{Nothing,Vector{Vector{Float64}}},
 )
     node_indices = reset_element_threadlocal_arrays!(
         element_arrays_tl, element_block_connectivity, block_element_index, flags
@@ -1192,6 +1205,7 @@ function evaluate_element!(
         ip_weight = ip_weights[point]
         det_dXdξ = det(dXdξ)
         dvol = det_dXdξ * ip_weight
+        block_weights === nothing || (dvol *= block_weights[block_element_index][point])
         compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags)
         voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
         model.stress[block_index][block_element_index][point] = voigt_cauchy
@@ -1226,6 +1240,7 @@ function evaluate_block!(
 )::Bool where {NN,NP,T}
     num_block_elements = size(element_block_connectivity, 2)
     num_points = size(N, 2)
+    block_weights = assembly_block_weights(model, block_index)
     # No static parameter (NN, NP, T) is used inside the threaded loop body: it
     # is a closure, and captured static parameters are runtime values there,
     # which would make every static array constructor a dynamic call.
@@ -1250,6 +1265,7 @@ function evaluate_block!(
             element_block_connectivity,
             flags,
             num_points,
+            block_weights,
         )
     end
     return !model.failed

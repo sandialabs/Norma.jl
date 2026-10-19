@@ -230,6 +230,102 @@ the shared overlap region.
 | `weak` | no | `false` | weak (integrated) rather than pointwise transfer |
 | `compute overlap L2 relative error` | no | `""` | report the overlap L2 relative error of `disp`, `velo`, or `acce` (drives the overlap-error mesh-swap criterion) |
 
+With `weak: true` the datum on the subdomain's Schwarz boundary Γ is the
+L2 projection W⁻¹L of the partner's field, with W the facet mass matrix of
+Γ and L the cross-mass matrix of Γ against the partner's volume shape
+functions. Since 2026-10-19, L and W are integrated by the segmented rule of
+the matching exchange (below): in the plane of each facet the partner's
+elements appear as the polygons in which the plane cuts them (the convex
+hull of the crossings of the element's corner edges with the plane, and a
+face lying on the plane is counted once, from the side of the facet normal),
+the facet is clipped by each, and the pieces take the seven-point rule of
+degree five with each point located in the element by the inverse
+isoparametric map. On affine elements (tetrahedra, parallelepiped
+hexahedra) and triangular or parallelogram facets this is exact, the
+projection reproduces constants and linear fields, and its transpose
+carries a uniform traction exactly: on the 1:0.75 beam overlap the
+projector agrees with an independent cut integration to 5e-15, and the
+static patch test of the two-sided surface coupling (gist 6478a5bf,
+`patch.jl`, C2b) gives a strain error of 1e-12 at both refinement levels,
+against 4.4e-2 with the facet's own rule (test
+`schwarz-overlap-dynamic-cantilever-weak.jl`; results in
+~/Projects/Norma-Overlap-Energy/patch-norma-2026-10-19). A facet the
+sections do not cover, or a curved one, takes the facet's Gauss rule with
+point location, and the setup log reports the count.
+
+### `Schwarz overlap matching`
+
+Energy-conserving two-sided overlap coupling (since 2026-10-19). Each
+subdomain is constrained on its own Schwarz boundary Γ_k to the L2
+projection W_k⁻¹L_k of the partner's matched quantity, with L_k the
+cross-mass matrix of Γ_k against the partner's volume shape functions by the
+segmented rule above, and derives the other two kinematic fields from its
+own Newmark relations as the Dirichlet side of a matching pair does. It
+receives on all of its nodes the partner's d'Alembert reaction on the
+partner's Schwarz boundary through the transpose of the partner's projector,
+−Π_jᵀρ_j. Mass, internal force, stiffness, and energy of every quadrature
+point inside the partner are weighted by one half in the assembly (constant
+weights; a point inside n partners has the weight 1/(1 + n)), so that the
+fixed point of the Schwarz iteration is the blended constrained problem, the
+window balance of the rate invariant cancels as for a nonoverlap matching
+pair, and the blended energy output and the rate invariant count the overlap
+once with the same weights. Both sides are constrained, so both take one step
+per window: equal time steps are required, and the coupled initial
+acceleration, the matching criterion (`matching relative tolerance`), and
+Anderson acceleration apply as for a matching pair, with the Anderson step
+of each side taken at its own application on the partner data of the
+current iteration. Both sides of the overlap must set the condition.
+
+| Key | Required | Default | Meaning |
+|---|---|---|---|
+| `source block` | yes | — | partner element block that contains this side set |
+| `matching` | no | `velocity` | matched quantity, `velocity` or `displacement` |
+| `matching at` | no | `every substep` | `window end` on the fine-step side of a pair with different steps (below) |
+| `search tolerance` | no | `1.0e-6` | as for `Schwarz overlap` |
+
+**Different time steps (`matching at: window end`).** Both sides of the
+overlap matching coupling are constrained, so with different steps one
+constraint sits on the subcycled side. Constrained at every substep to the
+partner's interpolated velocity, that side is over-constrained in time, its
+substep reactions oscillate, and no single force on the coarse side is
+consistent with both the rate invariant (which pairs force increments) and
+the impulse (which pairs force averages): this is the arrangement the
+nonoverlap role rule excludes (rate invariant conserved, impulse residual of
+the order of the impulse, energy varying by its order). With `matching at:
+window end` the subcycled side imposes the matched velocity at the end of the
+window only; at its interior substeps its interface rows are free and carry
+the linear ramp in time between its reaction at the window start (the
+converged one of the previous stop) and at the window end (its last pass).
+The force increments of its substeps then add up to the change of its
+reaction and the window balance cancels, and the impulse of the ramp equals
+the impulse the coarse side receives: both conserved, as with the coarse-step
+side constrained. The interior substeps respond to the ramp and the end
+substep undoes that response, a loop with a gain of about −(m − 1) for m
+substeps that the relaxation of the datum does not pass through; under
+Anderson acceleration the window-end reaction is a second field of the
+interface's step (joint step on datum and reaction, the reaction residual
+scaled once per interface to the datum residual), and the iteration converges
+at two to four times the count of the coarse-step-constrained arrangement.
+Fixed relaxation damps the reaction with the same factor; 0.5 diverges. The
+same key applies to the Dirichlet side of a nonoverlap matching pair, which
+lifts role rule 1 (coarse-step side as the Dirichlet side) from a requirement
+to a preference for the iteration count. Measured on the beam, free part
+subcycled 4:1 as the constrained side, 1 ms, Anderson 0.5, 1e-12
+(~/Projects/Norma-Overlap-Energy/window-end-2026-10-19): nonoverlap EE
+13.5/17 iterations, δẼ 9e-14, impulse residual 2e-16, E within 1.1e-3; II
+24.8/41, δẼ 5e-12, impulse 2e-16, E within 4.0e-3; overlap EE 13.5/16
+(conforming) and 17.1/23 (1:0.75), δẼ ≤ 1e-11; overlap II 21.4/33 and
+23.5/36, δẼ 1.4e-10. Tests 136 and 140.
+
+Measured on the beam overlaps (example `cantilever-matching`, 1:0.75, and
+the conforming meshes) over 50 steps of 1 µs with Anderson acceleration at
+tolerance 1e-12: E and Ẽ conserved to 1e-11 for the trapezoidal and the
+central difference pair (test 140, `schwarz-overlap-matching.jl`); the
+transfer is exact (section above) and the two-sided static patch test passes
+to roundoff. The force transferred to a side is applied to all of its nodes
+and is part of its external forces; the reaction on Γ_k is the residual of
+the full equation including it.
+
 ### `Schwarz DN nonoverlap`
 
 Non-overlapping Dirichlet–Neumann coupling across a shared interface. The two
@@ -256,6 +352,7 @@ every relaxation parameter; use Aitken relaxation
 | `default BC type` | no | `Dirichlet` | this side's role: `Dirichlet` or `Neumann` (the two sides must be opposite) |
 | `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles once per controller stop, before its Schwarz iteration |
 | `matching` | no | — | selects the matching exchange and its matched quantity, `velocity` or `displacement`: the Dirichlet side imposes the projected matched quantity of the Neumann side and derives the other two kinematic fields from its own Newmark relations, and the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides with the same value, and requires the top-level `matching relative tolerance`. Without it the pair uses the standard exchange, which imposes the projected displacement, velocity, and acceleration together. The keys `constrained` and `constraint`, which selected this exchange before October 2026, abort |
+| `matching at` | no | `every substep` | `window end`: a subcycled Dirichlet side matches at the window end only and carries the ramp of its own reaction at interior substeps (see `Schwarz overlap matching`) |
 | `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a pair with `matching: velocity` of two central difference subdomains at equal time steps, set on both sides |
 
 A matching pair sets `matching` on both sides and the controller file sets
@@ -297,11 +394,19 @@ built from one cross mass matrix B, Π_D = W_D⁻¹ B, and the Neumann side's
 force transfer is Π_Dᵀ. B = ∫ N_D N_Nᵀ dΓ is integrated by
 segment-based quadrature: each facet of the integration side is split into
 its intersections with the facets of the other side, in the plane of the
-facet, and each piece is integrated with a seven-point triangle rule, which
-is exact for the product of two bilinear shape functions on planar facets.
-On interfaces of planar parallelogram facets B is therefore exact for any
-mesh ratio, both integration sides give the same matrix, and Π_D reproduces
-linear fields. W_D is integrated facet by facet with the same
+facet, and each piece is integrated with a seven-point triangle rule of
+degree five. The facets may be TRI3, QUAD4, or straight-sided TRI6 (the
+facets of TETRA10) on either side, in any combination: the shape functions
+of a triangle are polynomials of degree one or two in the plane for any
+triangle shape, those of a parallelogram QUAD4 of degree two, so the product
+of two shape functions is of degree at most four on such facets. On
+interfaces of planar triangles and parallelograms B is therefore exact for
+any mesh ratio, both integration sides give the same matrix, and Π_D
+reproduces linear fields (measured on the 1:0.75 beam with the free part
+remeshed in TET4 and in TET10 against the HEX8 clamped part, both roles:
+constants and linear fields to 5e-15, uniform traction transferred to
+7e-16; October 18, 2026, data in
+~/Projects/Norma-Schwarz-Coupling/element-topology-2026-10). W_D is integrated facet by facet with the same
 quadrature as B, so that the row sums of the two agree exactly on every
 facet, also where the physical-coordinate rule is inexact (on the paved cap
 facets of the nested cylinders the two quadratures of W_D differ by up to
@@ -317,7 +422,9 @@ with the segmented rule both uniform-strain patch tests are reproduced to
 roundoff, measured statically on rigel on October 18, 2026). A facet that
 the other side's facets do not cover to a relative 1e-8 of its area (gap,
 partial overlap, or a curved interface on which the projection of a
-quadrature point fails) is integrated with its own Gauss rule and the
+quadrature point fails), or a TRI6 facet whose midside nodes depart from
+the edge midpoints by more than 1e-8 of the longest edge (a curved facet),
+is integrated with its own Gauss rule and the
 containing-facet projection of each point, and the log warns with the count
 of such facets. B is then taken on the Neumann side when Π_D reproduces
 constants to 1e-12 with it, and otherwise on the Dirichlet side, where its

@@ -199,10 +199,83 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
     # The same force at every substep of the current stop, with its time, for
     # the per-substep force residual of a subcycled constrained pair.
     transferred_force_history::Vector{Tuple{Float64,Vector{Float64}}}
+    # Input key `matching at: window end`: a subcycled Dirichlet side imposes
+    # the matched quantity at the end of the window only, and at its interior
+    # substeps its interface rows carry the linear ramp in time between its
+    # reactions at the two ends of the window (window_start_reaction, the
+    # converged reaction of the previous stop, and window_end_reaction, the
+    # reaction at the end of its last pass). The force increments of its
+    # substeps then add up to the change of its reaction and the window balance
+    # of the rate invariant cancels, and the impulse of the ramp equals the
+    # impulse the coarse side receives: a fine-step Dirichlet side conserves
+    # both, as the coarse-step Dirichlet side does. With `every substep` (the
+    # default) the matched quantity is imposed at every substep from the
+    # partner's interpolated history.
+    window_end_constraint::Bool
+    window_start_reaction::Vector{Float64}
+    # The window-end reaction that forms the ramp of the current iteration
+    # (relaxed or Anderson-accelerated) and the one measured at the end of
+    # the last pass.
+    window_end_reaction::Vector{Float64}
+    window_end_reaction_raw::Vector{Float64}
     parent::Simulation
     self_handle::DomainHandle
     coupled_handle::DomainHandle
 end
+
+# Energy-conserving two-sided overlap coupling (input key `Schwarz overlap
+# matching`): each subdomain is constrained on its own Schwarz boundary Γ_k to
+# the L2 projection W_k⁻¹ L_k of the partner's matched quantity, with L_k the
+# cross-mass matrix of Γ_k against the partner's volume shape functions, and
+# receives on all of its nodes the partner's d'Alembert reaction on Γ_j through
+# the transpose of the partner's projector, -Π_jᵀ ρ_j. Mass, internal force,
+# stiffness, and energy of every quadrature point inside the partner are
+# weighted by one half (ASSEMBLY_WEIGHT_CACHE in model.jl), so that the fixed
+# point of the Schwarz iteration is the blended constrained problem and the
+# window balance of the rate invariant cancels as for a nonoverlap matching
+# pair. Both sides are constrained, so both take one step per window: equal
+# time steps only. The fields mirror those of the nonoverlap condition that
+# the matching machinery reads: `is_dirichlet`, `constrained`, and
+# `swap_bcs` are fixed, `direct_solve` is false, and `transferred_force` holds
+# the force received on all nodes.
+mutable struct SolidMechanicsOverlapMatchingSchwarzBoundaryCondition <:
+               SolidMechanicsOverlapCouplingSchwarzBoundaryCondition
+    name::String
+    side_set_id::Int64
+    side_set_node_indices::Vector{Int64}
+    num_nodes_sides::Vector{Int64}
+    local_from_global_map::Dict{Int64,Int64}
+    global_from_local_map::Vector{Int64}
+    coupled_block_name::String
+    search_tolerance::Float64
+    coupled_bc_index::Int64
+    dirichlet_projector::Matrix{Float64}
+    neumann_projector::Matrix{Float64}
+    square_projector::Matrix{Float64}
+    square_factor::Union{Nothing,Cholesky{Float64,Matrix{Float64}}}
+    is_dirichlet::Bool
+    swap_bcs::Bool
+    constrained::Bool
+    constraint::Symbol
+    direct_solve::Bool
+    transferred_force::Vector{Float64}
+    transferred_force_history::Vector{Tuple{Float64,Vector{Float64}}}
+    # As for the nonoverlap condition: the fine-step side of an overlap matching
+    # pair with different steps must set `matching at: window end`.
+    window_end_constraint::Bool
+    window_start_reaction::Vector{Float64}
+    window_end_reaction::Vector{Float64}
+    window_end_reaction_raw::Vector{Float64}
+    parent::Simulation
+    self_handle::DomainHandle
+    coupled_handle::DomainHandle
+end
+
+# The two conditions whose pairs are constrained problems: the nonoverlap
+# matching pair and the two-sided overlap matching coupling.
+const SolidMechanicsConstrainedSchwarzBoundaryCondition = Union{
+    SolidMechanicsNonOverlapSchwarzBoundaryCondition,SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+}
 
 # Robin-Robin nonoverlap Schwarz (input key `Schwarz RR nonoverlap`): the
 # classical Robin transmission condition t + α W u = g on each side of the

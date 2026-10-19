@@ -248,6 +248,8 @@ const BC_ENTRY_KEYS = Dict(
         "weak",
         "compute overlap L2 relative error",
     ]),
+    "Schwarz overlap matching" =>
+        Set(["source", "side set", "source block", "search tolerance", "matching", "matching at"]),
     "Schwarz DN nonoverlap" => Set([
         "source",
         "side set",
@@ -257,6 +259,7 @@ const BC_ENTRY_KEYS = Dict(
         "default BC type",
         "swap BC types",
         "matching",
+        "matching at",
         "interface solve",
     ]),
     "Schwarz RR nonoverlap" =>

@@ -917,14 +917,19 @@ end
 # destination facet is split into the pieces on which the source basis is
 # smooth, the intersections of the facet with the source facets in the plane
 # of the destination facet, and each piece is integrated with a seven-point
-# triangle rule. The product of two bilinear shape functions on planar
-# parallelogram facets is a polynomial of degree four, so L is exact there
-# whatever the mesh ratio, both integration directions give the same matrix,
-# and W⁻¹L reproduces linear fields. A facet that the pieces do not cover
-# (gap, partial overlap, or a curved interface on which a projection fails)
-# is integrated with its own Gauss rule and the containing-facet projection
-# of each quadrature point (add_facet_point_quadrature!), which carries the
-# quadrature error of the kinks of the source basis inside the facet.
+# triangle rule of degree five. The facets may be TRI3, QUAD4, or
+# straight-sided TRI6 on either side. The shape functions of a triangle are
+# polynomials of degree one (TRI3) or two (TRI6) in the plane for any
+# triangle shape, and those of a parallelogram QUAD4 are of degree two, so
+# the product of two shape functions is of degree at most four on such
+# facets, L is exact there whatever the mesh ratio, both integration
+# directions give the same matrix, and W⁻¹L reproduces linear fields. A
+# facet that the pieces do not cover (gap, partial overlap, or a curved
+# interface on which a projection fails), or a TRI6 facet whose midside
+# nodes are not at the edge midpoints (a curved facet), is integrated with
+# its own Gauss rule and the containing-facet projection of each quadrature
+# point (add_facet_point_quadrature!), which carries the quadrature error of
+# the kinks of the source basis inside the facet.
 #
 # Returns L and the destination's facet mass matrix W_ij = ∫ N_dst_i N_dst_j dΓ
 # integrated facet by facet with the same quadrature as L. Since the source
@@ -987,8 +992,8 @@ function get_rectangular_projection_matrix(
             0,
             :warn,
             "Interface transfer '%s'/'%s': %d of %d facets are not covered by the projected facets of the other " *
-            "side (gap, partial overlap, or curved interface) and were integrated with the facet's Gauss rule, " *
-            "which is inexact where the facets of the two sides are not nested.",
+            "side (gap, partial overlap, or curved interface) or are curved quadratic facets, and were integrated " *
+            "with the facet's Gauss rule, which is inexact where the facets of the two sides are not nested.",
             dst_bc.name,
             src_bc.name,
             num_facets - num_segmented,
@@ -1031,10 +1036,12 @@ function add_facet_point_quadrature!(
     return nothing
 end
 
-# Relative area below which a clipped piece is discarded, and relative
-# coverage error above which a facet falls back to the point rule.
+# Relative area below which a clipped piece is discarded, relative coverage
+# error above which a facet falls back to the point rule, and relative
+# departure of the midside nodes above which a TRI6 facet is curved.
 const SEGMENT_AREA_TOLERANCE = 1.0e-12
 const SEGMENT_COVERAGE_TOLERANCE = 1.0e-8
+const SEGMENT_STRAIGHT_TOLERANCE = 1.0e-8
 
 # Segment-based quadrature of one destination facet with three or four nodes.
 # Returns false, having added nothing, when the facet is of another type or
@@ -1048,7 +1055,7 @@ function add_facet_segmented_quadrature!(
     src_local_from_global_map::Dict{Int64,Int64},
 )
     dst_num_nodes_side = size(dst_side_coordinates, 2)
-    dst_num_nodes_side == 3 || dst_num_nodes_side == 4 || return false
+    is_segmentable_facet(dst_side_coordinates) || return false
     dst_nodes = facet_static_nodes(dst_side_coordinates)
     center, e1, e2, plane_normal = facet_plane(dst_side_coordinates)
     dst_polygon = project_polygon(dst_side_coordinates, center, e1, e2)
@@ -1074,7 +1081,7 @@ function add_facet_segmented_quadrature!(
         separated && continue
         src_side_coordinates = src_search.facet_coords[src_facet]
         src_num_nodes_side = size(src_side_coordinates, 2)
-        src_num_nodes_side == 3 || src_num_nodes_side == 4 || return false
+        is_segmentable_facet(src_side_coordinates) || return false
         src_polygon = project_polygon(src_side_coordinates, center, e1, e2)
         polygon_area(src_polygon) > SEGMENT_AREA_TOLERANCE * dst_area || continue
         piece = clip_convex_polygon(src_polygon, dst_polygon)
@@ -1122,7 +1129,39 @@ end
 
 function facet_static_nodes(coordinates::Matrix{Float64})
     n = size(coordinates, 2)
-    return n == 4 ? SMatrix{3,4,Float64,12}(coordinates) : SMatrix{3,3,Float64,9}(coordinates)
+    if n == 4
+        return SMatrix{3,4,Float64,12}(coordinates)
+    elseif n == 6
+        return SMatrix{3,6,Float64,18}(coordinates)
+    else
+        return SMatrix{3,3,Float64,9}(coordinates)
+    end
+end
+
+# Number of corner nodes of a facet: its polygon is formed by its first
+# corners in the Exodus node order (TRI3 and TRI6: three; QUAD4: four).
+num_facet_corners(num_nodes::Int64) = num_nodes == 4 ? 4 : 3
+
+# Largest relative departure of the midside nodes of a TRI6 facet from the
+# midpoints of its edges (Exodus order: node 4 on edge 1-2, 5 on 2-3, 6 on
+# 3-1), relative to the longest edge. Zero for a straight-sided facet.
+function facet_midside_departure(coordinates::Matrix{Float64})
+    x = [SVector{3,Float64}(coordinates[:, i]) for i in 1:6]
+    edges = ((1, 2, 4), (2, 3, 5), (3, 1, 6))
+    diameter = maximum(norm(x[b] - x[a]) for (a, b, _) in edges)
+    departure = maximum(norm(x[m] - 0.5 * (x[a] + x[b])) for (a, b, m) in edges)
+    return diameter > 0.0 ? departure / diameter : 0.0
+end
+
+# A facet the segmented rule integrates: TRI3, QUAD4, or a TRI6 with its
+# midside nodes at the edge midpoints, on which the shape functions are
+# polynomials in the plane. A curved TRI6 facet takes the point rule.
+function is_segmentable_facet(coordinates::Matrix{Float64})
+    n = size(coordinates, 2)
+    n == 3 && return true
+    n == 4 && return true
+    n == 6 && return facet_midside_departure(coordinates) ≤ SEGMENT_STRAIGHT_TOLERANCE
+    return false
 end
 
 function project_onto_facet_nodes(nodes::SMatrix{3,N,Float64}, x::SVector{3,Float64}) where {N}
@@ -1133,8 +1172,8 @@ end
 # a facet: the normal of the diagonals of a quadrilateral or of the edges of
 # a triangle.
 function facet_plane(coordinates::Matrix{Float64})
-    n = size(coordinates, 2)
-    center = SVector{3,Float64}(sum(coordinates; dims=2) / n)
+    n = num_facet_corners(size(coordinates, 2))
+    center = SVector{3,Float64}(sum(coordinates[:, 1:n]; dims=2) / n)
     x = [SVector{3,Float64}(coordinates[:, i]) for i in 1:n]
     d1 = n == 4 ? x[3] - x[1] : x[2] - x[1]
     d2 = n == 4 ? x[4] - x[2] : x[3] - x[1]
@@ -1146,7 +1185,8 @@ function facet_plane(coordinates::Matrix{Float64})
     return center, e1, e2, normal
 end
 
-# Nodes of a facet projected onto the plane, as a counterclockwise polygon.
+# Corner nodes of a facet projected onto the plane, as a counterclockwise
+# polygon.
 function project_polygon(
     coordinates::Matrix{Float64}, center::SVector{3,Float64}, e1::SVector{3,Float64}, e2::SVector{3,Float64}
 )
@@ -1154,7 +1194,7 @@ function project_polygon(
         SVector{2,Float64}(
             dot(SVector{3,Float64}(coordinates[:, i]) - center, e1),
             dot(SVector{3,Float64}(coordinates[:, i]) - center, e2),
-        ) for i in 1:size(coordinates, 2)
+        ) for i in 1:num_facet_corners(size(coordinates, 2))
     ]
     polygon_area(polygon) < 0.0 && reverse!(polygon)
     return polygon
@@ -1222,17 +1262,38 @@ function segment_intersection(
     return p + clamp(t, 0.0, 1.0) * d
 end
 
+# Cross-mass matrix L_ij = ∫_Γ N_i φ_j dΓ of the destination's Schwarz
+# boundary Γ (its side set) against the volume shape functions φ of the
+# source block that contains Γ, with the destination facet mass matrix
+# W_ij = ∫_Γ N_i N_j dΓ by the same quadrature, for the weak overlapping
+# coupling. The quadrature is segment based, as for get_rectangular_
+# projection_matrix: in the plane of each facet the source elements appear as
+# the polygons in which the plane cuts them, the facet is clipped by each such
+# polygon, and the pieces are integrated with the seven-point triangle rule of
+# degree five, each point located in the source element by the inverse
+# isoparametric map. The section of an affine element (a tetrahedron, or a
+# parallelepiped hexahedron) is the convex hull of the crossings of its edges
+# with the plane, on which its shape functions are polynomials of degree at
+# most three in the plane, so L is exact there for TRI3, QUAD4 (parallelogram),
+# and straight TRI6 facets. Where the plane coincides with element faces, the
+# face is the section of the elements on both sides and is counted once, for
+# the element on the side of the facet normal. The source basis sums to one
+# at every point, so the row sums of L equal those of W exactly, also on a
+# facet that the sections do not cover (to a relative 1e-8 of its area) or
+# that is curved, which takes the facet's Gauss rule with the point location
+# of find_point_in_mesh, as every facet did before 2026-10-19.
 function get_overlap_rectangular_projection_matrix(
     dst_model::SolidMechanics,
-    dst_bc::SolidMechanicsOverlapSchwarzBoundaryCondition,
+    dst_bc::SolidMechanicsOverlapCouplingSchwarzBoundaryCondition,
     src_model::SolidMechanics,
     coupled_block_name::String,
     tol::Float64,
 )
-    src_mesh = src_model.mesh
-    src_block_id = block_id_from_name(coupled_block_name, src_mesh)
-    src_element_type_string = Exodus.read_block_parameters(src_mesh, src_block_id)[1]
-    src_element_type = element_type_from_string(src_element_type_string)
+    src_block_id = block_id_from_name(coupled_block_name, src_model.mesh)
+    src_block_index = findfirst(block -> block.id == src_block_id, src_model.blocks)
+    src_block_index === nothing && norma_abortf("Weak overlap projector: block '%s' not found", coupled_block_name)
+    src_block = src_model.blocks[src_block_index]
+    src_boxes = element_bounding_boxes(src_model, src_block)
     src_num_nodes = size(src_model.reference, 2)
     dst_local_from_global_map = dst_bc.local_from_global_map
     dst_num_nodes_sides = dst_bc.num_nodes_sides
@@ -1240,36 +1301,248 @@ function get_overlap_rectangular_projection_matrix(
     dst_num_nodes = length(dst_local_from_global_map)
     dst_coords = dst_model.reference
     dst_side_set_node_index = 1
-    rectangular_projection_matrix = zeros(dst_num_nodes, src_num_nodes)
+    L = zeros(dst_num_nodes, src_num_nodes)
+    W = zeros(dst_num_nodes, dst_num_nodes)
+    num_segmented = 0
     for dst_num_nodes_side in dst_num_nodes_sides
         dst_side_nodes = dst_side_set_node_indices[dst_side_set_node_index:(dst_side_set_node_index + dst_num_nodes_side - 1)]
         dst_local_indices = get.(Ref(dst_local_from_global_map), dst_side_nodes, 0)
         dst_side_coordinates = dst_coords[:, dst_side_nodes]
-        dst_element_type = get_element_type(2, Int64(dst_num_nodes_side))
-        dst_num_int_points = default_num_int_pts(dst_element_type)
-        dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
-        for dst_point in 1:dst_num_int_points
-            dst_Nₚ = Vector(dst_N[:, dst_point])
-            dst_dNdξₚ = Matrix(dst_dNdξ[:, :, dst_point])
-            dst_wₚ = dst_w[dst_point]
-            dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
-            dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
-            dst_int_point_coord = dst_side_coordinates * dst_Nₚ
-            src_node_indices, ξ, found = find_point_in_mesh(dst_int_point_coord, src_model, src_block_id, tol)
-            if found == false
-                norma_abortf(
-                    "Weak overlap projector: could not find point (%.4e, %.4e, %.4e) in source mesh",
-                    dst_int_point_coord[1],
-                    dst_int_point_coord[2],
-                    dst_int_point_coord[3],
-                )
-            end
-            src_Nₚ = interpolate(src_element_type, ξ)[1]
-            rectangular_projection_matrix[dst_local_indices, src_node_indices] += dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
+        segmented = add_overlap_facet_segmented_quadrature!(
+            L, W, dst_local_indices, dst_side_coordinates, src_model, src_block, src_boxes
+        )
+        if segmented
+            num_segmented += 1
+        else
+            add_overlap_facet_point_quadrature!(
+                L, W, dst_local_indices, dst_side_coordinates, src_model, src_block_id, src_block.element_type, tol
+            )
         end
         dst_side_set_node_index += dst_num_nodes_side
     end
-    return rectangular_projection_matrix
+    num_facets = length(dst_num_nodes_sides)
+    if num_segmented < num_facets
+        norma_logf(
+            0,
+            :warn,
+            "Overlap transfer '%s'/'%s': %d of %d facets are not covered by the sections of the elements of the " *
+            "other side, or are curved, and were integrated with the facet's Gauss rule, which is inexact " *
+            "where the facets cut the elements of the other side.",
+            dst_bc.name,
+            coupled_block_name,
+            num_facets - num_segmented,
+            num_facets,
+        )
+    end
+    return L, W
+end
+
+# Bounding boxes of the elements of a block on the reference configuration.
+function element_bounding_boxes(model::SolidMechanics, block::ElementBlockData)
+    boxes = Vector{Tuple{SVector{3,Float64},SVector{3,Float64}}}(undef, block.num_elements)
+    for element in 1:(block.num_elements)
+        nodes = model.reference[:, block.connectivity[:, element]]
+        lo = SVector{3,Float64}(minimum(nodes[i, :]) for i in 1:3)
+        hi = SVector{3,Float64}(maximum(nodes[i, :]) for i in 1:3)
+        boxes[element] = (lo, hi)
+    end
+    return boxes
+end
+
+# Corner nodes and corner edges of a volume element (Exodus node order).
+function element_corner_edges(element_type::ElementType)
+    if element_type == HEX8
+        return 8, ((1, 2), (2, 3), (3, 4), (4, 1), (5, 6), (6, 7), (7, 8), (8, 5), (1, 5), (2, 6), (3, 7), (4, 8))
+    elseif element_type == TETRA4 || element_type == TETRA10
+        return 4, ((1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4))
+    else
+        norma_abort("Unsupported element type for the overlap transfer: $element_type")
+    end
+end
+
+# Convex hull of points in the plane, counterclockwise, by Andrew's monotone
+# chain; coincident points within `tolerance` are merged.
+function convex_hull(points::Vector{SVector{2,Float64}}, tolerance::Float64)
+    sorted = sort(points; by=p -> (p[1], p[2]))
+    unique_points = SVector{2,Float64}[]
+    for p in sorted
+        (isempty(unique_points) || norm(p - unique_points[end]) > tolerance) && push!(unique_points, p)
+    end
+    length(unique_points) < 3 && return unique_points
+    cross2(o, a, b) = (a[1] - o[1]) * (b[2] - o[2]) - (a[2] - o[2]) * (b[1] - o[1])
+    lower = SVector{2,Float64}[]
+    for p in unique_points
+        while length(lower) ≥ 2 && cross2(lower[end - 1], lower[end], p) ≤ 0.0
+            pop!(lower)
+        end
+        push!(lower, p)
+    end
+    upper = SVector{2,Float64}[]
+    for p in reverse(unique_points)
+        while length(upper) ≥ 2 && cross2(upper[end - 1], upper[end], p) ≤ 0.0
+            pop!(upper)
+        end
+        push!(upper, p)
+    end
+    return vcat(lower[1:(end - 1)], upper[1:(end - 1)])
+end
+
+# Section of a volume element by the plane of a facet, as a convex polygon in
+# the plane coordinates: the crossings of the corner edges with the plane and
+# the corners on it. An element entirely on one side of the plane, touching it
+# with a face, contributes that face only from the side of the normal, so that
+# a plane coinciding with element faces counts each face once. Returns an
+# empty polygon for an element the plane does not cut.
+function element_plane_section(
+    nodes::Matrix{Float64},
+    element_type::ElementType,
+    center::SVector{3,Float64},
+    e1::SVector{3,Float64},
+    e2::SVector{3,Float64},
+    normal::SVector{3,Float64},
+    plane_tolerance::Float64,
+)
+    num_corners, edges = element_corner_edges(element_type)
+    x = [SVector{3,Float64}(nodes[:, c]) for c in 1:num_corners]
+    d = [dot(x[c] - center, normal) for c in 1:num_corners]
+    d_min, d_max = minimum(d), maximum(d)
+    points = SVector{2,Float64}[]
+    d_max ≤ plane_tolerance && return points
+    in_plane(y) = SVector{2,Float64}(dot(y - center, e1), dot(y - center, e2))
+    for c in 1:num_corners
+        abs(d[c]) ≤ plane_tolerance && push!(points, in_plane(x[c]))
+    end
+    if d_min < -plane_tolerance
+        for (a, b) in edges
+            if (d[a] > plane_tolerance && d[b] < -plane_tolerance) ||
+                (d[a] < -plane_tolerance && d[b] > plane_tolerance)
+                t = d[a] / (d[a] - d[b])
+                push!(points, in_plane(x[a] + t * (x[b] - x[a])))
+            end
+        end
+    end
+    return convex_hull(points, plane_tolerance)
+end
+
+function add_overlap_facet_segmented_quadrature!(
+    L::Matrix{Float64},
+    W::Matrix{Float64},
+    dst_local_indices::Vector{Int64},
+    dst_side_coordinates::Matrix{Float64},
+    src_model::SolidMechanics,
+    src_block::ElementBlockData,
+    src_boxes::Vector{Tuple{SVector{3,Float64},SVector{3,Float64}}},
+)
+    is_segmentable_facet(dst_side_coordinates) || return false
+    dst_num_nodes_side = size(dst_side_coordinates, 2)
+    dst_element_type = get_element_type(2, dst_num_nodes_side)
+    dst_nodes = facet_static_nodes(dst_side_coordinates)
+    center, e1, e2, plane_normal = facet_plane(dst_side_coordinates)
+    dst_polygon = project_polygon(dst_side_coordinates, center, e1, e2)
+    dst_area = polygon_area(dst_polygon)
+    dst_area > 0.0 || return false
+    dst_lo = SVector{3,Float64}(minimum(dst_side_coordinates[i, :]) for i in 1:3)
+    dst_hi = SVector{3,Float64}(maximum(dst_side_coordinates[i, :]) for i in 1:3)
+    diameter = norm(dst_hi - dst_lo)
+    margin = 0.5 * diameter
+    plane_tolerance = 1.0e-9 * diameter
+    ξ_rule, w_rule = barycentric_quadrature(Val(2), Val(6), Val(7))
+    element_type = src_block.element_type
+    contributions = Vector{Tuple{Vector{Int64},Matrix{Float64}}}()
+    square_block = zeros(dst_num_nodes_side, dst_num_nodes_side)
+    covered_area = 0.0
+    @inbounds for element in 1:(src_block.num_elements)
+        lo, hi = src_boxes[element]
+        separated = false
+        for i in 1:3
+            if hi[i] < dst_lo[i] - margin || lo[i] > dst_hi[i] + margin
+                separated = true
+                break
+            end
+        end
+        separated && continue
+        node_indices = src_block.connectivity[:, element]
+        nodes = src_model.reference[:, node_indices]
+        section = element_plane_section(nodes, element_type, center, e1, e2, plane_normal, plane_tolerance)
+        length(section) ≥ 3 || continue
+        polygon_area(section) > SEGMENT_AREA_TOLERANCE * dst_area || continue
+        piece = clip_convex_polygon(section, dst_polygon)
+        length(piece) ≥ 3 || continue
+        piece_area = polygon_area(piece)
+        piece_area > SEGMENT_AREA_TOLERANCE * dst_area || continue
+        block = zeros(dst_num_nodes_side, length(node_indices))
+        centroid = sum(piece) / length(piece)
+        for k in eachindex(piece)
+            a = piece[k]
+            b = piece[k == length(piece) ? 1 : k + 1]
+            triangle_area =
+                0.5 * ((a[1] - centroid[1]) * (b[2] - centroid[2]) - (a[2] - centroid[2]) * (b[1] - centroid[1]))
+            triangle_area > 0.0 || continue
+            for q in eachindex(w_rule)
+                λ1, λ2 = ξ_rule[1, q], ξ_rule[2, q]
+                p = (1.0 - λ1 - λ2) * centroid + λ1 * a + λ2 * b
+                x = center + p[1] * e1 + p[2] * e2
+                _, ξ_dst, dst_distance, dst_normal = project_onto_facet_nodes(dst_nodes, x)
+                isfinite(dst_distance) || return false
+                slope = abs(dot(dst_normal, plane_normal))
+                slope > 0.5 || return false
+                ξ_src = map_to_parametric(element_type, nodes, Vector(x))
+                is_inside_parametric(element_type, ξ_src, 1.0e-6) || return false
+                dst_Nₚ = interpolate(dst_element_type, ξ_dst)[1]
+                src_Nₚ = interpolate(element_type, ξ_src)[1]
+                area = 2.0 * triangle_area * w_rule[q] / slope
+                block += dst_Nₚ * src_Nₚ' * area
+                square_block += dst_Nₚ * dst_Nₚ' * area
+            end
+        end
+        covered_area += piece_area
+        push!(contributions, (node_indices, block))
+    end
+    abs(covered_area - dst_area) ≤ SEGMENT_COVERAGE_TOLERANCE * dst_area || return false
+    for (node_indices, block) in contributions
+        L[dst_local_indices, node_indices] += block
+    end
+    W[dst_local_indices, dst_local_indices] += square_block
+    return true
+end
+
+# The facet's own Gauss rule with each point located in the source block by
+# find_point_in_mesh: the fallback of the segmented rule.
+function add_overlap_facet_point_quadrature!(
+    L::Matrix{Float64},
+    W::Matrix{Float64},
+    dst_local_indices::Vector{Int64},
+    dst_side_coordinates::Matrix{Float64},
+    src_model::SolidMechanics,
+    src_block_id::Int64,
+    src_element_type::ElementType,
+    tol::Float64,
+)
+    dst_num_nodes_side = size(dst_side_coordinates, 2)
+    dst_element_type = get_element_type(2, dst_num_nodes_side)
+    dst_num_int_points = default_num_int_pts(dst_element_type)
+    dst_N, dst_dNdξ, dst_w, _ = isoparametric(dst_element_type, dst_num_int_points)
+    for dst_point in 1:dst_num_int_points
+        dst_Nₚ = Vector(dst_N[:, dst_point])
+        dst_dNdξₚ = Matrix(dst_dNdξ[:, :, dst_point])
+        dst_wₚ = dst_w[dst_point]
+        dst_dXdξ = dst_dNdξₚ * dst_side_coordinates'
+        dst_j = norm(cross(dst_dXdξ[1, :], dst_dXdξ[2, :]))
+        dst_int_point_coord = dst_side_coordinates * dst_Nₚ
+        src_node_indices, ξ, found = find_point_in_mesh(dst_int_point_coord, src_model, src_block_id, tol)
+        if found == false
+            norma_abortf(
+                "Weak overlap projector: could not find point (%.4e, %.4e, %.4e) in source mesh",
+                dst_int_point_coord[1],
+                dst_int_point_coord[2],
+                dst_int_point_coord[3],
+            )
+        end
+        src_Nₚ = interpolate(src_element_type, ξ)[1]
+        L[dst_local_indices, src_node_indices] += dst_Nₚ * src_Nₚ' * dst_j * dst_wₚ
+        W[dst_local_indices, dst_local_indices] += dst_Nₚ * dst_Nₚ' * dst_j * dst_wₚ
+    end
+    return nothing
 end
 
 function compute_normal(mesh::ExodusDatabase, side_set_id::Int64, model::SolidMechanics)
