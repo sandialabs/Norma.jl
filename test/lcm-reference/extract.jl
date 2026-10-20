@@ -39,6 +39,10 @@
 #   :quad4  a 2 × 2 tensor at 4 points is flattened into <field>_<a>_<b> with
 #           flat index f = 2 (b - 1) + (a - 1), point f ÷ 4 + 1 and row-major
 #           2 × 2 component f % 4 + 1; scalar fields are <field>_<q>
+#   :tet10  a 3 × 3 tensor at 4 points (LCM's composite tet at cubature
+#           degree 2) is <field>_<a>_<b> with b = 01..12: the component
+#           (row (b - 1) % 3 + 1, column a) at point (b - 1) ÷ 3 + 1; scalar
+#           fields are <field>_<q>
 #   :point  one material point (Material Point Simulator), no point suffix
 
 using Exodus
@@ -160,8 +164,10 @@ stride(k) = num_steps -> sort!(unique(vcat(collect(1:k:num_steps), [num_steps]))
 # reads the axial reaction at the last step; the same with its volume
 # averaging switched off (Weighted Volume Average J and Volume Average
 # Pressure false in every block), whose every fourth step includes those of
-# the largest deviations. Their deformation is not homogeneous, so no F_nodal
-# is written.
+# the largest deviations; and the latter on RubiksCubeTet10.g
+# (make_rubiks_cube_tet10.jl) with LCM's composite tet (Use Composite Tet 10
+# in every block, cubature degree 2). Their deformation is not homogeneous,
+# so no F_nodal is written.
 const RUN_CASES = [
     (
         name="RubiksCube",
@@ -178,6 +184,15 @@ const RUN_CASES = [
         output="RubiksCube_Implicit_NoAvg.e",
         material="RubiksCube_Implicit_NoAvg_Materials.yaml",
         steps=stride(4),
+        face=nothing,
+        nodal=true,
+    ),
+    (
+        name="RubiksCubeTet10",
+        layout=:tet10,
+        output="RubiksCubeTet10.e",
+        material="RubiksCubeTet10_Materials.yaml",
+        steps=stride(15),
         face=nothing,
         nodal=true,
     ),
@@ -265,6 +280,9 @@ function column_and_point(name::AbstractString, layout::Symbol, tensor_fields::S
             component_2d = flat % 4 + 1
             row, col = (component_2d - 1) ÷ 2 + 1, (component_2d - 1) % 2 + 1
             return @sprintf("%s_%d", prefix, 3 * (row - 1) + col), flat ÷ 4 + 1
+        elseif layout == :tet10
+            row, col = (b - 1) % 3 + 1, a
+            return @sprintf("%s_%d", prefix, 3 * (row - 1) + col), (b - 1) ÷ 3 + 1
         end
         return @sprintf("%s_%d", prefix, a), b
     end
@@ -274,7 +292,8 @@ function column_and_point(name::AbstractString, layout::Symbol, tensor_fields::S
 end
 
 # Fields whose names carry a tensor component before the point index, i.e.
-# <field>_<a>_<b> with a = 1..9 and b = 1..8 (:hex8) or a = 1..2 and b = 1..8
+# <field>_<a>_<b> with a = 1..9 and b = 1..8 (:hex8), a = 1..3 and b = 1..12
+# (:tet10) or a = 1..2 and b = 1..8
 # (:quad4). Per-slip-system scalars <field>_<s>_<q> also have two trailing
 # integers, but in 2D their point index only runs to 4.
 function tensor_fields_of(names::Vector{String}, layout::Symbol)
@@ -287,8 +306,14 @@ function tensor_fields_of(names::Vector{String}, layout::Symbol)
         push!(get!(first_indices, stem, Set{Int}()), integers[1])
         push!(get!(second_indices, stem, Set{Int}()), integers[2])
     end
-    expected_first = layout == :quad4 ? Set(1:2) : Set(1:9)
-    expected_second = Set(1:8)
+    expected_first = if layout == :quad4
+        Set(1:2)
+    elseif layout == :tet10
+        Set(1:3)
+    else
+        Set(1:9)
+    end
+    expected_second = layout == :tet10 ? Set(1:12) : Set(1:8)
     return Set(
         stem for
         stem in keys(first_indices) if first_indices[stem] == expected_first && second_indices[stem] == expected_second

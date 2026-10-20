@@ -21,6 +21,39 @@ using Base.Threads: @threads, threadid, nthreads, maxthreadid
 is_restarted(model::SolidMechanics) = model.restarted
 is_restarted(model::RomModel) = model.fom_model.restarted
 
+# The element blocks the model key `composite tet 10` switches to the
+# composite tetrahedron: `true` for every TETRA10 block, or a list of block
+# names, or a map of block names to booleans. Returns whether every TETRA10
+# block is switched and the blocks named.
+function composite_tet10_blocks(model_params, element_block_names::AbstractVector{<:AbstractString})
+    spec = get(model_params, "composite tet 10", false)
+    spec isa Bool && return spec, Set{String}()
+    names = if spec isa AbstractVector
+        Set{String}(string.(spec))
+    elseif spec isa AbstractDict
+        # A quoted "true" or "yes" would otherwise read as off.
+        all(on -> on isa Bool, values(spec)) ||
+            norma_abort("The values of a `composite tet 10` map of block names must be true or false.")
+        Set{String}(string(name) for (name, on) in spec if on)
+    else
+        norma_abort("`composite tet 10` must be true, false, a list of block names or a map of block names to booleans.")
+    end
+    for name in names
+        name ∈ element_block_names || norma_abortf("`composite tet 10` names block %s, which is not in the mesh.", name)
+    end
+    return false, names
+end
+
+# The element type of a block of the model: that of its mesh, except for the
+# blocks switched to the composite tetrahedron.
+function block_element_type(model::SolidMechanics, block_id::Integer)
+    block_index = findfirst(block -> block.id == block_id, model.blocks)
+    block_index === nothing && norma_abortf("No element block with id %d.", block_id)
+    return model.blocks[block_index].element_type
+end
+
+block_element_types(model::SolidMechanics) = [block.element_type for block in model.blocks]
+
 function SolidMechanics(params::Parameters)
     input_mesh = params["input_mesh"]
     model_params = params["model"]
@@ -94,6 +127,7 @@ function SolidMechanics(params::Parameters)
     stop_state_old = Vector{Vector{Vector{Vector{Float64}}}}()  # empty until first save_stop_state
     stored_energy = Vector{Vector{Float64}}()
     num_int_pts_overrides = get(model_params, "num integration points", Dict{String,Any}())
+    all_composite, composite_blocks = composite_tet10_blocks(model_params, element_block_names)
     num_int_pts = Vector{Int}(undef, num_blocks)
     block_data = Vector{ElementBlockData}(undef, num_blocks)
     lattice_orientation = Vector{Vector{SMatrix{3,3,Float64,9}}}(undef, num_blocks)
@@ -102,6 +136,16 @@ function SolidMechanics(params::Parameters)
         element_type_string, num_block_elements, _, _, _, _ = Exodus.read_block_parameters(input_mesh, block_id)
         element_type = element_type_from_string(element_type_string)
         block_name = element_block_names[block_index]
+        if block_name ∈ composite_blocks
+            element_type == TETRA10 || norma_abortf(
+                "Block %s is a %s block: the composite tet 10 needs TETRA10 elements.",
+                block_name,
+                element_type_string,
+            )
+            element_type = COMPOSITE_TETRA10
+        elseif all_composite && element_type == TETRA10
+            element_type = COMPOSITE_TETRA10
+        end
         num_points = if haskey(num_int_pts_overrides, block_name)
             Int(num_int_pts_overrides[block_name])
         else
@@ -114,6 +158,7 @@ function SolidMechanics(params::Parameters)
         num_nodes_per_element = size(raw_connectivity, 2)
         connectivity = reshape(Int64.(vec(raw_connectivity)), (num_nodes_per_element, num_block_elements))
         N, dN, weights = isoparametric(element_type, num_points)
+        mass_N, mass_dN, mass_weights = mass_quadrature(element_type, num_points)
         block_data[block_index] = ElementBlockData(
             Int64(block_id),
             element_type,
@@ -124,6 +169,9 @@ function SolidMechanics(params::Parameters)
             N,
             dN,
             weights,
+            mass_N,
+            mass_dN,
+            mass_weights,
         )
         material = materials[block_index]
         lattice_orientation[block_index] = if has_orientation(material)
@@ -169,6 +217,13 @@ function SolidMechanics(params::Parameters)
         push!(state, deepcopy(block_state))
         push!(stored_energy, block_stored_energy)
     end
+    if all_composite && !any(data -> data.element_type == COMPOSITE_TETRA10, block_data)
+        norma_log(
+            0,
+            :warning,
+            "`composite tet 10: true` switches no block: the mesh has no TETRA10 block, so the standard elements are used.",
+        )
+    end
     strain_energy = 0.0
     stiffness = spzeros(0, 0)
     mass = spzeros(0, 0)
@@ -213,7 +268,9 @@ function SolidMechanics(params::Parameters)
         rec_iv = Bool(get(recovery_params, "internal variables", false))
         rec_F = Bool(get(recovery_params, "deformation gradient", false))
     end
-    recovery_data = build_recovery_data(recovery_kind, input_mesh, reference, num_int_pts)
+    recovery_data = build_recovery_data(
+        recovery_kind, input_mesh, reference, num_int_pts, [block.element_type for block in block_data]
+    )
     is_both = recovery_kind === :both
     n_iv = rec_iv ? length(collect_internal_variable_names(materials)) : 0
     # Single-mode buffers: allocated only when the quantity is enabled AND
@@ -1019,18 +1076,45 @@ function compute_element_threadlocal_arrays!(
     density::T,
     dvol::T,
     flags::EvaluationFlags,
+    mass_at_points::Bool,
 ) where {T,N}
     t = threadid()
     element_arrays_tl.energy[t] += W * dvol
     add_internal_force!(element_arrays_tl.internal_force[t], dNdX, P, dvol)
-    if flags.compute_lumped_mass == true
+    if flags.compute_lumped_mass == true && mass_at_points
         add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
     end
     if flags.compute_stiffness == true
         add_stiffness!(element_arrays_tl.stiffness[t], dNdX, AA, dvol)
     end
-    if flags.compute_mass == true
+    if flags.compute_mass == true && mass_at_points
         add_mass!(element_arrays_tl.mass[t], Np, density, dvol)
+    end
+    return nothing
+end
+
+# The mass of an element integrated with a rule of its own (the composite
+# tetrahedron), on the reference configuration.
+function add_element_mass!(
+    element_arrays_tl::SMElementThreadLocalArrays,
+    element_reference_position::SMatrix{3,NN,T},
+    mass_N::SMatrix{NN,NM,T},
+    mass_dN::SArray{Tuple{3,NN,NM},T},
+    mass_weights::AbstractVector{T},
+    density::T,
+    flags::EvaluationFlags,
+) where {NN,NM,T}
+    t = threadid()
+    for point in 1:NM
+        Np = mass_N[:, point]
+        dXdξ = mass_dN[:, :, point] * element_reference_position'
+        dvol = det(dXdξ) * mass_weights[point]
+        if flags.compute_lumped_mass == true
+            add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
+        end
+        if flags.compute_mass == true
+            add_mass!(element_arrays_tl.mass[t], Np, density, dvol)
+        end
     end
     return nothing
 end
@@ -1064,6 +1148,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         density = material.ρ
         element_type = block.element_type
         N, dN, ip_weights = block.N, block.dN, block.weights
+        mass_N, mass_dN, mass_weights = block.mass_N, block.mass_dN, block.mass_weights
         element_block_connectivity = block.connectivity
         element_arrays_tl = create_element_threadlocal_arrays(block.num_nodes_per_element, flags)
         force_values = buffers.force[block_index]
@@ -1091,6 +1176,9 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             N,
             dN,
             ip_weights,
+            mass_N,
+            mass_dN,
+            mass_weights,
             element_block_connectivity,
             flags,
             Δt,
@@ -1194,6 +1282,9 @@ function evaluate_element!(
     N::SMatrix,
     dN::SArray,
     ip_weights::AbstractVector,
+    mass_N::SMatrix,
+    mass_dN::SArray,
+    mass_weights::AbstractVector,
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
     num_points::Int64,
@@ -1220,6 +1311,10 @@ function evaluate_element!(
     # The current position always uses the mesh reference, not the smoothed one.
     element_current_position =
         gather_nodal(model.reference, node_indices, N) + gather_nodal(model.displacement, node_indices, N)
+    mass_at_points = element_type != COMPOSITE_TETRA10
+    if !mass_at_points && (flags.compute_mass == true || flags.compute_lumped_mass == true)
+        add_element_mass!(element_arrays_tl, element_reference_position, mass_N, mass_dN, mass_weights, density, flags)
+    end
     for point in 1:num_points
         Np = N[:, point]
         dNdξ = dN[:, :, point]
@@ -1257,7 +1352,7 @@ function evaluate_element!(
         det_dXdξ = det(dXdξ)
         dvol = det_dXdξ * ip_weight
         block_weights === nothing || (dvol *= block_weights[block_element_index][point])
-        compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags)
+        compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags, mass_at_points)
         voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
         model.stress[block_index][block_element_index][point] = voigt_cauchy
     end
@@ -1286,6 +1381,9 @@ function evaluate_block!(
     N::SMatrix{NN,NP,T},
     dN::SArray{Tuple{3,NN,NP},T},
     ip_weights::AbstractVector{T},
+    mass_N::SMatrix,
+    mass_dN::SArray,
+    mass_weights::AbstractVector,
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
     Δt::Float64,
@@ -1314,6 +1412,9 @@ function evaluate_block!(
             N,
             dN,
             ip_weights,
+            mass_N,
+            mass_dN,
+            mass_weights,
             element_block_connectivity,
             flags,
             num_points,

@@ -226,6 +226,276 @@ function barycentric(::Val{D}, ::Val{N}, ::Val{G}) where {D,N,G}
     return SMatrix(Nmat), SArray(dNmat), w, ξ
 end
 
+# The 10-node composite tetrahedron of LCM (`Use Composite Tet 10: true`):
+# Intrepid2's Basis_HGRAD_TET_COMP12_FEM on the nodes of a TETRA10, after
+# Ostien, Foulk, Mota and Veilleux, "A 10-node composite tetrahedral finite
+# element for solid mechanics", IJNME 107 (2016). The parent tetrahedron is
+# split into 12 sub-tetrahedra: the 4 corner tetrahedra of its regular
+# refinement and the 8 cones from the centroid over the faces of the inner
+# octahedron. The shape functions are the piecewise linear hat functions of
+# the 10 nodes on that split, and are 1/6 at the centroid for the edge nodes,
+# 0 for the corner nodes.
+#
+# The gradients are not those of the piecewise linear functions (constant on
+# each sub-tetrahedron) but their L2 projection, over the parent, onto linear
+# polynomials. Everything downstream (the Jacobian of the reference map, the
+# deformation gradient, the internal force and the tangent) uses these
+# projected gradients, as LCM does through Intrepid2, so the element has an
+# assumed deformation gradient, linear on a straight-sided element. This is
+# the closed form of the paper's §3.2.1, which assumes edge nodes at the
+# midpoints. Foulk, Ostien, Talamini, Tupek, Crane, Mota and Veilleux,
+# "Extending a 10-node composite tetrahedral finite element for solid
+# mechanics", IJNME 122 (2021), generalize it to curved elements; Norma, like
+# LCM, does not. The integration points are those of the parent TETRA10
+# rules: 4 points (LCM's `Cubature Degree: 2`, the rule of the paper), 5
+# points (LCM's default degree 3) or 14 points.
+#
+# The node and sub-tetrahedron numbering are Intrepid2's; the node numbering
+# is the Exodus TETRA10 one, with edge nodes 5-10 on edges 1-2, 2-3, 3-1,
+# 1-4, 2-4 and 3-4.
+
+# Sub-tetrahedron (0-11, Intrepid2's numbering) that contains the point ξ of
+# the parent, with the classification of Intrepid2's getLocalSubTet: a point
+# on an interface may go to either side, and a point outside the parent goes
+# to an adjacent sub-tetrahedron, so the values are the linear extension from
+# it.
+function composite_tetra10_subtet(ξ::SVector{3,T}) where {T}
+    λ = (one(T) - ξ[1] - ξ[2] - ξ[3], ξ[1], ξ[2], ξ[3])
+    k = 1
+    for i in 2:4
+        λ[i] > λ[k] && (k = i)
+    end
+    λ[k] ≥ 0.5 && return k - 1
+    k = 1
+    for i in 2:4
+        (λ[i] - 0.25)^2 > (λ[k] - 0.25)^2 && (k = i)
+    end
+    inner_face = (11, 4, 9, 6)  # the cone over the octahedron face λ_k = 1/2
+    outer_face = (5, 10, 7, 8)  # the cone over the octahedron face λ_k = 0
+    return λ[k] > 0.25 ? inner_face[k] : outer_face[k]
+end
+
+# The vertices of each sub-tetrahedron (Intrepid2's numbering 0-11, stored
+# 1-12) as nodes 1-10 of the parent and 11 for its centroid.
+const COMPOSITE_TETRA10_SUBTETS = (
+    (1, 5, 7, 8),
+    (2, 5, 6, 9),
+    (3, 6, 7, 10),
+    (4, 8, 9, 10),
+    (11, 5, 6, 9),
+    (11, 6, 9, 10),
+    (11, 8, 9, 10),
+    (11, 5, 8, 9),
+    (11, 5, 6, 7),
+    (11, 6, 7, 10),
+    (11, 7, 8, 10),
+    (11, 5, 7, 8),
+)
+
+# Parametric coordinates of the 10 nodes and the centroid.
+const COMPOSITE_TETRA10_POINTS = SMatrix{3,11,Float64}(
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0.5,
+    0,
+    0,
+    0.5,
+    0.5,
+    0,
+    0,
+    0.5,
+    0,
+    0,
+    0,
+    0.5,
+    0.5,
+    0,
+    0.5,
+    0,
+    0.5,
+    0.5,
+    0.25,
+    0.25,
+    0.25,
+)
+
+# Shape function values, transcribed from Intrepid2's
+# Basis_HGRAD_TET_COMP12_FEM (OPERATOR_VALUE).
+function composite_tetra10_values(ξ::SVector{3,T}) where {T}
+    r, s, t = ξ
+    N = zero(MVector{10,T})
+    aux = zero(T)
+    subtet = composite_tetra10_subtet(ξ)
+    if subtet == 0
+        N[1] = 1 - 2 * (r + s + t)
+        N[5] = 2r
+        N[7] = 2s
+        N[8] = 2t
+    elseif subtet == 1
+        N[2] = 2r - 1
+        N[5] = 2 - 2 * (r + s + t)
+        N[6] = 2s
+        N[9] = 2t
+    elseif subtet == 2
+        N[3] = 2s - 1
+        N[6] = 2r
+        N[7] = 2 - 2 * (r + s + t)
+        N[10] = 2t
+    elseif subtet == 3
+        N[4] = 2t - 1
+        N[8] = 2 - 2 * (r + s + t)
+        N[9] = 2r
+        N[10] = 2s
+    elseif subtet == 4
+        N[5] = 1 - 2 * (s + t)
+        N[6] = 2 * (r + s) - 1
+        N[9] = 2 * (r + t) - 1
+        aux = 2 - 4r
+    elseif subtet == 5
+        N[6] = 2 * (r + s) - 1
+        N[9] = 2 * (r + t) - 1
+        N[10] = 2 * (s + t) - 1
+        aux = 4 - 4 * (r + s + t)
+    elseif subtet == 6
+        N[8] = 1 - 2 * (r + s)
+        N[9] = 2 * (r + t) - 1
+        N[10] = 2 * (s + t) - 1
+        aux = 2 - 4t
+    elseif subtet == 7
+        N[5] = 1 - 2 * (s + t)
+        N[8] = 1 - 2 * (r + s)
+        N[9] = 2 * (r + t) - 1
+        aux = 4s
+    elseif subtet == 8
+        N[5] = 1 - 2 * (s + t)
+        N[6] = 2 * (r + s) - 1
+        N[7] = 1 - 2 * (r + t)
+        aux = 4t
+    elseif subtet == 9
+        N[6] = 2 * (r + s) - 1
+        N[7] = 1 - 2 * (r + t)
+        N[10] = 2 * (s + t) - 1
+        aux = 2 - 4s
+    elseif subtet == 10
+        N[7] = 1 - 2 * (r + t)
+        N[8] = 1 - 2 * (r + s)
+        N[10] = 2 * (s + t) - 1
+        aux = 4r
+    else
+        N[5] = 1 - 2 * (s + t)
+        N[7] = 1 - 2 * (r + t)
+        N[8] = 1 - 2 * (r + s)
+        aux = 4 * (r + s + t) - 2
+    end
+    for a in 5:10
+        N[a] += aux / 6
+    end
+    return SVector(N)
+end
+
+# Projected gradients ∂N_a/∂ξ_i, transcribed from Intrepid2's
+# Basis_HGRAD_TET_COMP12_FEM (OPERATOR_GRAD), as a 3 × 10 matrix.
+function composite_tetra10_gradients(ξ::SVector{3,T}) where {T}
+    r, s, t = ξ
+    g1 = (-17 + 20r + 20s + 20t) / 8
+    # One column (∂N_a/∂r, ∂N_a/∂s, ∂N_a/∂t) per node.
+    #! format: off
+    return SMatrix{3,10,T}(
+        g1, g1, g1,  # node 1
+        5r / 2 - 0.375, 0, 0,  # node 2
+        0, 5s / 2 - 0.375, 0,  # node 3
+        0, 0, 5t / 2 - 0.375,  # node 4
+        -35 * (-1 + 2r + s + t) / 12, (-4 - 35r + 5s + 10t) / 12, (-4 - 35r + 10s + 5t) / 12,  # node 5
+        (-1 + 5r + 40s - 5t) / 12, (-1 + 40r + 5s - 5t) / 12, -5 * (-1 + r + s + 2t) / 12,  # node 6
+        (-4 + 5r - 35s + 10t) / 12, -35 * (-1 + r + 2s + t) / 12, (-4 + 10r - 35s + 5t) / 12,  # node 7
+        (-4 + 5r + 10s - 35t) / 12, (-4 + 10r + 5s - 35t) / 12, -35 * (-1 + r + s + 2t) / 12,  # node 8
+        (-1 + 5r - 5s + 40t) / 12, -5 * (-1 + r + 2s + t) / 12, (-1 + 40r - 5s + 5t) / 12,  # node 9
+        -5 * (-1 + 2r + s + t) / 12, (-1 - 5r + 5s + 40t) / 12, (-1 - 5r + 40s + 5t) / 12,  # node 10
+    )
+    #! format: on
+end
+
+function composite_tetra10_shape_functions(ξ::SVector{3,T}) where {T}
+    return composite_tetra10_values(ξ), composite_tetra10_gradients(ξ), zeros(SArray{Tuple{3,3,10},T,3})
+end
+
+# Integration point tables of the composite tetrahedron on the 4-, 5- or
+# 14-point rules of the parent TETRA10.
+function composite_tetra10(::Val{G}) where {G}
+    G ∈ (4, 5, 14) || norma_abortf(
+        "The composite tet 10 supports 4, 5 or 14 integration points (LCM's cubature degrees 2 and 3 are 4 and 5), not %d.",
+        G,
+    )
+    ξ, w = barycentric_quadrature(Val(3), Val(10), Val(G))
+    Nmat = MMatrix{10,G,Float64}(undef)
+    dNmat = MArray{Tuple{3,10,G},Float64}(undef)
+    for p in 1:G
+        Np, dNp, _ = composite_tetra10_shape_functions(SVector{3,Float64}(ξ[:, p]))
+        Nmat[:, p] = Np
+        dNmat[:, :, p] = dNp
+    end
+    return SMatrix(Nmat), SArray(dNmat), w, ξ
+end
+
+# Exact rule for the mass of the composite tetrahedron: the 4-point rule on
+# each of the 12 sub-tetrahedra, which integrates the products of the
+# piecewise linear shape functions exactly. The gradients in this table are
+# the true ones, constant on each sub-tetrahedron, so the volume element is
+# that of the geometry the shape functions interpolate. On a straight-sided
+# tetrahedron the consistent mass is LCM's analytic composite tet mass
+# (`Use Analytic Mass`), and its row sums are LCM's lumped one
+# (`Lump Analytic Mass`). On a curved one it is the exact mass of Foulk et al.
+# (2021), eq. (50), which LCM's, the straight-sided matrix scaled by the
+# element volume, only approximates.
+function composite_tetra10_mass_rule()
+    ξ4, w4 = barycentric_quadrature(Val(3), Val(4), Val(4))
+    G = 48
+    ξ = MMatrix{3,G,Float64}(undef)
+    w = MVector{G,Float64}(undef)
+    Nmat = MMatrix{10,G,Float64}(undef)
+    dNmat = MArray{Tuple{3,10,G},Float64}(undef)
+    # Nodal values of the shape functions at the 10 nodes and the centroid.
+    vertex_values = hcat(Matrix{Float64}(I, 10, 10), [0, 0, 0, 0, 1, 1, 1, 1, 1, 1] / 6)
+    p = 0
+    for (subtet, vertices) in enumerate(COMPOSITE_TETRA10_SUBTETS)
+        V = COMPOSITE_TETRA10_POINTS[:, SVector(vertices)]
+        A = hcat(V[:, 2] - V[:, 1], V[:, 3] - V[:, 1], V[:, 4] - V[:, 1])
+        values = vertex_values[:, collect(vertices)]
+        # ∂N/∂ξ = (∂N/∂λ) A⁻¹ with λ the coordinates of the sub-tetrahedron.
+        dN = (hcat(values[:, 2] - values[:, 1], values[:, 3] - values[:, 1], values[:, 4] - values[:, 1]) / A)'
+        for q in 1:4
+            p += 1
+            ξq = V[:, 1] + A * ξ4[:, q]
+            ξ[:, p] = ξq
+            w[p] = w4[q] * abs(det(A))
+            # The values come from the vertex values of this sub-tetrahedron,
+            # so no point is classified across an interface.
+            Nmat[:, p] = values * SVector(1 - sum(ξ4[:, q]), ξ4[1, q], ξ4[2, q], ξ4[3, q])
+            dNmat[:, :, p] = dN
+        end
+        subtet == composite_tetra10_subtet(SVector{3,Float64}(V * SVector(0.25, 0.25, 0.25, 0.25))) + 1 ||
+            norma_abort("Inconsistent composite tet 10 sub-tetrahedra")
+    end
+    return SMatrix(Nmat), SArray(dNmat), SVector(w), SMatrix(ξ)
+end
+
+# The rule for the mass of a block: its integration points, except for the
+# composite tetrahedron, whose mass is integrated exactly on its sub-tetrahedra.
+function mass_quadrature(element_type::ElementType, G::Integer)
+    element_type == COMPOSITE_TETRA10 && return composite_tetra10_mass_rule()
+    return isoparametric(element_type, G)
+end
+
 function lagrangian_shape_functions(::Val{1}, ::Val{2}, ξ::SVector{1,T}) where {T}
     N = @SVector [0.5 * (1.0 - ξ[1]), 0.5 * (1.0 + ξ[1])]
     dN = @SMatrix [-0.5 0.5]
@@ -377,6 +647,8 @@ default_num_int_pts(::Val{QUAD4}) = 4
 default_num_int_pts(::Val{TETRA4}) = 4
 default_num_int_pts(::Val{TETRA10}) = 5
 default_num_int_pts(::Val{HEX8}) = 8
+# The rule of the paper and of LCM's `Cubature Degree: 2`.
+default_num_int_pts(::Val{COMPOSITE_TETRA10}) = 4
 default_num_int_pts(et::ElementType) = default_num_int_pts(Val(et))
 
 get_element_dim_nodes(::Val{BAR2}) = (1, 2)
@@ -386,6 +658,7 @@ get_element_dim_nodes(::Val{QUAD4}) = (2, 4)
 get_element_dim_nodes(::Val{TETRA4}) = (3, 4)
 get_element_dim_nodes(::Val{TETRA10}) = (3, 10)
 get_element_dim_nodes(::Val{HEX8}) = (3, 8)
+get_element_dim_nodes(::Val{COMPOSITE_TETRA10}) = (3, 10)
 get_element_dim_nodes(et::ElementType) = get_element_dim_nodes(Val(et))
 
 is_barycentric(::Val{BAR2}) = false
@@ -395,6 +668,7 @@ is_barycentric(::Val{QUAD4}) = false
 is_barycentric(::Val{TETRA4}) = true
 is_barycentric(::Val{TETRA10}) = true
 is_barycentric(::Val{HEX8}) = false
+is_barycentric(::Val{COMPOSITE_TETRA10}) = true
 is_barycentric(et::ElementType) = is_barycentric(Val(et))
 
 function get_element_type(dim::Integer, num_nodes::Integer)
@@ -418,6 +692,7 @@ function get_element_type(dim::Integer, num_nodes::Integer)
 end
 
 function isoparametric(element_type::ElementType, G::Integer)
+    element_type == COMPOSITE_TETRA10 && return composite_tetra10(Val(G))
     D, N = get_element_dim_nodes(element_type)
     return if is_barycentric(element_type)
         barycentric(Val(D), Val(N), Val(G))
@@ -429,7 +704,9 @@ end
 function interpolate(element_type::ElementType, ξ::AbstractVector{Float64})
     D, N = get_element_dim_nodes(element_type)
     ξs = SVector{D}(ξ)
-    if is_barycentric(element_type)
+    if element_type == COMPOSITE_TETRA10
+        return composite_tetra10_shape_functions(ξs)
+    elseif is_barycentric(element_type)
         return barycentric_shape_functions(Val(D), Val(N), ξs)
     else
         return lagrangian_shape_functions(Val(D), Val(N), ξs)
@@ -498,7 +775,40 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
     return nodal_force_component
 end
 
+# The composite map is affine on each of its sub-tetrahedra, so its inverse is
+# exact: the affine inverse on the sub-tetrahedron that holds the point or,
+# for a point outside the element, on the one it is closest to. Newton's
+# method with the projected gradients, which are not the derivative of the
+# map on curved elements, could diverge there. Also returns how far the point
+# is outside that sub-tetrahedron: the largest violation of its barycentric
+# coordinates, zero inside.
+function composite_tetra10_parametric_point(nodes::AbstractMatrix{Float64}, point::AbstractVector{Float64})
+    # The centroid is where the edge functions are 1/6 and the corner ones 0.
+    centroid = SVector{3,Float64}(sum(nodes[:, a] for a in 5:10) / 6)
+    vertex(v) = v == 11 ? centroid : SVector{3,Float64}(nodes[:, v])
+    x = SVector{3,Float64}(point)
+    best_ξ = MVector{3,Float64}(0.0, 0.0, 0.0)
+    best_violation = Inf
+    for vertices in COMPOSITE_TETRA10_SUBTETS
+        X1 = vertex(vertices[1])
+        A = hcat(vertex(vertices[2]) - X1, vertex(vertices[3]) - X1, vertex(vertices[4]) - X1)
+        λ = A \ (x - X1)
+        violation = max(-minimum(λ), sum(λ) - 1.0, 0.0)
+        violation < best_violation || continue
+        P = COMPOSITE_TETRA10_POINTS[:, SVector(vertices)]
+        best_ξ = MVector{3,Float64}(P[:, 1] + hcat(P[:, 2] - P[:, 1], P[:, 3] - P[:, 1], P[:, 4] - P[:, 1]) * λ)
+        best_violation = violation
+        violation == 0.0 && break
+    end
+    return best_ξ, best_violation
+end
+
+function map_to_parametric_composite_tetra10(nodes::AbstractMatrix{Float64}, point::AbstractVector{Float64})
+    return composite_tetra10_parametric_point(nodes, point)[1]
+end
+
 function map_to_parametric(element_type::ElementType, nodes::Matrix{Float64}, point::Vector{Float64})
+    element_type == COMPOSITE_TETRA10 && return map_to_parametric_composite_tetra10(nodes, point)
     tol = 1.0e-08
     max_iters = 1024
     ξ = MVector{3,Float64}(0.0, 0.0, 0.0)
@@ -522,7 +832,11 @@ function is_inside_parametric(element_type::ElementType, ξ::AbstractVector{Floa
     factor = 1.0 + tol
     if element_type == BAR2
         return -factor ≤ ξ[1] ≤ factor
-    elseif element_type == TRI3 || element_type == TRI6 || element_type == TETRA4 || element_type == TETRA10
+    elseif element_type == TRI3 ||
+        element_type == TRI6 ||
+        element_type == TETRA4 ||
+        element_type == TETRA10 ||
+        element_type == COMPOSITE_TETRA10
         return sum(ξ) ≤ factor
     elseif element_type == QUAD4
         return all(-factor .≤ ξ[1:2] .≤ factor)
@@ -537,6 +851,14 @@ function is_inside(element_type::ElementType, nodes::Matrix{Float64}, point::Vec
     ξ = @SVector [0.0, 0.0, 0.0]
     if in_bounding_box(nodes, point, 0.1) == false
         return ξ, false
+    end
+    # A composite tet holds a point only when one of its sub-tetrahedra does.
+    # Outside it, the composite functions extend from another sub-tetrahedron
+    # than the one the inverse map used, so the point would map elsewhere, and
+    # the sum-only test of the other simplices accepts most such points.
+    if element_type == COMPOSITE_TETRA10
+        ξ, violation = composite_tetra10_parametric_point(nodes, point)
+        return ξ, violation ≤ tol
     end
     ξ = map_to_parametric(element_type, nodes, point)
     return ξ, is_inside_parametric(element_type, ξ, tol)
@@ -1277,7 +1599,9 @@ end
 # parallelepiped hexahedron) is the convex hull of the crossings of its edges
 # with the plane, on which its shape functions are polynomials of degree at
 # most three in the plane, so L is exact there for TRI3, QUAD4 (parallelogram),
-# and straight TRI6 facets. Where the plane coincides with element faces, the
+# and straight TRI6 facets. The functions of a composite tet 10 are only
+# piecewise linear on its section, so L is exact for the linear fields they
+# reproduce. Where the plane coincides with element faces, the
 # face is the section of the elements on both sides and is counted once, for
 # the element on the side of the facet normal. The source basis sums to one
 # at every point, so the row sums of L equal those of W exactly, also on a
@@ -1355,7 +1679,7 @@ end
 function element_corner_edges(element_type::ElementType)
     if element_type == HEX8
         return 8, ((1, 2), (2, 3), (3, 4), (4, 1), (5, 6), (6, 7), (7, 8), (8, 5), (1, 5), (2, 6), (3, 7), (4, 8))
-    elseif element_type == TETRA4 || element_type == TETRA10
+    elseif element_type == TETRA4 || element_type == TETRA10 || element_type == COMPOSITE_TETRA10
         return 4, ((1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4))
     else
         norma_abort("Unsupported element type for the overlap transfer: $element_type")

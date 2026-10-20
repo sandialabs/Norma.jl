@@ -89,7 +89,7 @@ Capabilities currently implemented:
 
 - 1D: BAR2
 - 2D: TRI3, TRI6, QUAD4
-- 3D: TETRA4, TETRA10, HEX8
+- 3D: TETRA4, TETRA10 (standard or LCM's composite tet 10), HEX8
 - Gauss, Dunavant, and Keast quadrature rules
 
 **Multidomain coupling — Schwarz alternating method**

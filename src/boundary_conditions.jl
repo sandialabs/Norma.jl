@@ -221,8 +221,7 @@ function SolidMechanicsOverlapSchwarzBoundaryCondition(
     local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
     coupled_mesh = get_fom_model(coupled_subsim).mesh
     coupled_block_id = block_id_from_name(coupled_block_name, coupled_mesh)
-    element_type_string = Exodus.read_block_parameters(coupled_mesh, coupled_block_id)[1]
-    element_type = element_type_from_string(element_type_string)
+    element_type = block_element_type(get_fom_model(coupled_subsim), coupled_block_id)
     coupled_nodes_indices = Vector{Vector{Int64}}(undef, 0)
     interpolation_function_values = Vector{Vector{Float64}}(undef, 0)
     unique_node_indices = unique(side_set_node_indices)

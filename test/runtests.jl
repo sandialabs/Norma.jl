@@ -188,6 +188,8 @@ const indexed_test_files = [
     (147, "polycrystal.jl"),
     (148, "lcm-rubiks-cube.jl"),
     (149, "periodic.jl"),
+    (150, "composite-tet10.jl"),
+    (151, "composite-tet10-lcm.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

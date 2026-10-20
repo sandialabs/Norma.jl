@@ -152,6 +152,10 @@ end
 # quantity is then weighted, so the matrices are rebuilt.
 function set_assembly_weights!(subsim::SingleDomainSimulation)
     model = subsim.model
+    any(block -> block.element_type == COMPOSITE_TETRA10, model.blocks) && norma_abort(
+        "The overlap matching coupling does not support composite tet 10 blocks: their mass is integrated with " *
+        "a rule of its own, which the weights at the integration points do not cover.",
+    )
     ASSEMBLY_WEIGHT_CACHE[model] = get_arlequin_weights(subsim).weights
     model.compute_mass = model.compute_lumped_mass = model.compute_stiffness = true
     return nothing
@@ -348,6 +352,11 @@ function blended_block_energy!(
     conn = block.connectivity
     num_points = block.num_points
     num_element_nodes = block.num_nodes_per_element
+    # The composite tet's kinetic energy uses its exact mass on the
+    # sub-tetrahedra, with the element's mean Arlequin weight: its point
+    # values miss the corner nodes with the 5-point rule (see recovery.jl).
+    composite = block.element_type == COMPOSITE_TETRA10
+    rule = composite && dynamic ? composite_tetra10_mass_rule() : nothing
     @threads for e in 1:block.num_elements
         node_indices = view(conn, :, e)
         element_reference = gather_nodal(model.reference, node_indices, N)
@@ -357,6 +366,8 @@ function blended_block_energy!(
         element_weights = block_weights[e]
         stored = 0.0
         kinetic = 0.0
+        weighted_volume = 0.0
+        volume = 0.0
         for point in 1:num_points
             w = element_weights[point]
             dNdξ = dN[:, :, point]
@@ -370,7 +381,10 @@ function blended_block_energy!(
             Q = element_lattice_orientation(model, material, block_index, e)
             W = strain_energy_density(material, F, Q, state_old)
             stored += w * W * dvol
-            if dynamic
+            if dynamic && composite
+                weighted_volume += w * dvol
+                volume += dvol
+            elseif dynamic
                 Np = N[:, point]
                 if half_dt > 0.0
                     s = sum(Np)
@@ -383,6 +397,23 @@ function blended_block_energy!(
                 else
                     v = element_velocity * Np
                     kinetic += w * 0.5 * density * dot(v, v) * dvol
+                end
+            end
+        end
+        if dynamic && composite
+            M_e = composite_tetra10_element_mass(element_reference, rule)
+            mean_weight = weighted_volume / volume
+            for i in 1:num_element_nodes
+                if half_dt > 0.0
+                    m_i = mean_weight * density * sum(@view M_e[i, :])
+                    v2 = element_velocity[1, i]^2 + element_velocity[2, i]^2 + element_velocity[3, i]^2
+                    a2 = element_acceleration[1, i]^2 + element_acceleration[2, i]^2 + element_acceleration[3, i]^2
+                    kinetic += 0.5 * m_i * (v2 - half_dt * half_dt * a2)
+                else
+                    for j in 1:num_element_nodes
+                        vv = dot(element_velocity[:, i], element_velocity[:, j])
+                        kinetic += 0.5 * mean_weight * density * M_e[i, j] * vv
+                    end
                 end
             end
         end
@@ -475,6 +506,10 @@ function quadratic_block_energies!(
     conn = block.connectivity
     num_points = block.num_points
     density = material.ρ
+    # The composite tet's consistent mass is exact on its sub-tetrahedra, as
+    # evaluate() assembles it, not at its integration points.
+    composite = block.element_type == COMPOSITE_TETRA10
+    rule = composite ? composite_tetra10_mass_rule() : nothing
     @threads for e in 1:block.num_elements
         node_indices = view(conn, :, e)
         element_reference = gather_nodal(model.reference, node_indices, N)
@@ -493,8 +528,14 @@ function quadratic_block_energies!(
             F_a = SMatrix{3,3,Float64,9}(I) + element_acceleration * dNdX'
             se_v += strain_energy(material, F_v) * dvol
             se_a += strain_energy(material, F_a) * dvol
-            a = element_acceleration * N[:, point]
-            kin_a += 0.5 * density * dot(a, a) * dvol
+            if composite == false
+                a = element_acceleration * N[:, point]
+                kin_a += 0.5 * density * dot(a, a) * dvol
+            end
+        end
+        if composite
+            M_e = composite_tetra10_element_mass(element_reference, rule)
+            kin_a += 0.5 * density * sum(dot(element_acceleration[i, :], M_e * element_acceleration[i, :]) for i in 1:3)
         end
         t = threadid()
         se_v_tl[t] += se_v

@@ -112,8 +112,8 @@ algorithms, with an emphasis on extensibility and experimentation:
   dynamic).
 - **Solvers:** Newton (Hessian minimizer) with optional line search,
   matrix-free steepest descent, and an explicit lumped-mass solver.
-- **Elements:** BAR2; TRI3, TRI6, QUAD4; TETRA4, TETRA10, HEX8; with Gauss,
-  Dunavant, and Keast quadrature.
+- **Elements:** BAR2; TRI3, TRI6, QUAD4; TETRA4, TETRA10 (standard or
+  composite), HEX8; with Gauss, Dunavant, and Keast quadrature.
 - **Multidomain coupling:** overlapping and non-overlapping Schwarz, the
   matching Dirichlet–Neumann exchange for dynamics, subcycled
   multi-time-step coupling, and Schwarz contact.

@@ -34,7 +34,7 @@ CLAUDE.local.md
 *.csv
 # ROM training data (intentionally tracked)
 !examples/ahead/overlap/cuboid/dynamic-cubic-opinf-rom/*.csv
-# LCM reference data of the comparisons with LCM, in every subfolder (intentionally tracked)
+# LCM reference data of the crystal plasticity and composite tet tests, in every subfolder (intentionally tracked)
 !test/lcm-reference/**/*.csv
 
 # LaTeX build artifacts

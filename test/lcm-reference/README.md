@@ -28,6 +28,8 @@ the runs' outputs and material files:
 - `RubiksCube_NoAverage`: `inputs/RubiksCube_Implicit_NoAvg.yaml`, the same
   input with `Weighted Volume Average J` and `Volume Average Pressure` set to
   false in every block of its materials.
+- `RubiksCubeTet10`: `inputs/RubiksCubeTet10.yaml`, the latter on
+  `meshes/RubiksCubeTet10.g` with `Use Composite Tet 10` in every block.
 
 The materials of each run are `materials/<case>.yaml`, which the inputs call
 `<input>_Materials.yaml`. These cases keep only the steps and elements their
@@ -44,8 +46,8 @@ comments.
   agree to a relative 1e-9, they are collapsed into one row with `point = 0`.
   The comment line gives the largest relative spread between points.
 - `<case>-nodal.csv` holds the nodal coordinates and nodal variables, one row
-  per `(step, node)`, for the case whose test reads them,
-  `RubiksCube_NoAverage`.
+  per `(step, node)`, for the two cases whose test reads them,
+  `RubiksCube_NoAverage` and `RubiksCubeTet10`.
 - `<case>-times.csv` gives the time of every LCM step, for the cases that
   keep only some steps; a comment line in `<case>.csv` lists those it keeps.
 - `materials/<case>.yaml` is the LCM material file of the case (the input
@@ -97,8 +99,37 @@ elements, one per grain).
 | `DislocationDensityTwoFamilies` | The same 12 systems as a second slip family, after an inactive first family; reproduces `DislocationDensityHardening` |
 | `QuadSlipDislocationDensityTraction` | Loading along [011], traction controlled |
 | `RubiksCube`, `RubiksCube_NoAverage` | 27 FCC grains, Linear Minus Recovery hardening, pulled along x on rollers with LCM's adaptive steps; with and without LCM's volume averaging of J and pressure. Not homogeneous: the 8 points of every element are kept, in LCM's order, and LCM numbers the output nodes its own way. `RubiksCube` keeps the last step of the 9 elements on the loaded face x = 0.5, which give the axial reaction; `RubiksCube_NoAverage` keeps every 4th of its 31 steps and the last, which include the steps of its largest deviations from Norma |
+| `RubiksCubeTet10` | RubiksCube with every cube cut into 6 TETRA10 (`make_rubiks_cube_tet10.jl`), LCM's composite tet at cubature degree 2, at LCM's 74 steps; every 15th step and the last are kept |
 | `CP-uniaxial` | Material point: FCC, single slip, uniaxial strain |
 | `AHD-uniaxial`, `AHD-shear`, `AHD-hydrostatic` | Material point: fiber-reinforced hyperelastic model with damage |
+
+## Composite tet 10
+
+`composite-tet/` holds the references of `test/composite-tet10-lcm.jl` for
+LCM's composite tetrahedron (`Use Composite Tet 10: true`). They are written by:
+
+```bash
+julia --project=. test/lcm-reference/extract_composite_tet.jl <LCM checkout> <runs>
+```
+
+| Case | What it exercises |
+|---|---|
+| `ProjectTet10` | LCM's gold: a cube of 6 composite tets stretched by 1 %, linear elastic, 4 points, with LCM's nodal projection of the linear field of its test (`proj_nodal_linear`). Converged to LCM's residual tolerance of 1e-10 only. Its projected Cauchy stress is not kept: unlike its point stress, it is not uniform |
+| `ClampedCt_Explicit` | LCM's ClampedSDBC1DCt test: a bar of 6000 composite tets with a Gaussian initial displacement, 5 points, explicit Newmark with the lumped analytic mass, 150 steps. The nodes on the edge x = y = 0 at steps 0, 50, 100 and 150 |
+| `ClampedCt_Implicit` | The same with implicit Newmark (β = 1/4) and the consistent analytic mass, 15 steps. The same nodes at steps 0, 1, 3, 5, 10 and 15. LCM starts from a zero acceleration |
+| `Cylinder` | A cylinder of 387 curved composite tets (`inputs/make_cylinder.py`, gmsh 4.15), Neohookean, clamped ends, stretched by 30 % in 10 steps, 4 points. The displacements at 3 steps, and σ and F at every point at the last |
+
+- **ProjectTet10.** It comes from the gold file in the LCM checkout. The node
+  sets of its mesh get LCM's default names, `nodelist_<id>`.
+- **Other cases.** They come from runs of LCM `3e3af13` on the inputs in
+  `composite-tet/inputs`. The clamped inputs are LCM's own, written at every
+  step.
+- **Clamped mesh.** `meshes/clamped-ct.g` is LCM's `clamped_ct.g` with a node
+  set of every node, `NodeSetAll`, for the initial condition.
+- **Tensor layout.** LCM writes the component (i, j) of a tensor at point q of
+  a tetrahedron as `<field>_<j>_<k>`, with k = 3 (q − 1) + i on two digits:
+  each point's components are in column-major order. The files here are
+  row-major, like the others.
 
 ## History
 
