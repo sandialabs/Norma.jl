@@ -1,0 +1,99 @@
+# LCM's RubiksCube (tests/LCM/CrystalPlasticity/RubiksCube, implicit): 27
+# FCC grains with random lattice orientations, pulled along x to 0.5 %
+# strain at a strain rate of 1/s on rollers. The orientations are element
+# variables of the mesh (make_rubiks_cube.jl); rubiks-cube-1.g has one HEX8
+# element per grain, as in LCM, and rubiks-cube-2.g has 8.
+type: single
+input mesh file: rubiks-cube-2.g
+output mesh file: rubiks-cube-2.e
+Exodus output interval: 5.0e-4
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      block_1: copper
+      block_2: copper
+      block_3: copper
+      block_4: copper
+      block_5: copper
+      block_6: copper
+      block_7: copper
+      block_8: copper
+      block_9: copper
+      block_10: copper
+      block_11: copper
+      block_12: copper
+      block_13: copper
+      block_14: copper
+      block_15: copper
+      block_16: copper
+      block_17: copper
+      block_18: copper
+      block_19: copper
+      block_20: copper
+      block_21: copper
+      block_22: copper
+      block_23: copper
+      block_24: copper
+      block_25: copper
+      block_26: copper
+      block_27: copper
+    copper:
+      model: crystal plasticity
+      density: 1.0
+      symmetry: cubic
+      C11: 204600.0
+      C12: 137700.0
+      C44: 126200.0
+      orientation:
+        mesh variables: [phi1, Phi, phi2]
+      integration scheme: implicit
+      slip families:
+        - slip systems: fcc
+          flow rule:
+            type: power law
+            reference slip rate: 1.0
+            rate exponent: 20.0
+          hardening law:
+            type: linear minus recovery
+            hardening modulus: 355.0
+            recovery modulus: 2.9
+            initial hardening state: 122.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 5.0e-3
+  # LCM's steps of 5.0e-4, halved when they fail. Without the predictor, the
+  # first Newton iterate of a step puts the whole increment of the loaded face
+  # on the layer of elements next to it, and the step would shrink with the
+  # elements; the tangent predictor spreads it over the cube.
+  time step: 5.0e-4
+  minimum time step: 1.0e-6
+  maximum time step: 5.0e-4
+  decrease factor: 0.5
+  increase factor: 2.0
+  predictor: tangent
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "1.0 * t"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  # The crystal plasticity tangent is not symmetric.
+  linear solver: direct
+  minimum iterations: 1
+  maximum iterations: 20
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-8

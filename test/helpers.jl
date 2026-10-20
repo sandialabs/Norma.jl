@@ -139,6 +139,213 @@ function create_displacement(expression::String, mesh::ExodusDatabase, side_set_
     return displacements
 end
 
+# Polycrystals (polycrystal.jl).
+using Random
+using Statistics
+
+const POLYCRYSTAL_EXAMPLES = "../examples/crystal-plasticity"
+
+# Copper constants of LCM's SingleElement tests, and the FCC crystal of
+# LCM's RubiksCube.
+function copper_elastic()
+    return Dict{String,Any}(
+        "model" => "anisotropic linear elastic",
+        "symmetry" => "cubic",
+        "C11" => 168.4,
+        "C12" => 121.4,
+        "C44" => 75.4,
+        "density" => 1.0,
+    )
+end
+function rubiks_copper()
+    return Dict{String,Any}(
+        "model" => "crystal plasticity",
+        "symmetry" => "cubic",
+        "C11" => 204600.0,
+        "C12" => 137700.0,
+        "C44" => 126200.0,
+        "density" => 1.0,
+        "integration scheme" => "implicit",
+        "slip families" => [
+            Dict(
+                "slip systems" => "fcc",
+                "flow rule" => Dict("type" => "power law", "reference slip rate" => 1.0, "rate exponent" => 20.0),
+                "hardening law" => Dict(
+                    "type" => "linear minus recovery",
+                    "hardening modulus" => 355.0,
+                    "recovery modulus" => 2.9,
+                    "initial hardening state" => 122.0,
+                ),
+            ),
+        ],
+    )
+end
+mesh_orientation() = Dict("mesh variables" => ["phi1", "Phi", "phi2"])
+
+# The input of a quasi-static Norma run of `mesh` with `materials` (block name
+# => material parameters) and `boundary_conditions`, the dictionary of the
+# input file or a list of Dirichlet conditions (node set, component,
+# function). With `adaptive`, a step whose local or global solve fails is
+# retried with half the time step, down to a fiftieth, as LCM's RubiksCube
+# does. The Exodus output is written every `exodus_interval` if it is
+# positive. `predictor` is that of the quasi-static time integrator.
+function polycrystal_parameters(
+    mesh,
+    materials,
+    boundary_conditions;
+    final_time=1.0,
+    time_step=1.0,
+    linear_solver="cg",
+    adaptive=false,
+    exodus_interval=0.0,
+    predictor="constant",
+)
+    if boundary_conditions isa AbstractVector
+        boundary_conditions = Dict(
+            "Dirichlet" => [
+                Dict{String,Any}("node set" => n, "component" => c, "function" => f) for
+                (n, c, f) in boundary_conditions
+            ],
+        )
+    end
+    blocks = Dict{String,Any}()
+    material = Dict{String,Any}("blocks" => blocks)
+    for (block, params) in materials
+        label = "material_" * block
+        blocks[block] = label
+        material[label] = params
+    end
+    name = splitext(mesh)[1]
+    params = Norma.Parameters(
+        "name" => name * ".yaml",
+        "type" => "single",
+        "input mesh file" => mesh,
+        "output mesh file" => name * ".e",
+        "Exodus output interval" => exodus_interval,
+        "CSV output interval" => 0,
+        "model" => Dict("type" => "solid mechanics", "material" => material),
+        "time integrator" => merge(
+            Dict{String,Any}(
+                "type" => "quasi static",
+                "initial time" => 0.0,
+                "final time" => final_time,
+                "time step" => time_step,
+                "predictor" => predictor,
+            ),
+            if adaptive
+                Dict{String,Any}(
+                    "minimum time step" => time_step / 50,
+                    "maximum time step" => time_step,
+                    "decrease factor" => 0.5,
+                    "increase factor" => 2.0,
+                )
+            else
+                Dict{String,Any}()
+            end,
+        ),
+        "boundary conditions" => boundary_conditions,
+        "solver" => Dict(
+            "type" => "Hessian minimizer",
+            "step" => "full Newton",
+            "linear solver" => linear_solver,
+            "minimum iterations" => 1,
+            "maximum iterations" => 20,
+            "absolute tolerance" => 1.0e-10,
+            "relative tolerance" => 1.0e-12,
+            "linear solver absolute tolerance" => 1.0e-14,
+            "linear solver relative tolerance" => 1.0e-12,
+        ),
+    )
+    return params
+end
+
+# The run of polycrystal_parameters, whose Exodus output is kept only if it
+# was written.
+function run_polycrystal(mesh, materials, boundary_conditions; exodus_interval=0.0, options...)
+    sim = Norma.run(
+        polycrystal_parameters(mesh, materials, boundary_conditions; exodus_interval=exodus_interval, options...)
+    )
+    exodus_interval > 0.0 || rm(splitext(mesh)[1] * ".e"; force=true)
+    return sim
+end
+
+# Volume of every element, block by block.
+function element_volumes(model)
+    volumes = Vector{Float64}[]
+    for block in model.blocks
+        block_volumes = zeros(block.num_elements)
+        for e in 1:block.num_elements
+            X = Norma.gather_nodal(model.reference, view(block.connectivity, :, e), block.N)
+            for p in 1:block.num_points
+                block_volumes[e] += det(block.dN[:, :, p] * X') * block.weights[p]
+            end
+        end
+        push!(volumes, block_volumes)
+    end
+    return volumes
+end
+
+# Fourth-order compliance of a Voigt stiffness with engineering shears.
+function compliance_tensor(C6::SMatrix{6,6,Float64,36})
+    S6 = inv(C6)
+    factor(a) = a <= 3 ? 1.0 : 0.5
+    S = MArray{Tuple{3,3,3,3},Float64}(undef)
+    for i in 1:3, j in 1:3, k in 1:3, l in 1:3
+        a, b = Norma.voigt_index(i, j), Norma.voigt_index(k, l)
+        S[i, j, k, l] = S6[a, b] * factor(a) * factor(b)
+    end
+    return SArray{Tuple{3,3,3,3},Float64,4,81}(S)
+end
+
+function compliance_to_voigt(S::SArray{Tuple{3,3,3,3},Float64,4,81})
+    factor(a) = a <= 3 ? 1.0 : 2.0
+    return SMatrix{6,6,Float64,36}(
+        S[Norma.VOIGT_PAIRS[a]..., Norma.VOIGT_PAIRS[b]...] * factor(a) * factor(b) for a in 1:6, b in 1:6
+    )
+end
+
+# Voigt and Reuss averages, as Voigt matrices, of the lattice elasticity CC
+# rotated into each element, weighted by volume.
+function voigt_reuss(model, CC)
+    volumes = element_volumes(model)
+    total = sum(sum, volumes)
+    S = compliance_tensor(Norma.tensor_to_voigt(CC))
+    C_voigt = zero(SArray{Tuple{3,3,3,3},Float64,4,81})
+    S_reuss = zero(SArray{Tuple{3,3,3,3},Float64,4,81})
+    for (b, block_volumes) in enumerate(volumes), (e, v) in enumerate(block_volumes)
+        Q = model.lattice_orientation[b][e]
+        C_voigt += (v / total) * Norma.rotate_tensor4(Q, CC)
+        S_reuss += (v / total) * Norma.rotate_tensor4(Q, S)
+    end
+    return Norma.tensor_to_voigt(C_voigt), compliance_to_voigt(S_reuss), total
+end
+
+# Axial reaction on the nodes of a node set with a prescribed x displacement.
+function axial_reaction(model, node_set)
+    bc = only(
+        bc for bc in model.boundary_conditions if
+        bc isa Norma.SolidMechanicsDirichletBoundaryCondition && bc.name == node_set && bc.offset == 1
+    )
+    return sum(model.internal_force[3 * (n - 1) + 1] for n in bc.node_set_node_indices)
+end
+
+function mesh_block_names(mesh)
+    database = Exodus.ExodusDatabase(mesh, "r")
+    names = Exodus.read_names(database, Block)
+    close(database)
+    return names
+end
+
+const FACE_SETS = ("nsx-", "nsx+", "nsy-", "nsy+", "nsz-", "nsz+")
+# Uniaxial stress along x on rollers: x-, y- and z- faces fixed normally.
+function uniaxial_rollers(displacement)
+    return [("nsx-", "x", "0.0"), ("nsy-", "y", "0.0"), ("nsz-", "z", "0.0"), ("nsx+", "x", displacement)]
+end
+# Uniaxial strain ε along x imposed on the whole boundary: u = (ε x, 0, 0).
+function affine_uniaxial_strain(ε)
+    return vcat([(s, "x", "$ε * x") for s in FACE_SETS], [(s, c, "0.0") for s in FACE_SETS for c in ("y", "z")])
+end
+
 using YAML
 
 # The abort message of a restart of the cuboid restart example

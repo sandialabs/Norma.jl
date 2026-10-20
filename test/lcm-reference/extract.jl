@@ -8,13 +8,26 @@
 # anisotropic hyperelasticity tests into CSV files that the Norma tests read.
 # It is not part of the test suite; run it only to regenerate the fixtures:
 #
-#   julia --project=. test/lcm-reference/extract.jl <LCM checkout> [output dir]
+#   julia --project=. test/lcm-reference/extract.jl <LCM checkout> [output dir] [--runs <dir>] [--every-step]
 #
-# Each case gives <case>.csv, the element variables, one row per (step,
-# block, element, point); when every integration point of an element carries
-# the same values, the points are collapsed into one row with point = 0. The
-# first line of the file names its source: the gold file and the last LCM
-# commit that changed it.
+# LCM's polycrystal, RubiksCube, has no gold file. Its cases (RUN_CASES) are
+# read from the outputs of LCM runs in the folder given with --runs, together
+# with the material files those runs used; without --runs they are skipped.
+# They keep only the steps and elements their tests read, unless
+# --every-step is given.
+#
+# Each case gives two files:
+#   <case>.csv        element variables, one row per (step, block, element,
+#                     point); when every integration point of an element
+#                     carries the same values, the points are collapsed into
+#                     one row with point = 0
+#   <case>-nodal.csv  nodal coordinates and variables, one row per
+#                     (step, node); written only for the run cases whose
+#                     test reads it
+#
+# The first line of each file names its source: the gold file and the last
+# LCM commit that changed it, or the output of an LCM run and the LCM commit
+# of the run.
 #
 # Tensor components are numbered row-major for a 3 × 3 tensor, so that
 # Cauchy_Stress_k is σ[(k - 1) ÷ 3 + 1, (k - 1) % 3 + 1] in every file. The 2D
@@ -131,6 +144,45 @@ const MESHES = Dict(
     "RubiksCube.g" => "$CRYSTAL_PLASTICITY/RubiksCube/RubiksCube.g",
 )
 
+# Every step, and every stride-th step with the last.
+every_step(num_steps) = collect(1:num_steps)
+stride(k) = num_steps -> sort!(unique(vcat(collect(1:k:num_steps), [num_steps])))
+
+# Cases from LCM runs rather than gold files, both files in the --runs
+# folder, the inputs of the runs in inputs/. Each keeps only what
+# test/lcm-rubiks-cube.jl reads:
+#   steps  the steps written, a function of the number of steps; a case that
+#          keeps only some also gets <case>-times.csv, the time of every LCM
+#          step, which a run must take
+#   face   if a number, only the elements with a node on the face x = face
+#   nodal  whether <case>-nodal.csv is written
+# The cases are RubiksCube_Implicit.yaml as LCM ships it, of which the test
+# reads the axial reaction at the last step; the same with its volume
+# averaging switched off (Weighted Volume Average J and Volume Average
+# Pressure false in every block), whose every fourth step includes those of
+# the largest deviations. Their deformation is not homogeneous, so no F_nodal
+# is written.
+const RUN_CASES = [
+    (
+        name="RubiksCube",
+        layout=:hex8,
+        output="RubiksCube_Implicit.e",
+        material="RubiksCube_Implicit_Materials.yaml",
+        steps=num_steps -> [num_steps],
+        face=0.5,
+        nodal=false,
+    ),
+    (
+        name="RubiksCube_NoAverage",
+        layout=:hex8,
+        output="RubiksCube_Implicit_NoAvg.e",
+        material="RubiksCube_Implicit_NoAvg_Materials.yaml",
+        steps=stride(4),
+        face=nothing,
+        nodal=true,
+    ),
+]
+
 function copy_named_mesh(source::String, target::String)
     input = ExodusDatabase(source, "r")
     Exodus.copy(input, target)
@@ -245,7 +297,25 @@ end
 
 format_value(v::Real) = isfinite(v) ? string(Float64(v)) : "NaN"
 
-function extract_case(name, layout, gold, output_dir, origin, lcm_commit)
+# The elements of each block with a node on the face x = `face`.
+function elements_on_face(exo, block_ids, face)
+    coords = read_coordinates(exo)
+    elements = Dict{Int,Vector{Int}}()
+    for block_id in block_ids
+        _, num_elements, num_nodes, _, _, _ = Exodus.read_block_parameters(exo, block_id)
+        connectivity = reshape(
+            Exodus.read_block_connectivity(exo, block_id, num_elements * num_nodes), num_nodes, num_elements
+        )
+        elements[Int(block_id)] = [
+            e for e in 1:num_elements if any(abs.(coords[1, connectivity[:, e]] .- face) .< 1.0e-12)
+        ]
+    end
+    return elements
+end
+
+function extract_case(
+    name, layout, gold, output_dir, origin, lcm_commit; affine_fit=true, steps=every_step, face=nothing, nodal=true
+)
     exo = ExodusDatabase(gold, "r")
     times = read_times(exo)
     num_steps = length(times)
@@ -274,7 +344,16 @@ function extract_case(name, layout, gold, output_dir, origin, lcm_commit)
         )
     end
 
-    gradients = nodal_deformation_gradients(exo, block_ids, num_steps)
+    gradients = affine_fit ? nodal_deformation_gradients(exo, block_ids, num_steps) : nothing
+    written_steps = steps(num_steps)
+    kept_elements = face === nothing ? nothing : elements_on_face(exo, block_ids, face)
+    if written_steps != 1:num_steps
+        open(joinpath(output_dir, name * "-times.csv"), "w") do io
+            println(io, "# ", origin, " (LCM ", lcm_commit, "); the time of every step")
+            println(io, "step,time")
+            return foreach(step -> println(io, step, ",", format_value(times[step])), 1:num_steps)
+        end
+    end
     if gradients !== nothing
         for k in 1:9
             push!(columns, "F_nodal_$k")
@@ -311,10 +390,22 @@ function extract_case(name, layout, gold, output_dir, origin, lcm_commit)
         block_names = read_names(exo, Block)
         println(io, "# block names: ", join(("$id => $name" for (id, name) in zip(block_ids, block_names)), ", "))
         gradients === nothing || println(io, "# F_nodal_k: affine fit of the nodal displacements over each element")
+        if written_steps != 1:num_steps || kept_elements !== nothing
+            print(
+                io,
+                "# kept: step",
+                length(written_steps) == 1 ? " " : "s ",
+                join(written_steps, ", "),
+                " of ",
+                num_steps,
+            )
+            println(io, kept_elements === nothing ? "" : "; the elements with a node on x = $face")
+        end
         println(io, join(vcat(["step", "time", "block", "element", "point"], columns), ","))
-        for step in 1:num_steps, block_id in block_ids
+        for step in written_steps, block_id in block_ids
             num_elements = size(first(values[block_id])[2], 1)
-            for element in 1:num_elements, point in row_points
+            elements = kept_elements === nothing ? (1:num_elements) : kept_elements[Int(block_id)]
+            for element in elements, point in row_points
                 source_point = point == 0 ? points[1] : point
                 row = [string(step), format_value(times[step]), string(block_id), string(element), string(point)]
                 for column in columns
@@ -326,6 +417,7 @@ function extract_case(name, layout, gold, output_dir, origin, lcm_commit)
         end
     end
 
+    nodal && write_nodal_file(exo, joinpath(output_dir, name * "-nodal.csv"), origin, lcm_commit, written_steps)
     close(exo)
     @printf(
         "%-40s %-6s %3d steps %d block(s) %d point(s)%s %3d columns, spread %.1e\n",
@@ -341,8 +433,39 @@ function extract_case(name, layout, gold, output_dir, origin, lcm_commit)
     return nothing
 end
 
+function write_nodal_file(exo, path, origin, lcm_commit, written_steps)
+    times = read_times(exo)
+    nodal_names = read_names(exo, NodalVariable)
+    coords = read_coordinates(exo)
+    num_dims, num_nodes = size(coords)
+    nodal = Dict(
+        n => Dict(s => Float64.(read_values(exo, NodalVariable, s, n)) for s in written_steps) for n in nodal_names
+    )
+    open(path, "w") do io
+        println(io, "# ", origin, " (LCM ", lcm_commit, ")")
+        println(io, join(vcat(["step", "time", "node"], ["x", "y", "z"][1:num_dims], nodal_names), ","))
+        for step in written_steps, node in 1:num_nodes
+            row = [string(step), format_value(times[step]), string(node)]
+            append!(row, [format_value(coords[d, node]) for d in 1:num_dims])
+            append!(row, [format_value(nodal[n][step][node]) for n in nodal_names])
+            println(io, join(row, ","))
+        end
+    end
+    return nothing
+end
+
 function main(args)
-    length(args) in (1, 2) || error("usage: extract.jl <LCM checkout> [output dir]")
+    args = copy(args)
+    every = "--every-step" in args
+    filter!(!=("--every-step"), args)
+    runs_dir = nothing
+    k = findfirst(==("--runs"), args)
+    if k !== nothing
+        k < length(args) || error("--runs needs a folder")
+        runs_dir = abspath(args[k + 1])
+        deleteat!(args, k:(k + 1))
+    end
+    length(args) in (1, 2) || error("usage: extract.jl <LCM checkout> [output dir] [--runs <dir>] [--every-step]")
     lcm_root = abspath(args[1])
     output_dir = length(args) == 2 ? abspath(args[2]) : @__DIR__
     mkpath(joinpath(output_dir, "materials"))
@@ -356,7 +479,23 @@ function main(args)
         # the LCM checkout may carry unrelated changes.
         lcm_commit = readchomp(`git -C $lcm_root log -1 --format=%h -- $relative`)
         origin = "LCM gold file: " * relative
-        extract_case(name, layout, joinpath(lcm_root, relative), output_dir, origin, lcm_commit)
+        extract_case(name, layout, joinpath(lcm_root, relative), output_dir, origin, lcm_commit; nodal=false)
+    end
+    runs_dir === nothing && return nothing
+    # The runs are of the checked-out LCM commit.
+    lcm_commit = readchomp(`git -C $lcm_root rev-parse --short=7 HEAD`)
+    for case in RUN_CASES
+        cp(joinpath(runs_dir, case.material), joinpath(output_dir, "materials", case.name * ".yaml"); force=true)
+        origin = "output " * case.output * " of an LCM run"
+        gold = joinpath(runs_dir, case.output)
+        if every
+            extract_case(case.name, case.layout, gold, output_dir, origin, lcm_commit; affine_fit=false)
+        else
+            (; steps, face, nodal) = case
+            extract_case(
+                case.name, case.layout, gold, output_dir, origin, lcm_commit; affine_fit=false, steps, face, nodal
+            )
+        end
     end
     return nothing
 end

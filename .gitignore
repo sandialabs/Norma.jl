@@ -19,6 +19,9 @@ docs/build/
 # Meshes written by the adaptivity loop and by the refinement stages of the plate example
 *-adapted-*.g
 examples/ems/plate/plate-stage-*.g
+# MicroStructPy output of the polycrystal example
+examples/crystal-plasticity/polycrystal/polycrystal-tets/
+examples/crystal-plasticity/polycrystal/polycrystal-voxels/
 CLAUDE.local.md
 
 # Claude Code session data

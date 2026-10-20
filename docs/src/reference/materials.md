@@ -414,14 +414,42 @@ The internal variables are `Fp_ij`, then `gamma_α`, `gamma_dot_α`,
 `tau_hard_α` (the hardening state: the slip resistance, or the dislocation
 density) and `tau_α` for every system, then `eqps`.
 
-## Material point driver
+## Polycrystals
 
-`Norma.material_point_history(material, deformation, times; orientation,
-free, stress)` evaluates a constitutive model at one point without a mesh,
-under F = `deformation(t)` at the given times, with the lattice orientation
-Q of an oriented material. The components of F listed in `free` (a 3 × 3
-Boolean matrix) are solved for so that the same components of the first
-Piola–Kirchhoff stress follow `stress(t)` (zero by default).
+A polycrystal is a mesh whose elements carry their own lattice orientation as
+element variables, read with `orientation: {mesh variables: [phi1, Phi,
+phi2]}`; one material then serves every grain. The generators in
+`examples/crystal-plasticity` write such meshes: `make_rubiks_cube.jl` builds
+LCM's RubiksCube, 27 cubic grains with LCM's orientations, and
+`microstructpy_to_exodus.jl` converts a Voronoi polycrystal from
+[MicroStructPy](https://docs.microstructpy.org) to TETRA4, TETRA10 or HEX8
+elements, with an orientation drawn uniformly over SO(3) for every grain
+(`Norma.uniform_random_rotation`; `Norma.bunge_angles` gives its angles).
+
+Three material-point drivers evaluate a constitutive model without a mesh.
+Each takes the times at which to evaluate, and the components of F listed in
+`free` (a 3 × 3 Boolean matrix) are solved for so that the same components of
+the first Piola–Kirchhoff stress follow `stress(t)` (zero by default):
+
+| Function | Response |
+|---|---|
+| `Norma.material_point_history(material, deformation, times; orientation, free, stress)` | one material point under F = `deformation(t)` |
+| `Norma.taylor_history(materials, orientations, weights, deformation, times; free, stress)` | Taylor (iso-strain) aggregate: every grain under the same F, with the free components set on the volume-averaged stress |
+| `Norma.sachs_history(materials, orientations, weights, axial_strain, times)` | Sachs (iso-stress) aggregate in uniaxial stress along x: every grain under the same P = s e₁ ⊗ e₁, with s such that the average of F₁₁ − 1 is `axial_strain(t)` |
+
+The aggregates take one material and one orientation per grain and the grain
+volumes as weights, and return the averaged F, P and Cauchy stress at every
+time, with the deformation and state of each grain. In elasticity they are
+the Voigt and Reuss bounds of a displacement-based finite element solution of
+the polycrystal: the Taylor response is stiffer, provided the boundary
+conditions admit its uniform F (with rollers on the faces of a cube, only the
+diagonal of F may be free), and the Sachs response is softer, as its uniform
+stress is statically admissible. With plasticity they are estimates, not
+bounds: the grains of the aggregates and of the finite element solution carry
+different histories, and the incremental update of a rate-dependent crystal
+is not variational, so nothing guarantees the order, although a correct
+solution is expected to lie between them, as it does in the tests and the
+examples.
 
 ## Canonical examples
 
@@ -430,3 +458,6 @@ Piola–Kirchhoff stress follow `stress(t)` (zero by default).
 - Seth-Hill: `examples/ems/awful-cube/awful-cube.yaml`
 - Anisotropic elasticity: `examples/single/static-solid/cube/anisotropic/cube-shear.yaml`
 - Anisotropic hyperelastic damage: `examples/materials/ahd/cube.yaml`
+- Polycrystals: `examples/crystal-plasticity/rubiks-cube/rubiks-cube.yaml`,
+  `examples/crystal-plasticity/polycrystal/polycrystal-tension.yaml` and
+  `examples/crystal-plasticity/polycrystal/polycrystal-tension-tet4.yaml`

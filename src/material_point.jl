@@ -12,6 +12,11 @@
 # Uniaxial stress along x, for example, prescribes F11 and the components
 # F21, F31, F32 that remove the rigid rotation, and leaves the other five
 # free with zero stress.
+#
+# The Taylor and Sachs aggregates of a polycrystal build on the same steps:
+# the Taylor (iso-strain) estimate gives every grain the macroscopic
+# deformation gradient, and the Sachs (iso-stress) estimate gives every grain
+# the macroscopic stress.
 
 struct MaterialPointHistory
     time::Vector{Float64}
@@ -181,6 +186,186 @@ function material_point_history(
         push!(history.W, W)
         push!(history.state, copy(state))
         F_previous = F
+    end
+    return history
+end
+
+# Response of a polycrystal estimated from its grains: the time, the
+# macroscopic deformation gradient, the volume averages of P and of the
+# Cauchy stress, and the deformation gradient and state of every grain.
+struct AggregateHistory
+    time::Vector{Float64}
+    F::Vector{SMatrix{3,3,Float64,9}}
+    P::Vector{SMatrix{3,3,Float64,9}}
+    σ::Vector{SMatrix{3,3,Float64,9}}
+    grain_F::Vector{Vector{SMatrix{3,3,Float64,9}}}
+    grain_state::Vector{Vector{Vector{Float64}}}
+end
+
+function AggregateHistory()
+    return AggregateHistory(
+        Float64[],
+        SMatrix{3,3,Float64,9}[],
+        SMatrix{3,3,Float64,9}[],
+        SMatrix{3,3,Float64,9}[],
+        Vector{SMatrix{3,3,Float64,9}}[],
+        Vector{Vector{Float64}}[],
+    )
+end
+
+function check_aggregate(materials::AbstractVector, orientations::AbstractVector, weights::AbstractVector)
+    length(materials) == length(orientations) == length(weights) ||
+        norma_abort("Aggregate: one material, orientation and weight per grain are required.")
+    all(>=(0), weights) && sum(weights) > 0 || norma_abort("Aggregate: the grain weights must be nonnegative.")
+    return weights ./ sum(weights)
+end
+
+initial_grain_state(material::Solid) = number_states(material) > 0 ? initial_state(material) : Float64[]
+
+# Taylor (iso-strain) estimate: every grain g, of material materials[g],
+# orientation orientations[g] and volume fraction weights[g], has the
+# macroscopic deformation gradient deformation(t). Its free components are
+# solved so that the volume average of P meets stress(t), as in
+# material_point_history.
+function taylor_history(
+    materials::AbstractVector,
+    orientations::AbstractVector,
+    weights::AbstractVector,
+    deformation::Function,
+    times::AbstractVector{<:Real};
+    free::AbstractMatrix{Bool}=falses(3, 3),
+    stress::Function=t -> zero(SMatrix{3,3,Float64,9}),
+    tolerance::Float64=1.0e-12,
+    maximum_iterations::Int=50,
+)
+    w = check_aggregate(materials, orientations, weights)
+    free_indices = free_components(free)
+    need_tangent = !isempty(free_indices)
+    states = [initial_grain_state(m) for m in materials]
+    history = AggregateHistory()
+    F_previous = SMatrix{3,3,Float64,9}(deformation(times[1]))
+    for (n, t) in enumerate(times)
+        Δt = n == 1 ? 0.0 : Float64(t - times[n - 1])
+        responses_at(F) = [
+            constitutive_update(materials[g], F, orientations[g], states[g], Δt; need_tangent=need_tangent) for
+            g in eachindex(materials)
+        ]
+        F = MMatrix{3,3,Float64,9}(deformation(t))
+        for c in free_indices
+            F[c] = F_previous[c]
+        end
+        F = SMatrix(F)
+        target = SMatrix{3,3,Float64,9}(stress(t))
+        responses = try
+            responses_at(F)
+        catch error
+            error isa _MATH_ERRORS || rethrow()
+            norma_abortf(
+                "Taylor aggregate: a grain cannot take the deformation at t = %.6e: %s", t, error_message(error)
+            )
+        end
+        converged = !need_tangent
+        for _ in 1:maximum_iterations
+            converged && break
+            P = sum(w[g] * responses[g][2] for g in eachindex(materials))
+            residual = [P[c] - target[c] for c in free_indices]
+            if norm(residual) <= tolerance * max(1.0, norm(P))
+                converged = true
+                break
+            end
+            AA = sum(w[g] * responses[g][3] for g in eachindex(materials))
+            correction = -(free_jacobian(AA, free_indices) \ residual)
+            trial = halve_until_admissible() do α
+                F_trial = add_free(F, free_indices, α .* correction)
+                return F_trial, responses_at(F_trial)
+            end
+            trial === nothing && norma_abortf("Taylor aggregate: a grain cannot take the correction at t = %.6e.", t)
+            α, (F, responses) = trial
+            if α * norm(correction) <= 1.0e-14
+                converged = true
+                break
+            end
+        end
+        converged || norma_abortf("Taylor aggregate: the free components did not converge at t = %.6e.", t)
+        states = [responses[g][4] for g in eachindex(materials)]
+        push!(history.time, Float64(t))
+        push!(history.F, F)
+        push!(history.P, sum(w[g] * responses[g][2] for g in eachindex(materials)))
+        push!(history.σ, sum(w[g] * cauchy_stress(materials[g], responses[g][2], F) for g in eachindex(materials)))
+        push!(history.grain_F, fill(F, length(materials)))
+        push!(history.grain_state, copy.(states))
+        F_previous = F
+    end
+    return history
+end
+
+# Sachs (iso-stress) estimate in uniaxial stress along x: every grain carries
+# the same first Piola-Kirchhoff stress, P = s e1 ⊗ e1, with its rigid
+# rotation fixed by F21 = F31 = F32 = 0, and s is solved at every time so that
+# the volume average of F11 - 1 equals axial_strain(t). The iteration on s
+# ends when its Newton correction is within the stress tolerance.
+function sachs_history(
+    materials::AbstractVector,
+    orientations::AbstractVector,
+    weights::AbstractVector,
+    axial_strain::Function,
+    times::AbstractVector{<:Real};
+    tolerance::Float64=1.0e-12,
+    maximum_iterations::Int=50,
+)
+    w = check_aggregate(materials, orientations, weights)
+    free_indices = free_components([true true true; false true true; false false true])
+    k11 = findfirst(==(CartesianIndex(1, 1)), free_indices)
+    num_grains = length(materials)
+    states = [initial_grain_state(m) for m in materials]
+    grain_F = fill(SMatrix{3,3,Float64,9}(I), num_grains)
+    history = AggregateHistory()
+    s = 0.0
+    for (n, t) in enumerate(times)
+        Δt = n == 1 ? 0.0 : Float64(t - times[n - 1])
+        ε = Float64(axial_strain(t))
+        steps_at(s) = [
+            material_point_step(
+                materials[g],
+                grain_F[g],
+                orientations[g],
+                states[g],
+                Δt,
+                free_indices,
+                SMatrix{3,3,Float64,9}(s, 0, 0, 0, 0, 0, 0, 0, 0);
+                tolerance=tolerance,
+            ) for g in 1:num_grains
+        ]
+        steps = try
+            steps_at(s)
+        catch error
+            error isa _MATH_ERRORS || rethrow()
+            norma_abortf("Sachs aggregate: a grain cannot take the stress at t = %.6e: %s", t, error_message(error))
+        end
+        converged = false
+        for _ in 1:maximum_iterations
+            mean_strain = sum(w[g] * (steps[g][1][1, 1] - 1) for g in 1:num_grains)
+            # The axial compliance of each grain under the free components.
+            compliance = sum(w[g] * inv(free_jacobian(steps[g][4], free_indices))[k11, k11] for g in 1:num_grains)
+            correction = (ε - mean_strain) / compliance
+            if abs(correction) <= tolerance * max(1.0, abs(s))
+                converged = true
+                break
+            end
+            trial = halve_until_admissible(α -> steps_at(s + α * correction))
+            trial === nothing && norma_abortf("Sachs aggregate: a grain cannot take the stress at t = %.6e.", t)
+            α, steps = trial
+            s += α * correction
+        end
+        converged || norma_abortf("Sachs aggregate: the axial stress did not converge at t = %.6e.", t)
+        grain_F = [steps[g][1] for g in 1:num_grains]
+        states = [steps[g][5] for g in 1:num_grains]
+        push!(history.time, Float64(t))
+        push!(history.F, sum(w[g] * grain_F[g] for g in 1:num_grains))
+        push!(history.P, sum(w[g] * steps[g][3] for g in 1:num_grains))
+        push!(history.σ, sum(w[g] * cauchy_stress(materials[g], steps[g][3], grain_F[g]) for g in 1:num_grains))
+        push!(history.grain_F, copy(grain_F))
+        push!(history.grain_state, copy.(states))
     end
     return history
 end
