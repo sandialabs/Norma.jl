@@ -654,7 +654,9 @@ Criterion `type` values: `time` (with `t_swap`); `stress recovery` (with
 A run can resume from an Exodus snapshot by adding a `restart` block. Its one
 key is `index`, the snapshot time-step index (negative values count back from
 the end, so `-1` is the last snapshot). Restart is incompatible with `swaps`,
-`initial conditions`, `j2 plasticity`, `Schwarz contact`, and mesh smoothing.
+`initial conditions`, materials with internal state variables (`j2
+plasticity` and `anisotropic hyperelastic damage`, whose state the snapshot
+does not hold), `Schwarz contact`, and mesh smoothing.
 
 ```yaml
 restart:

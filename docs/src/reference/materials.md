@@ -65,6 +65,7 @@ and case-sensitive:
 | `j2 plasticity` | J2 (von Mises) plasticity | finite strain |
 | `anisotropic linear elastic` | Anisotropic Hookean elasticity | infinitesimal strain |
 | `anisotropic Saint-Venant Kirchhoff` | Anisotropic Saint-Venant–Kirchhoff | finite strain |
+| `anisotropic hyperelastic damage` | Fiber-reinforced neo-Hookean with damage | finite strain |
 
 ### Linear elastic
 
@@ -235,6 +236,74 @@ instead ([sandialabs/LCM#127](https://github.com/sandialabs/LCM/issues/127));
 Norma reproduces purely elastic results of those versions with the inverse
 orientation, the Bunge angles (−φ2, −Φ, −φ1).
 
+## Anisotropic hyperelastic damage
+
+A compressible neo-Hookean matrix reinforced by any number of fiber families,
+each phase degraded by a damage that grows with the largest strain energy it
+has stored. This is LCM's AHD model:
+
+```math
+\begin{aligned}
+W_m &= \tfrac{\kappa}{2}\left[\tfrac{1}{2}(J^2 - 1) - \log J\right]
+      + \tfrac{\mu}{2}\left(J^{-2/3}\operatorname{tr}\mathbf{C} - 3\right), \\
+W_f &= \frac{k}{q}\left[e^{q (I_4 - 1)^2} - 1\right],
+      \qquad I_4 = \mathbf{M} \cdot \mathbf{C}\,\mathbf{M}, \\
+d &= d_{\max}\left[1 - e^{-\alpha / s}\right],
+      \qquad \alpha = \max_{\text{history}} W, \\
+\mathbf{P} &= \phi_m (1 - d_m)\,\frac{\partial W_m}{\partial \mathbf{F}}
+      + \sum_f \phi_f (1 - d_f)\,\frac{\partial W_f}{\partial \mathbf{F}}.
+\end{aligned}
+```
+
+Without damage, the matrix is the `neohookean` model. As in LCM, the fibers
+resist compression as well as tension. A fiber stretch at which
+e^{q (I_4 − 1)^2} would overflow, which a long Newton trial step can reach,
+fails the evaluation, and the step is cut.
+
+```yaml
+model: anisotropic hyperelastic damage
+elastic modulus: 2.0e+05          # matrix
+Poisson's ratio: 0.3
+matrix volume fraction: 0.5
+matrix maximum damage: 0.1
+matrix damage saturation: 1.0e+04
+fibers:
+  - direction: [1.0, 0.0, 0.0]    # in the material frame
+    k: 1.0e+04
+    q: 100.0
+    volume fraction: 0.5
+    maximum damage: 1.0
+    damage saturation: 1.0e+04
+orientation:                      # optional; this one turns the fiber to y
+  Bunge Euler angles: [90.0, 0.0, 0.0]
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| two elastic constants | — | matrix stiffness |
+| `matrix volume fraction` | `1.0` | φ_m |
+| `matrix maximum damage` | `1.0` | d_max of the matrix |
+| `matrix damage saturation` | none | s of the matrix; without it the matrix does not damage |
+| `fibers` | none | list of fiber families |
+| `direction` | — | fiber direction M in the material frame (normalized) |
+| `k`, `q` | `1.0` | fiber stiffness and exponential stiffening |
+| `volume fraction` | `0.0` | φ_f |
+| `maximum damage` | `1.0` | d_max of the fiber family |
+| `damage saturation` | none | s of the fiber family; without it the family does not damage |
+| `orientation` | identity | as for the [anisotropic elastic models](#Lattice-orientation) |
+
+The stable explicit time step uses the stiffness of the undeformed material,
+φ_m (λ + 2μ) + Σ_f 8 φ_f k. The exponential fibers stiffen fast with their
+stretch: for q = 100 the largest wave modulus is 3 times the estimate at 5 %
+fiber stretch and over 200 times at 10 %, so an explicit run with stretched
+fibers needs a CFL that allows for it.
+
+The internal variables are the largest energy and the damage of the matrix
+and of each fiber family, `matrix_energy`, `fiber_1_energy`, …,
+`matrix_damage`, `fiber_1_damage`, …. LCM keeps the energy of the previous
+step instead of the largest over the history, so its damage recovers on
+unloading; the two agree under monotonic loading.
+
 ## Material point driver
 
 `Norma.material_point_history(material, deformation, times; orientation,
@@ -250,3 +319,4 @@ Piola–Kirchhoff stress follow `stress(t)` (zero by default).
 - J2 plasticity: `examples/materials/j2/cube.yaml`
 - Seth-Hill: `examples/ems/awful-cube/awful-cube.yaml`
 - Anisotropic elasticity: `examples/single/static-solid/cube/anisotropic/cube-shear.yaml`
+- Anisotropic hyperelastic damage: `examples/materials/ahd/cube.yaml`

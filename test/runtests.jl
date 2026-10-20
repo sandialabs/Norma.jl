@@ -181,6 +181,7 @@ const indexed_test_files = [
     (140, "schwarz-overlap-matching.jl"),
     (141, "anisotropic-elasticity.jl"),
     (142, "single-static-anisotropic-cube.jl"),
+    (143, "anisotropic-hyperelastic-damage.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

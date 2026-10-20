@@ -751,6 +751,151 @@ function constitutive(
     return W, P, rotate_tensor4(Q, AA_L), state_old
 end
 
+# ---------------------------------------------------------------------------
+# Anisotropic hyperelastic damage (LCM's AHD model)
+# ---------------------------------------------------------------------------
+#
+# A compressible neo-Hookean matrix reinforced by families of fibers, each
+# with an exponential energy in its squared stretch I4 = M · C M, and each
+# phase degraded by a damage that grows with the largest energy it has
+# stored:
+#
+#     W_m = κ/2 [(J² - 1)/2 - log J] + μ/2 (J^(-2/3) tr C - 3)
+#     W_f = k/q [exp(q (I4 - 1)²) - 1]
+#     d = d_max [1 - exp(-α/s)],   α = the largest W over the history
+#     P = φ_m (1 - d_m) ∂W_m/∂F + Σ_f φ_f (1 - d_f) ∂W_f/∂F
+#
+# The fiber directions are given in the material frame, which the
+# orientation places in the sample. As in LCM, the fibers resist compression
+# as well as tension. LCM stores the energy of the previous step rather than
+# the largest over the history, so its damage recovers on unloading; the two
+# agree under monotonic loading. A phase without a damage saturation s does
+# not damage.
+
+struct FiberFamily
+    M::SVector{3,Float64}  # unit direction in the material frame
+    k::Float64             # stiffness
+    q::Float64             # exponential stiffening
+    φ::Float64             # volume fraction
+    d_max::Float64         # maximum damage
+    s::Float64             # damage saturation energy; zero for no damage
+end
+
+function FiberFamily(params::AbstractDict)
+    haskey(params, "direction") || norma_abort("Every entry of `fibers` requires a `direction`.")
+    direction = SVector{3,Float64}(Float64.(params["direction"]))
+    norm(direction) > 0.0 || norma_abort("A fiber `direction` must be a nonzero vector.")
+    return FiberFamily(
+        normalize(direction),
+        Float64(get(params, "k", 1.0)),
+        Float64(get(params, "q", 1.0)),
+        Float64(get(params, "volume fraction", 0.0)),
+        Float64(get(params, "maximum damage", 1.0)),
+        Float64(get(params, "damage saturation", 0.0)),
+    )
+end
+
+mutable struct AnisotropicHyperelasticDamage <: Solid
+    E::Float64
+    ν::Float64
+    κ::Float64
+    λ::Float64
+    μ::Float64
+    ρ::Float64
+    φ_m::Float64      # matrix volume fraction
+    d_max_m::Float64  # matrix maximum damage
+    s_m::Float64      # matrix damage saturation energy; zero for no damage
+    fibers::Vector{FiberFamily}
+    function AnisotropicHyperelasticDamage(params::Parameters)
+        E, ν, κ, λ, μ = elastic_constants(params)
+        ρ = get(params, "density", 0.0)
+        φ_m = Float64(get(params, "matrix volume fraction", 1.0))
+        d_max_m = Float64(get(params, "matrix maximum damage", 1.0))
+        s_m = Float64(get(params, "matrix damage saturation", 0.0))
+        fibers = [FiberFamily(f) for f in get(params, "fibers", [])]
+        return new(E, ν, κ, λ, μ, ρ, φ_m, d_max_m, s_m, fibers)
+    end
+end
+
+has_orientation(::AnisotropicHyperelasticDamage) = true
+
+# State: the largest energy reached by the matrix and by each fiber family,
+# then the matching damages, which are outputs only.
+number_states(material::AnisotropicHyperelasticDamage) = 2 * (1 + length(material.fibers))
+initial_state(material::AnisotropicHyperelasticDamage) = zeros(number_states(material))
+function internal_variable_names(material::AnisotropicHyperelasticDamage)
+    phases = vcat(["matrix"], ["fiber_$f" for f in eachindex(material.fibers)])
+    return vcat(phases .* "_energy", phases .* "_damage")
+end
+
+# Small-strain estimate of the largest wave modulus: the matrix plus the
+# initial stiffness 8k of each fiber family along its direction.
+function get_p_wave_modulus(material::AnisotropicHyperelasticDamage)
+    return material.φ_m * (material.λ + 2.0 * material.μ) + sum((8.0 * f.φ * f.k for f in material.fibers); init=0.0)
+end
+
+damage(d_max::Real, s::Real, α::Real) = s > 0.0 ? d_max * (1.0 - exp(-α / s)) : zero(α)
+
+# Material-frame energy, first Piola-Kirchhoff stress and updated history,
+# generic in the element type so that ForwardDiff differentiates through the
+# damage growth as well.
+function anisotropic_hyperelastic_damage(
+    material::AnisotropicHyperelasticDamage, F::SMatrix{3,3,T,9}, state_old::AbstractVector{Float64}
+) where {T<:Number}
+    J = det(F)
+    C = F' * F
+    F⁻ᵀ = inv(F)'
+    κ, μ = material.κ, material.μ
+    Jm23 = J^(-2 / 3)
+    trC = tr(C)
+    W_m = 0.5 * κ * (0.5 * (J * J - 1.0) - log(J)) + 0.5 * μ * (Jm23 * trC - 3.0)
+    P_m = 0.5 * κ * (J * J - 1.0) * F⁻ᵀ + μ * Jm23 * (F - (trC / 3) * F⁻ᵀ)
+    num_fibers = length(material.fibers)
+    α = Vector{T}(undef, 1 + num_fibers)
+    α[1] = max(state_old[1], W_m)
+    d_m = damage(material.d_max_m, material.s_m, α[1])
+    W = material.φ_m * (1 - d_m) * W_m
+    P = material.φ_m * (1 - d_m) * P_m
+    for (f, fiber) in enumerate(material.fibers)
+        M = fiber.M
+        I4 = dot(M, C * M)
+        # Beyond this the energy overflows, and Inf times a zero damage factor
+        # or entry of M M' is NaN: a trial iterate too long, so cut the step.
+        exponent = fiber.q * (I4 - 1)^2
+        exponent < log(floatmax(Float64)) ||
+            throw(DomainError(exponent, "AHD: the fiber energy exp(q (I4 - 1)^2) overflows"))
+        e = exp(exponent)
+        W_f = fiber.k / fiber.q * (e - 1)
+        S_f = 4 * fiber.k * (I4 - 1) * e * (M * M')
+        α[1 + f] = max(state_old[1 + f], W_f)
+        d_f = damage(fiber.d_max, fiber.s, α[1 + f])
+        W += fiber.φ * (1 - d_f) * W_f
+        P += fiber.φ * (1 - d_f) * (F * S_f)
+    end
+    return W, P, α
+end
+
+function constitutive(
+    material::AnisotropicHyperelasticDamage,
+    F::SMatrix{3,3,Float64,9},
+    Q::SMatrix{3,3,Float64,9},
+    state_old::Vector{Float64},
+    Δt::Float64;
+    need_tangent::Bool=true,
+)
+    F_L = Q' * F * Q
+    W, P_L, α = anisotropic_hyperelastic_damage(material, F_L, state_old)
+    isfinite(W) && all(isfinite, P_L) || throw(DomainError(W, "AHD: the energy or the stress is not finite"))
+    d_m = damage(material.d_max_m, material.s_m, α[1])
+    d_f = [damage(fiber.d_max, fiber.s, α[1 + f]) for (f, fiber) in enumerate(material.fibers)]
+    state_new = vcat(α, [d_m], d_f)
+    P = Q * P_L * Q'
+    need_tangent || return W, P, ZERO_TANGENT, state_new
+    stress = x -> anisotropic_hyperelastic_damage(material, SMatrix{3,3,eltype(x),9}(x), state_old)[2]
+    AA_L = SArray{Tuple{3,3,3,3},Float64,4,81}(ForwardDiff.jacobian(stress, SVector{9,Float64}(F_L)))
+    return W, P, rotate_tensor4(Q, AA_L), state_new
+end
+
 # The constitutive update at one point for every kind of material: the
 # energy, stress, tangent and new internal state, given the lattice
 # orientation Q (used by oriented materials only), the internal state at the
@@ -804,6 +949,8 @@ function create_material(params::Parameters)
         return AnisotropicLinearElastic(params)
     elseif model_name == "anisotropic Saint-Venant Kirchhoff"
         return AnisotropicSaintVenantKirchhoff(params)
+    elseif model_name == "anisotropic hyperelastic damage"
+        return AnisotropicHyperelasticDamage(params)
     else
         norma_abort("Unknown material model : $model_name")
     end
@@ -828,6 +975,8 @@ function get_kinematics(material::Solid)
     elseif material isa AnisotropicLinearElastic
         return Infinitesimal
     elseif material isa AnisotropicSaintVenantKirchhoff
+        return Finite
+    elseif material isa AnisotropicHyperelasticDamage
         return Finite
     end
     norma_abort("Unknown material model : $(typeof(material))")

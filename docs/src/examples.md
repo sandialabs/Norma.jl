@@ -18,7 +18,7 @@ Norma.run("bars.yaml")
 | Directory | Contents |
 |---|---|
 | `examples/single/` | Single-domain runs: `static-solid`, `implicit-dynamic-solid`, `explicit-dynamic-solid` |
-| `examples/materials/` | Material-model cases (for example J2 plasticity) |
+| `examples/materials/` | Material-model cases: J2 plasticity, anisotropic hyperelastic damage |
 | `examples/element-types/` | Element-library cases (`tet4`, `tet10`, …) |
 | `examples/overlap/` | Overlapping Schwarz coupling (same and different time steps) |
 | `examples/nonoverlap/` | Non-overlapping Schwarz coupling: Dirichlet–Neumann (including the matching exchange), Robin–Robin, and matrix inclusion |

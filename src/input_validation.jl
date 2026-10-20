@@ -255,7 +255,11 @@ const MATERIAL_PROPS_MODEL_KEYS = Dict(
     "j2 plasticity" => Set(["yield stress", "hardening modulus"]),
     "anisotropic linear elastic" => ANISOTROPIC_ELASTIC_KEYS,
     "anisotropic Saint-Venant Kirchhoff" => ANISOTROPIC_ELASTIC_KEYS,
+    "anisotropic hyperelastic damage" =>
+        Set(["matrix volume fraction", "matrix maximum damage", "matrix damage saturation", "fibers", "orientation"]),
 )
+
+const FIBER_KEYS = Set(["direction", "k", "q", "volume fraction", "maximum damage", "damage saturation"])
 
 const ORIENTATION_KEYS = Set(["basis vectors", "Bunge Euler angles", "angle unit", "mesh variables", "time index"])
 
@@ -273,6 +277,7 @@ const MATERIAL_MODEL_NAMES = Set([
     "j2 plasticity",
     "anisotropic linear elastic",
     "anisotropic Saint-Venant Kirchhoff",
+    "anisotropic hyperelastic damage",
 ])
 
 const BC_ENTRY_KEYS = Dict(
@@ -402,6 +407,13 @@ function validate_material!(messages::Vector{String}, material_params::AbstractD
         end
         if material_model in ("anisotropic linear elastic", "anisotropic Saint-Venant Kirchhoff")
             warn_unused_elastic_constants!(messages, props, label, file)
+        end
+        fibers = get(props, "fibers", nothing)
+        if fibers isa AbstractVector
+            for (f, fiber) in enumerate(fibers)
+                fiber isa AbstractDict || continue
+                warn_unknown_keys!(messages, fiber, FIBER_KEYS, "fiber $f of material \"$label\"", file)
+            end
         end
     end
     return messages
