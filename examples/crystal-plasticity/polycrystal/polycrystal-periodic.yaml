@@ -1,0 +1,68 @@
+# The periodic Voronoi polycrystal of polycrystal-tension.yaml as a
+# representative volume element: periodic boundary conditions on the three
+# pairs of faces, pulled along x to 0.5 % strain in uniaxial stress. F̄_xx is
+# prescribed; the other components of the average first Piola-Kirchhoff
+# stress are zero, with F̄_yx, F̄_zx and F̄_zy held at zero to fix the
+# rotation. The condition applies the increment of F̄ to the whole cell at
+# every step, so the cell needs no predictor, and the steps are LCM's 5e-4,
+# halved when they fail.
+type: single
+input mesh file: polycrystal-hex8.g
+output mesh file: polycrystal-periodic.e
+Exodus output interval: 1.0e-3
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      polycrystal: copper
+    copper:
+      model: crystal plasticity
+      density: 1.0
+      symmetry: cubic
+      C11: 204600.0
+      C12: 137700.0
+      C44: 126200.0
+      orientation:
+        mesh variables: [phi1, Phi, phi2]
+      integration scheme: implicit
+      slip families:
+        - slip systems: fcc
+          flow rule:
+            type: power law
+            reference slip rate: 1.0
+            rate exponent: 20.0
+          hardening law:
+            type: linear minus recovery
+            hardening modulus: 355.0
+            recovery modulus: 2.9
+            initial hardening state: 122.0
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 5.0e-3
+  time step: 5.0e-4
+  minimum time step: 1.0e-6
+  maximum time step: 5.0e-4
+  decrease factor: 0.5
+  increase factor: 2.0
+boundary conditions:
+  Periodic:
+    - node set pairs: [[nsx-, nsx+], [nsy-, nsy+], [nsz-, nsz+]]
+      deformation gradient:
+        xx: "1.0 + 1.0 * t"
+      stress:
+        yy: "0.0"
+        zz: "0.0"
+        xy: "0.0"
+        xz: "0.0"
+        yz: "0.0"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  # The crystal plasticity tangent is not symmetric.
+  linear solver: direct
+  minimum iterations: 1
+  maximum iterations: 20
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-8

@@ -20,7 +20,7 @@ Norma.run("bars.yaml")
 | `examples/single/` | Single-domain runs: `static-solid`, `implicit-dynamic-solid`, `explicit-dynamic-solid` |
 | `examples/materials/` | Material-model cases: J2 plasticity, anisotropic hyperelastic damage |
 | `examples/element-types/` | Element-library cases (`tet4`, `tet10`, …) |
-| `examples/crystal-plasticity/` | Polycrystals with a lattice orientation per element: LCM's RubiksCube and MicroStructPy Voronoi polycrystals, with their mesh generators, on rollers |
+| `examples/crystal-plasticity/` | Polycrystals with a lattice orientation per element: LCM's RubiksCube and MicroStructPy Voronoi polycrystals, with their mesh generators, on rollers and as periodic cells |
 | `examples/overlap/` | Overlapping Schwarz coupling (same and different time steps) |
 | `examples/nonoverlap/` | Non-overlapping Schwarz coupling: Dirichlet–Neumann (including the matching exchange), Robin–Robin, and matrix inclusion |
 | `examples/contact/` | Contact via Schwarz (static, implicit, explicit) |

@@ -187,6 +187,7 @@ const indexed_test_files = [
     (146, "quasi-static-predictor.jl"),
     (147, "polycrystal.jl"),
     (148, "lcm-rubiks-cube.jl"),
+    (149, "periodic.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

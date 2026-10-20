@@ -354,6 +354,7 @@ const BC_ENTRY_KEYS = Dict(
     "Neumann pressure" => Set(["side set", "function"]),
     "Surface" => Set(["side set", "function", "enforcement", "penalty"]),
     "Robin" => Set(["side set", "function", "component", "robin parameter"]),
+    "Periodic" => Set(["node set pairs", "deformation gradient", "stress"]),
     "Schwarz contact" => Set(["source", "side set", "source side set", "friction type", "swap BC types"]),
     "Schwarz overlap" => Set([
         "source",

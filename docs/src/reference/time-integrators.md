@@ -91,6 +91,14 @@ time integrator:
 The polycrystals of `examples/crystal-plasticity` take LCM's steps of 5 × 10⁻⁴
 with `tangent`; their README lists the steps each predictor cuts.
 
+A [periodic](boundary-conditions.md#Periodic) cell needs no predictor: with
+`constant`, the increment of the macroscopic deformation gradient, with the
+translation of an origin that a Dirichlet condition moves, is applied to the
+whole cell, and it is the prediction of the step. With `linear` or
+`tangent`, the predictor predicts the whole field instead, except on a step it
+does not predict, such as the first step of `linear`, which takes the
+increment of the macroscopic deformation gradient as with `constant`.
+
 A predictor changes the iterate Newton starts from, not the solution it
 converges to. Since it lowers the residual of that iterate, the `relative
 tolerance` is measured from the residual the iterate would have without the

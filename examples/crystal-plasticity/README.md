@@ -15,6 +15,9 @@ bounds in elasticity, and the RubiksCube with one element per grain against
 the Taylor and Sachs estimates in plasticity; the plastic runs of the Voronoi
 polycrystal are the examples below, which no test runs. It also runs
 `compare_estimates.jl` and the converter's voxel path.
+`test/periodic.jl` runs them as periodic cells, with the
+[`Periodic`](../../docs/src/reference/boundary-conditions.md#periodic)
+boundary condition.
 
 ## `rubiks-cube/`: LCM's RubiksCube
 
@@ -65,18 +68,26 @@ face of a periodic axis lists the images of the nodes of the lower face in
 order.
 
 `polycrystal-tension.yaml` pulls the voxel polycrystal like the RubiksCube,
-on rollers, and `polycrystal-tension-tet4.yaml` the tetrahedral one. Both
-take LCM's steps of 5 × 10⁻⁴, halved when they fail (see
+on rollers, and `polycrystal-tension-tet4.yaml` the tetrahedral one.
+`polycrystal-periodic.yaml` loads the voxel polycrystal as a periodic cell
+instead, in uniaxial stress along x: F̄ₓₓ is prescribed, and every other
+component of the average first Piola–Kirchhoff stress is zero (see
+[`Periodic`](../../docs/src/reference/boundary-conditions.md#periodic)). With
+`input mesh file: polycrystal-tet4.g` it runs the tetrahedral mesh. All of
+them take LCM's steps of 5 × 10⁻⁴, halved when they fail (see
 [Time steps](#time-steps)). At 0.5 % strain, the axial stresses compare with
 the estimates of the same 25 grains as follows:
 
 | Mesh and conditions | Steps halved | Sachs | FEM | Taylor |
 |---|---|---|---|---|
 | voxels, rollers (`polycrystal-tension.yaml`) | 5 | 276.2 | 341.2 | 373.2 |
+| voxels, periodic (`polycrystal-periodic.yaml`) | 2 | 276.2 | 346.2 | 372.1 |
 | tetrahedra, rollers (`polycrystal-tension-tet4.yaml`) | 6 | 276.2 | 343.0 | 373.5 |
+| tetrahedra, periodic | 2 | 276.2 | 347.9 | 372.3 |
 
-The Taylor estimate frees the same components of F̄ as the rollers, F̄_yy and
-F̄_zz.
+The Taylor estimate frees the same components of F̄ as the conditions: F̄_yy
+and F̄_zz on rollers, and the five stress-free components of the periodic
+cell.
 
 ## Time steps
 
@@ -120,13 +131,22 @@ the converged displacement at 0.15 % strain of a run with steps of
 1.25 × 10⁻⁴ fails to evaluate, at 89 of its 1728 integration points, with one
 step of 5 × 10⁻⁴ from the state at 0.1 %.
 
+A periodic cell needs no predictor. The
+[periodic condition](../../docs/src/reference/boundary-conditions.md#periodic)
+applies the increment of F̄ to the whole cell before the first iterate, which
+is the solution of a homogeneous cell. The voxel and tetrahedral cells of
+`polycrystal-periodic.yaml` each halve 2 of their steps of 5 × 10⁻⁴, both at
+the onset of flow. With `predictor: tangent`, which then predicts in place of
+the condition, they halve the same steps and reach the same stresses.
+
 `compare_estimates.jl` runs an example and lists its axial stress next to the
-Sachs and Taylor estimates of the same grains. It integrates the estimates in
-steps of at most 5 × 10⁻⁵ strain between the stops of the run:
+Sachs and Taylor estimates of the same grains, on rollers or for a periodic
+cell. It integrates the estimates in steps of at most 5 × 10⁻⁵ strain between
+the stops of the run:
 
 ```bash
 cd rubiks-cube
 julia --project=../../.. ../compare_estimates.jl rubiks-cube.yaml
 cd ../polycrystal
-julia --project=../../.. ../compare_estimates.jl polycrystal-tension.yaml
+julia --project=../../.. ../compare_estimates.jl polycrystal-periodic.yaml
 ```

@@ -4,21 +4,24 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Runs a polycrystal pulled along x (rubiks-cube.yaml, polycrystal-tension.yaml)
-# and compares its axial nominal stress with the Sachs (iso-stress) and Taylor
-# (iso-strain) estimates of the same grains:
+# Runs a polycrystal pulled along x (rubiks-cube.yaml, polycrystal-tension.yaml,
+# polycrystal-periodic.yaml) and compares its axial nominal stress with the
+# Sachs (iso-stress) and Taylor (iso-strain) estimates of the same grains:
 #
 #   julia --project=<Norma.jl> compare_estimates.jl <input.yaml> [output.csv]
 #
-# The input prescribes the x displacement of node set nsx+ and holds nsx-, nsy-
-# and nsz- on rollers, and the Taylor estimate has F_yy and F_zz free. Run it
-# from the folder of the input. The CSV (default: <input>-estimates.csv) has a
-# row per stop: the axial strain and the Sachs, finite element and Taylor
-# stresses.
+# The input either prescribes the x displacement of node set nsx+ and holds
+# nsx-, nsy- and nsz- on rollers, or has a periodic boundary condition that
+# prescribes F̄_xx. In the periodic case the strain and stress are F̄_xx - 1
+# and P̄_xx, and the Taylor estimate has the free components of the periodic
+# condition; on rollers it has F_yy and F_zz free. Run it from the folder of
+# the input. The CSV (default: <input>-estimates.csv) has a row per stop: the
+# axial strain and the Sachs, finite element and Taylor stresses.
 #
 # The estimates assume the loading of the examples: an axial strain linear in
-# time from zero at t = 0. The script checks this against the run and stops
-# otherwise.
+# time from zero at t = 0, and, for a periodic cell, zero stress on its free
+# components and its other prescribed components of F̄ at the identity. The
+# script checks these against the run and stops otherwise.
 
 using LinearAlgebra
 using Norma
@@ -55,16 +58,24 @@ function main(args)
     output = length(args) > 1 ? args[2] : splitext(input)[1] * "-estimates.csv"
     sim = Norma.create_simulation(Norma.load_input(input))
     model = sim.model
+    periodic = Norma.periodic_boundary_condition(model)
     free = [false false false; false true false; false false true]
-    loaded = only(
-        bc for bc in model.boundary_conditions if
-        bc isa Norma.SolidMechanicsDirichletBoundaryCondition && bc.name == "nsx+" && bc.offset == 1
-    )
-    lo, hi = vec(minimum(model.reference; dims=2)), vec(maximum(model.reference; dims=2))
-    length_x = hi[1] - lo[1]
-    area = (hi[2] - lo[2]) * (hi[3] - lo[3])
-    axial_strain = () -> model.displacement[1, loaded.node_set_node_indices[1]] / length_x
-    axial_stress = () -> sum(model.internal_force[3 * (n - 1) + 1] for n in loaded.node_set_node_indices) / area
+    if periodic === nothing
+        loaded = only(
+            bc for bc in model.boundary_conditions if
+            bc isa Norma.SolidMechanicsDirichletBoundaryCondition && bc.name == "nsx+" && bc.offset == 1
+        )
+        lo, hi = vec(minimum(model.reference; dims=2)), vec(maximum(model.reference; dims=2))
+        length_x = hi[1] - lo[1]
+        area = (hi[2] - lo[2]) * (hi[3] - lo[3])
+        axial_strain = () -> model.displacement[1, loaded.node_set_node_indices[1]] / length_x
+        axial_stress = () -> sum(model.internal_force[3 * (n - 1) + 1] for n in loaded.node_set_node_indices) / area
+    else
+        free = falses(3, 3)
+        free[periodic.components[periodic.stress_controlled]] .= true
+        axial_strain = () -> Norma.periodic_deformation_gradient(model)[1, 1] - 1
+        axial_stress = () -> Norma.periodic_stress(model)[1, 1]
+    end
     times, strains, stresses = [0.0], [0.0], [0.0]
     # Norma.evolve, recording the reaction at every stop.
     Norma.sync_control_time(sim)
@@ -93,6 +104,22 @@ function main(args)
     rate = strains[end] / times[end]
     maximum(abs.(strains .- rate .* times)) <= 1.0e-9 * abs(strains[end]) ||
         error("compare_estimates.jl: the estimates assume an axial strain linear in time from zero; this input is not.")
+    if periodic !== nothing
+        P̄ = Norma.periodic_stress(model)
+        F̄ = Norma.periodic_deformation_gradient(model)
+        for (c, stress_controlled) in zip(periodic.components, periodic.stress_controlled)
+            c == CartesianIndex(1, 1) && continue
+            if stress_controlled
+                abs(P̄[c]) <= 1.0e-9 * abs(P̄[1, 1]) || error(
+                    "compare_estimates.jl: the estimates assume zero stress on the free components of F̄; P̄$(Tuple(c)) = $(P̄[c]).",
+                )
+            else
+                abs(F̄[c] - (c[1] == c[2])) <= 1.0e-12 || error(
+                    "compare_estimates.jl: the estimates assume the prescribed components of F̄ other than xx at the identity; F̄$(Tuple(c)) = $(F̄[c]).",
+                )
+            end
+        end
+    end
     # The estimates integrate each grain in steps of at most 5e-5 strain
     # between the stops of the run: the local integration of the flow rule
     # starts from the slip rates of the previous step, and at the onset of flow

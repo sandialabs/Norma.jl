@@ -719,8 +719,10 @@ function transfer_state!(new::SingleDomainSimulation, old::SingleDomainSimulatio
     # The quasi-static predictor starts its history again, as in a run. A
     # replacement built for a swap has none, but a variant that an in-memory
     # restart switches back in still holds that of its last step before it
-    # was switched out.
+    # was switched out. A periodic cell predicts its next step from the
+    # transferred state too.
     reset_predictor!(new.integrator)
+    clear_periodic_increments!(new.model)
     return nothing
 end
 

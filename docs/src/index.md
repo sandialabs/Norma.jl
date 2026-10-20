@@ -107,12 +107,14 @@ Capabilities currently implemented:
 - Neumann traction and follower pressure
 - Robin (mixed displacement–traction)
 - Inclined-surface (roller) support
+- Periodic, for representative volume elements, with each component of the
+  macroscopic deformation gradient or of the average stress prescribed
 
 **Material points and polycrystals**
 
 - A material-point driver under mixed stress and strain control
 - Taylor and Sachs estimates of polycrystals
-- Polycrystal meshes with a lattice orientation per element: LCM's RubiksCube and MicroStructPy Voronoi polycrystals, on rollers (`examples/crystal-plasticity`)
+- Polycrystal meshes with a lattice orientation per element: LCM's RubiksCube and MicroStructPy Voronoi polycrystals, on rollers or as periodic cells (`examples/crystal-plasticity`)
 
 **Adaptive mesh swapping**
 
