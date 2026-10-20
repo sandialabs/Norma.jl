@@ -48,6 +48,49 @@ function average_components(stress::Vector{Vector{Vector{Vector{Float64}}}})
     return [xx yy zz yz xz xy] ./ num_stress
 end
 
+using DelimitedFiles
+using StaticArrays
+
+# Rows of an LCM reference case (test/lcm-reference/README.md), each a Dict
+# from column name to value, in file order.
+function lcm_reference(case::AbstractString)
+    path = joinpath(@__DIR__, "lcm-reference", case * ".csv")
+    data, header = readdlm(path, ',', Float64, '\n'; header=true, comments=true)
+    names = String.(vec(header))
+    return [Dict(names[j] => data[r, j] for j in eachindex(names)) for r in axes(data, 1)]
+end
+
+# The rows of an LCM reference case at its last step.
+function lcm_final_rows(case::AbstractString)
+    rows = lcm_reference(case)
+    last_step = maximum(row["step"] for row in rows)
+    return filter(row -> row["step"] == last_step, rows)
+end
+
+# Row-major 3 × 3 tensor `field` of an LCM reference row; components missing
+# from the file (the out-of-plane ones of the 2D cases) are NaN.
+function lcm_tensor(row::AbstractDict, field::AbstractString)
+    return SMatrix{3,3,Float64,9}(get(row, "$(field)_$(3 * (i - 1) + j)", NaN) for i in 1:3, j in 1:3)
+end
+
+# Cauchy stress of a cubic St. Venant-Kirchhoff crystal with orientation Q,
+# written out index by index, independently of anisotropy.jl.
+function cubic_svk_cauchy(C11, C12, C44, Q, F)
+    δ(a, b) = a == b ? 1.0 : 0.0
+    CL = [
+        C12 * δ(i, j) * δ(k, l) +
+        C44 * (δ(i, k) * δ(j, l) + δ(i, l) * δ(j, k)) +
+        (C11 - C12 - 2C44) * δ(i, j) * δ(j, k) * δ(k, l) for i in 1:3, j in 1:3, k in 1:3, l in 1:3
+    ]
+    C = [
+        sum(Q[i, p] * Q[j, q] * Q[k, r] * Q[l, s] * CL[p, q, r, s] for p in 1:3, q in 1:3, r in 1:3, s in 1:3) for
+        i in 1:3, j in 1:3, k in 1:3, l in 1:3
+    ]
+    E = 0.5 * (F' * F - I)
+    S = [sum(C[i, j, k, l] * E[k, l] for k in 1:3, l in 1:3) for i in 1:3, j in 1:3]
+    return F * S * F' / det(F)
+end
+
 using Exodus
 using Symbolics
 @variables t, x, y, z

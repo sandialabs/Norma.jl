@@ -26,6 +26,7 @@ include("simulation_types.jl")         # needs TimeIntegrator, Solver, Model, Sw
 
 # --- Methods ---
 include("input_validation.jl")
+include("anisotropy.jl")                # anisotropic elastic constants, lattice orientations
 include("constitutive.jl")
 include("interpolation.jl")
 include("spatial_search.jl")          # needs interpolation.jl, model_types.jl
@@ -34,6 +35,7 @@ include("opinf/opinf_model.jl")
 include("kroms/krom_model.jl")
 include("metric.jl")                   # metric targets of mesh smoothing; needs model_types.jl
 include("model.jl")
+include("material_point.jl")            # material point driver; needs constitutive.jl, model.jl
 include("topology.jl")                 # needs model.jl
 include("recovery.jl")
 include("boundary_conditions.jl")

@@ -1,0 +1,92 @@
+# Simple shear of a copper crystal to F12 = 0.1, the deformation of LCM's
+# SingleElement3d crystal plasticity tests. Every boundary node follows
+# u = (t y, 0, 0), so the deformation is homogeneous.
+type: single
+input mesh file: cube.g
+output mesh file: cube-shear.e
+CSV output interval: 0
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cube: copper
+    copper:
+      model: anisotropic Saint-Venant Kirchhoff
+      symmetry: cubic
+      C11: 168.4
+      C12: 121.4
+      C44: 75.4
+      density: 1.0
+      orientation:
+        Bunge Euler angles: [0.12, 0.03, 0.28]
+        angle unit: radians
+time integrator:
+  type: quasi static
+  initial time: 0.0
+  final time: 0.1
+  time step: 0.01
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "t * y"
+    - node set: nsx-
+      component: y
+      function: "0.0"
+    - node set: nsx-
+      component: z
+      function: "0.0"
+    - node set: nsx+
+      component: x
+      function: "t * y"
+    - node set: nsx+
+      component: y
+      function: "0.0"
+    - node set: nsx+
+      component: z
+      function: "0.0"
+    - node set: nsy-
+      component: x
+      function: "t * y"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsy-
+      component: z
+      function: "0.0"
+    - node set: nsy+
+      component: x
+      function: "t * y"
+    - node set: nsy+
+      component: y
+      function: "0.0"
+    - node set: nsy+
+      component: z
+      function: "0.0"
+    - node set: nsz-
+      component: x
+      function: "t * y"
+    - node set: nsz-
+      component: y
+      function: "0.0"
+    - node set: nsz-
+      component: z
+      function: "0.0"
+    - node set: nsz+
+      component: x
+      function: "t * y"
+    - node set: nsz+
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "0.0"
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-14
+  absolute tolerance: 1.0e-12
+  linear solver relative tolerance: 1.0e-14
+  linear solver absolute tolerance: 1.0e-14
