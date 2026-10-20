@@ -1757,6 +1757,21 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
         end
     end
     found || (force_residual = NaN)
+    # A window-end-constrained side: the end value of the ramp that its
+    # interior substeps applied must equal the reaction at the end of the
+    # window, or the window balance of the rate invariant acquires the term
+    # (m C_D Δv_D^(m) - C_D Δv_D)ᵀ(r_D - ℓ)/ΔT. Measured in the W_D⁻¹ norm
+    # relative to the reaction, and folded into the force residual.
+    if bc.window_end_constraint &&
+        !isempty(bc.window_ramp_end) &&
+        length(bc.window_ramp_end) == length(bc.window_end_reaction_raw) &&
+        bc.square_factor !== nothing
+        r_end = nodal(bc.window_end_reaction_raw)
+        scale = inverse_weighted_norm(bc.square_factor, r_end)
+        difference = inverse_weighted_norm(bc.square_factor, r_end - nodal(bc.window_ramp_end))
+        ramp_residual = scale > 0.0 ? difference / scale : difference
+        force_residual = isnan(force_residual) ? ramp_residual : max(force_residual, ramp_residual)
+    end
     return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, NaN, NaN)
 end
 
@@ -2041,6 +2056,7 @@ end
 function apply_window_ramp!(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     isempty(bc.window_start_reaction) && return nothing
     force = window_ramp(bc, self_subsim_of(bc).integrator.time)
+    bc.window_ramp_end = copy(isempty(bc.window_end_reaction) ? bc.window_start_reaction : bc.window_end_reaction)
     for (i_local, i_global) in enumerate(bc.global_from_local_map)
         global_range = (3 * (i_global - 1) + 1):(3 * i_global)
         local_range = (3 * (i_local - 1) + 1):(3 * i_local)
