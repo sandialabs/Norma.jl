@@ -2078,14 +2078,24 @@ function record_window_end_reactions!(subsim::SingleDomainSimulation)
         bc.window_end_reaction_raw = copy(reaction)
         # The ramp of the next iteration is formed from the relaxed reaction:
         # the interior substeps respond to the ramp and the end constraint
-        # undoes that response, a loop with a gain of about -(m - 1) for m
-        # substeps that the relaxation of the datum does not pass through.
-        # Under Anderson acceleration the reaction is a second field of the
-        # interface's entry and is set with the datum at the next iteration.
+        # removes that response through the reaction, a dependence with a
+        # gain of about -(m - 1) for m substeps that the relaxation of the
+        # datum does not act on. Under Anderson acceleration the end value of
+        # the ramp is a second field of the interface's entry: it keeps the
+        # value applied in this pass, so that the joint step of the next
+        # iteration forms its residual from the measured reaction against
+        # that value, and the step sets the new end value with the datum.
+        # Overwriting it here with the measured reaction made that residual
+        # identically zero.
         controller = bc.parent.controller
         θ = controller.relaxation_parameter
         anderson = controller.relaxation_method === :anderson
-        if !anderson && controller.iteration_number > 0 && length(bc.window_end_reaction) == length(reaction)
+        same_size = length(bc.window_end_reaction) == length(reaction)
+        if anderson
+            same_size || (bc.window_end_reaction = reaction)
+            continue
+        end
+        if controller.iteration_number > 0 && same_size
             reaction = θ .* reaction .+ (1.0 - θ) .* bc.window_end_reaction
         end
         bc.window_end_reaction = reaction
@@ -2103,10 +2113,18 @@ function start_window_reactions!(sim::MultiDomainSimulation)
         for bc in model.boundary_conditions
             bc isa SolidMechanicsConstrainedSchwarzBoundaryCondition && bc.window_end_constraint || continue
             bc.is_dirichlet || continue
-            if isempty(bc.window_end_reaction)
-                bc.window_end_reaction = window_reaction(model, bc)
+            # The converged reaction of the previous stop, as measured at the
+            # end of its last pass, starts the new window and is the first
+            # end value of its ramp.
+            start = if !isempty(bc.window_end_reaction_raw)
+                bc.window_end_reaction_raw
+            elseif !isempty(bc.window_end_reaction)
+                bc.window_end_reaction
+            else
+                window_reaction(model, bc)
             end
-            bc.window_start_reaction = copy(bc.window_end_reaction)
+            bc.window_start_reaction = copy(start)
+            bc.window_end_reaction = copy(start)
         end
     end
     return nothing

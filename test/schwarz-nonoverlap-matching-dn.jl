@@ -711,7 +711,10 @@ end
         E0, R0 = data[1][i_E], data[1][i_R]
         @test maximum(abs(row[i_E] / E0 - 1.0) for row in data) ≤ 1.0e-2
         @test maximum(abs(row[i_R] / R0 - 1.0) for row in data) ≤ 1.0e-10
-        @test maximum(row[i_I] for row in data[2:end]) ≤ 1.0e-12
+        # The impulse of the applied ramp matches the impulse the coarse side
+        # receives up to the difference between the end value of the ramp and
+        # the measured reaction, which the criterion holds at the tolerance.
+        @test maximum(row[i_I] for row in data[2:end]) ≤ 1.0e-11
         # The criterion tests the end value of the ramp that the interior
         # substeps applied against the reaction at the end of the window; in
         # the last, converged window the two agree to the tolerance.
