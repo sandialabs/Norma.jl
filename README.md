@@ -107,8 +107,9 @@ algorithms, with an emphasis on extensibility and experimentation:
   Seth-Hill, finite-deformation J2 plasticity, anisotropic elasticity with
   lattice orientations, and LCM's anisotropic hyperelastic damage and crystal
   plasticity.
-- **Time integration:** quasi-static (with adaptive stepping), Newmark
-  (implicit dynamic), and central difference (explicit dynamic).
+- **Time integration:** quasi-static (with adaptive stepping and an optional
+  predictor), Newmark (implicit dynamic), and central difference (explicit
+  dynamic).
 - **Solvers:** Newton (Hessian minimizer) with optional line search,
   matrix-free steepest descent, and an explicit lumped-mass solver.
 - **Elements:** BAR2; TRI3, TRI6, QUAD4; TETRA4, TETRA10, HEX8; with Gauss,

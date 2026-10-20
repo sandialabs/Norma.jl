@@ -716,6 +716,11 @@ function transfer_state!(new::SingleDomainSimulation, old::SingleDomainSimulatio
     new.integrator.prev_velo = copy(new.integrator.velocity)
     new.integrator.prev_acce = copy(new.integrator.acceleration)
     new.integrator.prev_∂Ω_f = copy(get_internal_force(new.model))
+    # The quasi-static predictor starts its history again, as in a run. A
+    # replacement built for a swap has none, but a variant that an in-memory
+    # restart switches back in still holds that of its last step before it
+    # was switched out.
+    reset_predictor!(new.integrator)
     return nothing
 end
 

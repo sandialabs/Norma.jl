@@ -184,6 +184,7 @@ const indexed_test_files = [
     (143, "anisotropic-hyperelastic-damage.jl"),
     (144, "crystal-plasticity.jl"),
     (145, "single-crystal-lcm.jl"),
+    (146, "quasi-static-predictor.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

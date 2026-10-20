@@ -55,6 +55,10 @@ function QuasiStatic(params::Parameters, model::Model)
     prev_∂Ω_f = Float64[]
     stored_energy = 0.0
     initial_equilibrium = get(integrator_params, "initial equilibrium", false)
+    predictor_name = String(get(integrator_params, "predictor", "constant"))
+    if predictor_name ∉ ("constant", "linear", "tangent")
+        norma_abortf("Unknown `predictor: %s`. Valid values are `constant`, `linear` and `tangent`.", predictor_name)
+    end
     return QuasiStatic(
         prev_time,
         time,
@@ -72,6 +76,14 @@ function QuasiStatic(params::Parameters, model::Model)
         prev_∂Ω_f,
         stored_energy,
         initial_equilibrium,
+        Symbol(predictor_name),
+        Float64[],
+        false,
+        Float64[],
+        0.0,
+        Float64[],
+        0.0,
+        spzeros(0, 0),
     )
 end
 
@@ -213,8 +225,161 @@ function initialize(integrator::QuasiStatic, solver::Solver, model::SolidMechani
     return nothing
 end
 
-function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
+# The quasi-static predictor. A step starts from the previous solution with the
+# new values of the prescribed DOFs, so without a predictor (`constant`) the
+# first Newton iterate puts the whole increment of a loaded face on the layer
+# of elements next to it. A path-dependent material evaluated at that strain
+# can fail where the converged step would not: the flow rule of crystal
+# plasticity has a bounded range. `linear` adds to the free DOFs the increment
+# of the last accepted step, scaled by the ratio of the time steps; the first
+# step has none to extrapolate. `tangent` adds the solution of
+#
+#     K_ff Δu_f = -K_fc Δu_c,
+#
+# the linear response to the increment Δu_c of the prescribed DOFs, with the
+# stiffness K of the last accepted step, or before the first one with the
+# stiffness at the start of the step. A predictor changes the iterate Newton
+# starts from, not the solution it converges to.
+#
+# The increment of the prescribed DOFs needs the displacement the step starts
+# from, which start_step! records before apply_bcs: the last accepted
+# solution, the start of the step after a failed attempt, or the start of the
+# stop in a Schwarz iteration.
+start_step!(::TimeIntegrator) = nothing
+accept_step!(::TimeIntegrator, ::Solver) = nothing
+
+function start_step!(integrator::QuasiStatic)
+    integrator.predictor == :constant && return nothing
+    integrator.step_start_disp = copy(integrator.displacement)
+    integrator.step_started = true
     return nothing
+end
+
+function accept_step!(integrator::QuasiStatic, solver::Solver)
+    integrator.predictor == :constant && return nothing
+    length(integrator.step_start_disp) == length(integrator.displacement) || return nothing
+    integrator.last_increment = integrator.displacement - integrator.step_start_disp
+    integrator.last_time_step = integrator.time - integrator.prev_time
+    if integrator.predictor == :tangent
+        # Evaluations build a new matrix, so the reference stays this step's.
+        integrator.last_stiffness = solver.hessian
+    end
+    return nothing
+end
+
+# The history starts again when a simulation takes over the state of another
+# (transfer_state!), as it starts with a run: a variant that an in-memory
+# restart switches back in holds the history of its last step before it was
+# switched out, not of the step before the switch.
+reset_predictor!(::TimeIntegrator) = nothing
+
+function reset_predictor!(integrator::QuasiStatic)
+    integrator.step_started = false
+    integrator.last_increment = Float64[]
+    integrator.last_time_step = 0.0
+    integrator.last_stiffness = spzeros(0, 0)
+    return nothing
+end
+
+# The tangent predictor solves with the stiffness, which only the Hessian
+# minimizer assembles.
+function validate_predictor(integrator::QuasiStatic, solver::Solver)
+    if integrator.predictor == :tangent && !(solver isa HessianMinimizer)
+        norma_abort("`predictor: tangent` requires the `Hessian minimizer` solver.")
+    end
+    return nothing
+end
+
+validate_predictor(::TimeIntegrator, ::Solver) = nothing
+
+function predict(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)
+    empty!(integrator.predicted_increment)
+    # Only the solve of a step uses the predictor; the initial equilibrium
+    # solve has no step to start from.
+    started = integrator.step_started
+    integrator.step_started = false
+    δ = if started && integrator.predictor == :linear
+        linear_prediction(integrator, model)
+    elseif started && integrator.predictor == :tangent
+        tangent_prediction(integrator, solver, model)
+    else
+        nothing
+    end
+    δ === nothing && return nothing
+    integrator.unpredicted_residual = evaluate_unpredicted_residual(integrator, solver, model)
+    integrator.displacement .+= δ
+    integrator.predicted_increment = δ
+    return nothing
+end
+
+# The predicted increment of the free DOFs, zero on the prescribed ones, or
+# nothing when there is no prediction.
+function linear_prediction(integrator::QuasiStatic, model::SolidMechanics)
+    increment = integrator.last_increment
+    integrator.last_time_step > 0.0 && length(increment) == length(model.free_dofs) || return nothing
+    ratio = (integrator.time - integrator.prev_time) / integrator.last_time_step
+    return ratio .* increment .* model.free_dofs
+end
+
+function tangent_prediction(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
+    u = integrator.displacement
+    u_start = integrator.step_start_disp
+    free = model.free_dofs
+    fixed = .!free
+    Δu_fixed = u[fixed] - u_start[fixed]
+    any(!iszero, Δu_fixed) || return nothing
+    K = integrator.last_stiffness
+    if size(K, 1) != length(u)
+        u_fixed = u[fixed]
+        u[fixed] = u_start[fixed]
+        evaluate(integrator, solver, model)
+        u[fixed] = u_fixed
+        if model.failed == true
+            norma_log(4, :solve, "Tangent predictor: the start of the step failed to evaluate; no prediction")
+            model.failed = false
+            return nothing
+        end
+        K = solver.hessian
+    end
+    δ = zeros(length(u))
+    δ[free] = solve_linear(solver, K[free, free], -(K[free, fixed] * Δu_fixed))
+    return δ
+end
+
+# The relative tolerance of a solve is measured from its initial residual,
+# which an accurate predictor makes small: for a linear problem the predicted
+# iterate is the solution, and measured from its residual the relative
+# tolerance asks for less than the roundoff. The solve measures it instead from
+# the residual the iterate would have without the predictor, if larger. The
+# Hessian minimizer estimates that residual as R - K δ, to first order, with δ
+# the predicted increment. A matrix-free solver has no K, so it evaluates the
+# residual of the unpredicted iterate before the prediction is added: one more
+# evaluation per predicted step. If that evaluation fails, the tolerance is
+# measured from the predicted iterate.
+evaluate_unpredicted_residual(::QuasiStatic, ::Solver, ::SolidMechanics) = 0.0
+
+function evaluate_unpredicted_residual(integrator::QuasiStatic, solver::MatrixFree, model::SolidMechanics)
+    # The evaluation brings the nodes of an exact Surface condition onto their
+    # surfaces; the iterate stays as it was.
+    u = copy(integrator.displacement)
+    evaluate(integrator, solver, model)
+    integrator.displacement .= u
+    residual = model.failed ? 0.0 : norm(solver.gradient[model.free_dofs])
+    model.failed = false
+    return residual
+end
+
+unpredicted_residual_norm(::TimeIntegrator, ::Solver, ::Model) = 0.0
+
+function unpredicted_residual_norm(integrator::QuasiStatic, solver::HessianMinimizer, model::SolidMechanics)
+    δ = integrator.predicted_increment
+    length(δ) == length(model.free_dofs) || return 0.0
+    return norm((solver.gradient - solver.hessian * δ)[model.free_dofs])
+end
+
+function unpredicted_residual_norm(integrator::QuasiStatic, ::MatrixFree, model::SolidMechanics)
+    length(integrator.predicted_increment) == length(model.free_dofs) || return 0.0
+    return integrator.unpredicted_residual
 end
 
 function correct(integrator::QuasiStatic, solver::Solver, model::SolidMechanics)

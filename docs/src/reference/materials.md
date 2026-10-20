@@ -402,11 +402,13 @@ when a step slips more than about (g_s − g₀)/(2 h₀) in all, and a step tha
 crosses it is a local failure; `residual: slip and hardness` integrates the
 hardening implicitly and takes such steps. A local failure cuts the global
 step under [adaptive time stepping](time-integrators.md), and stops the run
-without it. The first Newton iterate of a quasi-static step puts the whole
-increment of a prescribed displacement on the elements next to the boundary,
-so the time step must keep that strain within the range of the flow rule. The
-tangent is the exact algorithmic tangent, which is not symmetric: use `linear
-solver: direct` with the Hessian minimizer.
+without it. Without a [predictor](time-integrators.md#Predictor), the first
+Newton iterate of a quasi-static step puts the whole increment of a prescribed
+displacement on the elements next to the boundary, so the time step must keep
+that strain within the range of the flow rule; with `predictor: tangent` the
+step is no longer bound to the size of those elements. The tangent is the
+exact algorithmic tangent, which is not symmetric: use `linear solver: direct`
+with the Hessian minimizer.
 
 The internal variables are `Fp_ij`, then `gamma_α`, `gamma_dot_α`,
 `tau_hard_α` (the hardening state: the slip resistance, or the dislocation
