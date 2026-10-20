@@ -66,6 +66,7 @@ and case-sensitive:
 | `anisotropic linear elastic` | Anisotropic Hookean elasticity | infinitesimal strain |
 | `anisotropic Saint-Venant Kirchhoff` | Anisotropic Saint-Venant–Kirchhoff | finite strain |
 | `anisotropic hyperelastic damage` | Fiber-reinforced neo-Hookean with damage | finite strain |
+| `crystal plasticity` | Rate-dependent crystal plasticity | finite strain |
 
 ### Linear elastic
 
@@ -303,6 +304,113 @@ and of each fiber family, `matrix_energy`, `fiber_1_energy`, …,
 `matrix_damage`, `fiber_1_damage`, …. LCM keeps the energy of the previous
 step instead of the largest over the history, so its damage recovers on
 unloading; the two agree under monotonic loading.
+
+## Crystal plasticity
+
+Finite-deformation, rate-dependent crystal plasticity, ported from LCM's
+CrystalPlasticity model. The deformation gradient splits as F = Fe Fp. A slip
+system α has a unit direction s and normal n in the lattice frame; with the
+lattice orientation Q its Schmid tensor is P_α = (Q s_α) ⊗ (Q n_α), and over
+a step the plastic part follows the exponential map
+
+```math
+\mathbf{F}^p_{n+1} = \exp\Big(\sum_\alpha \Delta\gamma_\alpha \mathbf{P}_\alpha\Big)\,\mathbf{F}^p_n .
+```
+
+The elastic law is the [anisotropic Saint-Venant–Kirchhoff](#Anisotropic-elasticity)
+law on Fe, and the resolved shear stress is the Mandel stress on the system,
+τ_α = (Feᵀ Fe S) : P_α. Each system belongs to a slip family, whose flow rule
+gives the slip rate from τ_α and the slip resistance g_α, and whose hardening
+law gives the hardening state from the slip rates.
+
+```yaml
+model: crystal plasticity
+symmetry: cubic
+C11: 204600.0
+C12: 137700.0
+C44: 126200.0
+orientation:
+  Bunge Euler angles: [30.0, 45.0, 0.0]
+integration scheme: implicit       # implicit (default) or explicit
+residual: slip                     # slip (default) or slip and hardness
+slip families:
+  - slip systems: fcc
+    flow rule:
+      type: power law
+      reference slip rate: 1.0
+      rate exponent: 20.0
+    hardening law:
+      type: linear minus recovery
+      hardening modulus: 355.0
+      recovery modulus: 2.9
+      initial hardening state: 122.0
+```
+
+The elastic constants and the orientation are those of the anisotropic
+elastic models. `slip systems` is either the name of a built-in set, in the
+lattice frame of LCM's tables, or a list of systems, each with a `direction`,
+a `normal` and an optional `initial hardening state`:
+
+| Set | Systems |
+|---|---|
+| `fcc` | 12 {111}⟨110⟩ |
+| `bcc 110`, `bcc 112`, `bcc 123` | 12, 12 and 24 ⟨111⟩ systems on {110}, {112} and {123} |
+| `hcp basal`, `hcp prismatic`, `hcp pyramidal a` | 3, 3 and 6 ⟨a⟩ systems |
+| `hcp pyramidal c+a first order`, `hcp pyramidal c+a second order` | 12 and 6 ⟨c+a⟩ systems |
+
+The hexagonal sets take the family key `c/a ratio` (default √(8/3)), with
+lattice axis 1 along a₁ and axis 3 along c. `maximum slip rate` (default
+ln(max Float64), as in LCM) bounds the slip rate of the family's systems;
+a step that exceeds it is cut.
+
+Every family needs a `flow rule` and a `hardening law`, each with its `type`
+(`type: none` for a family that does not slip or harden); the keys of each
+block are checked against those of its type. Flow rules (`type` and keys),
+with x = τ/g:
+
+| `type` | Slip rate | Keys |
+|---|---|---|
+| `power law` | γ̇₀ \|x\|^(m−1) x | `reference slip rate` γ̇₀, `rate exponent` m |
+| `power law with drag` | the power law in series with γ̇₀ x/d | the power-law keys and `drag coefficient` d |
+| `thermal activation` | γ̇₀ exp(−F₀ (1 − ξ^p)^q) sign τ, ξ = (\|τ\| − g)/s_t | `reference slip rate`, `activation energy` F₀, `thermal resistance` s_t, `p exponent`, `q exponent` |
+| `none` | 0 | |
+
+Hardening laws (`type` and keys); every law takes the `initial hardening
+state`:
+
+| `type` | Law | Keys |
+|---|---|---|
+| `linear minus recovery` | ġ = (H − R (g − g₀)) Σ\|γ̇\|, integrated exactly | `hardening modulus` H, `recovery modulus` R (default 0) |
+| `saturation` | ġ_α = h₀ 2 Σ_β q_αβ \|γ̇_β\| (g_s − g_α)/(g_s − g₀), g_s = g_s0 (Σ\|γ̇\|/γ̇_s)^ω | `hardening rate` h₀, `initial saturation stress` g_s0, `saturation exponent` ω (default 0), `reference slip rate` γ̇_s (default 1) |
+| `dislocation density` | ρ̇_α = max(k₁ √ρ^F_α − k₂ ρ_α, 0) \|γ̇_α\|, g_α = c μ b √ρ^P_α | `geometric factor` c, `generation factor` k₁, `annihilation factor` k₂, `shear modulus` μ, `burgers vector magnitude` b |
+| `none` | g constant | |
+
+The implicit scheme solves for the slips (or, with `residual: slip and
+hardness`, for the slips and the hardening states) by Newton's method, with
+the tolerances of an optional `local solver` block (`absolute tolerance`,
+default 1e-12; `relative tolerance`, default 1e-14; `minimum iterations`,
+default 0; `maximum iterations`, default 50). The explicit scheme evaluates
+the resolved shear stress on Fp_n and the hardening with the slip rates of
+the previous step; it is only stable while Δt (∂γ̇/∂τ) μ < 2. The implicit
+scheme starts its Newton iteration from the slip rates of the previous step
+(`slip predictor: rate`, the default) or from zero rates (`slip predictor:
+none`). The explicit scheme needs `rate`: with `none` its hardening would
+never change, as in LCM, and the input is rejected. With `residual: slip`,
+as with the explicit scheme, the hardening is integrated by forward Euler,
+as in LCM. For saturation hardening this overshoots the saturation stress
+when a step slips more than about (g_s − g₀)/(2 h₀) in all, and a step that
+crosses it is a local failure; `residual: slip and hardness` integrates the
+hardening implicitly and takes such steps. A local failure cuts the global
+step under [adaptive time stepping](time-integrators.md), and stops the run
+without it. The first Newton iterate of a quasi-static step puts the whole
+increment of a prescribed displacement on the elements next to the boundary,
+so the time step must keep that strain within the range of the flow rule. The
+tangent is the exact algorithmic tangent, which is not symmetric: use `linear
+solver: direct` with the Hessian minimizer.
+
+The internal variables are `Fp_ij`, then `gamma_α`, `gamma_dot_α`,
+`tau_hard_α` (the hardening state: the slip resistance, or the dislocation
+density) and `tau_α` for every system, then `eqps`.
 
 ## Material point driver
 

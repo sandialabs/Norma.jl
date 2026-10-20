@@ -4,10 +4,9 @@
 # is released under the BSD license detailed in the file license.txt in the
 # top-level Norma.jl directory.
 
-# Extracts the reference ("gold") outputs of the elastic tests of LCM's
-# crystal plasticity and of its anisotropic hyperelasticity tests into CSV
-# files that the Norma tests read. It is not part of the test suite; run it
-# only to regenerate the fixtures:
+# Extracts the reference ("gold") outputs of LCM's crystal plasticity and
+# anisotropic hyperelasticity tests into CSV files that the Norma tests read.
+# It is not part of the test suite; run it only to regenerate the fixtures:
 #
 #   julia --project=. test/lcm-reference/extract.jl <LCM checkout> [output dir]
 #
@@ -39,8 +38,55 @@ const MATERIAL_POINT = "tests/LCM/MaterialPointSimulator"
 
 const CASES = [
     ("ElasticShear2d", :quad4, "$CRYSTAL_PLASTICITY/SingleElement2d/ElasticShear2d.gold.e"),
+    ("PlasticShear2d", :quad4, "$CRYSTAL_PLASTICITY/SingleElement2d/PlasticShear2d.gold.e"),
     ("ElasticShear3d", :hex8, "$CRYSTAL_PLASTICITY/SingleElement3d/ElasticShear3d.gold.e"),
     ("ElasticShearRotated3d", :hex8, "$CRYSTAL_PLASTICITY/SingleElement3d/ElasticShearRotated3d.gold.e"),
+    ("SingleSlip_Explicit", :hex8, "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlip/SingleSlip_Explicit.gold.e"),
+    ("SingleSlip_Implicit", :hex8, "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlip/SingleSlip_Implicit.gold.e"),
+    ("SingleSlipHard_Explicit", :hex8, "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlipHard/SingleSlipHard_Explicit.gold.e"),
+    ("SingleSlipHard_Implicit", :hex8, "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlipHard/SingleSlipHard_Implicit.gold.e"),
+    ("SingleSlipSaturation", :hex8, "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlipSaturation/SingleSlipSaturation.gold.e"),
+    ("MultiSlipPlaneHard_Implicit", :hex8, "$CRYSTAL_PLASTICITY/MultiSlipHard/MultiSlipPlaneHard_Implicit.gold.e"),
+    (
+        "MultiSlipPlaneHard_Implicit_Active_Sets",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/MultiSlipHard/MultiSlipPlaneHard_Implicit_Active_Sets.gold.e",
+    ),
+    ("MinisolverStep_Newton", :hex8, "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_Newton.gold.e"),
+    (
+        "MinisolverStep_NewtonLineSearch",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_NewtonLineSearch.gold.e",
+    ),
+    ("MinisolverStep_TrustRegion", :hex8, "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_TrustRegion.gold.e"),
+    (
+        "MinisolverStep_ConjugateGradient",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_ConjugateGradient.gold.e",
+    ),
+    (
+        "MinisolverStep_LineSearchRegularized",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_LineSearchRegularized.gold.e",
+    ),
+    ("ThermallyActivatedSlip", :hex8, "$CRYSTAL_PLASTICITY/ThermallyActivatedSlip/ThermallyActivatedSlip.gold.e"),
+    ("MultiFamily", :hex8, "$CRYSTAL_PLASTICITY/MultiFamily/MultiFamily.gold.e"),
+    (
+        "DislocationDensityHardening",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/DislocationDensityHardening/DislocationDensityHardening.gold.e",
+    ),
+    (
+        "DislocationDensityTwoFamilies",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/DislocationDensityTwoFamilies/DislocationDensityTwoFamilies.gold.e",
+    ),
+    (
+        "QuadSlipDislocationDensityTraction",
+        :hex8,
+        "$CRYSTAL_PLASTICITY/QuadSlipDislocationDensityTraction/QuadSlipDislocationDensityTraction.gold.e",
+    ),
+    ("CP-uniaxial", :point, "$MATERIAL_POINT/CrystalPlasticity_MPS/CP-uniaxial.gold.exo"),
     ("AHD-uniaxial", :point, "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-uniaxial.gold.exo"),
     ("AHD-shear", :point, "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-shear.gold.exo"),
     ("AHD-hydrostatic", :point, "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-hydrostatic.gold.exo"),
@@ -50,8 +96,27 @@ const CASES = [
 # Material Point Simulator cases keep their material in the input file.
 const MATERIAL_FILES = Dict(
     "ElasticShear2d" => "$CRYSTAL_PLASTICITY/SingleElement2d/CrystalElasticity2d_Material.yaml",
+    "PlasticShear2d" => "$CRYSTAL_PLASTICITY/SingleElement2d/CrystalPlasticity2d_Material.yaml",
     "ElasticShear3d" => "$CRYSTAL_PLASTICITY/SingleElement3d/CrystalElasticity3d_Material.yaml",
     "ElasticShearRotated3d" => "$CRYSTAL_PLASTICITY/SingleElement3d/CrystalElasticityRotated3d_Material.yaml",
+    "SingleSlip_Explicit" => "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlip/SingleSlip_Explicit_Material.yaml",
+    "SingleSlip_Implicit" => "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlip/SingleSlip_Implicit_Material.yaml",
+    "SingleSlipHard_Explicit" => "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlipHard/SingleSlipHard_Material_Explicit.yaml",
+    "SingleSlipHard_Implicit" => "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlipHard/SingleSlipHard_Material_Implicit.yaml",
+    "SingleSlipSaturation" => "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlipSaturation/SingleSlipSaturation_Material.yaml",
+    "MultiSlipPlaneHard_Implicit" => "$CRYSTAL_PLASTICITY/MultiSlipHard/MultiSlipPlaneHard_Material_Implicit.yaml",
+    "MultiSlipPlaneHard_Implicit_Active_Sets" => "$CRYSTAL_PLASTICITY/MultiSlipHard/MultiSlipPlaneHard_Material_Implicit_Active_Sets.yaml",
+    "MinisolverStep_Newton" => "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_Newton_Material.yaml",
+    "MinisolverStep_NewtonLineSearch" => "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_NewtonLineSearch_Material.yaml",
+    "MinisolverStep_TrustRegion" => "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_TrustRegion_Material.yaml",
+    "MinisolverStep_ConjugateGradient" => "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_ConjugateGradient_Material.yaml",
+    "MinisolverStep_LineSearchRegularized" => "$CRYSTAL_PLASTICITY/MinisolverStep/MinisolverStep_LineSearchRegularized_Material.yaml",
+    "ThermallyActivatedSlip" => "$CRYSTAL_PLASTICITY/ThermallyActivatedSlip/ThermallyActivatedSlip_Material.yaml",
+    "MultiFamily" => "$CRYSTAL_PLASTICITY/MultiFamily/MultiFamily_Material.yaml",
+    "DislocationDensityHardening" => "$CRYSTAL_PLASTICITY/DislocationDensityHardening/DislocationDensityHardening_Material.yaml",
+    "DislocationDensityTwoFamilies" => "$CRYSTAL_PLASTICITY/DislocationDensityTwoFamilies/DislocationDensityTwoFamilies_Material.yaml",
+    "QuadSlipDislocationDensityTraction" => "$CRYSTAL_PLASTICITY/QuadSlipDislocationDensityTraction/QuadSlipDislocationDensity_Material.yaml",
+    "CP-uniaxial" => "$MATERIAL_POINT/CrystalPlasticity_MPS/CP-uniaxial.yaml",
     "AHD-uniaxial" => "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-uniaxial.yaml",
     "AHD-shear" => "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-shear.yaml",
     "AHD-hydrostatic" => "$MATERIAL_POINT/AnisotropicHyperelasticDamage/AHD-hydrostatic.yaml",
@@ -60,7 +125,11 @@ const MATERIAL_FILES = Dict(
 # Meshes of the cases that the FEM tests run, copied to meshes/ with the
 # block and node set names LCM gives them by default (block_<id>,
 # nodelist_<id>), which the Norma inputs refer to.
-const MESHES = Dict("RubiksCube.g" => "$CRYSTAL_PLASTICITY/RubiksCube/RubiksCube.g")
+const MESHES = Dict(
+    "SingleSlip.g" => "$CRYSTAL_PLASTICITY/SingleSlip/SingleSlip.g",
+    "MultiSlipPlaneHard.g" => "$CRYSTAL_PLASTICITY/MultiSlipHard/MultiSlipPlaneHard.g",
+    "RubiksCube.g" => "$CRYSTAL_PLASTICITY/RubiksCube/RubiksCube.g",
+)
 
 function copy_named_mesh(source::String, target::String)
     input = ExodusDatabase(source, "r")

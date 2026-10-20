@@ -951,6 +951,8 @@ function create_material(params::Parameters)
         return AnisotropicSaintVenantKirchhoff(params)
     elseif model_name == "anisotropic hyperelastic damage"
         return AnisotropicHyperelasticDamage(params)
+    elseif model_name == "crystal plasticity"
+        return CrystalPlasticity(params)
     else
         norma_abort("Unknown material model : $model_name")
     end
@@ -977,6 +979,8 @@ function get_kinematics(material::Solid)
     elseif material isa AnisotropicSaintVenantKirchhoff
         return Finite
     elseif material isa AnisotropicHyperelasticDamage
+        return Finite
+    elseif material isa CrystalPlasticity
         return Finite
     end
     norma_abort("Unknown material model : $(typeof(material))")

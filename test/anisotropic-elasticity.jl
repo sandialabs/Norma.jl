@@ -414,12 +414,7 @@ end
     messages = validate(merge(hexagonal, Dict("C66" => 20000.0)))
     @test length(messages) == 1 && occursin("\"C66\"", messages[1]) && occursin("hexagonal", messages[1])
     cubic = Dict{String,Any}(
-        "model" => "anisotropic linear elastic",
-        "symmetry" => "cubic",
-        "C11" => 1.0,
-        "C12" => 0.5,
-        "C44" => 0.4,
-        "C22" => 1.0,
+        "model" => "crystal plasticity", "symmetry" => "cubic", "C11" => 1.0, "C12" => 0.5, "C44" => 0.4, "C22" => 1.0
     )
     messages = validate(cubic)
     @test any(m -> occursin("\"C22\"", m) && occursin("cubic", m), messages)

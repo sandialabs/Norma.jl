@@ -230,10 +230,11 @@ end
 
 # The models of the materials a model input uses (its `material: blocks:`
 # mapping) that carry internal state variables, which the restart snapshot
-# cannot carry: plastic deformation, damage. Each material is built from its
-# parameters and asked for its number of states, so a new material with state
-# is covered without a list to keep up to date. Used by SolidMechanics() and by
-# process_multidomain_restart!(), which runs before any model is built.
+# cannot carry: plastic deformation, slips and hardening, damage. Each material
+# is built from its parameters and asked for its number of states, so a new
+# material with state is covered without a list to keep up to date. Used by
+# SolidMechanics() and by process_multidomain_restart!(), which runs before any
+# model is built.
 function stateful_material_models(model_params::Parameters)
     material_params = get(model_params, "material", Parameters())
     blocks = get(material_params, "blocks", Parameters())
@@ -248,8 +249,8 @@ end
 
 function restart_internal_state_reason()
     return "The restart snapshot only stores nodal displacement and velocity fields; internal state " *
-           "variables (e.g. plastic strain, back stress, damage) are not written to or read from the " *
-           "restart file, so resuming would silently discard " *
+           "variables (e.g. plastic strain, back stress, plastic deformation gradient, slips, hardening, " *
+           "damage) are not written to or read from the restart file, so resuming would silently discard " *
            "the accumulated history. Remove the `restart:` block, or switch to a material model without " *
            "internal state variables, until restart support for internal variables is implemented."
 end
@@ -291,9 +292,9 @@ end
 # subdomain file has its own `restart:` block instead (restart belongs at
 # the top level only, for Schwarz), if subdomains' checkpoints disagree on
 # what time the shared index lands on, or if a restarting subdomain uses a
-# material model with internal state variables (`j2 plasticity`, `anisotropic
-# hyperelastic damage`), for the same reason monolithic restart rejects them
-# (see SolidMechanics() in model.jl). Both FOM
+# material model with internal state variables (`j2 plasticity`, `crystal
+# plasticity`, `anisotropic hyperelastic damage`), for the same reason
+# monolithic restart rejects them (see SolidMechanics() in model.jl). Both FOM
 # (`solid mechanics`) and ROM subdomains may restart, including mixed
 # FOM-ROM pairings.
 function process_multidomain_restart!(params::Parameters)
@@ -660,6 +661,7 @@ function SingleDomainSimulation(params::Parameters)
         integrator = create_time_integrator(params, model)
         solver = create_solver(params, model)
         norma_logf(0, :setup, "Solver: %s, %s", _integrator_name(integrator), _solver_name(solver))
+        _warn_nonsymmetric_tangent(model, solver)
         prepare_matrix_output(params, model, integrator, solver)
         norma_log(0, :setup, "Setup complete ($(format_time(time() - t_setup)))")
         failed = false
@@ -732,6 +734,20 @@ function _log_materials(model::SolidMechanics, input_mesh)
 end
 
 _log_materials(::Model, _) = nothing
+
+# Crystal plasticity has a nonsymmetric algorithmic tangent, which conjugate
+# gradients cannot solve; the direct solver switches to LU for it.
+function _warn_nonsymmetric_tangent(model::SolidMechanics, solver::Solver)
+    any(material -> material isa CrystalPlasticity, model.materials) || return nothing
+    solver isa HessianMinimizer && solver.linear_solver != "direct" || return nothing
+    return norma_log(
+        0,
+        :warning,
+        "Crystal plasticity has a nonsymmetric tangent; use `linear solver: direct` with the Hessian minimizer.",
+    )
+end
+
+_warn_nonsymmetric_tangent(::Model, ::Solver) = nothing
 
 function MultiDomainSimulation(params::Parameters)
     basename = params["name"]

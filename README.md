@@ -105,7 +105,8 @@ algorithms, with an emphasis on extensibility and experimentation:
 
 - **Material models:** linear elastic, Saint-Venant–Kirchhoff, neohookean,
   Seth-Hill, finite-deformation J2 plasticity, anisotropic elasticity with
-  lattice orientations, and LCM's anisotropic hyperelastic damage.
+  lattice orientations, and LCM's anisotropic hyperelastic damage and crystal
+  plasticity.
 - **Time integration:** quasi-static (with adaptive stepping), Newmark
   (implicit dynamic), and central difference (explicit dynamic).
 - **Solvers:** Newton (Hessian minimizer) with optional line search,

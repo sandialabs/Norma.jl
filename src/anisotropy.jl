@@ -16,8 +16,9 @@
 #
 #     C_ijkl = Q_ip Q_jq Q_kr Q_ls C_L_pqrs.
 #
-# Bunge Euler angles (φ1, Φ, φ2) give Q = Rz(φ1) Rx(Φ) Rz(φ2), the active
-# rotation that carries the sample axes onto the lattice axes.
+# The elastic tensor and the slip systems of a crystal are both rotated with
+# this same Q. Bunge Euler angles (φ1, Φ, φ2) give Q = Rz(φ1) Rx(Φ) Rz(φ2), the
+# active rotation that carries the sample axes onto the lattice axes.
 
 using LinearAlgebra
 using StaticArrays
