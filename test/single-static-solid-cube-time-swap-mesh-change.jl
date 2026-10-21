@@ -1,7 +1,7 @@
 # Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
-# is released under the BSD license detailed in the file license.txt in the
+# is released under the BSD license detailed in the file LICENSE.md in the
 # top-level Norma.jl directory.
 
 # Cross-mesh single-domain swap: phase 1 is a hex8 cube and phase 2 is a tet4

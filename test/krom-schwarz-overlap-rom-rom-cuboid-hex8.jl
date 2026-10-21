@@ -1,7 +1,7 @@
 # Norma: Copyright 2025 National Technology & Engineering Solutions of
 # Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
 # the U.S. Government retains certain rights in this software. This software
-# is released under the BSD license detailed in the file license.txt in the
+# is released under the BSD license detailed in the file LICENSE.md in the
 # top-level Norma.jl directory.
 @testset "Kernel ROM-ROM Schwarz Overlap Dynamic Cuboid Hex8 Same Step" begin
     cp("../examples/ahead/overlap/cuboid/dynamic-kernel-rom-rom/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
