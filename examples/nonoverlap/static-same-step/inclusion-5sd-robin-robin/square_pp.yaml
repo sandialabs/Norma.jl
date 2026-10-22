@@ -1,0 +1,63 @@
+type: single
+input mesh file: square_pp_tet4.g
+output mesh file: square_pp.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      square_pp: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 1.44e+09
+      Poisson's ratio: 0.30
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: square_pp_outer_x
+      component: x
+      function: "0.005"
+    - node set: square_pp_outer_x
+      component: y
+      function: "0.0"
+    - node set: square_pp_outer_x
+      component: z
+      function: "0.0"
+    - node set: square_pp_outer_y
+      component: x
+      function: "0.005 * x"
+    - node set: square_pp_outer_y
+      component: y
+      function: "0.0"
+    - node set: square_pp_outer_y
+      component: z
+      function: "0.0"
+    - node set: square_pp_top
+      component: z
+      function: "0.0"
+    - node set: square_pp_bottom
+      component: z
+      function: "0.0"
+  Schwarz RR nonoverlap:
+    - side set: square_pp_circle_interface
+      source: circle
+      source block: circle
+      source side set: circle_interface_pp
+      robin parameter: 5.865602e+09  # 0.1*E/h, E = 1.440e+09, h = 2.454991e-02, was Neumann side
+    - side set: square_pp_split_x
+      source: square_np
+      source block: square_np
+      source side set: square_np_split_x
+      robin parameter: 5.292025e+10  # E/h, E = 1.440e+09, h = 2.721076e-02, was Dirichlet side
+    - side set: square_pp_split_y
+      source: square_pn
+      source block: square_pn
+      source side set: square_pn_split_y
+      robin parameter: 5.292025e+10  # E/h, E = 1.440e+09, h = 2.721076e-02, was Dirichlet side
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

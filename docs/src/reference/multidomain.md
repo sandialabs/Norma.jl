@@ -108,9 +108,13 @@ Relaxation applies to the datum that a nonoverlap or contact coupling
 transmits: for `Schwarz DN nonoverlap` and `Schwarz contact` it is the
 kinematic datum of the Dirichlet side (the interface displacement, or for a
 matching pair the matched quantity); for `Schwarz RR nonoverlap` it is
-the Robin datum of the subdomain listed later in `domains`, and only that
+the Robin datum of the subdomain listed first in `domains`, and only that
 datum: other loads on the interface nodes, such as Neumann or pressure
-conditions, are applied unrelaxed. `Schwarz overlap matching` relaxes the
+conditions, are applied unrelaxed. The subdomain listed first is solved before
+its partner in each Schwarz iteration, so its datum comes from the partner's
+previous iteration and carries the state between iterations; Anderson
+acceleration converges only when these lagged data are the accelerated ones
+(issue #245). `Schwarz overlap matching` relaxes the
 constrained datum of each side with its own history. `Schwarz overlap` is not
 relaxed: a simulation whose couplings are all `Schwarz overlap` conditions
 aborts at setup when `relaxation` or a `relaxation parameter` other than one

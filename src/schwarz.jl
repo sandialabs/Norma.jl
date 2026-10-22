@@ -463,7 +463,7 @@ function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
     key = relaxation_key(bc)
     bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition && return nothing
     if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
-        bc.self_handle.id > bc.coupled_handle.id || return nothing
+        bc.self_handle.id < bc.coupled_handle.id || return nothing
     elseif is_swappable_dn_schwarz(bc)
         bc.is_dirichlet || return nothing
         bc isa SolidMechanicsContactSchwarzBoundaryCondition && !controller.active_contact && return nothing
@@ -590,8 +590,16 @@ end
 # projector, W the boundary mass matrix of this side, and α its Robin
 # parameter. The self term α W u is added to the internal force
 # (build_robin_schwarz_force) and its tangent α W to the stiffness
-# (build_robin_schwarz_stiffness). The side listed later in `domains` relaxes
-# its datum.
+# (build_robin_schwarz_stiffness). The side listed first in `domains` relaxes
+# its datum: in the Gauss-Seidel pass over the subdomains it is solved before
+# its partner and so receives the partner's datum of the previous iteration,
+# the datum that carries the state from one Schwarz iteration to the next.
+# The side listed later receives a datum computed in the same pass. Anderson
+# acceleration needs the iteration to be a function of the accelerated data
+# alone, which holds only when the lagged data are the accelerated ones; with
+# the side listed later relaxed it stalled on the five-subdomain inclusion of
+# issue #233 (issue #245). This is the arrangement of a Dirichlet-Neumann pair
+# whose Dirichlet side is listed first.
 # Unrelaxed Robin datum -t_src + α W u_src of this side, on its degrees of
 # freedom, from the partner state currently set on the partner integrator.
 function robin_datum(model::SolidMechanics, bc::SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition)
@@ -638,9 +646,9 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
     this_index = bc.self_handle.id
     global_from_local_map = bc.global_from_local_map
     rhs = robin_datum(model, bc)
-    if (this_index < coupled_index)  # side listed first: not relaxed
+    if (this_index > coupled_index)  # side listed later: not relaxed
         datum = rhs
-    else  # side listed later: relaxed
+    else  # side listed first: relaxed
         # The relaxation state is per substep time slot (see relaxation_slot!):
         # relaxing against the datum of the previous Schwarz iteration at the
         # same time keeps a windowed exchange consistent in time. A fresh slot

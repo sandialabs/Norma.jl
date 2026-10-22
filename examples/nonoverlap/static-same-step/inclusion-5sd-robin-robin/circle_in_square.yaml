@@ -1,0 +1,23 @@
+# Circle in a square, quasi-static, five subdomains coupled by Robin-Robin
+# Schwarz with Anderson acceleration (issues #233 and #245; inputs and TET4
+# meshes from the issue attachments). A neo-Hookean disk (circle) in a matrix
+# cut into four quadrants (square_pp, _pn, _nn, _np), with eight relaxed
+# interfaces: the disk against each quadrant and each quadrant against its two
+# neighbors. Each Robin datum is relaxed on the side listed first in
+# `domains`, which receives in each Schwarz iteration the partner's datum of
+# the previous one; Anderson acceleration converges in 59 iterations. With the
+# datum of the side listed later relaxed it stalled with |ΔU| between 1e-4 and
+# 1e-3 at every depth and mixing parameter tried.
+type: multi
+domains: ["circle.yaml", "square_pp.yaml", "square_pn.yaml", "square_nn.yaml", "square_np.yaml"]
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 1.0
+minimum iterations: 1
+maximum iterations: 128
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-08
+relaxation: anderson
+anderson depth: 10
+relaxation parameter: 0.5

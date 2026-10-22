@@ -1,0 +1,50 @@
+type: single
+input mesh file: circle_tet4.g
+output mesh file: circle.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      circle: hyperelastic
+    hyperelastic:
+      model: neohookean
+      elastic modulus: 2.88e+09
+      Poisson's ratio: 0.35
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: circle_top
+      component: z
+      function: "0.0"
+    - node set: circle_bottom
+      component: z
+      function: "0.0"
+  Schwarz RR nonoverlap:
+    - side set: circle_interface_pp
+      source: square_pp
+      source block: square_pp
+      source side set: square_pp_circle_interface
+      robin parameter: 1.173120e+11  # E/h, E = 2.880e+09, h = 2.454991e-02, was Dirichlet side
+    - side set: circle_interface_pn
+      source: square_pn
+      source block: square_pn
+      source side set: square_pn_circle_interface
+      robin parameter: 1.173120e+11  # E/h, E = 2.880e+09, h = 2.454991e-02, was Dirichlet side
+    - side set: circle_interface_np
+      source: square_np
+      source block: square_np
+      source side set: square_np_circle_interface
+      robin parameter: 1.173120e+11  # E/h, E = 2.880e+09, h = 2.454991e-02, was Dirichlet side
+    - side set: circle_interface_nn
+      source: square_nn
+      source block: square_nn
+      source side set: square_nn_circle_interface
+      robin parameter: 1.173120e+11  # E/h, E = 2.880e+09, h = 2.454991e-02, was Dirichlet side
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06
