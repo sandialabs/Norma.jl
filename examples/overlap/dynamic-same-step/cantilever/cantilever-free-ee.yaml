@@ -14,7 +14,8 @@ model:
 time integrator:
   type: central difference
   initial time: 0.0
-  CFL: 0.2
+  time step: 1.0e-6
+  CFL: 0.5
   γ: 0.5
 initial conditions:
   displacement:
@@ -24,7 +25,7 @@ initial conditions:
 boundary conditions:
   Schwarz overlap:
     - side set: ssx-
-      source: cantilever-clamped
+      source: cantilever-clamped-ee
       source block: cantilever_clamped
 solver:
     type: explicit solver
