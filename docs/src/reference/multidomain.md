@@ -310,7 +310,7 @@ Anderson acceleration the window-end reaction is a second field of the
 interface's step (joint step on datum and reaction, the reaction residual
 scaled once per interface to the datum residual), and the iteration converges
 at two to four times the count of the coarse-step-constrained arrangement.
-Fixed relaxation damps the reaction with the same factor: 0.5 and 0.25 diverge, and 0.1 reaches 4e-12 but not 1e-12 within 256 iterations on the first stop, so Anderson acceleration is the method for this constraint. The stopping criterion measures the jump at the window end only and adds to the force residual the difference between the reaction at the window end and the end value of the ramp that the interior substeps applied, in the W⁻¹ norm of the constrained side relative to the reaction: the window balance of the rate invariant contains that difference, so a window is converged only when it is at the tolerance. The joint residual is formed from the end value of the ramp applied in the pass, which is kept until the joint step sets the next one, and every window starts from the measured reaction of the previous one. On the beam (October 19, 2026, after this was fixed) the window-end constraint conserves Ẽ to between 2.3e-13 and 7.7e-13 at 1.2 to 1.3 times the iterations of the coarse-step-constrained arrangement; at mesh ratio 1:0.5 with the fine-mesh, fine-step side constrained both pairs converge with mixing 0.5 and 0.25; the explicit pairs stall in no window and the implicit pairs in 6 to 17% of them, near 2e-12. Before the fix the measured reaction overwrote the ramp end value, the joint residual of the reaction was zero, and the same cases needed up to 40 iterations per window, stalled in most windows, and failed at 1:0.5 with mixing 0.5. The
+Fixed relaxation damps the reaction with the same factor: 0.5 and 0.25 diverge, and 0.1 reaches 4e-12 but not 1e-12 within 256 iterations on the first stop, so Anderson acceleration is the method for this constraint. The stopping criterion measures the jump at the window end only and adds to the force residual the difference between the reaction at the window end and the end value of the ramp that the interior substeps applied, in the W⁻¹ norm of the constrained side relative to the larger of the reaction and the momentum rate of its interface (issue #244: in the first windows of the cylinders the reaction is at roundoff, and relative to it alone the residual stayed near 1e-2 after the iteration had converged): the window balance of the rate invariant contains that difference, so a window is converged only when it is at the tolerance. The joint residual is formed from the end value of the ramp applied in the pass, which is kept until the joint step sets the next one, and every window starts from the measured reaction of the previous one. On the beam (October 19, 2026, after this was fixed) the window-end constraint conserves Ẽ to between 2.3e-13 and 7.7e-13 at 1.2 to 1.3 times the iterations of the coarse-step-constrained arrangement; at mesh ratio 1:0.5 with the fine-mesh, fine-step side constrained both pairs converge with mixing 0.5 and 0.25; the explicit pairs stall in no window and the implicit pairs in 6 to 17% of them, near 2e-12. Before the fix the measured reaction overwrote the ramp end value, the joint residual of the reaction was zero, and the same cases needed up to 40 iterations per window, stalled in most windows, and failed at 1:0.5 with mixing 0.5. The
 same key applies to the Dirichlet side of a nonoverlap matching pair, which
 lifts role rule 1 (coarse-step side as the Dirichlet side) from a requirement
 to a preference for the iteration count. Measured on the beam, free part
@@ -388,9 +388,18 @@ Dirichlet–Neumann pair with Dirichlet side D and Neumann side N, the one-sided
 jumps ‖q_D − Π_D q_N‖_{W_D} / ‖q_D‖_{W_D} of the velocity and of the
 displacement, with Π_D the Dirichlet projector and W_D the boundary mass
 matrix of the Dirichlet interface, ‖x‖²_W = Σ_c x_cᵀ W x_c over the three
-components, and the force residual ‖Π_Dᵀ r_D − f_N‖_{W_N⁻¹} / ‖Π_Dᵀ r_D‖_{W_N⁻¹},
-with r_D = −(M a + f_int − f_body − f_boundary) on the interface rows of D and
-f_N the interface force applied on N in the same iteration. For the
+components, and the force residual
+‖Π_Dᵀ r_D − f_N‖_{W_N⁻¹} / max(‖Π_Dᵀ r_D‖_{W_N⁻¹}, ‖C_N M_N v_N‖_{W_N⁻¹}/Δt_N),
+with r_D = −(M a + f_int − f_body − f_boundary) on the interface rows of D,
+f_N the interface force applied on N in the same iteration, and C_N M_N v_N
+the momentum of N on its interface rows. The momentum rate in the
+denominator, the force that stops the interface mass in one step, is the scale
+of the interface forces when these are at roundoff, as in a body that still
+moves rigidly: there the relative change of a lagged reaction (N solved
+before D) is a ratio of roundoff values and not a measure of convergence. The
+window-end ramp residual (below) and the force residual of
+`Schwarz overlap matching`, in the dual norm of the receiving side's lumped
+mass on the rows where the transferred force acts, use the same scale. For the
 standard exchange these values are reported only.
 
 **Matching exchange.** With `matching` both transfer operators are

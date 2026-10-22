@@ -1569,52 +1569,92 @@ function project_components(A::AbstractMatrix{Float64}, q::AbstractMatrix{Float6
     return result
 end
 
+# Force residuals of the matching exchanges. Each is the difference between
+# the reaction transferred to a side and the force applied there, relative to
+# the larger of the transferred force and the momentum rate ‖M v‖/Δt of that
+# side on the rows where the force acts, both in the dual norm of the mass
+# that carries the force: W⁻¹ of the boundary mass on an interface, the
+# inverse lumped mass on the volume rows of an overlap. A residual of a side
+# that receives the partner's reaction of the previous iteration is the
+# change of that reaction between iterations, and the window-end ramp
+# residual compares two reactions; when the interface forces are at roundoff,
+# as in a body that still moves rigidly, their relative change is not a
+# measure of convergence, and the momentum rate, the force that would stop the
+# rows in one step, is the scale of the forces that act on them.
+
+# Momentum M v of a subdomain with the mass its integrator uses, and the
+# row-sum lumped mass, per degree of freedom; nothing before the first
+# evaluation assembles a mass.
+function momentum_and_lumped_mass(model::SolidMechanics)
+    v = vec(model.velocity)
+    if length(model.lumped_mass) == length(v)
+        return model.lumped_mass .* v, model.lumped_mass
+    elseif size(model.mass, 1) == length(v)
+        return model.mass * v, vec(sum(model.mass; dims=2))
+    end
+    return nothing
+end
+
+# ‖C (M v)‖_{W⁻¹}/Δt of a side on the interface rows of `bc`, with W given by
+# its Cholesky factorization.
+function interface_momentum_rate(
+    sim::SingleDomainSimulation, bc::SolidMechanicsSchwarzBoundaryCondition, W_factor::Cholesky{Float64,Matrix{Float64}}
+)
+    pm = momentum_and_lumped_mass(get_fom_model(sim))
+    pm === nothing && return 0.0
+    Δt = sim.integrator.time_step
+    Δt > 0.0 || return 0.0
+    p_local = reshape(extract_local_vector(bc, pm[1], 3), 3, :)
+    return inverse_weighted_norm(W_factor, p_local) / Δt
+end
+
 # Relative difference, in the norm of W_N⁻¹, between the reaction r_D of the
 # Dirichlet side transferred by Pᵀ and the force `applied` to the Neumann side,
-# with W_N given by its Cholesky factorization.
+# with W_N given by its Cholesky factorization, relative to the larger of the
+# transferred force and the momentum rate of the Neumann side's interface.
 function dn_force_residual(
     W_N_factor::Cholesky{Float64,Matrix{Float64}},
     P::AbstractMatrix{Float64},
     r_D::AbstractMatrix{Float64},
     applied::Matrix{Float64},
+    momentum_rate::Float64,
 )
     transferred = project_components(transpose(P), r_D)
-    scale = inverse_weighted_norm(W_N_factor, transferred)
+    scale = max(inverse_weighted_norm(W_N_factor, transferred), momentum_rate)
     difference = inverse_weighted_norm(W_N_factor, transferred - applied)
     return scale > 0.0 ? difference / scale : difference
 end
 
-# Relative Euclidean difference between the reaction r_D of an overlap
-# matching side transferred by Pᵀ to the partner's nodes and the force
-# `applied` there. The side listed first receives the partner's reaction of
-# the previous iteration, so its residual is the change of that reaction
-# between iterations; when the interface forces are at roundoff, as in a
-# body that still moves rigidly, their relative change is not a measure of
-# convergence. The difference is therefore taken relative to the larger of
-# the transferred force and the momentum flux of the receiving side, M v/Δt,
-# the scale of the forces that act on its rows.
+# Nodes of the receiving side on which the transferred force of an overlap
+# matching side acts: the columns of P with a nonzero entry, cached per
+# projector.
+const OVERLAP_FORCE_ROWS = IdDict{Any,BitVector}()
+overlap_force_rows(P::AbstractMatrix{Float64}) = get!(() -> vec(any(!iszero, P; dims=1)), OVERLAP_FORCE_ROWS, P)
+
+# Relative difference between the reaction r_D of an overlap matching side
+# transferred by Pᵀ to the partner's nodes and the force `applied` there, in
+# the dual norm of the receiving side's lumped mass on the rows where the
+# force acts, relative to the larger of the transferred force and the
+# momentum rate of those rows.
 function overlap_force_residual(
-    P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64}, momentum_flux::Float64
+    P::AbstractMatrix{Float64}, r_D::AbstractMatrix{Float64}, applied::Matrix{Float64}, receiver::SingleDomainSimulation
 )
     transferred = project_components(transpose(P), r_D)
-    scale = max(norm(transferred), momentum_flux)
-    difference = norm(transferred - applied)
-    return scale > 0.0 ? difference / scale : difference
-end
-
-# ‖M v‖/Δt of a subdomain, with the mass its integrator uses.
-function momentum_flux(sim::SingleDomainSimulation)
-    model = get_fom_model(sim)
-    v = vec(model.velocity)
-    p = if length(model.lumped_mass) == length(v)
-        model.lumped_mass .* v
-    elseif size(model.mass, 1) == length(v)
-        model.mass * v
-    else
-        return 0.0
+    rows = overlap_force_rows(P)
+    pm = momentum_and_lumped_mass(get_fom_model(receiver))
+    if pm === nothing
+        scale = norm(transferred[:, rows])
+        difference = norm((transferred - applied)[:, rows])
+        return scale > 0.0 ? difference / scale : difference
     end
-    Δt = sim.integrator.time_step
-    return Δt > 0.0 ? norm(p) / Δt : 0.0
+    m = reshape(pm[2], 3, :)[:, rows]
+    v = reshape(vec(get_fom_model(receiver).velocity), 3, :)[:, rows]
+    Δt = receiver.integrator.time_step
+    dual(f) = sqrt(sum(f[:, rows] .^ 2 ./ m))
+    momentum_rate = Δt > 0.0 ? sqrt(sum(m .* v .^ 2)) / Δt : 0.0
+    scale = max(dual(transferred), momentum_rate)
+    difference = dual(transferred - applied)
+    return scale > 0.0 ? difference / scale : difference
 end
 
 function dn_one_sided_jump(
@@ -1663,9 +1703,11 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsConstra
         r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
         r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
-            force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :), momentum_flux(n_sim))
+            force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :), n_sim)
         elseif W_N_factor !== nothing && size(W_N_factor, 1) == length(n_map)
-            force_residual = dn_force_residual(W_N_factor, P, r_D, reshape(f_N, 3, :))
+            force_residual = dn_force_residual(
+                W_N_factor, P, r_D, reshape(f_N, 3, :), interface_momentum_rate(n_sim, n_bc, W_N_factor)
+            )
         end
     end
     return DNInterfaceResiduals(self_subsim_of(bc).name, n_sim.name, jv, ju, jv_rms, ju_rms, force_residual, ja, ja_rms)
@@ -1751,9 +1793,12 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
         r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
         r_D = nodal(extract_local_vector(bc, r_global, 3))
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
-            force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N), momentum_flux(n_sim)))
+            force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N), n_sim))
         else
-            force_residual = max(force_residual, dn_force_residual(W_N_factor, P, r_D, nodal(f_N)))
+            force_residual = max(
+                force_residual,
+                dn_force_residual(W_N_factor, P, r_D, nodal(f_N), interface_momentum_rate(n_sim, n_bc, W_N_factor)),
+            )
         end
     end
     found || (force_residual = NaN)
@@ -1761,13 +1806,17 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
     # interior substeps applied must equal the reaction at the end of the
     # window, or the window balance of the rate invariant acquires the term
     # (m C_D Δv_D^(m) - C_D Δv_D)ᵀ(r_D - ℓ)/ΔT. Measured in the W_D⁻¹ norm
-    # relative to the reaction, and folded into the force residual.
+    # relative to the larger of the reaction and the momentum rate of the
+    # interface, and folded into the force residual.
     if bc.window_end_constraint &&
         !isempty(bc.window_ramp_end) &&
         length(bc.window_ramp_end) == length(bc.window_end_reaction_raw) &&
         bc.square_factor !== nothing
         r_end = nodal(bc.window_end_reaction_raw)
-        scale = inverse_weighted_norm(bc.square_factor, r_end)
+        scale = max(
+            inverse_weighted_norm(bc.square_factor, r_end),
+            interface_momentum_rate(self_subsim_of(bc), bc, bc.square_factor),
+        )
         difference = inverse_weighted_norm(bc.square_factor, r_end - nodal(bc.window_ramp_end))
         ramp_residual = scale > 0.0 ? difference / scale : difference
         force_residual = isnan(force_residual) ? ramp_residual : max(force_residual, ramp_residual)

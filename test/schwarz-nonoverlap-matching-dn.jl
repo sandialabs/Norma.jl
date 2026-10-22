@@ -713,8 +713,11 @@ end
         @test maximum(abs(row[i_R] / R0 - 1.0) for row in data) ≤ 1.0e-10
         # The impulse of the applied ramp matches the impulse the coarse side
         # receives up to the difference between the end value of the ramp and
-        # the measured reaction, which the criterion holds at the tolerance.
-        @test maximum(row[i_I] for row in data[2:end]) ≤ 1.0e-11
+        # the measured reaction, which the criterion holds at the tolerance
+        # relative to the larger of the reaction and the momentum rate of the
+        # interface (issue #244); the momentum rate exceeds the reaction on
+        # this beam, so the residual reaches 1.4e-11.
+        @test maximum(row[i_I] for row in data[2:end]) ≤ 1.0e-10
         # The criterion tests the end value of the ramp that the interior
         # substeps applied against the reaction at the end of the window; in
         # the last, converged window the two agree to the tolerance.
@@ -751,4 +754,22 @@ end
     @test occursin("finer time step", out)
     out = setup_output(; free_substeps=4, clamped_dirichlet=true)
     @test !occursin("finer time step", out)
+end
+
+# Issue #244: when the interface forces are at roundoff, as in a body that
+# still moves rigidly, the force residual is relative to the momentum rate
+# of the receiving rows, not to the transferred force, so that the relative
+# change of two roundoff reactions does not hold the iteration.
+@testset "Matching DN: Force Residual at Roundoff Forces" begin
+    W = Matrix{Float64}(I, 2, 2)
+    W_factor = cholesky(Symmetric(W))
+    P = Matrix{Float64}(I, 2, 2)
+    r_D = 1.0e-12 .* [1.0 2.0; 3.0 4.0; 5.0 6.0]
+    transferred = Norma.project_components(transpose(P), r_D)
+    applied = 1.01 .* transferred
+    difference = Norma.inverse_weighted_norm(W_factor, transferred .- applied)
+    @test Norma.dn_force_residual(W_factor, P, r_D, applied, 0.0) ≈
+        difference / Norma.inverse_weighted_norm(W_factor, transferred)
+    @test Norma.dn_force_residual(W_factor, P, r_D, applied, 1.0) ≈ difference
+    @test Norma.dn_force_residual(W_factor, P, r_D, applied, 1.0) < 1.0e-12
 end
