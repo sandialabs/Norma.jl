@@ -17,7 +17,7 @@ time integrator:
   initial time: 0.0
   final time: 7.5e-04
   time step: 5.0e-07
-  CFL: 0.5
+  CFL: 0.6
   γ: 0.5
 boundary conditions:
   Dirichlet:

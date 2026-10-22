@@ -649,53 +649,6 @@ function size_field_tet_h(size_field::Union{Function,Nothing}, element_ref_pos::
     return h
 end
 
-# Approximate diameter of an element, twice the mean distance of its nodes
-# from their centroid, on a static nodal coordinate matrix.
-function characteristic_element_length_centroid(X::SMatrix{3,N,T})::T where {N,T}
-    centroid = zero(SVector{3,T})
-    @inbounds for a in 1:N
-        centroid += X[:, a]
-    end
-    centroid = centroid / N
-    total = zero(T)
-    @inbounds for a in 1:N
-        total += norm(X[:, a] - centroid)
-    end
-    return 2 * total / N
-end
-
-# Minimum characteristic length over the elements of a block at the current
-# configuration. Threaded over elements with a per-thread minimum; the shape
-# function table only supplies the static node count through the barrier.
-function minimum_characteristic_length(
-    model::SolidMechanics, block::ElementBlockData, ::SMatrix{NN,NP,T}
-) where {NN,NP,T}
-    connectivity = block.connectivity
-    if Threads.nthreads() == 1
-        # A threaded loop has a per-call cost of tens of microseconds on macOS.
-        h_min = T(Inf)
-        for element in 1:block.num_elements
-            node_indices = view(connectivity, :, element)
-            X =
-                SMatrix{3,NN,T}(view(model.reference, :, node_indices)) +
-                SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
-            h_min = min(h_min, characteristic_element_length_centroid(X))
-        end
-        return h_min
-    end
-    minima = fill(T(Inf), maxthreadid())
-    @threads for element in 1:block.num_elements
-        node_indices = view(connectivity, :, element)
-        X =
-            SMatrix{3,NN,T}(view(model.reference, :, node_indices)) +
-            SMatrix{3,NN,T}(view(model.displacement, :, node_indices))
-        h = characteristic_element_length_centroid(X)
-        t = threadid()
-        @inbounds minima[t] = min(minima[t], h)
-    end
-    return minimum(minima)
-end
-
 # The per-point material state is copied at several points of a step. For
 # materials without internal variables the nested vectors are all empty and
 # nothing ever writes into them, so the copy is skipped and the arrays are
@@ -704,27 +657,6 @@ has_material_state(model::SolidMechanics) = any(m -> number_states(m) > 0, model
 
 function copy_state(model::SolidMechanics, state::Vector{Vector{Vector{Vector{Float64}}}})
     return has_material_state(model) ? deepcopy(state) : state
-end
-
-# The largest step the central difference scheme can take on the current
-# configuration: the CFL number times the smallest element characteristic
-# length over the dilatational wave speed, minimized over the blocks. Implicit
-# and reduced integrators have no such limit.
-stable_time_step(::TimeIntegrator, ::Model) = Inf
-
-function stable_time_step(integrator::CentralDifference, model::SolidMechanics)
-    materials = model.materials
-    stable_time_step = Inf
-    for (block_index, block) in enumerate(model.blocks)
-        material = materials[block_index]
-        ρ = material.ρ
-        M = get_p_wave_modulus(material)
-        wave_speed = sqrt(M / ρ)
-        minimum_block_characteristic_length = minimum_characteristic_length(model, block, block.N)
-        block_stable_time_step = integrator.CFL * minimum_block_characteristic_length / wave_speed
-        stable_time_step = min(stable_time_step, block_stable_time_step)
-    end
-    return stable_time_step
 end
 
 # Cap the integrator's nominal step at the stable step. advance_time applies

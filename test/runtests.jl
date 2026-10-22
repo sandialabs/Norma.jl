@@ -190,6 +190,7 @@ const indexed_test_files = [
     (149, "periodic.jl"),
     (150, "composite-tet10.jl"),
     (151, "composite-tet10-lcm.jl"),
+    (152, "explicit-stable-time-step.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

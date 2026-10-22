@@ -36,6 +36,7 @@ include("opinf/opinf_model.jl")
 include("kroms/krom_model.jl")
 include("metric.jl")                   # metric targets of mesh smoothing; needs model_types.jl
 include("model.jl")
+include("stable_time_step.jl")       # critical step of central difference; needs model.jl, constitutive.jl
 include("material_point.jl")            # material point driver; needs constitutive.jl, model.jl
 include("topology.jl")                 # needs model.jl
 include("recovery.jl")

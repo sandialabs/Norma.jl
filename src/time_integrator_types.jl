@@ -82,6 +82,15 @@ mutable struct CentralDifference <: ExplicitDynamicTimeIntegrator
     increase_factor::Float64
     CFL::Float64
     γ::Float64
+    # Estimate of the critical step (stable_time_step.jl): :length or
+    # :eigenvalue, recomputed every `stable_interval` evaluations; the last
+    # estimate before the CFL factor, the evaluation count, and the critical
+    # step per altitude of the reference element of each block.
+    stable_method::Symbol
+    stable_interval::Int64
+    stable_critical::Float64
+    stable_count::Int64
+    stable_reference::Vector{Float64}
     displacement::Vector{Float64}
     velocity::Vector{Float64}
     acceleration::Vector{Float64}

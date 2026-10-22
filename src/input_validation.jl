@@ -136,7 +136,7 @@ const TIME_INTEGRATOR_COMMON_KEYS = Set([
 const TIME_INTEGRATOR_TYPE_KEYS = Dict(
     "quasi static" => Set(["initial equilibrium", "predictor"]),
     "Newmark" => Set(["β", "γ", "HHT α", "HHT alpha"]),
-    "central difference" => Set(["CFL", "γ"]),
+    "central difference" => Set(["CFL", "γ", "stable time step", "stable time step interval"]),
 )
 
 const SOLVER_KEYS = Set([

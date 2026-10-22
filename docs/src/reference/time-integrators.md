@@ -147,12 +147,12 @@ non-dissipative average-acceleration (trapezoidal) rule.
 
 ## `central difference`
 
-Explicit dynamics. Pair with the [`explicit solver`](solvers.md). The stable
-time step is estimated from the mesh and wave speed scaled by the Courant
-number `CFL`. When the requested `time step` (or, in a multi-domain run, the
-controller `time step`) exceeds the stable step, each stop is reached by
-substeps no longer than the stable step, and a warning is printed at every
-substep.
+Explicit dynamics. Pair with the [`explicit solver`](solvers.md). The step is
+limited to `CFL` times an estimate of the critical step 2/ω_max of central
+difference, where ω_max² is the largest eigenvalue of K φ = ω² M φ with the
+lumped mass. When the requested `time step` (or, in a multi-domain run, the
+controller `time step`) exceeds that limit, each stop is reached by substeps no
+longer than it, and a warning is printed at every substep.
 
 ```yaml
 time integrator:
@@ -161,22 +161,45 @@ time integrator:
   final time: 3.0e-6
   CFL: 0.2
   γ: 0.5
+  stable time step: length
 ```
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
-| `CFL` | yes | — | Courant number used to bound the stable step from the element size and wave speed |
+| `CFL` | yes | — | factor applied to the estimate of the critical step |
 | `γ` | yes | — | central-difference γ (0.5 is the standard second-order value) |
+| `stable time step` | no | `length` | estimate of the critical step: `length` or `eigenvalue` |
+| `stable time step interval` | no | 1 (`length`), 100 (`eigenvalue`) | evaluations of the step limit between recomputations of the estimate on the current configuration |
 
-The `CFL` value scales an element-size-and-wave-speed estimate of the stable
-step; it is a safety factor rather than the exact operating Courant ratio. The
-element-size estimate is a characteristic diameter, so a value near 1.0 can
-exceed the true stability limit on hexahedral meshes. Values of about 0.5 or
-below are a conservative choice. The wave speed is that of the material's
-stiffness in the undeformed state (for the anisotropic models, the largest
-over all directions), so a material that stiffens strongly with strain, such
-as the exponential fibers of `anisotropic hyperelastic damage`, can exceed it
-by orders of magnitude, which the CFL must allow for.
+The two estimates:
+
+- `eigenvalue`: the smallest critical step 2/ω_max,e over the elements, with
+  ω_max,e² the largest eigenvalue of the element stiffness, from the material
+  tangent at the current configuration, against the element lumped mass. The
+  largest element eigenvalue bounds the global one from above, so for a linear
+  problem this estimate is a lower bound on the critical step and `CFL` up to 1
+  is stable. Each recomputation costs about one stiffness evaluation of the
+  mesh.
+- `length` (default): for each block, the critical step of an undistorted
+  reference element of the block's type and material (the unit cube, the
+  regular tetrahedron) times the ratio of the smallest element altitude of the
+  block to the altitude of the reference element. The altitude of a
+  tetrahedron is the smallest of 3V/A over its faces; that of a hexahedron the
+  smallest of V over the mean area of a pair of opposite faces. The estimate is
+  exact on undistorted elements and follows flat and sliver elements through
+  the altitude, but on distorted elements it is not a bound. On the
+  concentric-cylinder meshes it is 0.86 to 0.91 times the `eigenvalue`
+  estimate.
+
+For the quadratic tetrahedron (TETRA10), whose row-sum lumped masses are
+negative at the corners, both estimates use the diagonal of the consistent
+mass scaled to the element mass; the integrator still uses the row sums, so
+for this element the estimate is not a bound.
+
+Both estimates take the stiffness of the current state: a material that
+stiffens strongly with strain between recomputations, such as the exponential
+fibers of `anisotropic hyperelastic damage`, can exceed them, which the `CFL`
+and the interval must allow for.
 
 ## Canonical examples
 

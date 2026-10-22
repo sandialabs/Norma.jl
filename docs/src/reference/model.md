@@ -92,8 +92,10 @@ is continuous across it. A connected mesh should use one of the two.
     V ρ (3, 14) / 96 at the corner and edge nodes, LCM's `Lump Analytic Mass`.
     It is positive, unlike the row sums of the quadratic TETRA10, so explicit
     dynamics can use it.
-  - The explicit stable step uses the same estimate as the other elements,
-    CFL · h / c, with h computed from all 10 nodes.
+  - The explicit stable step uses the estimates of the other elements
+    (see the central difference integrator): the element eigenvalue with
+    the composite lumped mass, or the altitude of the four vertices scaled
+    by the critical step of the regular composite tetrahedron.
   - For a single element, the critical step is 0.13 to 0.38 h/c over the
     shapes tried, against 0.16 to 0.45 for a TETRA4 of the same shape.
 - **Interpolation.** Nodal recovery, field transfer, Schwarz coupling and the

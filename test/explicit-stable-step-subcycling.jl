@@ -11,7 +11,7 @@
 # whole response was compressed in time by the ratio of the two steps. The
 # clamped explicit example has a d'Alembert reference solution (see
 # single-explicit-dynamic-solid-clamped.jl); its stable step at CFL 0.2 is
-# about 3.2e-7 s, so a requested step of 1.0e-6 s is capped on every stop.
+# about 2.0e-7 s, so a requested step of 1.0e-6 s is capped on every stop.
 
 using YAML
 

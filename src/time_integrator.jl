@@ -160,6 +160,25 @@ function CentralDifference(params::Parameters, model::Model)
     time = prev_time = -Inf
     CFL = integrator_params["CFL"]
     γ = integrator_params["γ"]
+    stable_name = get(integrator_params, "stable time step", "length")
+    stable_method = if stable_name == "length"
+        :length
+    elseif stable_name == "eigenvalue"
+        :eigenvalue
+    else
+        norma_abort("Unknown `stable time step: $(stable_name)`. Valid values are `length` (default) and `eigenvalue`.")
+    end
+    stable_interval = Int(get(integrator_params, "stable time step interval", stable_method === :length ? 1 : 100))
+    stable_interval ≥ 1 || norma_abort("`stable time step interval` must be at least 1, got $(stable_interval).")
+    if model isa SolidMechanics && any(block -> block.element_type == TETRA10, model.blocks)
+        norma_log(
+            0,
+            :warning,
+            "Central difference on TETRA10 elements: their row-sum lumped masses are negative at the corners, so the " *
+            "estimate of the critical step uses the scaled diagonal of the consistent mass and is not a bound. " *
+            "The composite TETRA10 (`composite tet 10`) has positive lumped masses.",
+        )
+    end
     num_dof = length(model.free_dofs)
     displacement = zeros(num_dof)
     velocity = zeros(num_dof)
@@ -180,6 +199,11 @@ function CentralDifference(params::Parameters, model::Model)
         increase_factor,
         CFL,
         γ,
+        stable_method,
+        stable_interval,
+        NaN,
+        0,
+        Float64[],
         displacement,
         velocity,
         acceleration,

@@ -30,7 +30,10 @@ time integrator:
   initial time: 0.0
   final time: 1.0e-03
   time step: 5.0e-07
-  CFL: 0.5
+  # The step of 5e-7 s is 1.06 to 1.19 times the conservative estimates of the
+  # critical step on these meshes (`stable time step: length` and `eigenvalue`)
+  # and has been found stable; CFL 1.25 keeps it.
+  CFL: 1.25
   γ: 0.5
 initial conditions:
   velocity:
