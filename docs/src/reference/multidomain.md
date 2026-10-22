@@ -110,8 +110,11 @@ kinematic datum of the Dirichlet side (the interface displacement, or for a
 matching pair the matched quantity); for `Schwarz RR nonoverlap` it is
 the Robin datum of the subdomain listed later in `domains`, and only that
 datum: other loads on the interface nodes, such as Neumann or pressure
-conditions, are applied unrelaxed. `Schwarz overlap` is not relaxed; the
-relaxation keys have no effect on it. Both Aitken forms work with every relaxed
+conditions, are applied unrelaxed. `Schwarz overlap matching` relaxes the
+constrained datum of each side with its own history. `Schwarz overlap` is not
+relaxed: a simulation whose couplings are all `Schwarz overlap` conditions
+aborts at setup when `relaxation` or a `relaxation parameter` other than one
+is set, since the keys would have no effect. Both Aitken forms work with every relaxed
 coupling, and `relaxation parameter` and `aitken N0 parameter` mean the same
 thing in each.
 

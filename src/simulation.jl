@@ -493,6 +493,36 @@ function warn_neumann_before_dirichlet(sim::MultiDomainSimulation)
     return nothing
 end
 
+# Couplings whose datum the Schwarz iteration relaxes: the Dirichlet data of
+# the Dirichlet-Neumann, contact, and overlap matching conditions (apply_bc)
+# and the Robin datum of the Robin-Robin condition (apply_bc_detail). The
+# classical overlapping condition (`Schwarz overlap`) is iterated without
+# relaxation.
+relaxes_datum(bc) = is_swappable_dn_schwarz(bc) || bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+
+# Relaxation is requested by `relaxation` or by a `relaxation parameter`
+# other than one. A simulation none of whose couplings is relaxed would ignore
+# it, and its log would still report the requested relaxation, so the
+# combination is rejected.
+function reject_unused_relaxation(sim::MultiDomainSimulation)
+    params = sim.params
+    requested =
+        haskey(params, "relaxation") ||
+        (haskey(params, "relaxation parameter") && Float64(params["relaxation parameter"]) != 1.0)
+    requested || return nothing
+    for subsim in sim.subsims
+        model = subsim.model
+        hasproperty(model, :boundary_conditions) || continue
+        any(relaxes_datum, model.boundary_conditions) && return nothing
+    end
+    return norma_abort(
+        "`relaxation` or `relaxation parameter` is set, but no coupling of this simulation is relaxed: the " *
+        "Schwarz iteration relaxes only the Dirichlet data of `Schwarz DN nonoverlap`, `Schwarz contact`, and " *
+        "`Schwarz overlap matching` and the Robin datum of `Schwarz RR nonoverlap`; `Schwarz overlap` is " *
+        "iterated without relaxation. Remove the relaxation keys.",
+    )
+end
+
 # The restart refinement pass (see the Mfc correction in time_integrator.jl)
 # runs before detect_contact() re-establishes active_contact for the
 # restarted step, so apply_bc skips every Schwarz contact BC during that
@@ -545,6 +575,7 @@ function create_simulation(params::Parameters)
             validate_swap_criteria(sim)
             warn_restart_with_nonoverlap_schwarz(sim)
             warn_neumann_before_dirichlet(sim)
+            reject_unused_relaxation(sim)
             reject_restart_with_contact(sim)
             initialize_storage(sim)
         catch

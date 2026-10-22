@@ -371,3 +371,37 @@ end
         end
     end
 end
+
+# The classical overlapping condition is iterated without relaxation, so
+# relaxation requested for a simulation whose couplings are all classical
+# overlapping conditions is rejected at setup; a relaxation parameter of one
+# is the default and is accepted.
+@testset "Schwarz Overlap Relaxation Rejected" begin
+    src = "../examples/overlap/static-same-step/cuboids"
+    for f in ["cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g"]
+        cp("$src/$f", f; force=true)
+    end
+    function overlap_params(overrides)
+        params = YAML.load_file("cuboids.yaml"; dicttype=Norma.Parameters)
+        params["name"] = "cuboids.yaml"
+        merge!(params, overrides)
+        return params
+    end
+    Norma.NORMA_TEST_MODE[] = true
+    try
+        @test_throws Norma.NormaAbortException Norma.create_simulation(overlap_params(Dict("relaxation" => "anderson")))
+        @test_throws Norma.NormaAbortException Norma.create_simulation(
+            overlap_params(Dict("relaxation parameter" => 0.5))
+        )
+    finally
+        Norma.NORMA_TEST_MODE[] = false
+    end
+    sim = Norma.create_simulation(overlap_params(Dict("relaxation parameter" => 1.0)))
+    @test sim isa Norma.MultiDomainSimulation
+    for subsim in sim.subsims
+        Norma.finalize_writing(subsim)
+    end
+    for f in ["cuboids.yaml", "cuboid-1.yaml", "cuboid-2.yaml", "cuboid-1.g", "cuboid-2.g", "cuboid-1.e", "cuboid-2.e"]
+        rm(f; force=true)
+    end
+end
