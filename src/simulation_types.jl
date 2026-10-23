@@ -89,6 +89,9 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     active_contact::Bool
     contact_hist::Vector{Bool}
     schwarz_iters::Vector{Int64}
+    # Peak bytes of Float64 data held in the Anderson histories, per stop (zero
+    # without Anderson acceleration); see anderson_history_bytes.
+    anderson_peak_bytes::Vector{Int64}
     use_interface_predictor::Bool
     predictor_disp::Vector{Vector{Float64}}
     predictor_velo::Vector{Vector{Float64}}

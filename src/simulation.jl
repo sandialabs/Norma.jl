@@ -965,6 +965,7 @@ function SolidMultiDomainTimeController(params::Parameters)
     active_contact = false
     contact_hist = Vector{Bool}[]
     schwarz_iters = zeros(Int64, num_stops - 1)
+    anderson_peak_bytes = zeros(Int64, num_stops - 1)
     use_interface_predictor = get(params, "interface predictor", false)
     predictor_disp = [Vector{Float64}() for _ in 1:num_domains]
     predictor_velo = [Vector{Float64}() for _ in 1:num_domains]
@@ -1018,6 +1019,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         active_contact,
         contact_hist,
         schwarz_iters,
+        anderson_peak_bytes,
         use_interface_predictor,
         predictor_disp,
         predictor_velo,
@@ -1779,6 +1781,8 @@ function schwarz(sim::MultiDomainSimulation)
         save_schwarz_state(sim)
         restore_stop_state(sim)
     end
+    log_anderson_memory_peak!(sim.controller)
+    return nothing
 end
 
 function report_overlap_l2_errors(sim::MultiDomainSimulation)

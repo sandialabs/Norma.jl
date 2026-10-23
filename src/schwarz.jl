@@ -319,6 +319,45 @@ end
 
 const ANDERSON_STATE = IdDict{Any,AndersonState}()
 
+# Memory held by the Anderson histories of a controller: the bytes of the
+# Float64 data of the iterates X, residuals F, and traces T, over every
+# interface and relaxed field, without the headers of the Julia arrays. X and
+# F hold the whole relaxed field of the partner and T its interface trace, so
+# the count is larger than 2 (m + 1) n_Γ of interface data alone. The peak
+# over a stop is logged at its end: columns dropped by the condition limit
+# make the history shrink within a stop.
+const ANDERSON_PEAK_BYTES = IdDict{Any,Int}()
+
+function anderson_history_bytes(controller)
+    bytes = 0
+    groups = Any[]
+    haskey(ANDERSON_STATE, controller) && push!(groups, values(ANDERSON_STATE[controller].histories))
+    haskey(OVERLAP_ANDERSON_HISTORIES, controller) && push!(groups, values(OVERLAP_ANDERSON_HISTORIES[controller]))
+    for histories in groups, history in histories, columns in (history.X, history.F, history.T), column in columns
+        bytes += sizeof(column)
+    end
+    return bytes
+end
+
+function record_anderson_memory!(controller)
+    bytes = anderson_history_bytes(controller)
+    ANDERSON_PEAK_BYTES[controller] = max(get(ANDERSON_PEAK_BYTES, controller, 0), bytes)
+    return bytes
+end
+
+# Logs the peak of the stop that ended, records it in anderson_peak_bytes for
+# that stop, and clears it. Called after the Schwarz loop, since the state
+# itself can be cleared within the stop.
+function log_anderson_memory_peak!(controller)
+    peak = get(ANDERSON_PEAK_BYTES, controller, 0)
+    if peak > 0
+        norma_logf(0, :schwarz, "Anderson history memory peak: %.1f KB", peak / 1024)
+        controller.anderson_peak_bytes[controller.stop] = peak
+    end
+    delete!(ANDERSON_PEAK_BYTES, controller)
+    return nothing
+end
+
 function reset_anderson_state!(controller)
     delete!(ANDERSON_STATE, controller)
     delete!(OVERLAP_ANDERSON_HISTORIES, controller)
@@ -455,6 +494,7 @@ function overlap_matching_window_step!(bc::SolidMechanicsOverlapMatchingSchwarzB
     c_slots[slot_k] = copy(data[1])
     bc.window_end_reaction = copy(data[2])
     overlap_window_steps(controller)[key] = iter
+    record_anderson_memory!(controller)
     return nothing
 end
 
@@ -547,6 +587,13 @@ function anderson_data!(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
                 length(group[1].histories[1].X) - 1,
             )
         end
+        norma_logf(
+            1,
+            :schwarz,
+            "Anderson [iter=%d] history memory: %.1f KB",
+            controller.iteration_number,
+            record_anderson_memory!(controller) / 1024,
+        )
         state.iteration = controller.iteration_number
     end
     key = relaxation_key(bc)
@@ -2500,6 +2547,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                         controller.relaxation_parameter,
                         controller.anderson_depth,
                     )
+                    record_anderson_memory!(controller)
                 end
             elseif use_anderson
                 c_slots[slot_k] = copy(anderson_data!(bc, time)[1])
