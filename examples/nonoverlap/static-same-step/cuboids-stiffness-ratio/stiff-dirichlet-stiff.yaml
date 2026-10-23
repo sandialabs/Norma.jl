@@ -1,0 +1,39 @@
+type: single
+input mesh file: cuboid-2.g
+output mesh file: stiff-dirichlet-stiff.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      coarse: elastic
+    elastic:
+      model: linear elastic
+      elastic modulus: 1.0e+11
+      Poisson's ratio: 0.25
+      density: 1000.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+    - node set: nsz+
+      component: z
+      function: "-1.0e-05 * t"
+  Schwarz DN nonoverlap:
+    - side set: ssz-
+      source: stiff-dirichlet-soft
+      source block: fine
+      source side set: ssz+
+      default BC type: Dirichlet
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

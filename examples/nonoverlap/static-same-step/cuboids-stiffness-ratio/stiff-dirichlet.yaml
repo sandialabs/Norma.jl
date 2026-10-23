@@ -1,0 +1,35 @@
+# Two cuboids of 4 x 4 x 4 HEX8 elements, the soft one (E = 1 GPa, z in
+# [-1, 0]) below the stiff one (E = 100 GPa, z in [0, 1]), both linear elastic
+# with nu = 0.25, coupled by Dirichlet-Neumann Schwarz on the plane z = 0. The
+# soft cuboid is fixed in z at its bottom face; the stiff one is displaced by
+# -1e-5 in z at its top face; both have x = 0 on x = 0 and y = 0 on y = 0.
+#
+# The gain of the Dirichlet-Neumann iteration on the interface displacement is
+# the operator -S_N^-1 S_D, with S_D and S_N the interface stiffness (Steklov-
+# Poincare) operators of the Dirichlet and the Neumann side. For two cuboids
+# of the same shape the spectrum of S_N^-1 S_D is not {1}: the mirror image of
+# one body is the other, so S_N = M S_D M with M the reflection of the z
+# component, and the shear and Poisson coupling of the normal and tangential
+# components makes M S_D M differ from S_D. Measured on these meshes, the gains
+# of the stiffness-ratio-one pair lie between -3.4 and -1/3.4, and a stiffness
+# ratio r scales them: with the stiff side as Dirichlet side the gains lie in
+# [-3.4 r, -r/3.4], with the soft side in [-3.4/r, -1/(3.4 r)]. Study in
+# ~/Projects/Norma-Schwarz-Coupling/stiffness-ratio-2026-10 (October 2026).
+#
+# Stiff side as Dirichlet side, the arrangement a floating stiff body imposes:
+# the gains reach -340, the unrelaxed iteration amplifies by 214 in its first
+# iteration, a fixed factor converges only below 2/(1 + 340) and at best at a
+# rate of about 0.84 per iteration, and Anderson acceleration of depth 10 with
+# mixing 0.5 diverges. Aitken recursive relaxation converges in 73 iterations.
+type: multi
+domains: ["stiff-dirichlet-stiff.yaml", "stiff-dirichlet-soft.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 1.0
+minimum iterations: 1
+maximum iterations: 128
+relative tolerance: 1.0e-10
+absolute tolerance: 1.0e-14
+relaxation: aitken recursive
