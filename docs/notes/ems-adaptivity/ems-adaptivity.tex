@@ -984,10 +984,20 @@ Steps 1 to 7 were carried out between September 18 and 19, 2026
   node-to-element, edge and face tables, boundary edges, node sets and
   side sets as flags and faces; tombstones within a pass, compaction with
   renumbering maps, and Exodus output with the sets and their names.
-\item \emph{Edge swap}: every triangulation of the ring polygon (three to
-  seven elements), the one of least energy submitted to the acceptance
-  test. Positive orientation of the new tetrahedra is not a sufficient
-  validity test: an ear at a reflex vertex of the ring polygon gives
+\item \emph{Edge swap}: the triangulation of the ring polygon of least
+  score submitted to the acceptance test. The polygon of $n$ nodes has
+  $C_{n-2}$ triangulations, with $C_m$ the Catalan numbers
+  ($3.5\times10^{7}$ for $n = 18$), and the ring size is not bounded.
+  The score of a triangulation is the sum of the energies of the
+  tetrahedra of its triangles, or under the scaled Jacobian criterion the
+  maximum over them of the negative scaled Jacobian. Each condition of
+  admissibility concerns one triangle or one chord: the validity
+  conditions below, a chord that is not yet an edge, and new faces that
+  are not yet faces of the mesh. The least score is therefore found by
+  dynamic programming over the sub-polygons \cite{klincsek1980}, with
+  $\binom{n}{3}$ evaluations of a triangle and without enumerating the
+  triangulations (issue \#247). Positive orientation of the new
+  tetrahedra is not a sufficient validity test: an ear at a reflex vertex of the ring polygon gives
   positively oriented tetrahedra that coincide with an element outside
   the cavity (found as a face shared by four elements). A triangulation
   is valid when every triangle has the orientation of the ring polygon
@@ -1510,6 +1520,11 @@ L.~A.~Freitag, C.~Ollivier-Gooch.
 Tetrahedral mesh improvement using swapping and smoothing.
 \emph{International Journal for Numerical Methods in Engineering}
 40 (1997) 3979--4002.
+
+\bibitem{klincsek1980}
+G.~T.~Klincsek.
+Minimal triangulations of polygonal domains.
+\emph{Annals of Discrete Mathematics} 9 (1980) 121--123.
 
 \bibitem{klingner2007}
 B.~M.~Klingner, J.~R.~Shewchuk.

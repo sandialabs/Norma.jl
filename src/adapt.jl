@@ -431,70 +431,67 @@ function walk_edge_elements(elements::AbstractVector{Int}, pairs::Vector{Tuple{I
     return ordered, nodes
 end
 
-# All triangulations of the polygon with vertices 1..n, as lists of triangles
-# of vertex indices (Catalan number of the polygon).  They are computed once
-# per n and shared, since every swap of a ring of n nodes needs them; the
-# callers must not modify them.
-const POLYGON_TRIANGULATIONS = Dict{Int,Vector{Vector{NTuple{3,Int}}}}()
-const POLYGON_TRIANGULATIONS_LOCK = ReentrantLock()
-
-function polygon_triangulations(n::Int)
-    return @lock POLYGON_TRIANGULATIONS_LOCK get!(() -> chain_triangulations(1, n), POLYGON_TRIANGULATIONS, n)
+# Orientation of the ring polygon of the edge (a, b) in the projection along
+# the edge, from its first sector, which the old element guarantees to be
+# well formed: +1 or -1, or 0 for a degenerate sector.
+function ring_orientation(topology::MeshTopology, a::Int, b::Int, ring::Vector{Int})
+    x(n) = SVector{3,Float64}(view(topology.positions, :, n))
+    xa = x(a)
+    return sign(dot(cross(x(ring[1]) - xa, x(ring[2]) - xa), x(b) - xa))
 end
 
-function chain_triangulations(i::Int, j::Int)
-    j - i < 2 && return [Vector{NTuple{3,Int}}()]
-    result = Vector{Vector{NTuple{3,Int}}}()
-    for k in (i + 1):(j - 1)
-        for left in chain_triangulations(i, k), right in chain_triangulations(k, j)
-            push!(result, vcat(left, [(i, k, j)], right))
-        end
+# Connectivity of the two tetrahedra that replace the ring of edge (a, b)
+# under the triangle (i, j, k) of the ring polygon, one with each edge node
+# as apex, for the ring orientation s.  The triangle is admissible only if,
+# taken in the cyclic order of the ring, it has the orientation of the
+# polygon in the projection along the edge (an ear at a reflex vertex lies
+# outside the cavity even though its tetrahedra can be positively oriented),
+# and if the edge nodes lie on opposite sides of it.  Returns nothing when
+# either fails.
+function triangle_connectivity(
+    topology::MeshTopology, a::Int, b::Int, ring::Vector{Int}, s::Float64, triangle::NTuple{3,Int}
+)
+    x(n) = SVector{3,Float64}(view(topology.positions, :, n))
+    xa, xb = x(a), x(b)
+    i, j, k = triangle
+    p, q, r = ring[i], ring[j], ring[k]
+    xp, xq, xr = x(p), x(q), x(r)
+    normal = cross(xq - xp, xr - xp)
+    sign(dot(normal, xb - xa)) == s || return nothing
+    # With the triangle oriented toward b, (p, q, r, b) is positive and
+    # (p, r, q, a) is positive when a lies on the other side.
+    if s < 0.0
+        q, r = r, q
+        normal = -normal
     end
-    return result
+    dot(normal, xb - xp) > 0.0 || return nothing
+    dot(normal, xa - xp) < 0.0 || return nothing
+    return [p p; q r; r q; b a]
 end
 
 # Connectivity of the elements that replace the ring of edge (a, b) for one
-# triangulation of the ring polygon: two tetrahedra per triangle, one with
-# each edge node as apex.  A triangulation tiles the cavity only if every
-# triangle, taken in the cyclic order of the ring, has the orientation of the
-# polygon in the projection along the edge (an ear at a reflex vertex lies
-# outside the cavity even though its tetrahedra can be positively oriented),
-# and if the edge nodes lie on opposite sides of every triangle.  Returns
-# nothing when either fails.
+# triangulation of the ring polygon: the two tetrahedra of each triangle, in
+# the order of the triangles.  Returns nothing when a triangle is not
+# admissible (triangle_connectivity).
 function swapped_connectivity(
     topology::MeshTopology, a::Int, b::Int, ring::Vector{Int}, triangles::Vector{NTuple{3,Int}}
 )
-    positions = topology.positions
-    xa = SVector{3,Float64}(view(positions, :, a))
-    xb = SVector{3,Float64}(view(positions, :, b))
-    d = xb - xa
-    x(n) = SVector{3,Float64}(view(positions, :, n))
-    # Orientation of the ring polygon in the projection along the edge, from
-    # its first sector, which the old element guarantees to be well formed.
-    s = sign(dot(cross(x(ring[1]) - xa, x(ring[2]) - xa), d))
+    s = ring_orientation(topology, a, b, ring)
     s == 0.0 && return nothing
     connectivity = zeros(Int, 4, 2 * length(triangles))
-    column = 0
-    for (i, j, k) in triangles
-        p, q, r = ring[i], ring[j], ring[k]
-        xp, xq, xr = x(p), x(q), x(r)
-        normal = cross(xq - xp, xr - xp)
-        sign(dot(normal, d)) == s || return nothing
-        # With the triangle oriented toward b, (p, q, r, b) is positive and
-        # (p, r, q, a) is positive when a lies on the other side.
-        if s < 0.0
-            q, r = r, q
-            xq, xr = xr, xq
-            normal = -normal
-        end
-        dot(normal, xb - xp) > 0.0 || return nothing
-        dot(normal, xa - xp) < 0.0 || return nothing
-        column += 1
-        connectivity[:, column] .= (p, q, r, b)
-        column += 1
-        connectivity[:, column] .= (p, r, q, a)
+    for (t, triangle) in enumerate(triangles)
+        columns = triangle_connectivity(topology, a, b, ring, s, triangle)
+        columns === nothing && return nothing
+        connectivity[:, (2t - 1):(2t)] .= columns
     end
     return connectivity
+end
+
+# Whether the edge (u, v) exists, in the mesh or from an operation of this
+# pass.
+function edge_exists(topology::MeshTopology, u::Int, v::Int, created::CreatedEntities)
+    edge = sorted_edge(u, v)
+    return haskey(topology.edges, edge) || edge in created.edges
 end
 
 # Whether a chord of the ring polygon of a triangulation is an edge already,
@@ -505,8 +502,7 @@ function chords_exist(
     n = length(ring_nodes)
     for (i, j, k) in triangles, (u, v) in ((i, j), (j, k), (k, i))
         mod(u - v, n) in (1, n - 1) && continue
-        edge = sorted_edge(ring_nodes[u], ring_nodes[v])
-        (haskey(topology.edges, edge) || edge in created.edges) && return true
+        edge_exists(topology, ring_nodes[u], ring_nodes[v], created) && return true
     end
     return false
 end
@@ -528,10 +524,36 @@ function best_edge_swap(
     return (; elements, ring_nodes, block, triangles=best_triangles, connectivity=best)
 end
 
-# The triangulation of least score of the polygon of the nodes around the
-# edge (a, b), a closed ring or the open chain of a boundary edge, among those
-# whose chords and faces are new, with its connectivity; nothing for both when
-# no triangulation is admissible.
+# The triangulation of least score of the polygon of the nodes p_1, ..., p_n
+# around the edge (a, b), a closed ring or the open chain of a boundary edge,
+# among those whose chords and faces are new, with its connectivity; nothing
+# for both when no triangulation is admissible.
+#
+# The polygon has C(n - 2) triangulations (C the Catalan numbers, 3.5e7 for
+# n = 18), so they are not enumerated (issue #247).  The score of a
+# triangulation is the sum of the scores of its triangles under the energy
+# criterion and their maximum under the scaled Jacobian criterion
+# (configuration_score), and every admissibility condition holds or fails
+# for one triangle or one chord at a time.  The least score is therefore
+# found by dynamic programming over the sub-polygons p_i, ..., p_j (Klincsek
+# 1980): the least score of a sub-polygon is the least, over its apexes k,
+# of the combination of the least scores of p_i, ..., p_k and p_k, ..., p_j
+# with that of the triangle (i, k, j), which takes C(n, 3) evaluations of a
+# triangle and storage of order n³.
+#
+# Under the energy criterion each sub-polygon keeps its first apex of least
+# score.  Under the scaled Jacobian criterion many triangulations share the
+# least score, which is that of their worst triangle; the one returned is
+# the first of them in the order in which the triangulations were
+# enumerated before issue #247 (apex of p_1, ..., p_n ascending, then the
+# triangulation of the left part, then that of the right part).  A
+# sub-polygon has a triangulation of score at most v exactly when its least
+# score is at most v, so that triangulation is found by descending from the
+# whole polygon with the bound v the least score, taking at each
+# sub-polygon the first apex whose triangle and two parts meet the bound.
+# Under either rule, when the admissible triangulations are reduced and the
+# returned one remains admissible, it is returned again
+# (edge_swap_from_evaluation).
 function best_triangulation(
     model::SolidMechanics,
     topology::MeshTopology,
@@ -543,29 +565,108 @@ function best_triangulation(
     options::AdaptivityOptions,
     created::CreatedEntities,
 )
-    best = nothing
-    best_triangles = nothing
-    best_score = Inf
-    for triangles in polygon_triangulations(length(nodes))
+    n = length(nodes)
+    s = ring_orientation(topology, a, b, nodes)
+    s == 0.0 && return nothing, nothing
+    combine = options.shape_by_quality ? max : (+)
+    # Least score of the sub-polygon p_i, ..., p_j and its apex; +Inf when
+    # no triangulation of it is admissible.  A side of the polygon has the
+    # neutral score of the combination.
+    score = fill(Inf, n, n)
+    apex = zeros(Int, n, n)
+    # Scores of the triangles, kept under the scaled Jacobian criterion for
+    # the descent; +Inf for a triangle not evaluated.
+    triangle_scores = options.shape_by_quality ? fill(Inf, n, n, n) : fill(Inf, 0, 0, 0)
+    for i in 1:(n - 1)
+        score[i, i + 1] = options.shape_by_quality ? -Inf : 0.0
+    end
+    for width in 2:(n - 1), i in 1:(n - width)
+        j = i + width
         # A chord of the polygon becomes an edge; it may not exist already,
-        # since the link of an edge must be a single ring.
-        chords_exist(topology, nodes, triangles, created) && continue
-        connectivity = swapped_connectivity(topology, a, b, nodes, triangles)
-        connectivity === nothing && continue
-        faces_are_new(topology, elements, connectivity, created) || continue
-        score = configuration_score(model, topology, block, connectivity, options)
-        if score < best_score
-            best_score = score
-            best = connectivity
-            best_triangles = triangles
+        # since the link of an edge must be a single ring.  The side (p_1,
+        # p_n) of the polygon is not a chord.
+        (i, j) != (1, n) && edge_exists(topology, nodes[i], nodes[j], created) && continue
+        for k in (i + 1):(j - 1)
+            (score[i, k] == Inf || score[k, j] == Inf) && continue
+            triangle = triangle_score(model, topology, a, b, elements, nodes, s, (i, k, j), block, options, created)
+            options.shape_by_quality && (triangle_scores[i, k, j] = triangle)
+            value = combine(combine(score[i, k], triangle), score[k, j])
+            if value < score[i, j]
+                score[i, j] = value
+                apex[i, j] = k
+            end
         end
     end
-    return best, best_triangles
+    score[1, n] == Inf && return nothing, nothing
+    triangles = NTuple{3,Int}[]
+    if options.shape_by_quality
+        first_triangles!(triangles, score, triangle_scores, 1, n, score[1, n])
+    else
+        collect_triangles!(triangles, apex, 1, n)
+    end
+    return swapped_connectivity(topology, a, b, nodes, triangles), triangles
 end
 
-# Try to swap the interior edge (a, b): evaluate every triangulation of its
-# ring, keep the one of least energy, and submit it to the acceptance test.  Returns
-# the accepted proposal or nothing.
+# Score of the triangle (i, j, k) of the polygon of best_triangulation: the
+# score of its two tetrahedra (configuration_score), or +Inf when the
+# triangle is not admissible or a face of its tetrahedra exists already.
+function triangle_score(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    a::Int,
+    b::Int,
+    elements::Vector{Int},
+    nodes::Vector{Int},
+    s::Float64,
+    triangle::NTuple{3,Int},
+    block::Int,
+    options::AdaptivityOptions,
+    created::CreatedEntities,
+)
+    connectivity = triangle_connectivity(topology, a, b, nodes, s, triangle)
+    connectivity === nothing && return Inf
+    faces_are_new(topology, elements, connectivity, created) || return Inf
+    value = configuration_score(model, topology, block, connectivity, options)
+    return isnan(value) ? Inf : value
+end
+
+# The triangles of the sub-polygon p_i, ..., p_j from the apexes of
+# best_triangulation, in the order left part, apex triangle, right part.
+function collect_triangles!(triangles::Vector{NTuple{3,Int}}, apex::Matrix{Int}, i::Int, j::Int)
+    j - i < 2 && return triangles
+    k = apex[i, j]
+    collect_triangles!(triangles, apex, i, k)
+    push!(triangles, (i, k, j))
+    collect_triangles!(triangles, apex, k, j)
+    return triangles
+end
+
+# The triangles of the first triangulation of the sub-polygon p_i, ..., p_j
+# whose triangles all have scores at most `bound`, in the order of
+# best_triangulation, from its least scores of the sub-polygons and scores
+# of the triangles; the sub-polygon must have such a triangulation.
+function first_triangles!(
+    triangles::Vector{NTuple{3,Int}},
+    score::Matrix{Float64},
+    triangle_scores::Array{Float64,3},
+    i::Int,
+    j::Int,
+    bound::Float64,
+)
+    j - i < 2 && return triangles
+    for k in (i + 1):(j - 1)
+        (score[i, k] ≤ bound && triangle_scores[i, k, j] ≤ bound && score[k, j] ≤ bound) || continue
+        first_triangles!(triangles, score, triangle_scores, i, k, bound)
+        push!(triangles, (i, k, j))
+        first_triangles!(triangles, score, triangle_scores, k, j, bound)
+        return triangles
+    end
+    return norma_abort("No triangulation of a swap polygon meets the bound of its least score.")
+end
+
+# Try to swap the interior edge (a, b): find the triangulation of its ring
+# of least score (best_triangulation) and submit it to the acceptance test.
+# Returns the accepted proposal or nothing.
 function try_edge_swap(
     model::SolidMechanics,
     topology::MeshTopology,
@@ -599,10 +700,14 @@ end
 # The result of try_edge_swap for the current state of the pass, from an
 # evaluation made before the operations accepted since.  A dead ring element
 # gives nothing, as edge_ring does.  The evaluation chose among a superset of
-# the triangulations admissible now; when its best is still admissible it is
-# also the first of least score among them, and the outcome of the
-# acceptance test, which depends on the cavity alone, is the same.
-# Otherwise the swap is evaluated again.
+# the triangulations admissible now.  When its best is still admissible,
+# best_triangulation returns it again.  Under the scaled Jacobian criterion
+# it is the first of least score in a fixed order, which it remains in a
+# subset.  Under the energy criterion the least scores of the sub-polygons
+# of that triangulation are unchanged, those of the other sub-polygons can
+# only have increased, and each sub-polygon keeps its first apex of least
+# score.  The outcome of the acceptance test, which depends on the cavity
+# alone, is then the same.  Otherwise the swap is evaluated again.
 function edge_swap_from_evaluation(
     model::SolidMechanics,
     topology::MeshTopology,

@@ -64,6 +64,57 @@ end
 
 options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, false, false)
 
+# All triangulations of the polygon with vertices i..j, for comparison with
+# the dynamic program of best_triangulation.
+function all_triangulations(i::Int, j::Int)
+    j - i < 2 && return [NTuple{3,Int}[]]
+    result = Vector{NTuple{3,Int}}[]
+    for k in (i + 1):(j - 1), left in all_triangulations(i, k), right in all_triangulations(k, j)
+        push!(result, vcat(left, [(i, k, j)], right))
+    end
+    return result
+end
+
+# A ring of n elements around the edge (1, 2) along z, with the ring nodes
+# 3, ..., n + 2 at random radii and heights, so that the ring polygon has
+# reflex vertices and, under the energy criterion, no two triangulations
+# have equal scores.
+function random_ring(n::Int, h::Float64)
+    angles = range(0, 2π; length=n + 1)[1:n] .+ 0.2 * (rand(n) .- 0.5) * 2π / n
+    radii = 0.6 .+ 0.8 * rand(n)
+    heights = 0.4 * (rand(n) .- 0.5)
+    positions = hcat(
+        [0.0, 0.0, -0.9h],
+        [0.0, 0.0, 0.9h],
+        [[r * cos(t), r * sin(t), z] * h for (r, t, z) in zip(radii, angles, heights)]...,
+    )
+    ring = collect(3:(n + 2))
+    conn = hcat([[1, 2, ring[i], ring[mod1(i + 1, n)]] for i in 1:n]...)
+    for e in 1:n
+        if Norma.tetrahedron_volume(positions[:, conn[:, e]]) < 0.0
+            conn[3, e], conn[4, e] = conn[4, e], conn[3, e]
+        end
+    end
+    return Norma.build_topology(positions, conn)
+end
+
+# The triangulation of least score by enumeration, as best_triangulation
+# computed it before issue #247: its score and triangles, or nothing.
+function enumerated_best(model, topology, a, b, elements, nodes, options, created)
+    best_score, best_triangles = Inf, nothing
+    for triangles in all_triangulations(1, length(nodes))
+        Norma.chords_exist(topology, nodes, triangles, created) && continue
+        c = Norma.swapped_connectivity(topology, a, b, nodes, triangles)
+        c === nothing && continue
+        Norma.faces_are_new(topology, elements, c, created) || continue
+        score = Norma.configuration_score(model, topology, 1, c, options)
+        if score < best_score
+            best_score, best_triangles = score, triangles
+        end
+    end
+    return best_score, best_triangles
+end
+
 @testset "edge_swap_cavity" begin
     # The cavities are judged on shape alone, with the equal-volume rule.
     sim = smoothing_model("../examples/ems/cube/cube.g", "cube", "swap-cavity.e")
@@ -94,12 +145,12 @@ options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, false,
     for i in 1:n
         @test sort(topology.connectivity[:, elements[i]]) == sort([a, b, ring_nodes[i], ring_nodes[mod1(i + 1, n)]])
     end
-    @test length(Norma.polygon_triangulations(n)) == 5
-    @test length(Norma.polygon_triangulations(7)) == 42
+    @test length(all_triangulations(1, n)) == 5
+    @test length(all_triangulations(1, 7)) == 42
     # Every triangulation gives valid, positively oriented elements here, and
     # the swap picks the one of least energy or none if none decreases it.
     energies = Float64[]
-    for triangles in Norma.polygon_triangulations(n)
+    for triangles in all_triangulations(1, n)
         c = Norma.swapped_connectivity(topology, a, b, ring_nodes, triangles)
         @test c !== nothing
         @test all(Norma.tetrahedron_volume(positions[:, c[:, e]]) > 0.0 for e in 1:size(c, 2))
@@ -113,6 +164,46 @@ options = Norma.AdaptivityOptions(0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, false,
     else
         @test proposal === nothing
     end
+    # The dynamic program of best_triangulation returns the triangulation that
+    # the enumeration of all of them returns (issue #247), under both
+    # criteria, on rings with reflex vertices, and with chords excluded as
+    # edges created earlier in the pass.
+    quality_options = Norma.AdaptivityOptions(
+        0.05, Inf, 0.0, 1.0e-8, 2, 10, 2, true, false, false; shape_by_quality=true
+    )
+    compared = 0
+    for ring_size in 3:9, trial in 1:4, opts in (options, quality_options), exclude in (false, true)
+        ring_topology = random_ring(ring_size, h)
+        ring_elements, ring_nodes_k = Norma.edge_ring(ring_topology, 1, 2)
+        created = Norma.CreatedEntities()
+        if exclude && ring_size ≥ 5
+            push!(created.edges, Norma.sorted_edge(ring_nodes_k[1], ring_nodes_k[3]))
+            push!(created.edges, Norma.sorted_edge(ring_nodes_k[2], ring_nodes_k[5]))
+        end
+        expected_score, expected = enumerated_best(
+            model, ring_topology, 1, 2, ring_elements, ring_nodes_k, opts, created
+        )
+        c, triangles = Norma.best_triangulation(
+            model, ring_topology, 1, 2, ring_elements, ring_nodes_k, 1, opts, created
+        )
+        @test (triangles === nothing) == (expected === nothing)
+        triangles === nothing && continue
+        @test c == Norma.swapped_connectivity(ring_topology, 1, 2, ring_nodes_k, triangles)
+        @test triangles == expected
+        @test Norma.configuration_score(model, ring_topology, 1, c, opts) ≈ expected_score
+        compared += 1
+    end
+    @test compared > 100
+    # A ring of 24 nodes, whose polygon has 9.1e10 triangulations (the
+    # Catalan number C_22), is searched with binomial(24, 3) = 2024
+    # evaluations of a triangle.
+    large = random_ring(24, h)
+    large_elements, large_nodes = Norma.edge_ring(large, 1, 2)
+    c, triangles = Norma.best_triangulation(
+        model, large, 1, 2, large_elements, large_nodes, 1, options, Norma.CreatedEntities()
+    )
+    @test length(triangles) == 22
+    @test all(Norma.tetrahedron_volume(large.positions[:, c[:, e]]) > 0.0 for e in 1:size(c, 2))
     # A 3-to-2 swap: three elongated elements around a long edge piercing a
     # triangle become two near-regular ones; the swap is accepted.
     tri_angles = (0.0, 2π / 3, 4π / 3)
