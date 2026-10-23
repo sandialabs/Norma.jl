@@ -283,7 +283,11 @@ end
 # other interfaces read their results. An interface whose partner is solved
 # after that moment and before its own solve therefore receives the partner
 # data of the previous iteration. The coefficients come from the traces, and
-# the update is applied to the whole partner field, as the relaxation is.
+# the update is computed on the partner degrees of freedom that the transfer
+# of the interface reads (anderson_footprint); the other entries of the
+# relaxed partner field, which the exchange does not read, are those of the
+# partner. The histories hold at most m + 1 columns, each with the iterates
+# and residuals of the relaxed fields on the footprint and the trace once.
 # The least-squares problem is solved by QR of ΔT, dropping the oldest column
 # while the condition number of R exceeds ANDERSON_CONDITION_LIMIT. Without a
 # difference (first iteration) the update is x + β f, the fixed factor β. For
@@ -294,27 +298,31 @@ end
 
 const ANDERSON_CONDITION_LIMIT = 1.0e10
 
+# The history of one interface: per relaxed field, its iterates x_j and
+# residuals f_j = g_j - x_j, restricted to the partner degrees of freedom that
+# the transfer of the interface reads (anderson_footprint); and the traces t_j
+# of the residual, stored once for all fields. A field can enter the history
+# later than the first (the window-end reaction), so each field has its own
+# number of columns; the traces are those of the columns of the first field.
 mutable struct AndersonHistory
-    X::Vector{Vector{Float64}}   # iterates x_j
-    F::Vector{Vector{Float64}}   # residuals f_j = g_j - x_j
-    T::Vector{Vector{Float64}}   # residual traces t_j
+    X::Vector{Vector{Vector{Float64}}}   # per field, the iterates x_j
+    F::Vector{Vector{Vector{Float64}}}   # per field, the residuals f_j
+    T::Vector{Vector{Float64}}           # the residual traces t_j
 end
 
-AndersonHistory() = AndersonHistory(Vector{Float64}[], Vector{Float64}[], Vector{Float64}[])
+AndersonHistory() = AndersonHistory(Vector{Vector{Float64}}[], Vector{Vector{Float64}}[], Vector{Float64}[])
 
-# Per controller: one history per interface and relaxed field, and the data
-# computed at the current Schwarz iteration, per interface. Cleared at every
-# stop with the rest of the relaxation state.
+# Per controller: one history per interface, and the data computed at the
+# current Schwarz iteration, per interface. Cleared at every stop with the
+# rest of the relaxation state.
 mutable struct AndersonState
-    histories::Dict{Tuple{RelaxationKey,Int},AndersonHistory}
+    histories::Dict{RelaxationKey,AndersonHistory}
     iteration::Int
     data::Dict{RelaxationKey,Vector{Vector{Float64}}}
 end
 
 function AndersonState()
-    return AndersonState(
-        Dict{Tuple{RelaxationKey,Int},AndersonHistory}(), -1, Dict{RelaxationKey,Vector{Vector{Float64}}}()
-    )
+    return AndersonState(Dict{RelaxationKey,AndersonHistory}(), -1, Dict{RelaxationKey,Vector{Vector{Float64}}}())
 end
 
 const ANDERSON_STATE = IdDict{Any,AndersonState}()
@@ -322,10 +330,9 @@ const ANDERSON_STATE = IdDict{Any,AndersonState}()
 # Memory held by the Anderson histories of a controller: the bytes of the
 # Float64 data of the iterates X, residuals F, and traces T, over every
 # interface and relaxed field, without the headers of the Julia arrays. X and
-# F hold the whole relaxed field of the partner and T its interface trace, so
-# the count is larger than 2 (m + 1) n_Γ of interface data alone. The peak
-# over a stop is logged at its end: columns dropped by the condition limit
-# make the history shrink within a stop.
+# F hold the partner data on the footprint of the interface and T its trace,
+# once per interface. The peak over a stop is logged at its end: columns
+# dropped by the condition limit make the history shrink within a stop.
 const ANDERSON_PEAK_BYTES = IdDict{Any,Int}()
 
 function anderson_history_bytes(controller)
@@ -333,8 +340,10 @@ function anderson_history_bytes(controller)
     groups = Any[]
     haskey(ANDERSON_STATE, controller) && push!(groups, values(ANDERSON_STATE[controller].histories))
     haskey(OVERLAP_ANDERSON_HISTORIES, controller) && push!(groups, values(OVERLAP_ANDERSON_HISTORIES[controller]))
-    for histories in groups, history in histories, columns in (history.X, history.F, history.T), column in columns
-        bytes += sizeof(column)
+    for histories in groups, history in histories
+        for columns in Iterators.flatten((history.X, history.F, (history.T,))), column in columns
+            bytes += sizeof(column)
+        end
     end
     return bytes
 end
@@ -362,46 +371,103 @@ function reset_anderson_state!(controller)
     delete!(ANDERSON_STATE, controller)
     delete!(OVERLAP_ANDERSON_HISTORIES, controller)
     delete!(OVERLAP_WINDOW_STEPS, controller)
+    delete!(ANDERSON_FOOTPRINTS, controller)
     return nothing
 end
 
+# Keep at most the last n columns of every field and of the traces.
 function keep_last!(history::AndersonHistory, n::Int)
-    while length(history.X) > n
-        popfirst!(history.X)
-        popfirst!(history.F)
-        popfirst!(history.T)
+    for columns in Iterators.flatten((history.X, history.F, (history.T,)))
+        length(columns) > n && deleteat!(columns, 1:(length(columns) - n))
     end
     return nothing
 end
 
-# One Anderson step for a group of interfaces. Each entry holds the histories
-# of the relaxed fields of one interface, their current iterates xs, the data
-# gs that the iteration returned, and the trace t of the residual. All fields
-# of an interface share its trace, and all interfaces share the coefficients.
-# Returns the next iterates, per entry and field.
+# Append the column of the current iterates xs, data gs, and trace t; a field
+# seen for the first time gets its own lists.
+function push_column!(history::AndersonHistory, xs, gs, t::AbstractVector{Float64})
+    while length(history.X) < length(xs)
+        push!(history.X, Vector{Float64}[])
+        push!(history.F, Vector{Float64}[])
+    end
+    for (field, (x, g)) in enumerate(zip(xs, gs))
+        push!(history.X[field], copy(x))
+        push!(history.F[field], g .- x)
+    end
+    push!(history.T, copy(t))
+    return history
+end
+
+# The degrees of freedom of the relaxed field of the interface of `bc` that
+# the exchange reads: the three components of the partner nodes of
+# partner_node_map; for an overlap matching interface, of the partner nodes
+# with a nonzero column of its projector; and for a Robin interface, of the
+# nodes of its own side set, on which alone its datum is nonzero. The relaxed
+# fields are full fields, but the exchange depends only on these entries, and
+# the Anderson coefficients come from the traces, so the histories hold the
+# iterates and residuals on these entries alone. Nothing (all entries) for a
+# reduced-order partner, whose relaxed fields are its reduced coordinates.
+# Cached per controller and cleared at every stop.
+const ANDERSON_FOOTPRINTS = IdDict{Any,Dict{RelaxationKey,Union{Vector{Int},Nothing}}}()
+
+function anderson_footprint(bc::SolidMechanicsSchwarzBoundaryCondition)
+    controller = bc.parent.controller
+    footprints = get!(Dict{RelaxationKey,Union{Vector{Int},Nothing}}, ANDERSON_FOOTPRINTS, controller)
+    return get!(footprints, relaxation_key(bc)) do
+        nodes = if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+            bc.global_from_local_map
+        elseif coupled_subsim_of(bc).model isa RomModel
+            return nothing
+        elseif bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+            P = bc.dirichlet_projector
+            [node for node in partner_node_map(bc) if any(!iszero, view(P, :, node))]
+        else
+            partner_node_map(bc)
+        end
+        return vec([3 * node - c for c in (2, 1, 0), node in nodes])
+    end
+end
+
+restrict(v::AbstractVector{Float64}, footprint::Nothing) = v
+restrict(v::AbstractVector{Float64}, footprint::Vector{Int}) = v[footprint]
+
+# The full field whose footprint entries are the relaxed values and whose other
+# entries, which the exchange does not read, are those of `base`.
+expand(relaxed::Vector{Float64}, base::AbstractVector{Float64}, footprint::Nothing) = copy(relaxed)
+function expand(relaxed::Vector{Float64}, base::AbstractVector{Float64}, footprint::Vector{Int})
+    full = copy(base)
+    full[footprint] = relaxed
+    return full
+end
+
+# One Anderson step for a group of interfaces. Each entry holds the history of
+# one interface, the current iterates xs and the data gs of its relaxed
+# fields, restricted to its footprint, and the trace t of the residual. All
+# fields of an interface share its trace, and all interfaces share the
+# coefficients. Returns the next iterates, per entry and field, on the
+# footprint. The histories are trimmed to `depth` columns before the new
+# column is appended, so that none holds more than depth + 1.
 function anderson_stacked_step!(entries, β::Float64, depth::Int)
-    for entry in entries, (history, x, g) in zip(entry.histories, entry.xs, entry.gs)
-        push!(history.X, copy(x))
-        push!(history.F, g .- x)
-        push!(history.T, copy(entry.t))
+    for entry in entries
+        keep_last!(entry.history, depth)
+        push_column!(entry.history, entry.xs, entry.gs, entry.t)
     end
     # An interface that entered the group later has fewer columns; the
     # stacked differences use the columns that all interfaces have.
-    n = min(depth + 1, minimum(length(entry.histories[1].X) for entry in entries))
-    for entry in entries, history in entry.histories
-        keep_last!(history, n)
+    n = minimum(length(entry.history.T) for entry in entries)
+    for entry in entries
+        keep_last!(entry.history, n)
     end
     γ = Float64[]
     while n >= 2
         ΔT = reduce(
-            vcat,
-            [reduce(hcat, [h.T[j + 1] .- h.T[j] for j in 1:(n - 1)]) for h in first.(getfield.(entries, :histories))],
+            vcat, [reduce(hcat, [h.T[j + 1] .- h.T[j] for j in 1:(n - 1)]) for h in getfield.(entries, :history)]
         )
         R = qr(ΔT).R
         if any(iszero, diag(R)) || cond(UpperTriangular(R)) > ANDERSON_CONDITION_LIMIT
             n -= 1
-            for entry in entries, history in entry.histories
-                keep_last!(history, n)
+            for entry in entries
+                keep_last!(entry.history, n)
             end
             continue
         end
@@ -409,10 +475,12 @@ function anderson_stacked_step!(entries, β::Float64, depth::Int)
         break
     end
     return map(entries) do entry
-        map(entry.histories) do h
-            x_new = h.X[end] .+ β .* h.F[end]
+        h = entry.history
+        map(eachindex(entry.xs)) do field
+            X, F = h.X[field], h.F[field]
+            x_new = X[end] .+ β .* F[end]
             for j in eachindex(γ)
-                x_new .-= γ[j] .* ((h.X[j + 1] .- h.X[j]) .+ β .* (h.F[j + 1] .- h.F[j]))
+                x_new .-= γ[j] .* ((X[j + 1] .- X[j]) .+ β .* (F[j + 1] .- F[j]))
             end
             return x_new
         end
@@ -429,7 +497,7 @@ function anderson_step!(
     β::Float64,
     depth::Int,
 )
-    entry = (histories=[history], xs=[x], gs=[g], t=t)
+    entry = (history=history, xs=[x], gs=[g], t=t)
     return anderson_stacked_step!([entry], β, depth)[1][1]
 end
 
@@ -443,14 +511,14 @@ end
 const WINDOW_REACTION_SCALE = Dict{RelaxationKey,Float64}()
 
 # Anderson histories of the overlap matching interfaces of a controller, keyed
-# as the relaxation state is and by field (1 the datum, 2 the window-end
-# reaction), and the iteration at which a window-end-constrained interface took
-# its joint step; both cleared with the Anderson state at every stop
-# (reset_anderson_state!).
-const OVERLAP_ANDERSON_HISTORIES = IdDict{Any,Dict{Tuple{RelaxationKey,Int},AndersonHistory}}()
+# as the relaxation state is, with the datum as field 1 and the window-end
+# reaction as field 2, and the iteration at which a window-end-constrained
+# interface took its joint step; both cleared with the Anderson state at every
+# stop (reset_anderson_state!).
+const OVERLAP_ANDERSON_HISTORIES = IdDict{Any,Dict{RelaxationKey,AndersonHistory}}()
 const OVERLAP_WINDOW_STEPS = IdDict{Any,Dict{RelaxationKey,Int}}()
 function overlap_anderson_histories(controller)
-    return get!(Dict{Tuple{RelaxationKey,Int},AndersonHistory}, OVERLAP_ANDERSON_HISTORIES, controller)
+    return get!(Dict{RelaxationKey,AndersonHistory}, OVERLAP_ANDERSON_HISTORIES, controller)
 end
 overlap_window_steps(controller) = get!(Dict{RelaxationKey,Int}, OVERLAP_WINDOW_STEPS, controller)
 
@@ -483,15 +551,15 @@ function overlap_matching_window_step!(bc::SolidMechanicsOverlapMatchingSchwarzB
         n_t, n_λ = norm(t), norm(t_λ)
         return n_t > 0.0 && n_λ > 0.0 ? n_t / n_λ : 1.0
     end
-    histories = overlap_anderson_histories(controller)
+    footprint = anderson_footprint(bc)
     entry = (
-        histories=[get!(AndersonHistory, histories, (key, 1)), get!(AndersonHistory, histories, (key, 2))],
-        xs=[λ_c_prev, x_λ],
-        gs=[interp_c, g_λ],
+        history=get!(AndersonHistory, overlap_anderson_histories(controller), key),
+        xs=[restrict(λ_c_prev, footprint), x_λ],
+        gs=[restrict(interp_c, footprint), g_λ],
         t=vcat(t, scale .* t_λ),
     )
     data = anderson_stacked_step!([entry], controller.relaxation_parameter, controller.anderson_depth)[1]
-    c_slots[slot_k] = copy(data[1])
+    c_slots[slot_k] = expand(data[1], interp_c, footprint)
     bc.window_end_reaction = copy(data[2])
     overlap_window_steps(controller)[key] = iter
     record_anderson_memory!(controller)
@@ -518,7 +586,11 @@ function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
         (isempty(disp_slots) || isempty(disp_slots[1])) && return nothing
         x = disp_slots[1]
         g = with_partner_state(() -> robin_datum(self_subsim_of(bc).model, bc), bc, time)
-        return (quantity=:robin, key=key, xs=[x], gs=[g], t=g .- x)
+        # The datum is a field of this side, nonzero on its interface degrees
+        # of freedom only, and its residual is its own trace.
+        footprint = anderson_footprint(bc)
+        x_Γ, g_Γ = restrict(x, footprint), restrict(g, footprint)
+        return (quantity=:robin, key=key, xs=[x_Γ], gs=[g_Γ], t=g_Γ .- x_Γ)
     end
     # The datum of a single-slot interface is that of the window end, whatever
     # the time of the application that triggered the step.
@@ -544,14 +616,35 @@ function anderson_entry(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
                 n_t, n_λ = norm(t), norm(t_λ)
                 return n_t > 0.0 && n_λ > 0.0 ? n_t / n_λ : 1.0
             end
-            return (quantity=quantity, key=key, xs=[x, x_λ], gs=[g, g_λ], t=vcat(t, scale .* t_λ))
+            footprint = anderson_footprint(bc)
+            return (
+                quantity=quantity,
+                key=key,
+                xs=[restrict(x, footprint), x_λ],
+                gs=[restrict(g, footprint), g_λ],
+                t=vcat(t, scale .* t_λ),
+            )
         end
-        return (quantity=quantity, key=key, xs=[x], gs=[g], t=t)
+        footprint = anderson_footprint(bc)
+        return (quantity=quantity, key=key, xs=[restrict(x, footprint)], gs=[restrict(g, footprint)], t=t)
     end
     (isempty(disp_slots) || isempty(disp_slots[1])) && return nothing
-    xs = [disp_slots[1], velo_slots[1], acce_slots[1]]
-    t = constrained_partner_trace(bc, disp) .- constrained_partner_trace(bc, xs[1])
-    return (quantity=:displacement, key=key, xs=xs, gs=[disp, velo, acce], t=t)
+    t = constrained_partner_trace(bc, disp) .- constrained_partner_trace(bc, disp_slots[1])
+    footprint = anderson_footprint(bc)
+    # A static partner does not change its velocity and acceleration during the
+    # Schwarz iteration, so they are passed through unrelaxed (apply_bc), and
+    # the displacement is the only relaxed field.
+    fields = relaxes_displacement_only(bc) ? (1:1) : (1:3)
+    xs = [restrict(slots[1], footprint) for slots in (disp_slots, velo_slots, acce_slots)[fields]]
+    gs = [restrict(field, footprint) for field in (disp, velo, acce)[fields]]
+    return (quantity=:displacement, key=key, xs=xs, gs=gs, t=t)
+end
+
+# Whether the Anderson step of an unconstrained Dirichlet-Neumann or contact
+# interface relaxes the partner displacement alone: when the partner's time
+# integrator is static, whose velocity and acceleration stay constant.
+function relaxes_displacement_only(bc::SolidMechanicsSchwarzBoundaryCondition)
+    return coupled_subsim_of(bc).integrator isa StaticTimeIntegrator
 end
 
 # Next data of the interface of `bc` under Anderson acceleration, one vector
@@ -570,7 +663,7 @@ function anderson_data!(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
         end
         for quantity in unique(getfield.(entries, :quantity))
             group = [
-                merge(e, (histories=[get!(AndersonHistory, state.histories, (e.key, i)) for i in eachindex(e.xs)],)) for
+                merge(e, (history=get!(AndersonHistory, state.histories, e.key),)) for
                 e in entries if e.quantity === quantity
             ]
             for (entry, data) in
@@ -584,7 +677,7 @@ function anderson_data!(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
                 controller.iteration_number,
                 quantity,
                 length(group),
-                length(group[1].histories[1].X) - 1,
+                length(group[1].history.T) - 1,
             )
         end
         norma_logf(
@@ -713,9 +806,10 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         if controller.relaxation_method === :anderson && aitken_applies(controller, key) && !isempty(g_stored)
             # Anderson acceleration of the Robin datum, stacked with the other
             # relaxed Robin interfaces (anderson_data!); the datum lives on the
-            # interface degrees of freedom only, so it is its own trace. A fresh
-            # slot (g = 0) is not entered into the history.
-            datum = copy(anderson_data!(bc, model.time)[1])
+            # interface degrees of freedom only, so it is its own trace, and the
+            # step is computed on those degrees of freedom (anderson_footprint).
+            # A fresh slot (g = 0) is not entered into the history.
+            datum = expand(anderson_data!(bc, model.time)[1], rhs, anderson_footprint(bc))
         else
             theta = controller.relaxation_parameter
             if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
@@ -2538,19 +2632,21 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 # joint step at its first interior substep, and its slot holds
                 # the datum already.
                 if get(overlap_window_steps(controller), key, -1) != iter
-                    history = get!(AndersonHistory, overlap_anderson_histories(controller), (key, 1))
-                    c_slots[slot_k] = anderson_step!(
+                    history = get!(AndersonHistory, overlap_anderson_histories(controller), key)
+                    footprint = anderson_footprint(bc)
+                    relaxed = anderson_step!(
                         history,
-                        λ_c_prev,
-                        interp_c,
+                        restrict(λ_c_prev, footprint),
+                        restrict(interp_c, footprint),
                         trace_c .- trace_prev,
                         controller.relaxation_parameter,
                         controller.anderson_depth,
                     )
+                    c_slots[slot_k] = expand(relaxed, interp_c, footprint)
                     record_anderson_memory!(controller)
                 end
             elseif use_anderson
-                c_slots[slot_k] = copy(anderson_data!(bc, time)[1])
+                c_slots[slot_k] = expand(anderson_data!(bc, time)[1], interp_c, anderson_footprint(bc))
             else
                 θ = if controller.relaxation_method === :aitken_secant
                     relaxation_aitken_secant_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
@@ -2572,17 +2668,20 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             # of the displacement residual, stacked with the traces of the other
             # relaxed interfaces (anderson_data!), and the same coefficients update the
             # displacement, the velocity, and the acceleration, each with its own
-            # history of iterates. A fresh slot has a residual of exactly zero
-            # and is not entered into the history.
+            # iterates on the footprint of the interface (anderson_footprint).
+            # The velocity and acceleration of a static partner are constant and
+            # pass through unrelaxed (relaxes_displacement_only). A fresh slot
+            # has a residual of exactly zero and is not entered into the history.
             if isempty(λ_u_stored)
                 disp_slots[slot_k] = copy(interp_disp)
                 velo_slots[slot_k] = copy(interp_velo)
                 acce_slots[slot_k] = copy(interp_acce)
             else
                 fields = anderson_data!(bc, time)
-                disp_slots[slot_k] = copy(fields[1])
-                velo_slots[slot_k] = copy(fields[2])
-                acce_slots[slot_k] = copy(fields[3])
+                footprint = anderson_footprint(bc)
+                disp_slots[slot_k] = expand(fields[1], interp_disp, footprint)
+                velo_slots[slot_k] = length(fields) ≥ 2 ? expand(fields[2], interp_velo, footprint) : copy(interp_velo)
+                acce_slots[slot_k] = length(fields) ≥ 3 ? expand(fields[3], interp_acce, footprint) : copy(interp_acce)
             end
         elseif controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover

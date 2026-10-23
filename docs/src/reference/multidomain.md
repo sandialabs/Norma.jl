@@ -501,6 +501,19 @@ matrix whose interface is coupled as four side sets
 (`examples/nonoverlap/static-same-step/matrix-inclusion-split`, test 139) they
 inverted an element or did not converge in 500 iterations, against 23 for the
 stacked problem and 21 for the interface as one side set (issue #233). The
+histories hold at most m + 1 columns. A column holds, for each relaxed field
+of an interface, the iterate and the residual on the partner degrees of
+freedom that the transfer reads: the nodes of the partner side set, or for an
+overlap matching interface the nodes in the support of its projector. For a
+Robin interface the datum is a field of its own side, nonzero on the nodes of
+its side set only, and the step is computed on those nodes. A column holds the
+residual trace once per interface. Under a static partner, whose
+velocity and acceleration are constant, the displacement is the only relaxed
+field of an unconstrained pair. On the inclusion split a column holds 114
+footprint entries twice and 258 trace entries, 3.9 KB, against 401.5 KB when
+the histories held the whole partner field of all three kinematic fields. The
+memory of the histories is logged at every Schwarz iteration, and its peak at
+the end of every stop. The
 stacked step is computed when the first relaxed interface of an iteration
 applies its datum, from the partner data at that moment, so an interface whose
 partner is solved after that moment and before its own subdomain receives the
