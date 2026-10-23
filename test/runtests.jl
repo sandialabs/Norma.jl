@@ -194,6 +194,7 @@ const indexed_test_files = [
     (153, "schwarz-nonoverlap-static-inclusion-5sd-robin-robin-anderson.jl"),
     (154, "schwarz-nonoverlap-static-concentric-cylinders.jl"),
     (155, "schwarz-nonoverlap-static-cuboids-stiffness-ratio.jl"),
+    (156, "schwarz-nonoverlap-static-inclusion-split-anderson-memory.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach
