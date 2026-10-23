@@ -1,0 +1,26 @@
+# Quasi-static nonoverlapping Schwarz on the quarter of the three nested
+# cylinders (issue #246), two subdomains: inner (the core and the filler inside
+# the region of radius 2.25 in and height 9 in) and outer (the rest of the
+# filler and the shell), coupled by Dirichlet-Neumann on the region boundary
+# ssint, inside the filler. The loading is that of ../monolithic: the top face
+# of the shell is displaced by -1 mm in z in two steps. Every subdomain has the
+# symmetry conditions; only outer has the bottom and top faces. In
+# quasi-statics a subdomain with only Neumann data on its interfaces keeps its
+# z translation, so inner, which has no other support, is the Dirichlet side.
+# Anderson acceleration (depth 10, mixing 0.5) converges in 22 and 21 Schwarz
+# iterations; the mean z displacement of the core at t = 1 is within 0.1% of
+# the monolithic one.
+type: multi
+domains: ["inner-2.yaml", "outer-2.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 0.5
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-08
+absolute tolerance: 1.0e-12
+relaxation: anderson
+anderson depth: 10
+relaxation parameter: 0.5

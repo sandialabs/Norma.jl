@@ -1,0 +1,41 @@
+type: single
+input mesh file: filler_out.g
+output mesh file: filler_out-3.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      filler: filler
+    filler:
+      model: neohookean
+      bulk modulus: 5.99e+09
+      shear modulus: 7.1658e+07
+      density: 1843.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+  Schwarz DN nonoverlap:
+    - side set: ssshell
+      source: shell-3
+      source block: shell
+      source side set: ssshell
+      default BC type: Dirichlet
+    - side set: ssint
+      source: inner-3
+      source block: filler
+      source side set: ssint
+      default BC type: Neumann
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06

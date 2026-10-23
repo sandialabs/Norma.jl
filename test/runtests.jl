@@ -192,6 +192,7 @@ const indexed_test_files = [
     (151, "composite-tet10-lcm.jl"),
     (152, "explicit-stable-time-step.jl"),
     (153, "schwarz-nonoverlap-static-inclusion-5sd-robin-robin-anderson.jl"),
+    (154, "schwarz-nonoverlap-static-concentric-cylinders.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

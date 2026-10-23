@@ -354,6 +354,20 @@ fixed-point map has gain greater than one, so *fixed* relaxation diverges for
 every relaxation parameter; use Aitken relaxation
 (`relaxation: aitken secant` or `aitken recursive` on the controller).
 
+In quasi-statics a subdomain with only Neumann data on its interfaces and no
+support of its own has a singular stiffness, so each such subdomain must be
+the Dirichlet side of at least one interface. When that forces the Dirichlet
+role onto the stiffer side of an interface with a large stiffness ratio, the
+iteration can diverge under every relaxation. On the quarter of the three
+nested cylinders (`examples/nonoverlap/static-same-step/concentric-cylinders`,
+test 154, issue #246) the chains of two and three subdomains, in which the
+core stays inside one subdomain, converge in 21 to 25 iterations per step with
+Anderson acceleration; the chain of four, in which the core (shear modulus
+37.6 GPa) is the Dirichlet side against the filler (72 MPa), inverts elements
+or does not converge under Anderson, fixed, and Aitken relaxation, at any load
+step, and also with Robin–Robin coupling on that interface. The input
+`cylinders-3.yaml` of that example records the measurements.
+
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `source side set` | yes | — | partner interface surface |
