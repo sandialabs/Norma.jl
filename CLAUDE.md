@@ -68,6 +68,10 @@ julia --project=.. runtests.jl --list
 julia --project=.. runtests.jl --with-nnopinf
 ```
 
+## Benchmarks
+
+`benchmark/` holds the thread-scaling cases (hexahedral cubes and a slender beam meshed by Cubit journals), the scripts that time a run, sweep thread counts, time the components of a step, and fingerprint the final fields, and a README with the measurements at each change. Element loops run through `chunk_results` (utils.jl): fixed chunks pinned to threads, partial results summed in chunk order, so fields and energies do not depend on the thread count.
+
 ## Formatting
 
 Format every changed Julia file before committing, with the pinned formatter (JuliaFormatter 2.14.0, blue style, margin 120):
@@ -98,7 +102,8 @@ Every major component splits into:
 | `simulation_types.jl` / `simulation.jl` | `SingleDomainSimulation` and `MultiDomainSimulation`; top-level `create_simulation` and `evolve` |
 | `model_types.jl` / `model.jl` | `SolidMechanics` struct (mesh, DOFs, forces, stiffness/mass matrices, kinematics) |
 | `constitutive_types.jl` / `constitutive.jl` | Material hierarchy: `Material → Solid → {Elastic, Inelastic}`; stress computation |
-| `solver_types.jl` / `solver.jl` | `HessianMinimizer` (Newton), `ExplicitSolver`, `SteepestDescent`; line search |
+| `solver_types.jl` / `solver.jl` | `HessianMinimizer` (Newton), `ExplicitSolver`, `SteepestDescent`; line search; the reduced system on the free degrees of freedom (`ReducedSystem`) and the direct solver |
+| `conjugate_gradient.jl` | preconditioned conjugate gradient on a reused workspace (`preconditioner: none`, `jacobi`, `cholesky`), passes in fixed chunks pinned to threads |
 | `time_integrator_types.jl` / `time_integrator.jl` | Implicit (Newmark) and explicit time stepping schemes |
 | `ics_bcs_types.jl` / `ics_bcs.jl` | Initial and boundary conditions |
 | `interpolation_types.jl` / `interpolation.jl` | FEM shape functions and quadrature |

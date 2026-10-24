@@ -23,9 +23,13 @@ All cases are neo-Hookean cubes of side 0.1 m (E = 1 GPa, ν = 0.3,
 | `quasistatic24-jacobi.yaml` | same | 13 824 | conjugate gradient, Jacobi |
 | `quasistatic24-cholesky.yaml` | same | 13 824 | conjugate gradient, reused Cholesky factor |
 | `quasistatic24-direct.yaml` | same | 13 824 | sparse Cholesky |
+| `incompressible24-cg.yaml`, `-direct.yaml` | quasi-static, ν = 0.49, tangent predictor | 13 824 | conjugate gradient, sparse Cholesky |
+| `beam-cg.yaml`, `-jacobi.yaml`, `-cholesky.yaml`, `-direct.yaml` | quasi-static bending of a beam of 0.02 × 0.02 × 1 m, tangent predictor | 25 600 | the four options |
 
-The implicit cases have 45 000 free degrees of freedom and a stiffness of
-3.36 million nonzeros.
+The implicit cube cases have 45 000 free degrees of freedom and a stiffness
+of 3.36 million nonzeros; the beam 97 119 and 6.73 million. The beam is the
+ill-conditioned case: the plain conjugate gradient takes 8056 iterations on
+its first system.
 
 ## Scripts
 
@@ -75,6 +79,41 @@ over 200 steps and `nonoverlap/static-same-step/matrix-inclusion-split`):
 
 The coupling layer took 1.5% and 7.6% of these runs; the rest is the
 subdomain solves.
+
+Ill-conditioned cases, 12 threads, wall seconds by linear solver:
+
+| Case | `cg` | `cg`, `jacobi` | `cg`, `cholesky` | `direct` |
+|---|---:|---:|---:|---:|
+| incompressible24, 20 Newton iterations | 3.0 | | | 14.3 |
+| beam, 12 Newton iterations | 119.3 | 108.4 | 7.7 | 9.2 |
+
+Algebraic multigrid (AlgebraicMultigrid.jl 2.0.2, tried on October 24, 2026
+and not adopted), as the preconditioner of the library conjugate gradient on
+the first system of each case: on the beam the Ruge-Stüben and smoothed
+aggregation hierarchies cut 8056 iterations to 1373 and 1256 but their cycles
+took 63 and 43 s, against 0.44 s for the Cholesky factor and 0.07 s for its
+solve; on the quasi-static cube 254 iterations to 52 and 53, with cycles of
+1.19 and 0.82 s against 0.24 s for the plain conjugate gradient. The scalar
+hierarchies of the library do not use the three-component structure or the
+rigid modes of elasticity, and their cycles run on one thread.
+
+Sparse Cholesky (CHOLMOD) against the BLAS thread count, which Norma binds to
+the Julia thread count; seconds of the full factorization, of the numeric
+phase with the symbolic analysis reused, and of one solve:
+
+| Case | threads | nnz(L) | factorization | numeric | solve |
+|---|---:|---:|---:|---:|---:|
+| quasistatic24, 44 375 unknowns | 1 | 50.1 M | 1.46 | 1.37 | 0.021 |
+| | 6 | | 0.57 | 0.45 | 0.020 |
+| | 12 | | 0.53 | 0.42 | 0.020 |
+| beam, 97 119 unknowns | 1 | 37.9 M | 0.53 | 0.39 | 0.021 |
+| | 6 | | 0.37 | 0.24 | 0.021 |
+| | 12 | | 0.44 | 0.32 | 0.021 |
+
+The factorization gains nothing beyond 6 threads (one core complex of the
+processor), and the fill of the cube is 15 times the nonzeros of the matrix
+under the default ordering. The solve is cheap, which is why the factor
+reused as a preconditioner pays on the beam.
 
 Before: garbage collection took 52% of the explicit run on 12 threads (549 MB
 allocated per step), the stable time step read the untyped shape function

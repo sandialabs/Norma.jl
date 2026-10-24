@@ -61,9 +61,10 @@ and so do the reductions of the element values into the global vectors and
 matrices and the sparse product of the conjugate gradient. The vector updates
 of the time integrators, the rest of the conjugate gradient, and the direct
 solver (through its BLAS calls) run on one thread. On a 12-core Ryzen 9 9900X
-(October 23, 2026), an explicit run of 110 592 hexahedra over 100 steps took
-12.5 s on one thread and 3.0 s on twelve, and a Newmark run of 45 000 free
-degrees of freedom with the conjugate gradient solver took 5.7 s and 2.6 s.
+(October 24, 2026), an explicit run of 110 592 hexahedra over 100 steps took
+11.6 s on one thread and 2.4 s on twelve, and a Newmark run of 45 000 free
+degrees of freedom with the Jacobi-preconditioned conjugate gradient took
+4.4 s and 1.8 s; `benchmark/README.md` has the cases and the measurements.
 The thread count does not change the results: the chunks and the order of
 every sum are fixed, so the fields and the energies are the same on any
 number of threads.
