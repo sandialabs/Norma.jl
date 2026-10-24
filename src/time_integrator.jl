@@ -295,7 +295,10 @@ function accept_step!(integrator::QuasiStatic, solver::Solver)
     integrator.last_increment = integrator.displacement - integrator.step_start_disp
     integrator.last_time_step = integrator.time - integrator.prev_time
     if integrator.predictor == :tangent
-        # Evaluations build a new matrix, so the reference stays this step's.
+        # The Hessian of a quasi-static step is the stiffness of the model,
+        # whose values the next evaluation rewrites; the predictor of the next
+        # step runs before that evaluation, so the reference holds the
+        # converged stiffness of this step when it is read.
         integrator.last_stiffness = solver.hessian
     end
     return nothing

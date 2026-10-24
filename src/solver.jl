@@ -348,7 +348,7 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
     stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
     rs_internal_force = build_robin_schwarz_force(model)
-    solver.hessian = newmark_hessian(stiffness, model.mass, β, Δt)
+    solver.hessian = newmark_hessian!(solver.hessian, stiffness, model.mass, β, Δt)
     length(solver.gradient) == length(internal_force) || (solver.gradient = zeros(length(internal_force)))
     @. solver.gradient = (internal_force + rs_internal_force) - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy

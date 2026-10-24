@@ -989,21 +989,43 @@ end
 
 # K + M / β / Δt² for the Newmark Hessian. Matrices built from the same pattern
 # share their structure arrays, so the sum is a pass over the values with the
-# same elementwise arithmetic as the generic expression.
-function newmark_hessian(K::SparseMatrixCSC{Float64,Int64}, M::SparseMatrixCSC{Float64,Int64}, β::Float64, Δt::Float64)
+# same elementwise arithmetic as the generic expression. The values are written
+# into `H` when it shares the structure of K and holds values of its own (the
+# Hessian of the previous Newton iteration): the vector was allocated at every
+# iteration before (28 MB on 46 875 degrees of freedom, with the collection of
+# those bytes 14% of a coupled run on 12 threads). The reduced system and the
+# direct solver recognize the structure by identity, so the matrix returned
+# keeps the arrays of K.
+function newmark_hessian!(
+    H::SparseMatrixCSC{Float64,Int64},
+    K::SparseMatrixCSC{Float64,Int64},
+    M::SparseMatrixCSC{Float64,Int64},
+    β::Float64,
+    Δt::Float64,
+)
     if K.colptr === M.colptr && K.rowval === M.rowval
         K_values = K.nzval
         M_values = M.nzval
-        H_values = Vector{Float64}(undef, length(K_values))
+        reuse =
+            H.colptr === K.colptr &&
+            H.rowval === K.rowval &&
+            H.nzval !== K_values &&
+            H.nzval !== M_values &&
+            length(H.nzval) == length(K_values)
+        H_values = reuse ? H.nzval : Vector{Float64}(undef, length(K_values))
         chunk_results(Nothing, () -> nothing, length(H_values); chunk=VECTOR_CHUNK) do range, _
             @inbounds for k in range
                 H_values[k] = K_values[k] + M_values[k] / β / Δt / Δt
             end
             return nothing
         end
-        return SparseMatrixCSC(K.m, K.n, K.colptr, K.rowval, H_values)
+        return reuse ? H : SparseMatrixCSC(K.m, K.n, K.colptr, K.rowval, H_values)
     end
     return K + M / β / Δt / Δt
+end
+
+function newmark_hessian(K::SparseMatrixCSC{Float64,Int64}, M::SparseMatrixCSC{Float64,Int64}, β::Float64, Δt::Float64)
+    return newmark_hessian!(spzeros(0, 0), K, M, β, Δt)
 end
 
 function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver::Solver)

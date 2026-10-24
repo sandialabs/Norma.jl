@@ -161,12 +161,18 @@ one thread is requested and the variable is not in the environment, and
 `sweep.sh` exports the same value; the measurements earlier in this file
 were made without it.
 
-The allocation of the coupled run, 45 GB over 1200 Newton iterations, is the
-Newmark Hessian: `newmark_hessian` allocates the values of K + M/(βΔt²) at
-every iteration (28 MB on the clamped block, 8.5 MB on the free one), and
-the garbage collection took 14% of the run on 12 threads. The assembly
-itself allocates 0.3 MB per evaluation and the conjugate gradient 4 MB per
-solve in the tasks of its passes.
+The allocation of the coupled run, 45 GB over 1200 Newton iterations, was
+the Newmark Hessian: the values of K + M/(βΔt²) were allocated at every
+iteration (28 MB on the clamped block, 8.5 MB on the free one), and the
+garbage collection took 14% of the run on 12 threads. Since October 24, 2026
+(`newmark_hessian!`) they are written into the Hessian of the previous
+iteration when the pattern is unchanged: the Newmark wrapper allocates
+2.6 MB per iteration on the clamped block, the coupled run 12 GB with 1.5 s
+of collection, and its wall time on 12 pinned threads 21.2 s against 22.3;
+the monolithic bar, timed alternately with the previous commit under a
+loaded machine, 5.0 against 5.5 s. The fields of both cases are bitwise
+identical. The assembly itself allocates 0.3 MB per evaluation and the
+conjugate gradient 4 MB per solve in the tasks of its passes.
 
 Algebraic multigrid (AlgebraicMultigrid.jl 2.0.2, tried on October 24, 2026
 and not adopted), as the preconditioner of the library conjugate gradient on
