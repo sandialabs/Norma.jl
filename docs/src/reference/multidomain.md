@@ -60,6 +60,24 @@ residual of the matching pairs against `matching relative tolerance`, or both.
 Under the default `abort` the run stops; `warn` continues with the last
 iterate.
 
+### Linear solver of the subdomains
+
+The time of a Schwarz run is that of its subdomain solves: on one thread the
+coupling layer itself (the transfer operators, the partner histories, the
+relaxation) took 1.5% of the matrix-inclusion split and 7.6% of the
+nonconforming Dirichlet-Neumann cantilever, and the construction of the
+projectors 23% of the short inclusion run. Subdomains are often small and
+solved many times, where the conjugate gradient repeats many iterations on a
+small matrix and a factorization is cheap. Measured on one thread of a
+Ryzen 9 9900X (October 24, 2026), wall seconds of the whole run by the
+`linear solver` and `preconditioner` of the subdomain solver blocks
+([solvers](solvers.md)): the nonconforming cantilever (315 and 66 nodes,
+1992 solves) 2.45 with `cg`, 2.02 with `jacobi`, 0.97 with `cholesky`, 1.72
+with `direct`; the matrix-inclusion split (703 and 262 nodes, 48 solves)
+1.19, 1.22, 1.02, and 0.81. For small dynamic subdomains the reused Cholesky
+factor as preconditioner is the fastest option measured; for small
+quasi-static ones, the direct solver.
+
 ### Inexact Newton control of the subdomain solves
 
 The optional block `inexact Newton` sets the relative Newton tolerance of every

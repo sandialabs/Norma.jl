@@ -64,6 +64,18 @@ wall seconds of the timed run.
 | quasistatic24-cg, 12 | | 2.45 |
 | quasistatic24-direct, 12 | | 24.1 |
 
+Coupled cases, one thread, wall seconds by the linear solver of the
+subdomains (the examples `nonoverlap/dynamic-same-step/cantilever-dn-nonconforming`
+over 200 steps and `nonoverlap/static-same-step/matrix-inclusion-split`):
+
+| Case | `cg` | `cg`, `jacobi` | `cg`, `cholesky` | `direct` |
+|---|---:|---:|---:|---:|
+| cantilever, 315 and 66 nodes, 1992 solves | 2.45 | 2.02 | 0.97 | 1.72 |
+| inclusion split, 703 and 262 nodes, 48 solves | 1.19 | 1.22 | 1.02 | 0.81 |
+
+The coupling layer took 1.5% and 7.6% of these runs; the rest is the
+subdomain solves.
+
 Before: garbage collection took 52% of the explicit run on 12 threads (549 MB
 allocated per step), the stable time step read the untyped shape function
 tables inside its loop, the per-thread accumulators shared cache lines, and
