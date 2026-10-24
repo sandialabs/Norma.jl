@@ -88,7 +88,13 @@ JULIA_EXCLUSIVE=1 julia -t 8 --project=. src/Norma.jl input.yaml
 
 The threads are pinned to the first cores, so two threaded runs on one
 machine would share them: start the second with `JULIA_EXCLUSIVE=0`, which
-the launcher leaves alone.
+the launcher leaves alone. The same applies to a run with fewer threads than
+cores on a processor with several core complexes: the pinned threads fill
+the first complex and share its cache, and the coupled run above took 28.4 s
+on 6 pinned threads against 22.3 s on 6 unpinned ones (and 17.8 s on 12
+pinned, 30.5 s on 12 unpinned). Do not confine the process with `taskset` to
+as many CPUs as it has threads: the collector and the BLAS threads then
+displace the pinned chunks of the loops, and the same run took 116 s.
 
 An automatic count is refused: `-t auto`, `--threads auto` and
 `JULIA_NUM_THREADS=auto` all abort the run at startup. On a large node the

@@ -158,11 +158,24 @@ workers at every pass. Wall seconds on 12 threads with the even chunks:
 | beam-cholesky | 7.5 | 8.1 | | 7.3 |
 | explicit48 | 2.46 | 2.56 | | 2.25 |
 
-The coupled run on 6 pinned threads took 32.8 s, as without pinning, and on
-one thread 62.7 s. `bin/norma` exports `JULIA_EXCLUSIVE=1` when more than
-one thread is requested and the variable is not in the environment, and
-`sweep.sh` exports the same value; the measurements earlier in this file
-were made without it.
+`bin/norma` exports `JULIA_EXCLUSIVE=1` when more than one thread is
+requested and the variable is not in the environment, and `sweep.sh`
+exports the same value; the measurements earlier in this file were made
+without it. Pinning places the threads on CPUs 0 to n-1, which on this
+processor (two core complexes of 6 cores, 32 MB of level 3 cache each) puts
+6 threads on one complex. Coupled run after the changes of the next
+paragraphs, wall seconds:
+
+| threads | pinned | unpinned | confined with `taskset` to 6 CPUs |
+|---:|---:|---:|---:|
+| 6 | 28.4 | 22.3 | 116 (one complex), 180 (three cores of each) |
+| 12 | 17.8 | 30.5 | |
+
+With 6 threads the unpinned run spreads over both complexes and their two
+caches; with 12 the pinned run avoids the migration of the threads. The
+confined runs show the hazard of the static chunks: the collector and the
+BLAS threads of the process compete with the pinned threads for the same
+CPUs, and a loop waits for every descheduled chunk.
 
 The serial items of the coupling layer were then reduced to the interface
 rows (October 24, 2026). The d'Alembert reaction `M a - f_body - f_boundary`
@@ -187,6 +200,15 @@ against 2.2), the quasi-static cube 1.99 s against 2.26, and the coupled
 case 17.7 s against 17.9; the fields of the three cases are bitwise
 identical. The tangent predictor copies the converged stiffness of a step,
 which it held by reference while every evaluation built a new matrix.
+
+The subdomain solves of the coupled case take 2 Newton iterations each on a
+linear elastic material because the relative tolerance of the conjugate
+gradient, 1.5e-8 by default, is looser than the Newton tolerance of the
+input, 1e-10: the first iteration leaves the residual at the linear
+tolerance and the second solves again. With `linear solver relative
+tolerance: 1.0e-12` in both subdomains every solve takes one iteration and
+the run 13.3 s against 17.8 on 12 pinned threads, with the same 15 Schwarz
+iterations per step.
 
 The allocation of the coupled run, 45 GB over 1200 Newton iterations, was
 the Newmark Hessian: the values of K + M/(βΔt²) were allocated at every
