@@ -21,6 +21,12 @@ end
 struct ElementValueBuffers
     force::Vector{Vector{Float64}}        # per block, num_elements * dofs per element
     lumped_mass::Vector{Vector{Float64}}
+    # Per block, the degree of freedom of every value, and the inverse of that
+    # map (inverse_map): the positions of the values that add into each degree
+    # of freedom.
+    dof_target::Vector{Vector{Int64}}
+    dof_ptr::Vector{Vector{Int64}}
+    dof_source::Vector{Vector{Int32}}
 end
 
 # Fixed sparsity pattern of the global matrices with, per block and element,
@@ -34,6 +40,10 @@ struct MatrixPattern
     slots::Vector{Vector{Int64}}
     stiffness::Vector{Vector{Float64}}
     mass::Vector{Vector{Float64}}
+    # Inverse of the slots (inverse_map): per block, the positions of the
+    # element values that add into each nonzero.
+    entry_ptr::Vector{Vector{Int64}}
+    entry::Vector{Vector{Int32}}
 end
 
 struct EvaluationFlags
@@ -50,13 +60,12 @@ struct EvaluationFlags
     mesh_smoothing::Bool
 end
 
-struct SMElementThreadLocalArrays{T,DOFV,IFV,LMV,SM,MM}
-    energy::Vector{T}
-    dofs::Vector{DOFV}
-    internal_force::Vector{IFV}
-    lumped_mass::Vector{LMV}
-    stiffness::Vector{SM}
-    mass::Vector{MM}
+struct ElementArrays{DOFV,IFV,LMV,SM,MM}
+    dofs::DOFV
+    internal_force::IFV
+    lumped_mass::LMV
+    stiffness::SM
+    mass::MM
 end
 
 # Per-block mesh data read once at construction: the connectivity and the

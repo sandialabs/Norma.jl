@@ -4,7 +4,7 @@
 # is released under the BSD license detailed in the file LICENSE.md in the
 # top-level Norma.jl directory.
 
-using Base.Threads: @threads, threadid, nthreads, maxthreadid
+using Base.Threads: @threads
 
 # Whether `model` was constructed by resuming from a restart checkpoint (see
 # process_restart!() / process_multidomain_restart!() in simulation.jl). For
@@ -212,9 +212,11 @@ function SolidMechanics(params::Parameters)
         # An early un-equilibrated iterate that fake-yields then corrupts
         # state_old and Newton stalls chasing a residual that moves with it.
         # The explicit commit lives in commit_state (simulation.jl), called
-        # only when a step is accepted.
+        # only when a step is accepted. A material without state has empty
+        # vectors that nothing writes, shared as copy_state shares them: their
+        # deep copy took 0.5 s of the setup on 110 592 hexahedra.
         push!(state_old, block_state)
-        push!(state, deepcopy(block_state))
+        push!(state, num_states > 0 ? deepcopy(block_state) : block_state)
         push!(stored_energy, block_stored_energy)
     end
     if all_composite && !any(data -> data.element_type == COMPOSITE_TETRA10, block_data)
@@ -337,7 +339,7 @@ function SolidMechanics(params::Parameters)
         num_int_pts,
         block_data,
         lattice_orientation,
-        create_element_value_buffers(block_data),
+        create_element_value_buffers(block_data, num_nodes),
         nothing,
         restart_info !== nothing,
     )
@@ -699,16 +701,6 @@ end
     end
 end
 
-using Base.Threads
-
-function create_threadlocal_element_matrices(::Type{T}, ::Val{N}) where {T,N}
-    return [create_element_matrix(T, Val(N)) for _ in 1:Threads.maxthreadid()]
-end
-
-function create_threadlocal_element_vectors(::Type{T}, ::Val{N}) where {T,N}
-    return [create_element_vector(T, Val(N)) for _ in 1:Threads.maxthreadid()]
-end
-
 # Internal force from the first Piola-Kirchhoff stress: for node a and
 # direction i, f[(a,i)] += P[i,k] dN_a/dX_k dV, written as loops over the
 # static arrays so that no operator matrix is formed.
@@ -794,10 +786,28 @@ end
     return nothing
 end
 
-function create_element_value_buffers(blocks::Vector{ElementBlockData})
+function create_element_value_buffers(blocks::Vector{ElementBlockData}, num_nodes::Integer)
     force = [zeros(3 * block.num_nodes_per_element * block.num_elements) for block in blocks]
     lumped_mass = [zeros(3 * block.num_nodes_per_element * block.num_elements) for block in blocks]
-    return ElementValueBuffers(force, lumped_mass)
+    dof_target = Vector{Vector{Int64}}(undef, length(blocks))
+    dof_ptr = Vector{Vector{Int64}}(undef, length(blocks))
+    dof_source = Vector{Vector{Int32}}(undef, length(blocks))
+    for (block_index, block) in enumerate(blocks)
+        nd = 3 * block.num_nodes_per_element
+        dofs = Vector{Int64}(undef, nd)
+        targets = Vector{Int64}(undef, nd * block.num_elements)
+        k = 0
+        for element in 1:block.num_elements
+            fill_dofs!(dofs, block.connectivity, element)
+            @inbounds for i in 1:nd
+                k += 1
+                targets[k] = dofs[i]
+            end
+        end
+        dof_ptr[block_index], dof_source[block_index] = inverse_map(targets, 3 * Int64(num_nodes))
+        dof_target[block_index] = targets
+    end
+    return ElementValueBuffers(force, lumped_mass, dof_target, dof_ptr, dof_source)
 end
 
 # The sparsity pattern is that of the sum over elements of the element
@@ -849,13 +859,14 @@ function build_matrix_pattern(model::SolidMechanics)
     stiffness = [zeros(length(block_slots)) for block_slots in slots]
     # The mass values are sized on first use: quasi-static runs never need them.
     mass = [Float64[] for _ in slots]
-    return MatrixPattern(colptr, rowval, slots, stiffness, mass)
+    inverses = [inverse_map(block_slots, length(rowval)) for block_slots in slots]
+    return MatrixPattern(colptr, rowval, slots, stiffness, mass, first.(inverses), last.(inverses))
 end
 
 # Copy the element arrays of one element into its value segments. Segments of
 # different elements are disjoint, so this is safe from any thread.
 function store_element_values!(
-    element_arrays_tl::SMElementThreadLocalArrays,
+    arrays::ElementArrays,
     block_element_index::Int64,
     force_values::Vector{Float64},
     lumped_mass_values::Vector{Float64},
@@ -863,15 +874,14 @@ function store_element_values!(
     mass_values::Vector{Float64},
     flags::EvaluationFlags,
 )
-    t = threadid()
-    nd = length(element_arrays_tl.dofs[t])
+    nd = length(arrays.dofs)
     offset = (block_element_index - 1) * nd
-    fe = element_arrays_tl.internal_force[t]
+    fe = arrays.internal_force
     @inbounds for i in 1:nd
         force_values[offset + i] = fe[i]
     end
     if flags.compute_lumped_mass == true
-        me = element_arrays_tl.lumped_mass[t]
+        me = arrays.lumped_mass
         @inbounds for i in 1:nd
             lumped_mass_values[offset + i] = me[i]
         end
@@ -879,13 +889,13 @@ function store_element_values!(
     n2 = nd * nd
     offset2 = (block_element_index - 1) * n2
     if flags.compute_stiffness == true
-        Ke = element_arrays_tl.stiffness[t]
+        Ke = arrays.stiffness
         @inbounds for k in 1:n2
             stiffness_values[offset2 + k] = Ke[k]
         end
     end
     if flags.compute_mass == true
-        Me = element_arrays_tl.mass[t]
+        Me = arrays.mass
         @inbounds for k in 1:n2
             mass_values[offset2 + k] = Me[k]
         end
@@ -893,32 +903,72 @@ function store_element_values!(
     return nothing
 end
 
-function reduce_element_vector(blocks::Vector{ElementBlockData}, values::Vector{Vector{Float64}}, num_dofs::Int64)
-    global_vector = zeros(num_dofs)
-    for (block_index, block) in enumerate(blocks)
-        block_values = values[block_index]
-        connectivity = block.connectivity
-        num_nodes_per_element = block.num_nodes_per_element
-        k = 0
-        @inbounds for element in 1:block.num_elements, a in 1:num_nodes_per_element
-            base = 3 * (connectivity[a, element] - 1)
-            global_vector[base + 1] += block_values[k + 1]
-            global_vector[base + 2] += block_values[k + 2]
-            global_vector[base + 3] += block_values[k + 3]
-            k += 3
+# The global vector from the element value segments. On one thread the values
+# are scattered into the vector in element order. On several, every degree of
+# freedom gathers its sources (dof_source) in element order, so the sums are
+# the same as those of the scatter, and the degrees of freedom are divided
+# among the threads without conflicts. The gather reads the values out of
+# order, which on one thread takes twice the time of the scatter.
+function reduce_element_vector(buffers::ElementValueBuffers, values::Vector{Vector{Float64}}, num_dofs::Int64)
+    global_vector = Vector{Float64}(undef, num_dofs)
+    ptrs = buffers.dof_ptr
+    sources = buffers.dof_source
+    if Threads.nthreads() == 1
+        fill!(global_vector, 0.0)
+        @inbounds for block_index in eachindex(values)
+            block_values = values[block_index]
+            target = buffers.dof_target[block_index]
+            for k in eachindex(block_values)
+                global_vector[target[k]] += block_values[k]
+            end
         end
+        return global_vector
+    end
+    @threads :static for dof in 1:num_dofs
+        s = 0.0
+        @inbounds for block_index in eachindex(values)
+            block_values = values[block_index]
+            ptr = ptrs[block_index]
+            source = sources[block_index]
+            for p in ptr[dof]:(ptr[dof + 1] - 1)
+                s += block_values[source[p]]
+            end
+        end
+        @inbounds global_vector[dof] = s
     end
     return global_vector
 end
 
+# The global matrix from the element value segments, as the vector above: on
+# one thread the scatter through the slots, on several every nonzero gathers
+# its entries in element order.
 function reduce_element_matrix(pattern::MatrixPattern, values::Vector{Vector{Float64}}, num_dofs::Int64)
-    nzval = zeros(length(pattern.rowval))
-    for block_index in eachindex(values)
-        block_values = values[block_index]
-        block_slots = pattern.slots[block_index]
-        @inbounds for k in eachindex(block_values)
-            nzval[block_slots[k]] += block_values[k]
+    num_nonzeros = length(pattern.rowval)
+    nzval = Vector{Float64}(undef, num_nonzeros)
+    ptrs = pattern.entry_ptr
+    entries = pattern.entry
+    if Threads.nthreads() == 1
+        fill!(nzval, 0.0)
+        @inbounds for block_index in eachindex(values)
+            block_values = values[block_index]
+            block_slots = pattern.slots[block_index]
+            for k in eachindex(block_values)
+                nzval[block_slots[k]] += block_values[k]
+            end
         end
+        return SparseMatrixCSC(num_dofs, num_dofs, pattern.colptr, pattern.rowval, nzval)
+    end
+    @threads :static for j in 1:num_nonzeros
+        s = 0.0
+        @inbounds for block_index in eachindex(values)
+            block_values = values[block_index]
+            ptr = ptrs[block_index]
+            entry = entries[block_index]
+            for p in ptr[j]:(ptr[j + 1] - 1)
+                s += block_values[entry[p]]
+            end
+        end
+        @inbounds nzval[j] = s
     end
     return SparseMatrixCSC(num_dofs, num_dofs, pattern.colptr, pattern.rowval, nzval)
 end
@@ -964,45 +1014,43 @@ function compute_flags(model::SolidMechanics, integrator::TimeIntegrator, solver
     )
 end
 
-function create_element_threadlocal_arrays(num_element_nodes::Int64, flags::EvaluationFlags)
-    valN = Val(num_element_nodes)
-    energy = zeros(maxthreadid())
-    dofs = create_threadlocal_element_vectors(Int64, valN)
-    internal_force = create_threadlocal_element_vectors(Float64, valN)
-    lumped_mass = create_threadlocal_element_vectors(Float64, flags.compute_lumped_mass ? valN : Val(0))
-    stiffness = create_threadlocal_element_matrices(Float64, flags.compute_stiffness ? valN : Val(0))
-    mass = create_threadlocal_element_matrices(Float64, flags.compute_mass ? valN : Val(0))
-    return SMElementThreadLocalArrays(energy, dofs, internal_force, lumped_mass, stiffness, mass)
+# The element arrays of one task of the assembly: the degrees of freedom, the
+# force, and the matrices of the element being evaluated. Arrays that the flags
+# do not ask for have size zero.
+function create_element_arrays(valN::Val{N}, flags::EvaluationFlags) where {N}
+    dofs = create_element_vector(Int64, valN)
+    internal_force = create_element_vector(Float64, valN)
+    lumped_mass = create_element_vector(Float64, flags.compute_lumped_mass ? valN : Val(0))
+    stiffness = create_element_matrix(Float64, flags.compute_stiffness ? valN : Val(0))
+    mass = create_element_matrix(Float64, flags.compute_mass ? valN : Val(0))
+    return ElementArrays(dofs, internal_force, lumped_mass, stiffness, mass)
 end
 
-function reset_element_threadlocal_arrays!(
-    element_arrays_tl::SMElementThreadLocalArrays,
+function reset_element_arrays!(
+    arrays::ElementArrays,
     element_block_connectivity::Matrix{<:Integer},
     block_element_index::Integer,
     flags::EvaluationFlags,
 )
-    t = threadid()
     node_indices = view(element_block_connectivity, :, block_element_index)
-    fill_dofs!(element_arrays_tl.dofs[t], element_block_connectivity, block_element_index)
-    element_arrays_tl.energy[t] = 0.0
-    fill!(element_arrays_tl.internal_force[t], 0.0)
+    fill_dofs!(arrays.dofs, element_block_connectivity, block_element_index)
+    fill!(arrays.internal_force, 0.0)
     if flags.compute_lumped_mass == true
-        fill!(element_arrays_tl.lumped_mass[t], 0.0)
+        fill!(arrays.lumped_mass, 0.0)
     end
     if flags.compute_stiffness == true
-        fill!(element_arrays_tl.stiffness[t], 0.0)
+        fill!(arrays.stiffness, 0.0)
     end
     if flags.compute_mass == true
-        fill!(element_arrays_tl.mass[t], 0.0)
+        fill!(arrays.mass, 0.0)
     end
     return node_indices
 end
 
-function compute_element_threadlocal_arrays!(
-    element_arrays_tl::SMElementThreadLocalArrays,
+function accumulate_element_arrays!(
+    arrays::ElementArrays,
     Np::SVector{N,T},
     dNdX::SMatrix{3,N,T},
-    W::T,
     P::SMatrix{3,3,T,9},
     AA::SArray{Tuple{3,3,3,3},T},
     density::T,
@@ -1010,17 +1058,15 @@ function compute_element_threadlocal_arrays!(
     flags::EvaluationFlags,
     mass_at_points::Bool,
 ) where {T,N}
-    t = threadid()
-    element_arrays_tl.energy[t] += W * dvol
-    add_internal_force!(element_arrays_tl.internal_force[t], dNdX, P, dvol)
+    add_internal_force!(arrays.internal_force, dNdX, P, dvol)
     if flags.compute_lumped_mass == true && mass_at_points
-        add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
+        add_lumped_mass!(arrays.lumped_mass, Np, density, dvol)
     end
     if flags.compute_stiffness == true
-        add_stiffness!(element_arrays_tl.stiffness[t], dNdX, AA, dvol)
+        add_stiffness!(arrays.stiffness, dNdX, AA, dvol)
     end
     if flags.compute_mass == true && mass_at_points
-        add_mass!(element_arrays_tl.mass[t], Np, density, dvol)
+        add_mass!(arrays.mass, Np, density, dvol)
     end
     return nothing
 end
@@ -1028,7 +1074,7 @@ end
 # The mass of an element integrated with a rule of its own (the composite
 # tetrahedron), on the reference configuration.
 function add_element_mass!(
-    element_arrays_tl::SMElementThreadLocalArrays,
+    arrays::ElementArrays,
     element_reference_position::SMatrix{3,NN,T},
     mass_N::SMatrix{NN,NM,T},
     mass_dN::SArray{Tuple{3,NN,NM},T},
@@ -1036,16 +1082,15 @@ function add_element_mass!(
     density::T,
     flags::EvaluationFlags,
 ) where {NN,NM,T}
-    t = threadid()
     for point in 1:NM
         Np = mass_N[:, point]
         dXdξ = mass_dN[:, :, point] * element_reference_position'
         dvol = det(dXdξ) * mass_weights[point]
         if flags.compute_lumped_mass == true
-            add_lumped_mass!(element_arrays_tl.lumped_mass[t], Np, density, dvol)
+            add_lumped_mass!(arrays.lumped_mass, Np, density, dvol)
         end
         if flags.compute_mass == true
-            add_mass!(element_arrays_tl.mass[t], Np, density, dvol)
+            add_mass!(arrays.mass, Np, density, dvol)
         end
     end
     return nothing
@@ -1067,7 +1112,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     if flags.compute_mass == true
         model.compute_mass = false
     end
-    energy_tl = zeros(maxthreadid())
+    strain_energy = 0.0
     Δt = material_time_step(integrator)
     materials = model.materials
     num_nodes = size(model.reference, 2)
@@ -1082,7 +1127,6 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         N, dN, ip_weights = block.N, block.dN, block.weights
         mass_N, mass_dN, mass_weights = block.mass_N, block.mass_dN, block.mass_weights
         element_block_connectivity = block.connectivity
-        element_arrays_tl = create_element_threadlocal_arrays(block.num_nodes_per_element, flags)
         force_values = buffers.force[block_index]
         lumped_mass_values = flags.compute_lumped_mass ? buffers.lumped_mass[block_index] : Float64[]
         stiffness_values = flags.compute_stiffness ? pattern.stiffness[block_index] : Float64[]
@@ -1093,10 +1137,8 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         # Function barrier: the shape function tables are static arrays whose
         # type depends on the element type, so the loop must be compiled for
         # the concrete types to avoid dynamic dispatch on every operation.
-        ok = evaluate_block!(
+        ok, block_energy = evaluate_block!(
             model,
-            energy_tl,
-            element_arrays_tl,
             force_values,
             lumped_mass_values,
             stiffness_values,
@@ -1116,11 +1158,12 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             Δt,
         )
         ok || return nothing
+        strain_energy += block_energy
     end
-    model.strain_energy = sum(energy_tl)
-    model.internal_force = reduce_element_vector(model.blocks, buffers.force, num_dofs)
+    model.strain_energy = strain_energy
+    model.internal_force = reduce_element_vector(buffers, buffers.force, num_dofs)
     if flags.compute_lumped_mass == true
-        model.lumped_mass = reduce_element_vector(model.blocks, buffers.lumped_mass, num_dofs)
+        model.lumped_mass = reduce_element_vector(buffers, buffers.lumped_mass, num_dofs)
     end
     if flags.compute_stiffness == true
         model.stiffness = reduce_element_matrix(pattern, pattern.stiffness, num_dofs)
@@ -1200,8 +1243,7 @@ end
 
 function evaluate_element!(
     model::SolidMechanics,
-    energy_tl::Vector{Float64},
-    element_arrays_tl::SMElementThreadLocalArrays,
+    arrays::ElementArrays,
     force_values::Vector{Float64},
     lumped_mass_values::Vector{Float64},
     stiffness_values::Vector{Float64},
@@ -1223,9 +1265,7 @@ function evaluate_element!(
     Δt::Float64,
     block_weights::Union{Nothing,Vector{Vector{Float64}}},
 )
-    node_indices = reset_element_threadlocal_arrays!(
-        element_arrays_tl, element_block_connectivity, block_element_index, flags
-    )
+    node_indices = reset_element_arrays!(arrays, element_block_connectivity, block_element_index, flags)
     # Anisotropic smoothing: the ideal element comes from the metric field and
     # the energy is evaluated on the deformation gradient in the metric space,
     # F_U = F_M F F_M⁻¹, with stress and tangent pulled back to the reference.
@@ -1245,8 +1285,9 @@ function evaluate_element!(
         gather_nodal(model.reference, node_indices, N) + gather_nodal(model.displacement, node_indices, N)
     mass_at_points = element_type != COMPOSITE_TETRA10
     if !mass_at_points && (flags.compute_mass == true || flags.compute_lumped_mass == true)
-        add_element_mass!(element_arrays_tl, element_reference_position, mass_N, mass_dN, mass_weights, density, flags)
+        add_element_mass!(arrays, element_reference_position, mass_N, mass_dN, mass_weights, density, flags)
     end
+    element_energy = 0.0
     for point in 1:num_points
         Np = N[:, point]
         dNdξ = dN[:, :, point]
@@ -1262,7 +1303,7 @@ function evaluate_element!(
             norma_logf(4, :warning, "det(F) = %.3e", J)
             log_matrix(4, :info, "Reference Configuration", Matrix(element_reference_position))
             log_matrix(4, :info, "Current Configuration", Matrix(element_current_position))
-            return nothing
+            return 0.0
         end
         if anisotropic
             F_U = F_M * F * F_M_inv
@@ -1278,30 +1319,29 @@ function evaluate_element!(
         end
         if ok == false
             model.failed = true
-            return nothing  # skip remaining integration points for this element
+            return 0.0  # skip remaining integration points for this element
         end
         ip_weight = ip_weights[point]
         det_dXdξ = det(dXdξ)
         dvol = det_dXdξ * ip_weight
         block_weights === nothing || (dvol *= block_weights[block_element_index][point])
-        compute_element_threadlocal_arrays!(element_arrays_tl, Np, dNdX, W, P, AA, density, dvol, flags, mass_at_points)
+        element_energy += W * dvol
+        accumulate_element_arrays!(arrays, Np, dNdX, P, AA, density, dvol, flags, mass_at_points)
         voigt_cauchy = voigt_cauchy_from_stress(material, P, F, J)
         model.stress[block_index][block_element_index][point] = voigt_cauchy
     end
-    t = threadid()
-    element_energy = element_arrays_tl.energy[t]
     model.stored_energy[block_index][block_element_index] = element_energy
-    energy_tl[t] += element_energy
     store_element_values!(
-        element_arrays_tl, block_element_index, force_values, lumped_mass_values, stiffness_values, mass_values, flags
+        arrays, block_element_index, force_values, lumped_mass_values, stiffness_values, mass_values, flags
     )
-    return nothing
+    return element_energy
 end
 
-function evaluate_block!(
+# The elements of a chunk, by the task that owns `arrays`; the sum of their
+# strain energies.
+function evaluate_chunk!(
     model::SolidMechanics,
-    energy_tl::Vector{Float64},
-    element_arrays_tl::SMElementThreadLocalArrays,
+    arrays::ElementArrays,
     force_values::Vector{Float64},
     lumped_mass_values::Vector{Float64},
     stiffness_values::Vector{Float64},
@@ -1310,28 +1350,25 @@ function evaluate_block!(
     material::Material,
     density::Float64,
     element_type::ElementType,
-    N::SMatrix{NN,NP,T},
-    dN::SArray{Tuple{3,NN,NP},T},
-    ip_weights::AbstractVector{T},
+    N::SMatrix,
+    dN::SArray,
+    ip_weights::AbstractVector,
     mass_N::SMatrix,
     mass_dN::SArray,
     mass_weights::AbstractVector,
     element_block_connectivity::Matrix{<:Integer},
     flags::EvaluationFlags,
+    num_points::Int64,
     Δt::Float64,
-)::Bool where {NN,NP,T}
-    num_block_elements = size(element_block_connectivity, 2)
-    num_points = size(N, 2)
-    block_weights = assembly_block_weights(model, block_index)
-    # No static parameter (NN, NP, T) is used inside the threaded loop body: it
-    # is a closure, and captured static parameters are runtime values there,
-    # which would make every static array constructor a dynamic call.
-    @threads for block_element_index in 1:num_block_elements
-        model.failed && continue
-        evaluate_element!(
+    block_weights::Union{Nothing,Vector{Vector{Float64}}},
+    elements::UnitRange{Int64},
+)
+    energy = 0.0
+    for block_element_index in elements
+        model.failed && break
+        energy += evaluate_element!(
             model,
-            energy_tl,
-            element_arrays_tl,
+            arrays,
             force_values,
             lumped_mass_values,
             stiffness_values,
@@ -1354,7 +1391,70 @@ function evaluate_block!(
             block_weights,
         )
     end
-    return !model.failed
+    return energy
+end
+
+# One block: whether every element evaluated, and the strain energy of the
+# block. The elements are evaluated in chunks of fixed size by one task per
+# thread, each task with element arrays of its own (chunk_results): no two
+# tasks write one cache line, and the sum of the chunk energies, taken in
+# chunk order, is the same on every thread count.
+function evaluate_block!(
+    model::SolidMechanics,
+    force_values::Vector{Float64},
+    lumped_mass_values::Vector{Float64},
+    stiffness_values::Vector{Float64},
+    mass_values::Vector{Float64},
+    block_index::Int64,
+    material::Material,
+    density::Float64,
+    element_type::ElementType,
+    N::SMatrix{NN,NP,T},
+    dN::SArray{Tuple{3,NN,NP},T},
+    ip_weights::AbstractVector{T},
+    mass_N::SMatrix,
+    mass_dN::SArray,
+    mass_weights::AbstractVector,
+    element_block_connectivity::Matrix{<:Integer},
+    flags::EvaluationFlags,
+    Δt::Float64,
+) where {NN,NP,T}
+    num_block_elements = size(element_block_connectivity, 2)
+    num_points = size(N, 2)
+    block_weights = assembly_block_weights(model, block_index)
+    # No static parameter (NN, NP, T) is used inside the closures below: a
+    # captured static parameter is a runtime value there, which would make
+    # every static array constructor a dynamic call. The element arrays are
+    # created from this value instead.
+    valN = Val(NN)
+    init() = create_element_arrays(valN, flags)
+    energies = chunk_results(Float64, init, num_block_elements) do elements, arrays
+        return evaluate_chunk!(
+            model,
+            arrays,
+            force_values,
+            lumped_mass_values,
+            stiffness_values,
+            mass_values,
+            block_index,
+            material,
+            density,
+            element_type,
+            N,
+            dN,
+            ip_weights,
+            mass_N,
+            mass_dN,
+            mass_weights,
+            element_block_connectivity,
+            flags,
+            num_points,
+            Δt,
+            block_weights,
+            elements,
+        )
+    end
+    return !model.failed, sum(energies)
 end
 
 function get_block_connectivity(mesh::ExodusDatabase, block_id::Integer)

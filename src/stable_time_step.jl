@@ -193,14 +193,28 @@ function minimum_block_altitude(
     weights::AbstractVector{T},
 ) where {NN,NP,T}
     element_type = block.element_type
-    minima = fill(Inf, maxthreadid())
-    @threads for element in 1:block.num_elements
-        _, x = element_coordinates(model, block, element, Val(NN))
-        h = element_altitude(element_type, x, element_volume(x, dN, weights))
-        t = threadid()
-        @inbounds minima[t] = min(minima[t], h)
+    valN = Val(NN)
+    minima = chunk_results(Float64, () -> nothing, block.num_elements) do elements, _
+        return altitude_chunk_minimum(model, block, valN, dN, weights, element_type, elements)
     end
     return minimum(minima)
+end
+
+function altitude_chunk_minimum(
+    model::SolidMechanics,
+    block::ElementBlockData,
+    ::Val{NN},
+    dN::SArray{Tuple{3,NN,NP},T},
+    weights::AbstractVector{T},
+    element_type::ElementType,
+    elements::UnitRange{Int64},
+) where {NN,NP,T}
+    h_min = Inf
+    for element in elements
+        _, x = element_coordinates(model, block, element, Val(NN))
+        h_min = min(h_min, element_altitude(element_type, x, element_volume(x, dN, weights)))
+    end
+    return h_min
 end
 
 # Smallest element critical step of a block on the current configuration.
@@ -218,27 +232,30 @@ function minimum_block_eigenvalue_step(
     material = model.materials[block_index]
     element_type = block.element_type
     density = material.ρ
-    minima = fill(Inf, maxthreadid())
-    @threads for element in 1:block.num_elements
-        X, x = element_coordinates(model, block, element, Val(NN))
-        ω² = element_omega_squared(
-            model,
-            block_index,
-            element,
-            material,
-            density,
-            element_type,
-            X,
-            x,
-            N,
-            dN,
-            weights,
-            mass_N,
-            mass_dN,
-            mass_weights,
-        )
-        t = threadid()
-        @inbounds minima[t] = min(minima[t], 2 / sqrt(ω²))
+    valN = Val(NN)
+    minima = chunk_results(Float64, () -> nothing, block.num_elements) do elements, _
+        step_min = Inf
+        for element in elements
+            X, x = element_coordinates(model, block, element, valN)
+            ω² = element_omega_squared(
+                model,
+                block_index,
+                element,
+                material,
+                density,
+                element_type,
+                X,
+                x,
+                N,
+                dN,
+                weights,
+                mass_N,
+                mass_dN,
+                mass_weights,
+            )
+            step_min = min(step_min, 2 / sqrt(ω²))
+        end
+        return step_min
     end
     return minimum(minima)
 end

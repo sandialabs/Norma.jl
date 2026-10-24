@@ -373,3 +373,60 @@ end
 function stripped_name(file::AbstractString)
     return first(splitext(basename(file)))
 end
+
+# Results of f over the chunks of 1:n, computed by one task per thread. The
+# chunks have a fixed size, so the partition does not depend on the thread
+# count, and the results are returned in chunk order: a sum over them is the
+# same on every thread count and every run. Task j takes the chunks j,
+# j + ntasks, ...; each task holds one state from init(), the buffers it alone
+# writes, so that no two tasks write one cache line (per-thread accumulators
+# indexed by threadid() shared lines, and a loop of pure arithmetic over
+# 110 592 elements ran 0.895 ms against 0.227 ms with this form on 12 threads).
+# f(range, state) returns a value of type T.
+const CHUNK_ELEMENTS = 256
+
+function chunk_results(f, ::Type{T}, init, n::Integer; chunk::Integer=CHUNK_ELEMENTS) where {T}
+    nchunks = cld(n, chunk)
+    results = Vector{T}(undef, nchunks)
+    ntasks = min(Threads.nthreads(), nchunks)
+    function run_task(task::Int)
+        state = init()
+        for c in task:ntasks:nchunks
+            lo = (c - 1) * chunk + 1
+            results[c] = f(lo:min(c * chunk, n), state)
+        end
+        return nothing
+    end
+    if ntasks <= 1
+        run_task(1)
+    else
+        tasks = [Threads.@spawn run_task($task) for task in 1:ntasks]
+        foreach(wait, tasks)
+    end
+    return results
+end
+
+# Inverse of a many-to-one map k -> targets[k] onto 1:num_targets, in the
+# compressed form ptr, source: the sources of target t are
+# source[ptr[t]:(ptr[t + 1] - 1)], in increasing k. A reduction that adds, for
+# every target, its sources in that order gives the same sums as the loop over
+# k that scatters into the targets, and every target is written by one task.
+function inverse_map(targets::AbstractVector{<:Integer}, num_targets::Integer)
+    length(targets) <= typemax(Int32) ||
+        norma_abort("The inverse map of $(length(targets)) entries exceeds the 32-bit index range.")
+    ptr = zeros(Int64, num_targets + 1)
+    @inbounds for t in targets
+        ptr[t + 1] += 1
+    end
+    ptr[1] = 1
+    @inbounds for t in 1:num_targets
+        ptr[t + 1] += ptr[t]
+    end
+    next = ptr[1:num_targets]
+    source = Vector{Int32}(undef, length(targets))
+    @inbounds for (k, t) in enumerate(targets)
+        source[next[t]] = k
+        next[t] += 1
+    end
+    return ptr, source
+end

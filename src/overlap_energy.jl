@@ -312,31 +312,23 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
         end
         half_dt = 0.5 * nominal_dt
     end
-    stored_tl = zeros(maxthreadid())
-    kinetic_tl = zeros(maxthreadid())
+    stored = 0.0
+    kinetic = 0.0
     for (block_index, block) in enumerate(model.blocks)
         material = model.materials[block_index]
-        blended_block_energy!(
-            stored_tl,
-            kinetic_tl,
-            model,
-            block,
-            block_index,
-            material,
-            material.ρ,
-            aw.weights[block_index],
-            dynamic,
-            half_dt,
+        block_stored, block_kinetic = blended_block_energy(
+            model, block, block_index, material, material.ρ, aw.weights[block_index], dynamic, half_dt
         )
+        stored += block_stored
+        kinetic += block_kinetic
     end
-    return sum(stored_tl), sum(kinetic_tl)
+    return stored, kinetic
 end
 
 # Function barrier on the block's static shape functions; the elements are
-# integrated in parallel into per-thread accumulators without allocation.
-function blended_block_energy!(
-    stored_tl::Vector{Float64},
-    kinetic_tl::Vector{Float64},
+# integrated in parallel by chunks (chunk_results), and the chunk sums are
+# added in chunk order, so the result does not depend on the thread count.
+function blended_block_energy(
     model::SolidMechanics,
     block::ElementBlockData,
     block_index::Int64,
@@ -357,71 +349,78 @@ function blended_block_energy!(
     # values miss the corner nodes with the 5-point rule (see recovery.jl).
     composite = block.element_type == COMPOSITE_TETRA10
     rule = composite && dynamic ? composite_tetra10_mass_rule() : nothing
-    @threads for e in 1:block.num_elements
-        node_indices = view(conn, :, e)
-        element_reference = gather_nodal(model.reference, node_indices, N)
-        element_current = element_reference + gather_nodal(model.displacement, node_indices, N)
-        element_velocity = gather_nodal(model.velocity, node_indices, N)
-        element_acceleration = gather_nodal(model.acceleration, node_indices, N)
-        element_weights = block_weights[e]
-        stored = 0.0
-        kinetic = 0.0
-        weighted_volume = 0.0
-        volume = 0.0
-        for point in 1:num_points
-            w = element_weights[point]
-            dNdξ = dN[:, :, point]
-            dXdξ = dNdξ * element_reference'
-            dvol = det(dXdξ) * ip_weights[point]
-            # Deformation gradient and strain-energy density, exactly as
-            # evaluate() computes them.
-            dNdX = dXdξ \ dNdξ
-            F = element_current * dNdX'
-            state_old = model.state_old[block_index][e][point]
-            Q = element_lattice_orientation(model, material, block_index, e)
-            W = strain_energy_density(material, F, Q, state_old)
-            stored += w * W * dvol
+    results = chunk_results(NTuple{2,Float64}, () -> nothing, block.num_elements) do elements, _
+        chunk_stored = 0.0
+        chunk_kinetic = 0.0
+        for e in elements
+            node_indices = view(conn, :, e)
+            element_reference = gather_nodal(model.reference, node_indices, N)
+            element_current = element_reference + gather_nodal(model.displacement, node_indices, N)
+            element_velocity = gather_nodal(model.velocity, node_indices, N)
+            element_acceleration = gather_nodal(model.acceleration, node_indices, N)
+            element_weights = block_weights[e]
+            stored = 0.0
+            kinetic = 0.0
+            weighted_volume = 0.0
+            volume = 0.0
+            for point in 1:num_points
+                w = element_weights[point]
+                dNdξ = dN[:, :, point]
+                dXdξ = dNdξ * element_reference'
+                dvol = det(dXdξ) * ip_weights[point]
+                # Deformation gradient and strain-energy density, exactly as
+                # evaluate() computes them.
+                dNdX = dXdξ \ dNdξ
+                F = element_current * dNdX'
+                state_old = model.state_old[block_index][e][point]
+                Q = element_lattice_orientation(model, material, block_index, e)
+                W = strain_energy_density(material, F, Q, state_old)
+                stored += w * W * dvol
+                if dynamic && composite
+                    weighted_volume += w * dvol
+                    volume += dvol
+                elseif dynamic
+                    Np = N[:, point]
+                    if half_dt > 0.0
+                        s = sum(Np)
+                        for i in 1:num_element_nodes
+                            m_i = w * density * dvol * Np[i] * s
+                            v2 = element_velocity[1, i]^2 + element_velocity[2, i]^2 + element_velocity[3, i]^2
+                            a2 =
+                                element_acceleration[1, i]^2 +
+                                element_acceleration[2, i]^2 +
+                                element_acceleration[3, i]^2
+                            kinetic += 0.5 * m_i * (v2 - half_dt * half_dt * a2)
+                        end
+                    else
+                        v = element_velocity * Np
+                        kinetic += w * 0.5 * density * dot(v, v) * dvol
+                    end
+                end
+            end
             if dynamic && composite
-                weighted_volume += w * dvol
-                volume += dvol
-            elseif dynamic
-                Np = N[:, point]
-                if half_dt > 0.0
-                    s = sum(Np)
-                    for i in 1:num_element_nodes
-                        m_i = w * density * dvol * Np[i] * s
+                M_e = composite_tetra10_element_mass(element_reference, rule)
+                mean_weight = weighted_volume / volume
+                for i in 1:num_element_nodes
+                    if half_dt > 0.0
+                        m_i = mean_weight * density * sum(@view M_e[i, :])
                         v2 = element_velocity[1, i]^2 + element_velocity[2, i]^2 + element_velocity[3, i]^2
                         a2 = element_acceleration[1, i]^2 + element_acceleration[2, i]^2 + element_acceleration[3, i]^2
                         kinetic += 0.5 * m_i * (v2 - half_dt * half_dt * a2)
-                    end
-                else
-                    v = element_velocity * Np
-                    kinetic += w * 0.5 * density * dot(v, v) * dvol
-                end
-            end
-        end
-        if dynamic && composite
-            M_e = composite_tetra10_element_mass(element_reference, rule)
-            mean_weight = weighted_volume / volume
-            for i in 1:num_element_nodes
-                if half_dt > 0.0
-                    m_i = mean_weight * density * sum(@view M_e[i, :])
-                    v2 = element_velocity[1, i]^2 + element_velocity[2, i]^2 + element_velocity[3, i]^2
-                    a2 = element_acceleration[1, i]^2 + element_acceleration[2, i]^2 + element_acceleration[3, i]^2
-                    kinetic += 0.5 * m_i * (v2 - half_dt * half_dt * a2)
-                else
-                    for j in 1:num_element_nodes
-                        vv = dot(element_velocity[:, i], element_velocity[:, j])
-                        kinetic += 0.5 * mean_weight * density * M_e[i, j] * vv
+                    else
+                        for j in 1:num_element_nodes
+                            vv = dot(element_velocity[:, i], element_velocity[:, j])
+                            kinetic += 0.5 * mean_weight * density * M_e[i, j] * vv
+                        end
                     end
                 end
             end
+            chunk_stored += stored
+            chunk_kinetic += kinetic
         end
-        t = threadid()
-        stored_tl[t] += stored
-        kinetic_tl[t] += kinetic
+        return (chunk_stored, chunk_kinetic)
     end
-    return nothing
+    return sum(first, results), sum(last, results)
 end
 
 # Blended (stored, kinetic, total) energy of a multidomain simulation, summed
@@ -479,22 +478,23 @@ end
 # SE(v), SE(a), and the consistent-mass term ½ aᵀ M a of a linear elastic
 # subdomain, integrated with the element quadrature of evaluate().
 function quadratic_energies(model::SolidMechanics, weights::Union{Nothing,Vector{Vector{Vector{Float64}}}}=nothing)
-    se_v_tl = zeros(maxthreadid())
-    se_a_tl = zeros(maxthreadid())
-    kin_a_tl = zeros(maxthreadid())
+    se_v = 0.0
+    se_a = 0.0
+    kin_a = 0.0
     for (block_index, block) in enumerate(model.blocks)
         material = model.materials[block_index]
         block_weights = weights === nothing ? nothing : weights[block_index]
-        quadratic_block_energies!(se_v_tl, se_a_tl, kin_a_tl, model, block, material, block_weights)
+        block_se_v, block_se_a, block_kin_a = quadratic_block_energies(model, block, material, block_weights)
+        se_v += block_se_v
+        se_a += block_se_a
+        kin_a += block_kin_a
     end
-    return sum(se_v_tl), sum(se_a_tl), sum(kin_a_tl)
+    return se_v, se_a, kin_a
 end
 
-# Function barrier on the block's static shape functions.
-function quadratic_block_energies!(
-    se_v_tl::Vector{Float64},
-    se_a_tl::Vector{Float64},
-    kin_a_tl::Vector{Float64},
+# Function barrier on the block's static shape functions; chunk sums added in
+# chunk order, as in blended_block_energy.
+function quadratic_block_energies(
     model::SolidMechanics,
     block::ElementBlockData,
     material::Linear_Elastic,
@@ -510,39 +510,45 @@ function quadratic_block_energies!(
     # evaluate() assembles it, not at its integration points.
     composite = block.element_type == COMPOSITE_TETRA10
     rule = composite ? composite_tetra10_mass_rule() : nothing
-    @threads for e in 1:block.num_elements
-        node_indices = view(conn, :, e)
-        element_reference = gather_nodal(model.reference, node_indices, N)
-        element_velocity = gather_nodal(model.velocity, node_indices, N)
-        element_acceleration = gather_nodal(model.acceleration, node_indices, N)
-        se_v = 0.0
-        se_a = 0.0
-        kin_a = 0.0
-        for point in 1:num_points
-            dNdξ = dN[:, :, point]
-            dXdξ = dNdξ * element_reference'
-            dvol = det(dXdξ) * ip_weights[point]
-            block_weights === nothing || (dvol *= block_weights[e][point])
-            dNdX = dXdξ \ dNdξ
-            F_v = SMatrix{3,3,Float64,9}(I) + element_velocity * dNdX'
-            F_a = SMatrix{3,3,Float64,9}(I) + element_acceleration * dNdX'
-            se_v += strain_energy(material, F_v) * dvol
-            se_a += strain_energy(material, F_a) * dvol
-            if composite == false
-                a = element_acceleration * N[:, point]
-                kin_a += 0.5 * density * dot(a, a) * dvol
+    results = chunk_results(NTuple{3,Float64}, () -> nothing, block.num_elements) do elements, _
+        chunk_se_v = 0.0
+        chunk_se_a = 0.0
+        chunk_kin_a = 0.0
+        for e in elements
+            node_indices = view(conn, :, e)
+            element_reference = gather_nodal(model.reference, node_indices, N)
+            element_velocity = gather_nodal(model.velocity, node_indices, N)
+            element_acceleration = gather_nodal(model.acceleration, node_indices, N)
+            se_v = 0.0
+            se_a = 0.0
+            kin_a = 0.0
+            for point in 1:num_points
+                dNdξ = dN[:, :, point]
+                dXdξ = dNdξ * element_reference'
+                dvol = det(dXdξ) * ip_weights[point]
+                block_weights === nothing || (dvol *= block_weights[e][point])
+                dNdX = dXdξ \ dNdξ
+                F_v = SMatrix{3,3,Float64,9}(I) + element_velocity * dNdX'
+                F_a = SMatrix{3,3,Float64,9}(I) + element_acceleration * dNdX'
+                se_v += strain_energy(material, F_v) * dvol
+                se_a += strain_energy(material, F_a) * dvol
+                if composite == false
+                    a = element_acceleration * N[:, point]
+                    kin_a += 0.5 * density * dot(a, a) * dvol
+                end
             end
+            if composite
+                M_e = composite_tetra10_element_mass(element_reference, rule)
+                kin_a +=
+                    0.5 * density * sum(dot(element_acceleration[i, :], M_e * element_acceleration[i, :]) for i in 1:3)
+            end
+            chunk_se_v += se_v
+            chunk_se_a += se_a
+            chunk_kin_a += kin_a
         end
-        if composite
-            M_e = composite_tetra10_element_mass(element_reference, rule)
-            kin_a += 0.5 * density * sum(dot(element_acceleration[i, :], M_e * element_acceleration[i, :]) for i in 1:3)
-        end
-        t = threadid()
-        se_v_tl[t] += se_v
-        se_a_tl[t] += se_a
-        kin_a_tl[t] += kin_a
+        return (chunk_se_v, chunk_se_a, chunk_kin_a)
     end
-    return nothing
+    return sum(r -> r[1], results), sum(r -> r[2], results), sum(r -> r[3], results)
 end
 
 # Mask of the degrees of freedom of the nodes in any Schwarz side set.

@@ -56,14 +56,17 @@ projectors stay within the requested budget instead of defaulting to half the
 hardware threads. Without a thread flag the run is serial in both pools.
 
 The element loops of the assembly, of the stable time step, and of the blended
-energy run on all threads; the reductions into the global vectors and matrices,
-the vector updates of the time integrators, and the linear solvers other than
-the sparse product of the conjugate gradient run on one thread. On a 12-core
-Ryzen 9 9900X (October 23, 2026), an explicit run of 110 592 hexahedra over
-100 steps took 23.6 s on one thread and 8.0 s on twelve, and a Newmark run of
-45 000 free degrees of freedom with the conjugate gradient solver took 5.5 s
-and 2.6 s. The thread count does not change the results: every reduction is
-ordered.
+energy run on all threads, in chunks of fixed size with one task per thread,
+and so do the reductions of the element values into the global vectors and
+matrices and the sparse product of the conjugate gradient. The vector updates
+of the time integrators, the rest of the conjugate gradient, and the direct
+solver (through its BLAS calls) run on one thread. On a 12-core Ryzen 9 9900X
+(October 23, 2026), an explicit run of 110 592 hexahedra over 100 steps took
+12.5 s on one thread and 3.0 s on twelve, and a Newmark run of 45 000 free
+degrees of freedom with the conjugate gradient solver took 5.7 s and 2.6 s.
+The thread count does not change the results: the chunks and the order of
+every sum are fixed, so the fields and the energies are the same on any
+number of threads.
 
 An automatic count is refused: `-t auto`, `--threads auto` and
 `JULIA_NUM_THREADS=auto` all abort the run at startup. On a large node the

@@ -677,10 +677,7 @@ end
         weights = [ones(block.num_points) for _ in 1:(block.num_elements)]
         volume = 1.0 * det([1.0 0.2 0.0; 0.0 1.0 0.1; 0.15 0.0 1.0])
         for (half_dt, expected) in ((0.5, 0.5 * volume / 8), (0.0, nothing))
-            stored, kinetic = zeros(Threads.maxthreadid()), zeros(Threads.maxthreadid())
-            Norma.blended_block_energy!(
-                stored, kinetic, model, block, 1, model.materials[1], 1.0, weights, true, half_dt
-            )
+            _, kinetic = Norma.blended_block_energy(model, block, 1, model.materials[1], 1.0, weights, true, half_dt)
             if expected === nothing
                 rule = Norma.composite_tetra10_mass_rule()
                 expected = 0.0
@@ -691,7 +688,7 @@ end
                     expected += 0.5 * dot(v, M * v)
                 end
             end
-            @test sum(kinetic) ≈ expected rtol = 1.0e-12
+            @test kinetic ≈ expected rtol = 1.0e-12
         end
         close_composite_tet10_simulation(sim, "composite-recovery")
     end
