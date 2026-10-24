@@ -903,6 +903,14 @@ function store_element_values!(
     return nothing
 end
 
+# A vector of length n, zeroed: the given one when it has that length, else a
+# new one.
+function sized_vector!(v::Vector{Float64}, n::Int64)
+    length(v) == n || return zeros(n)
+    fill!(v, 0.0)
+    return v
+end
+
 # The global vector from the element value segments. On one thread the values
 # are scattered into the vector in element order. On several, every degree of
 # freedom gathers its sources (dof_source) in element order, so the sums are
@@ -910,7 +918,13 @@ end
 # among the threads without conflicts. The gather reads the values out of
 # order, which on one thread takes twice the time of the scatter.
 function reduce_element_vector(buffers::ElementValueBuffers, values::Vector{Vector{Float64}}, num_dofs::Int64)
-    global_vector = Vector{Float64}(undef, num_dofs)
+    return reduce_element_vector!(Vector{Float64}(undef, num_dofs), buffers, values)
+end
+
+function reduce_element_vector!(
+    global_vector::Vector{Float64}, buffers::ElementValueBuffers, values::Vector{Vector{Float64}}
+)
+    num_dofs = length(global_vector)
     ptrs = buffers.dof_ptr
     sources = buffers.dof_source
     if Threads.nthreads() == 1
@@ -1126,7 +1140,7 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
     materials = model.materials
     num_nodes = size(model.reference, 2)
     num_dofs = 3 * num_nodes
-    body_force_vector = zeros(num_dofs)
+    body_force_vector = sized_vector!(model.body_force, num_dofs)
     buffers = model.value_buffers
     pattern = model.matrix_pattern
     for (block_index, block) in enumerate(model.blocks)
@@ -1170,9 +1184,15 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
         strain_energy += block_energy
     end
     model.strain_energy = strain_energy
-    model.internal_force = reduce_element_vector(buffers, buffers.force, num_dofs)
+    # The global vectors are written in place: a vector held elsewhere is a
+    # copy (set_internal_force!, the saved states), so no one else sees the
+    # write, and the allocation and first touch of a fresh vector were the
+    # cost of the reduction on 12 threads.
+    model.internal_force = reduce_element_vector!(sized_vector!(model.internal_force, num_dofs), buffers, buffers.force)
     if flags.compute_lumped_mass == true
-        model.lumped_mass = reduce_element_vector(buffers, buffers.lumped_mass, num_dofs)
+        model.lumped_mass = reduce_element_vector!(
+            sized_vector!(model.lumped_mass, num_dofs), buffers, buffers.lumped_mass
+        )
     end
     if flags.compute_stiffness == true
         model.stiffness = reduce_element_matrix(pattern, pattern.stiffness, num_dofs)

@@ -2409,8 +2409,20 @@ function get_internal_force(model::SolidMechanics)
     return model.internal_force
 end
 
+# The model keeps one internal force vector, which the assembly writes in
+# place (reduce_element_vector!); setting the force copies into it, so that a
+# vector handed in is never written by a later assembly. Callers that keep the
+# force across a set copy it first (get_internal_force returns the vector).
 function set_internal_force!(model::SolidMechanics, force)
-    return model.internal_force = force
+    current = model.internal_force
+    if current === force
+        return current
+    elseif length(current) == length(force)
+        copyto!(current, force)
+    else
+        model.internal_force = copy(force)
+    end
+    return model.internal_force
 end
 
 # Projected interface trace Π_D q_N of a partner field q (all degrees of
@@ -2428,7 +2440,7 @@ function partner_fields(bc::SolidMechanicsSchwarzBoundaryCondition, time::Float6
     coupled_model = coupled_subsim_of(bc).model
     coupled_index = bc.coupled_handle.id
     coupled_num_dofs = length(coupled_model.free_dofs)
-    saved_∂Ω_f = get_internal_force(coupled_model)
+    saved_∂Ω_f = copy(get_internal_force(coupled_model))
     time_hist = controller.time_hist[coupled_index]
     disp_hist = controller.disp_hist[coupled_index]
     velo_hist = controller.velo_hist[coupled_index]
@@ -2495,7 +2507,7 @@ function with_partner_state(f, bc::SolidMechanicsSchwarzBoundaryCondition, time:
     saved_disp = copy(coupled_integrator.displacement)
     saved_velo = copy(coupled_integrator.velocity)
     saved_acce = copy(coupled_integrator.acceleration)
-    saved_∂Ω_f = get_internal_force(coupled_model)
+    saved_∂Ω_f = copy(get_internal_force(coupled_model))
     interp_disp, interp_velo, interp_acce, interp_∂Ω_f = partner_fields(bc, time)
     set_internal_force!(coupled_model, interp_∂Ω_f)
     coupled_integrator.displacement .= interp_disp
@@ -2538,7 +2550,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
     saved_acce = copy(coupled_integrator.acceleration)
 
     # Even for RomModel, this is full-dimensional
-    saved_∂Ω_f = get_internal_force(coupled_model)
+    saved_∂Ω_f = copy(get_internal_force(coupled_model))
 
     # Fetch interpolation inputs
     time = model.time

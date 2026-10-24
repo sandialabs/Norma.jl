@@ -190,7 +190,7 @@ function get_internal_force(model::RomModel)
 end
 
 function set_internal_force!(model::RomModel, force)
-    return model.fom_model.internal_force = force
+    return set_internal_force!(model.fom_model, force)
 end
 
 function apply_bc(model::OpInfModel, bc::SolidMechanicsDirichletBoundaryCondition)

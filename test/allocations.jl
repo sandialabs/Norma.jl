@@ -33,11 +33,11 @@ using Test
     @test (@allocated Norma.compute_step(integrator, model, solver, solver.step)) == 0
     @test (@allocated Norma.masked_norm(solver.gradient, model.free_dofs)) == 0
     @test (@allocated Norma.stable_time_step(integrator, model)) < 4096
-    # The whole step: the per-evaluation force vectors and the thread-local
-    # element arrays remain, about 0.4 MB on this mesh with one thread.
+    # The whole step: the element arrays of the tasks and the chunk results
+    # remain, under 0.1 MB on this mesh with one thread.
     Norma.advance_time(sim)
     step_bytes = @allocated Norma.advance_one_step(sim)
-    @test step_bytes < 2_000_000
+    @test step_bytes < 1_000_000
     Norma.finalize_writing(sim)
     rm("clamped.yaml"; force=true)
     rm("clamped.g"; force=true)
