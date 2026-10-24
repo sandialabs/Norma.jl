@@ -25,6 +25,8 @@ All cases are neo-Hookean cubes of side 0.1 m (E = 1 GPa, ν = 0.3,
 | `quasistatic24-direct.yaml` | same | 13 824 | sparse Cholesky |
 | `incompressible24-cg.yaml`, `-direct.yaml` | quasi-static, ν = 0.49, tangent predictor | 13 824 | conjugate gradient, sparse Cholesky |
 | `beam-cg.yaml`, `-jacobi.yaml`, `-cholesky.yaml`, `-direct.yaml` | quasi-static bending of a beam of 0.02 × 0.02 × 1 m, tangent predictor | 25 600 | the four options |
+| `coupled.yaml` (`coupled-clamped.yaml`, `coupled-free.yaml`) | Newmark, 20 steps, matching Dirichlet-Neumann exchange with Anderson acceleration between a clamped block of 24³ elements and a free block of 16³ elements, a nonconforming 3:2 interface; linear elastic, E = 6.895 GPa | 13 824 + 4096 | conjugate gradient |
+| `coupled-mono.yaml` | the same bar in one mesh of 48 × 24 × 24 elements | 27 648 | conjugate gradient |
 
 The implicit cube cases have 45 000 free degrees of freedom and a stiffness
 of 3.36 million nonzeros; the beam 97 119 and 6.73 million. The beam is the
@@ -42,6 +44,10 @@ its first system.
   initialized model (the evaluation, the reductions, the stable step, the
   kinematic updates, the reduced system, the linear solve), as the minimum of
   five calls after one call to compile.
+- `coupling-profile.jl case.yaml`: the samples of the thread that drives the
+  Schwarz iteration attributed inclusively to the source files of Norma and
+  to the functions of the coupling layer, and the innermost functions by
+  exclusive count, after one run to compile.
 - `ordering.jl case.yaml`: the sparse Cholesky of the first reduced tangent
   under the default ordering of CHOLMOD, the nested dissection of METIS that
   Norma uses, and the natural ordering: nonzeros of the factor, time of the
@@ -98,6 +104,69 @@ Ill-conditioned cases, 12 threads, wall seconds by linear solver:
 | beam, 12 Newton iterations | 119.3 | 108.4 | 7.7 | 9.2 |
 | incompressible24, METIS ordering | | | | 8.3 |
 | beam, METIS ordering | | | 7.4 | 8.2 |
+
+### Coupled case
+
+`coupled.yaml` on 12 threads (October 24, 2026) runs 20 steps with 15
+Schwarz iterations per step and 2 Newton iterations per subdomain solve, 600
+subdomain solves in all, against 20 solves of the monolithic bar. Wall
+seconds of the timed run, before the changes below:
+
+| Case | 1 thread | 6 threads | 12 threads |
+|---|---:|---:|---:|
+| coupled | 60.6 | 33.1 | 32.8 |
+| coupled-mono | 8.1 | 4.8 | 4.6 |
+
+The coupling layer (`schwarz.jl`, by `coupling-profile.jl`) took 5.0% of the
+run on one thread and 12.3% on 12, of which the construction of the
+projectors of the nonconforming interface 1.6% and 4.6% (once, 1.5 s on 12
+threads), the Neumann datum and the matching criterion 3% and 7% (both
+compute the d'Alembert reaction `M a - f_body - f_boundary` with the column
+product of the sparse library, 1.1 ms on the 46 875 unknowns of the clamped
+block, and the criterion recomputes the row sums of the mass, 2.5 ms), and
+the time interpolation of the partner histories 0.7% and 2.1%. The rest of
+the run is the subdomain solves; the coupling layer does not limit the
+scaling.
+
+Two limits of the solves were found on this case. The row product of the
+conjugate gradient ran on one thread below 20 000 unknowns, so the 600
+solves of the free block (14 739 unknowns) took 10.1 ms each on 12 threads,
+as on one; with the threshold at 4000 rows and the rows divided evenly over
+the threads they take 2.4 ms. And Julia's worker threads sleep 100 µs after
+a parallel loop, so after each serial part of the Schwarz iteration the
+first loop waits for them to wake, and the operating system wakes them on
+other cores than the ones that hold their chunks: inside the run the solves
+of the clamped block took 18 ms each against 7 ms in isolation, and with
+the workers kept spinning (`JULIA_THREAD_SLEEP_THRESHOLD=infinite`) 7.8 ms.
+Pinning the threads to cores (`JULIA_EXCLUSIVE=1`) has the same effect on
+the coupled run without the spinning, which slows the direct solver (its
+BLAS threads compete with the spinning workers). With the even chunks and
+the default thread settings the coupled run took 34.8 s, more than the
+32.8 s before them: the threaded solves of the free block then wait for the
+workers at every pass. Wall seconds on 12 threads with the even chunks:
+
+| Case | default | spinning 0.1 s | spinning | pinned |
+|---|---:|---:|---:|---:|
+| coupled | 34.8 | 24.1 | 22.8 | 22.3 |
+| coupled-mono | 4.6 | | 4.3 | 4.3 |
+| implicit24-cg | 2.02 | | 1.65 | 1.62 |
+| quasistatic24-cg | 2.77 | | 2.64 | 2.26 |
+| quasistatic24-direct | 13.5 | 14.6 | | 13.6 |
+| beam-cholesky | 7.5 | 8.1 | | 7.3 |
+| explicit48 | 2.46 | 2.56 | | 2.25 |
+
+The coupled run on 6 pinned threads took 32.8 s, as without pinning, and on
+one thread 62.7 s. `bin/norma` exports `JULIA_EXCLUSIVE=1` when more than
+one thread is requested and the variable is not in the environment, and
+`sweep.sh` exports the same value; the measurements earlier in this file
+were made without it.
+
+The allocation of the coupled run, 45 GB over 1200 Newton iterations, is the
+Newmark Hessian: `newmark_hessian` allocates the values of K + M/(βΔt²) at
+every iteration (28 MB on the clamped block, 8.5 MB on the free one), and
+the garbage collection took 14% of the run on 12 threads. The assembly
+itself allocates 0.3 MB per evaluation and the conjugate gradient 4 MB per
+solve in the tasks of its passes.
 
 Algebraic multigrid (AlgebraicMultigrid.jl 2.0.2, tried on October 24, 2026
 and not adopted), as the preconditioner of the library conjugate gradient on

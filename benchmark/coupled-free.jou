@@ -1,0 +1,13 @@
+reset
+create brick x 0.1 y 0.1 z 0.1
+move volume 1 x 0.15 y 0.05 z 0.05
+volume all interval 16
+mesh volume all
+block 1 volume 1
+block 1 name "cantilever_free"
+nodeset 7 volume all
+nodeset 7 name "nsall"
+sideset 1 surface with x_coord < 0.101
+sideset 1 name "ssx-"
+set large exodus file off
+export mesh "coupled-free.g" overwrite

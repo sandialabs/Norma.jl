@@ -471,8 +471,12 @@ Base.eltype(::SymmetricRowOperator) = Float64
 # Starting a threaded loop costs about 1 µs on Linux but over 20 µs on macOS,
 # and the small Schwarz cases make hundreds of thousands of products, so the
 # threaded loop is used only when there is more than one thread and enough
-# rows to amortize it.
-const ROW_PRODUCT_THREAD_THRESHOLD = 20_000
+# rows to amortize it. The threshold was 20 000 rows until October 24, 2026,
+# which left the solves of a subdomain of 14 739 unknowns on one thread
+# (10.1 ms per solve on 12 threads, 2.2 ms with the rows chunked over the
+# threads); a product on 4000 rows of a hexahedral mesh takes about 0.3 ms on
+# one thread.
+const ROW_PRODUCT_THREAD_THRESHOLD = 4000
 
 @inline function row_product!(
     y::AbstractVector{Float64},
@@ -498,8 +502,9 @@ function LinearAlgebra.mul!(y::AbstractVector{Float64}, A::SymmetricRowOperator,
         row_product!(y, rowptr, colval, nzval, x, 1:A.n)
         return y
     end
-    Threads.@threads :static for row in 1:A.n
-        row_product!(y, rowptr, colval, nzval, x, row:row)
+    chunk_results(Nothing, () -> nothing, A.n; chunk=vector_chunk(A.n)) do rows, _
+        row_product!(y, rowptr, colval, nzval, x, rows)
+        return nothing
     end
     return y
 end

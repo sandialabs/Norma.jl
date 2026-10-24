@@ -69,6 +69,26 @@ The thread count does not change the results: the chunks and the order of
 every sum are fixed, so the fields and the energies are the same on any
 number of threads.
 
+Julia's worker threads sleep 100 µs after a parallel loop, and the serial
+parts of a step last longer, so every loop that follows one waits for the
+workers to wake, and the operating system wakes them on other cores than the
+ones that hold their data. The `bin/norma` launcher therefore exports
+`JULIA_EXCLUSIVE=1`, which pins the threads to cores, when more than one
+thread is requested and the variable is not in the environment. On 12
+threads of the Ryzen 9 9900X a coupled run of two subdomains of 45 000 and
+14 700 unknowns took 22.3 s pinned against 34.8 s, the Newmark run above
+1.62 against 2.02 s, and the explicit run 2.25 against 2.46 s; the direct
+solver lost nothing (`benchmark/README.md`). A run started with `julia`
+directly needs the variable set by hand:
+
+```bash
+JULIA_EXCLUSIVE=1 julia -t 8 --project=. src/Norma.jl input.yaml
+```
+
+The threads are pinned to the first cores, so two threaded runs on one
+machine would share them: start the second with `JULIA_EXCLUSIVE=0`, which
+the launcher leaves alone.
+
 An automatic count is refused: `-t auto`, `--threads auto` and
 `JULIA_NUM_THREADS=auto` all abort the run at startup. On a large node the
 automatic count sizes both pools to the hardware thread count, and the level 1

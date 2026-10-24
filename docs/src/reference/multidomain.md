@@ -78,6 +78,19 @@ with `direct`; the matrix-inclusion split (703 and 262 nodes, 48 solves)
 factor as preconditioner is the fastest option measured; for small
 quasi-static ones, the direct solver.
 
+On a larger coupled case (`benchmark/coupled.yaml`: a clamped block of 24³
+elements and a free block of 16³ elements under Newmark with the matching
+Dirichlet-Neumann exchange and Anderson acceleration, 15 Schwarz iterations
+per step, 600 subdomain solves over 20 steps) the coupling layer took 5% of
+the run on one thread and 12% on 12 threads, the construction of the
+projectors of the nonconforming interface included. The two subdomain solves
+of each Schwarz iteration are the rest, and the run is 7 times that of the
+monolithic bar, in proportion to the number of solves. The coupling layer
+runs on one thread; its largest items per Schwarz iteration are the
+d'Alembert reaction of the Dirichlet side, computed for the Neumann datum
+and again for the criterion with the column product of the sparse library,
+and the row sums of the mass that the criterion recomputes.
+
 ### Inexact Newton control of the subdomain solves
 
 The optional block `inexact Newton` sets the relative Newton tolerance of every

@@ -15,3 +15,7 @@ for n in 24 48; do
 done
 "$cubit" -batch -nographics -nojournal -noecho -information off -input beam.jou > beam.log 2>&1
 ls -l beam.g
+for part in clamped free mono; do
+    "$cubit" -batch -nographics -nojournal -noecho -information off -input coupled-$part.jou > coupled-$part.log 2>&1
+    ls -l coupled-$part.g
+done

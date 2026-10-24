@@ -19,9 +19,16 @@
 using LinearAlgebra
 
 # Below the threshold of the row product every pass runs inline, as a single
-# chunk; above it, every pass uses the same chunks, so that each thread keeps
-# working on the entries it wrote in the previous pass.
-vector_chunk(n::Int64) = n < ROW_PRODUCT_THREAD_THRESHOLD ? n : VECTOR_CHUNK
+# chunk; above it, the entries are divided evenly over the threads, in chunks
+# of at least `MINIMUM_VECTOR_CHUNK` entries, and every pass uses the same
+# chunks, so that each thread keeps working on the entries it wrote in the
+# previous pass. A fixed chunk of 4096 entries left one thread of 12 idle on
+# 43 125 unknowns and ran 14 739 unknowns on 4 threads.
+const MINIMUM_VECTOR_CHUNK = 512
+function vector_chunk(n::Int64)
+    n < ROW_PRODUCT_THREAD_THRESHOLD && return n
+    return max(MINIMUM_VECTOR_CHUNK, cld(n, Threads.nthreads()))
+end
 
 function resize_workspace!(ws::ConjugateGradientWorkspace, n::Int64)
     for v in (ws.x, ws.r, ws.u, ws.c, ws.z)

@@ -51,4 +51,21 @@ if [[ -z "${OPENBLAS_NUM_THREADS:-}" && -z "${OMP_NUM_THREADS:-}" ]]; then
     export OPENBLAS_NUM_THREADS="${THREADS%%,*}"
 fi
 
+# Julia's worker threads sleep 100 µs after a parallel loop, and the serial
+# parts of a step (the matrix bookkeeping, the coupling of the Schwarz
+# iteration) last longer, so every loop that follows them waits for the
+# workers to wake, and the operating system wakes them on other cores than the
+# ones that hold their data. With the threads pinned to cores (JULIA_EXCLUSIVE)
+# a coupled run of two subdomains of 45 000 and 14 700 unknowns took 22.3 s on
+# 12 threads against 34.8, a Newmark run of 45 000 unknowns 1.62 s against
+# 2.02, the explicit run of 110 592 hexahedra 2.25 s against 2.46, and the
+# direct solver and the explicit case lost nothing (spinning workers, by
+# contrast, slowed the direct solver by 8%). The threads are pinned to the
+# first cores, so two threaded runs on one machine would share them: set
+# JULIA_EXCLUSIVE=0 for the second, since a value in the environment is left
+# alone.
+if [[ "${THREADS%%,*}" -gt 1 && -z "${JULIA_EXCLUSIVE:-}" ]]; then
+    export JULIA_EXCLUSIVE=1
+fi
+
 exec julia $THREAD_FLAG --project="$PROJECT_DIR" "$PROJECT_DIR/src/Norma.jl" "${JULIA_ARGS[@]}"

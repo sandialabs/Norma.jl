@@ -1,0 +1,38 @@
+type: single
+input mesh file: coupled-free.g
+output mesh file: coupled-free.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      cantilever_free: hyperelastic
+    hyperelastic:
+      model: linear elastic
+      elastic modulus: 6.895e+09
+      Poisson's ratio: 0.25
+      density: 2768.0
+time integrator:
+  type: Newmark
+  β: 0.25
+  γ: 0.5
+  time step: 1.0e-05
+initial conditions:
+  displacement:
+    - node set: nsall
+      component: y
+      function: "0.393701 * x * x"
+boundary conditions:
+  Schwarz DN nonoverlap:
+    - side set: ssx-
+      source: coupled-clamped
+      source side set: ssx+
+      default BC type: Neumann
+      swap BC types: false
+      matching: velocity
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 2.54e-08

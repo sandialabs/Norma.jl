@@ -70,7 +70,7 @@ julia --project=.. runtests.jl --with-nnopinf
 
 ## Benchmarks
 
-`benchmark/` holds the thread-scaling cases (hexahedral cubes and a slender beam meshed by Cubit journals), the scripts that time a run, sweep thread counts, time the components of a step, and fingerprint the final fields, and a README with the measurements at each change. Element loops run through `chunk_results` (utils.jl): fixed chunks pinned to threads, partial results summed in chunk order, so fields and energies do not depend on the thread count.
+`benchmark/` holds the thread-scaling cases (hexahedral cubes and a slender beam meshed by Cubit journals), the scripts that time a run, sweep thread counts, time the components of a step, and fingerprint the final fields, and a README with the measurements at each change. Element loops run through `chunk_results` (utils.jl): fixed chunks pinned to threads, partial results summed in chunk order, so fields and energies do not depend on the thread count. `bin/norma` exports `JULIA_EXCLUSIVE=1` for threaded runs (threads pinned to cores): Julia's workers sleep 100 µs after a parallel loop, the serial parts of a step then make every following loop wait for their wake-up on other cores, and pinning took a coupled run on 12 threads from 34.8 to 22.3 s and the Newmark cube from 2.02 to 1.62 s.
 
 ## Formatting
 
