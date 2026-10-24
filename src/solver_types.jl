@@ -29,6 +29,27 @@ mutable struct DirectSolverCache
     rowval::Vector{Int64}
 end
 
+# The system on the free degrees of freedom of an assembled matrix. Extracting
+# A[free, free] searched every column of the matrix at every Newton iteration
+# (5.1 ms on 45 000 free degrees of freedom). The structure of the reduced
+# matrix and the position in the full matrix of each of its nonzeros are
+# computed once per full pattern (recognized by the identity of its structure
+# arrays) and mask, and each iteration gathers the values. The reduced matrix
+# shares these structure arrays across iterations, so the direct solver
+# recognizes an unchanged pattern by identity and reuses its symbolic
+# factorization.
+mutable struct ReducedSystem
+    full_colptr::Vector{Int64}
+    full_rowval::Vector{Int64}
+    free::BitVector
+    free_index::Vector{Int64}
+    colptr::Vector{Int64}
+    rowval::Vector{Int64}
+    nz_source::Vector{Int64}
+    nzval::Vector{Float64}
+    rhs::Vector{Float64}
+end
+
 mutable struct HessianMinimizer <: Minimizer
     minimum_iterations::Int64
     maximum_iterations::Int64
@@ -40,6 +61,7 @@ mutable struct HessianMinimizer <: Minimizer
     linear_solver_absolute_tolerance::Float64
     linear_solver_relative_tolerance::Float64
     direct_cache::DirectSolverCache
+    reduced::Union{Nothing,ReducedSystem}
     unconverged_action::String
     value::Float64
     gradient::Vector{Float64}

@@ -383,7 +383,8 @@ function tangent_prediction(integrator::QuasiStatic, solver::HessianMinimizer, m
         K = solver.hessian
     end
     δ = zeros(length(u))
-    δ[free] = solve_linear(solver, K[free, free], -(K[free, fixed] * Δu_fixed))
+    K_free = reduced_matrix!(solver, K, free)
+    δ[free] = solve_linear(solver, K_free, -(K[free, fixed] * Δu_fixed), symmetric_tangent(model))
     return δ
 end
 
@@ -521,12 +522,12 @@ function initialize(
     # 1e-12). The consistent mass is not always positive definite: the
     # default 5-point rule of the TETRA10 has a negative weight. Cholesky then
     # fails, and LU factors it, as solve_linear_direct does.
+    mass_free = reduced_matrix!(solver, model.mass, free)
     integrator.acceleration[free] = if solver.linear_solver == "direct"
-        mass_free = model.mass[free, free]
         factor = cholesky(Symmetric(mass_free); check=false)
         issuccess(factor) ? factor \ rhs_free : lu(mass_free) \ rhs_free
     else
-        solve_linear(model.mass[free, free], rhs_free, atol, rtol)
+        solve_linear(mass_free, rhs_free, atol, rtol)
     end
     return nothing
 end

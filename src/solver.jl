@@ -68,6 +68,7 @@ function HessianMinimizer(params::Parameters, model::Model)
         linear_solver_absolute_tolerance,
         linear_solver_relative_tolerance,
         direct_cache,
+        nothing,
         unconverged_action,
         value,
         gradient,
@@ -503,10 +504,103 @@ function symmetric_to_tolerance(A::SparseMatrixCSC{Float64,Int64}, tolerance::Fl
 end
 
 function solve_linear(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, atol::Float64, rtol::Float64)
-    if A isa SparseMatrixCSC{Float64,Int64} && symmetric_to_tolerance(A)
+    symmetric = A isa SparseMatrixCSC{Float64,Int64} && symmetric_to_tolerance(A)
+    return solve_linear_cg(A, b, atol, rtol, symmetric)
+end
+
+function solve_linear_cg(A::SparseMatrixCSC{Float64}, b::Vector{Float64}, atol::Float64, rtol::Float64, symmetric::Bool)
+    if symmetric && A isa SparseMatrixCSC{Float64,Int64}
         return cg(SymmetricRowOperator(A), b; abstol=atol, reltol=rtol)
     end
     return cg(A, b; abstol=atol, reltol=rtol)
+end
+
+# Whether the assembled tangent of a material is symmetric: true for the
+# elastic models and the associative J2 model, false for the algorithmic
+# tangent of crystal plasticity, and unknown (nothing) for the others, whose
+# matrices are probed. The tangent of a model is symmetric when every material
+# is, not symmetric when any is not, and probed otherwise. The probe cost two
+# sparse products per solve (2.5 ms on 45 000 free degrees of freedom).
+symmetric_tangent(::Material) = nothing
+symmetric_tangent(::Elastic) = true
+symmetric_tangent(::J2Plasticity) = true
+symmetric_tangent(::CrystalPlasticity) = false
+
+function symmetric_tangent(model::SolidMechanics)
+    flags = map(symmetric_tangent, model.materials)
+    any(flag -> flag === false, flags) && return false
+    all(flag -> flag === true, flags) && return true
+    return nothing
+end
+
+# The reduced matrix A[free, free] through the cached structure (ReducedSystem),
+# built anew when the full structure arrays or the mask change. The values are
+# gathered into a buffer that the returned matrix shares, consumed by the solve
+# that follows before the next call.
+function reduced_matrix!(solver::HessianMinimizer, A::SparseMatrixCSC{Float64,Int64}, free::BitVector)
+    r = solver.reduced
+    if r === nothing || r.full_colptr !== A.colptr || r.full_rowval !== A.rowval || r.free != free
+        r = solver.reduced = ReducedSystem(A, free)
+    end
+    nzval = r.nzval
+    source = r.nz_source
+    full = A.nzval
+    @threads :static for k in eachindex(nzval)
+        @inbounds nzval[k] = full[source[k]]
+    end
+    n = length(r.free_index)
+    return SparseMatrixCSC(n, n, r.colptr, r.rowval, nzval)
+end
+
+# The entries of v on the free degrees of freedom, in the buffer of the reduced
+# system.
+function reduced_vector!(r::ReducedSystem, v::AbstractVector{Float64})
+    rhs = r.rhs
+    @inbounds for (k, i) in enumerate(r.free_index)
+        rhs[k] = v[i]
+    end
+    return rhs
+end
+
+function ReducedSystem(A::SparseMatrixCSC{Float64,Int64}, free::BitVector)
+    n = size(A, 1)
+    length(free) == n || norma_abort("The mask of free degrees of freedom does not match the matrix.")
+    free_index = findall(free)
+    num_free = length(free_index)
+    new_index = zeros(Int64, n)
+    new_index[free_index] .= 1:num_free
+    full_colptr = A.colptr
+    full_rowval = A.rowval
+    colptr = Vector{Int64}(undef, num_free + 1)
+    colptr[1] = 1
+    num_nonzeros = 0
+    @inbounds for (jf, j) in enumerate(free_index)
+        for p in full_colptr[j]:(full_colptr[j + 1] - 1)
+            free[full_rowval[p]] && (num_nonzeros += 1)
+        end
+        colptr[jf + 1] = num_nonzeros + 1
+    end
+    rowval = Vector{Int64}(undef, num_nonzeros)
+    nz_source = Vector{Int64}(undef, num_nonzeros)
+    k = 0
+    @inbounds for j in free_index, p in full_colptr[j]:(full_colptr[j + 1] - 1)
+        i = full_rowval[p]
+        free[i] || continue
+        k += 1
+        rowval[k] = new_index[i]
+        nz_source[k] = p
+    end
+    return ReducedSystem(
+        full_colptr,
+        full_rowval,
+        copy(free),
+        free_index,
+        colptr,
+        rowval,
+        nz_source,
+        zeros(num_nonzeros),
+        zeros(num_free),
+    )
 end
 
 # Sparse Cholesky of the reduced system, with LU when the matrix is not
@@ -517,19 +611,29 @@ end
 # leave Inf or NaN in the system, which LU rejects with an exception that
 # would end the run; the step is NaN instead, as Cholesky returns it, and the
 # next evaluation fails, so that the time step is cut.
-function solve_linear_direct(cache::DirectSolverCache, A::SparseMatrixCSC{Float64,Int64}, b::Vector{Float64})
+function solve_linear_direct(
+    cache::DirectSolverCache,
+    A::SparseMatrixCSC{Float64,Int64},
+    b::Vector{Float64},
+    symmetric::Bool=symmetric_to_tolerance(A),
+)
     if all(isfinite, nonzeros(A)) == false || all(isfinite, b) == false
         norma_log(4, :solve, "Direct linear solver: the system is not finite")
         cache.factor = nothing
         return fill(NaN, length(b))
     end
-    if symmetric_to_tolerance(A) == false
+    if symmetric == false
         cache.factor = nothing
         return lu(A) \ b
     end
     As = Symmetric(A)
     factor = cache.factor
-    same_pattern = factor !== nothing && cache.colptr == A.colptr && cache.rowval == A.rowval
+    # The reduced system shares its structure arrays across iterations, so an
+    # unchanged pattern is recognized by identity before the comparison.
+    same_pattern =
+        factor !== nothing &&
+        (cache.colptr === A.colptr || cache.colptr == A.colptr) &&
+        (cache.rowval === A.rowval || cache.rowval == A.rowval)
     if same_pattern
         factor = cholesky!(factor, As; check=false)
     else
@@ -546,18 +650,32 @@ function solve_linear_direct(cache::DirectSolverCache, A::SparseMatrixCSC{Float6
     return factor \ b
 end
 
-function solve_linear(solver::HessianMinimizer, A::SparseMatrixCSC{Float64,Int64}, b::Vector{Float64})
+# `symmetric` states whether A is symmetric when the caller knows (the material
+# models of the tangent); otherwise A is probed.
+function solve_linear(
+    solver::HessianMinimizer,
+    A::SparseMatrixCSC{Float64,Int64},
+    b::Vector{Float64},
+    symmetric::Union{Nothing,Bool}=nothing,
+)
+    # Every degree of freedom prescribed (a single element with all its nodes
+    # constrained): the empty system has the empty solution, which the sparse
+    # LU rejects.
+    isempty(b) && return Float64[]
+    is_symmetric = symmetric === nothing ? symmetric_to_tolerance(A) : symmetric
     if solver.linear_solver == "direct"
-        return solve_linear_direct(solver.direct_cache, A, b)
+        return solve_linear_direct(solver.direct_cache, A, b, is_symmetric)
     end
-    return solve_linear(A, b, solver.linear_solver_absolute_tolerance, solver.linear_solver_relative_tolerance)
+    return solve_linear_cg(
+        A, b, solver.linear_solver_absolute_tolerance, solver.linear_solver_relative_tolerance, is_symmetric
+    )
 end
 
 function compute_step(integrator::TimeIntegrator, model::SolidMechanics, solver::HessianMinimizer, _::NewtonStep)
     free = model.free_dofs
-    A = solver.hessian[free, free]
-    b = solver.gradient[free]
-    step = -solve_linear(solver, A, b)
+    A = reduced_matrix!(solver, solver.hessian, free)
+    b = reduced_vector!(solver.reduced, solver.gradient)
+    step = -solve_linear(solver, A, b, symmetric_tangent(model))
     return solver.use_line_search ? backtrack_line_search(integrator, solver, model, step) : step
 end
 
