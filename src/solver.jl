@@ -356,26 +356,37 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     internal_force = model.internal_force
     body_force = model.body_force
     boundary_force = model.boundary_force
-    u = integrator.displacement
-    v = integrator.velocity
     a = integrator.acceleration
     length(solver.gradient) == length(internal_force) || (solver.gradient = zeros(length(internal_force)))
     gradient = solver.gradient
-    # One pass: the gradient f_int - f_ext + M a, the kinetic energy of the
-    # lumped mass, and the work of the external force, without the vector
-    # temporaries of the broadcast forms.
+    # The gradient f_int - f_ext + M a in one pass, without the vector
+    # temporaries of the broadcast form.
+    @inbounds for i in eachindex(gradient)
+        rs = has_robin_schwarz ? rs_internal_force[i] : 0.0
+        gradient[i] = internal_force[i] + rs - (body_force[i] + boundary_force[i]) + lumped_mass[i] * a[i]
+    end
+    update_explicit_energies!(integrator, solver, model)
+    solver.lumped_hessian = lumped_mass
+    return nothing
+end
+
+# The kinetic energy of the lumped mass and the value of the explicit solver,
+# the strain energy minus the work of the external force plus the kinetic
+# energy, at the current velocity and displacement.
+function update_explicit_energies!(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
+    lumped_mass = model.lumped_mass
+    body_force = model.body_force
+    boundary_force = model.boundary_force
+    u = integrator.displacement
+    v = integrator.velocity
     kinetic_energy = 0.0
     external_work = 0.0
-    @inbounds for i in eachindex(gradient)
-        external = body_force[i] + boundary_force[i]
+    @inbounds for i in eachindex(v)
         kinetic_energy += 0.5 * lumped_mass[i] * v[i] * v[i]
-        external_work += external * u[i]
-        rs = has_robin_schwarz ? rs_internal_force[i] : 0.0
-        gradient[i] = internal_force[i] + rs - external + lumped_mass[i] * a[i]
+        external_work += (body_force[i] + boundary_force[i]) * u[i]
     end
     integrator.kinetic_energy = kinetic_energy
     solver.value = model.strain_energy - external_work + kinetic_energy
-    solver.lumped_hessian = lumped_mass
     return nothing
 end
 
@@ -875,6 +886,33 @@ function reset_newton_counters!()
     NEWTON_ITERATION_COUNT[] = 0
     NEWTON_SOLVE_COUNT[] = 0
     UNCONVERGED_SOLVE_COUNT[] = 0
+    return nothing
+end
+
+# The explicit step. One evaluation at the predicted displacement gives the
+# acceleration, and the corrector changes the velocity only. The general loop
+# below evaluated the model a second time after the corrector, at the same
+# displacement, which reproduced the internal force, the stress, and the
+# material state, and served only the kinetic energy and a residual the
+# explicit solver does not test: 45% of an explicit step. The energies are
+# updated directly instead, by the same sums the evaluation uses.
+function solve(integrator::CentralDifference, solver::ExplicitSolver, model::SolidMechanics)
+    model.state = copy_state(model, model.state_old)
+    predict(integrator, solver, model)
+    evaluate(integrator, solver, model)
+    if model.failed == true
+        return nothing
+    end
+    solver.initial_norm = masked_norm(solver.gradient, model.free_dofs)
+    notify_solve_observer(model, 0)
+    solver.failed = solver.failed || model.failed
+    step = compute_step(integrator, model, solver, solver.step)
+    add_masked!(solver.solution, model.free_dofs, step)
+    correct(integrator, solver, model)
+    update_explicit_energies!(integrator, solver, model)
+    update_solver_convergence_criterion(solver, solver.initial_norm)
+    notify_solve_observer(model, 1)
+    model.state_old = copy_state(model, model.state)
     return nothing
 end
 
