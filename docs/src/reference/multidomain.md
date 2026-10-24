@@ -86,10 +86,13 @@ the run on one thread and 12% on 12 threads, the construction of the
 projectors of the nonconforming interface included. The two subdomain solves
 of each Schwarz iteration are the rest, and the run is 7 times that of the
 monolithic bar, in proportion to the number of solves. The coupling layer
-runs on one thread; its largest items per Schwarz iteration are the
-d'Alembert reaction of the Dirichlet side, computed for the Neumann datum
-and again for the criterion with the column product of the sparse library,
-and the row sums of the mass that the criterion recomputes.
+runs on one thread. Its largest items per Schwarz iteration were the
+d'Alembert reaction of the Dirichlet side, computed on all degrees of
+freedom for the Neumann datum and again for the criterion, and the momentum
+and the row sums of the mass that the criterion recomputed; since October
+24, 2026 they are computed on the interface rows only, and the criterion
+interpolates the partner histories on those rows, which took the coupled run
+on 12 threads from 21.2 to 17.9 s (`benchmark/README.md`).
 
 ### Inexact Newton control of the subdomain solves
 

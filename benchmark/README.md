@@ -161,6 +161,21 @@ one thread is requested and the variable is not in the environment, and
 `sweep.sh` exports the same value; the measurements earlier in this file
 were made without it.
 
+The serial items of the coupling layer were then reduced to the interface
+rows (October 24, 2026). The d'Alembert reaction `M a - f_body - f_boundary`
+of the Dirichlet side was computed on all its degrees of freedom with the
+column product of the sparse library (1.1 ms on 46 875) twice per Schwarz
+iteration, for the Neumann datum and for the criterion, and the momentum
+rate of the criterion computed the whole momentum and the row sums of the
+mass (2.4 ms); every caller kept the interface rows only. They are now
+computed on those rows, a few hundred dot products with the rows of the
+symmetric mass (`mass_rows_product`, `dalembert_inertia_minus_loads` with
+the rows), and the criterion interpolates the partner histories on the
+interface rows instead of the whole vectors. The coupled run on 12 pinned
+threads: 21.2 to 17.9 s. The roundoff of the reaction changes
+with the order of the sums, so the fields differ from the previous commit
+at that level; the Schwarz iteration counts are unchanged (15 per step).
+
 The allocation of the coupled run, 45 GB over 1200 Newton iterations, was
 the Newmark Hessian: the values of K + M/(βΔt²) were allocated at every
 iteration (28 MB on the clamped block, 8.5 MB on the free one), and the

@@ -23,13 +23,13 @@ data = Profile.fetch(; include_meta=true)
 lidict = Profile.getdict(unique(data))
 nmeta = Profile.nmeta
 samples = Vector{Vector{UInt}}()
-sleeping = 0
+sleeping = Ref(0)
 let i = 1, start = 1
     while i <= length(data)
         if Profile.is_block_end(data, i)
             if data[i - Profile.META_OFFSET_THREADID] == 1
                 push!(samples, data[start:(i - nmeta - 1)])
-                sleeping += data[i - Profile.META_OFFSET_SLEEPSTATE] == 2
+                sleeping[] += data[i - Profile.META_OFFSET_SLEEPSTATE] == 2
             end
             start = i + 1
         end
@@ -37,7 +37,7 @@ let i = 1, start = 1
     end
 end
 total = length(samples)
-println("SAMPLES thread1=", total, " sleeping=", sleeping, " threads=", Threads.nthreads())
+println("SAMPLES thread1=", total, " sleeping=", sleeping[], " threads=", Threads.nthreads())
 frames_of(ip) = [f for f in get(lidict, ip, Profile.StackFrame[]) if !f.from_c]
 file_inclusive = Dict{String,Int}()
 func_inclusive = Dict{String,Int}()

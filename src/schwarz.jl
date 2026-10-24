@@ -1749,12 +1749,12 @@ end
 function interface_momentum_rate(
     sim::SingleDomainSimulation, bc::SolidMechanicsSchwarzBoundaryCondition, W_factor::Cholesky{Float64,Matrix{Float64}}
 )
-    pm = momentum_and_lumped_mass(get_fom_model(sim))
-    pm === nothing && return 0.0
+    model = get_fom_model(sim)
+    p = mass_rows_product(model, interface_dofs(bc), vec(model.velocity), true)
+    p === nothing && return 0.0
     Δt = sim.integrator.time_step
     Δt > 0.0 || return 0.0
-    p_local = reshape(extract_local_vector(bc, pm[1], 3), 3, :)
-    return inverse_weighted_norm(W_factor, p_local) / Δt
+    return inverse_weighted_norm(W_factor, reshape(p, 3, :)) / Δt
 end
 
 # Relative difference, in the norm of W_N⁻¹, between the reaction r_D of the
@@ -1849,8 +1849,8 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsConstra
         W_N_factor = nothing
     end
     if !isempty(f_N) && length(model.internal_force) == length(model.displacement)
-        r_global = -(model.internal_force + dalembert_inertia_minus_loads(model))
-        r_D = reshape(extract_local_vector(bc, r_global, 3), 3, :)
+        dofs = interface_dofs(bc)
+        r_D = reshape(-(model.internal_force[dofs] + dalembert_inertia_minus_loads(model, dofs)), 3, :)
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
             force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :), n_sim)
         elseif W_N_factor !== nothing && size(W_N_factor, 1) == length(n_map)
@@ -1918,14 +1918,16 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
     end
     nodal(v) = reshape(v, 3, :)
     jv = ju = jv_rms = ju_rms = 0.0
+    # The partner's fields are interpolated on its interface rows only.
+    n_dofs = node_dofs(n_map)
     for (k, t) in enumerate(d_times)
         t > t_start + tol_t || continue
         # A window-end-constrained side matches at the end of the window only.
         bc.window_end_constraint && k < length(d_times) && continue
-        v_N = interpolate(n_times, controller.velo_hist[n_id], t)
-        u_N = interpolate(n_times, controller.disp_hist[n_id], t)
-        r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], nodal(v_N)[:, n_map])
-        r_u, rms_u = dn_one_sided_jump(W_D, P, nodal(controller.disp_hist[d_id][k])[:, d_map], nodal(u_N)[:, n_map])
+        v_N = nodal(interpolate(n_times, controller.velo_hist[n_id], t, n_dofs))
+        u_N = nodal(interpolate(n_times, controller.disp_hist[n_id], t, n_dofs))
+        r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], v_N)
+        r_u, rms_u = dn_one_sided_jump(W_D, P, nodal(controller.disp_hist[d_id][k])[:, d_map], u_N)
         jv = max(jv, r_v)
         jv_rms = max(jv_rms, rms_v)
         ju = max(ju, r_u)
@@ -1934,13 +1936,15 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
     force_residual = 0.0
     found = false
     W_N_factor = n_bc.square_factor
+    d_dofs = interface_dofs(bc)
     for (t, f_N) in n_bc.transferred_force_history
         t > t_start + tol_t || continue
         found = true
+        # The inertial rows need the whole acceleration (the rows of the mass
+        # reach the neighbors of the interface nodes); the force only its rows.
         a_D = interpolate(d_times, controller.acce_hist[d_id], t)
-        f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t)
-        r_global = -(f_int + dalembert_inertia_minus_loads(d_model, a_D))
-        r_D = nodal(extract_local_vector(bc, r_global, 3))
+        f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t, d_dofs)
+        r_D = nodal(-(f_int + dalembert_inertia_minus_loads(d_model, d_dofs, a_D)))
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
             force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N), n_sim))
         else
@@ -2005,8 +2009,8 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
             return reshape(-window_ramp(bc, d_times[k]), 3, :)
         end
         a_k = controller.acce_hist[d_id][k]
-        r_global = -(controller.∂Ω_f_hist[d_id][k] + dalembert_inertia_minus_loads(d_model, a_k))
-        return reshape(extract_local_vector(bc, r_global, 3), 3, :)
+        dofs = interface_dofs(bc)
+        return reshape(-(controller.∂Ω_f_hist[d_id][k][dofs] + dalembert_inertia_minus_loads(d_model, dofs, a_k)), 3, :)
     end
     impulse_D = zeros(3, size(P, 1))
     for k in 2:length(d_times)
@@ -2234,8 +2238,8 @@ end
 # the interface nodes.
 function window_reaction(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     length(model.internal_force) == length(model.displacement) || return Float64[]
-    r_global = model.internal_force + dalembert_inertia_minus_loads(model)
-    return extract_local_vector(bc, r_global, 3)
+    dofs = interface_dofs(bc)
+    return model.internal_force[dofs] + dalembert_inertia_minus_loads(model, dofs)
 end
 
 # Interface force of a window-end-constrained side at time t of the window:
@@ -2926,16 +2930,16 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
     src_model = src_sim.model
     src_bc_index = dst_bc.coupled_bc_index
     src_bc = src_model.boundary_conditions[src_bc_index]
-    src_global_force = get_internal_force(src_model)
+    src_dofs = interface_dofs(src_bc)
+    src_force = -get_internal_force(src_model)[src_dofs]
     if is_constrained_dn(dst_bc)
         # Constrained DN exchange: the Neumann side receives the d'Alembert
         # reaction of the Dirichlet side, -(M a + f_int - f_body - f_boundary)
         # on its interface rows, so that the two interface rows add to the row
         # of the undecomposed problem. f_boundary is the Dirichlet side's own
         # applied surface load on the interface nodes, if any.
-        src_global_force = src_global_force + dalembert_inertia_minus_loads(get_fom_model(src_sim))
+        src_force .-= dalembert_inertia_minus_loads(get_fom_model(src_sim), src_dofs)
     end
-    src_force = -extract_local_vector(src_bc, src_global_force, 3)
     neumann_projector = dst_bc.neumann_projector
     num_dst_nodes = size(neumann_projector, 1)
     dst_force = zeros(3 * num_dst_nodes)
@@ -2966,6 +2970,66 @@ function dalembert_inertia_minus_loads(model::SolidMechanics, a::AbstractVector{
         inertial_force = inertial_force - model.boundary_force
     end
     return inertial_force
+end
+
+# Degrees of freedom of `nodes`, interleaved by component, in the order of
+# extract_local_vector; `interface_dofs` gives those of the interface nodes
+# of `bc`.
+function node_dofs(nodes::Vector{Int64})
+    dofs = Vector{Int64}(undef, 3 * length(nodes))
+    for (i_local, i_global) in enumerate(nodes)
+        @inbounds for c in 1:3
+            dofs[3 * (i_local - 1) + c] = 3 * (i_global - 1) + c
+        end
+    end
+    return dofs
+end
+
+interface_dofs(bc::SolidMechanicsSchwarzBoundaryCondition) = node_dofs(bc.global_from_local_map)
+
+# Rows `dofs` of M x with the mass of the model, the consistent mass or the
+# lumped one in the order of preference given, or nothing when none is
+# assembled. The consistent mass is symmetric, so its row is its column, and
+# the rows of the interface cost a few hundred dot products where the full
+# product cost 1.1 ms on 46 875 degrees of freedom.
+function mass_rows_product(model::SolidMechanics, dofs::Vector{Int64}, x::AbstractVector{Float64}, lumped_first::Bool)
+    M = model.mass
+    lumped = model.lumped_mass
+    has_consistent = size(M, 1) == length(x)
+    has_lumped = length(lumped) == length(x)
+    if has_lumped && (lumped_first || !has_consistent)
+        return [lumped[i] * x[i] for i in dofs]
+    end
+    has_consistent || return nothing
+    colptr, rowval, nzval = M.colptr, M.rowval, M.nzval
+    p = Vector{Float64}(undef, length(dofs))
+    @inbounds for (k, i) in enumerate(dofs)
+        s = 0.0
+        for q in colptr[i]:(colptr[i + 1] - 1)
+            s += nzval[q] * x[rowval[q]]
+        end
+        p[k] = s
+    end
+    return p
+end
+
+# dalembert_inertia_minus_loads on the rows `dofs`, without the full product.
+function dalembert_inertia_minus_loads(
+    model::SolidMechanics, dofs::Vector{Int64}, a::AbstractVector{Float64}=vec(model.acceleration)
+)
+    inertial = mass_rows_product(model, dofs, a, false)
+    r = inertial === nothing ? zeros(length(dofs)) : inertial
+    if length(model.body_force) == length(a)
+        @inbounds for (k, i) in enumerate(dofs)
+            r[k] -= model.body_force[i]
+        end
+    end
+    if length(model.boundary_force) == length(a)
+        @inbounds for (k, i) in enumerate(dofs)
+            r[k] -= model.boundary_force[i]
+        end
+    end
+    return r
 end
 
 # Partner nodes that the columns of the Dirichlet projector refer to: the
