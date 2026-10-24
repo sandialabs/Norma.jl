@@ -68,9 +68,9 @@ relaxation) took 1.5% of the matrix-inclusion split and 7.6% of the
 nonconforming Dirichlet-Neumann cantilever, and the construction of the
 projectors 23% of the short inclusion run. Subdomains are often small and
 solved many times, where the conjugate gradient repeats many iterations on a
-small matrix and a factorization is cheap. Measured on one thread of a
-Ryzen 9 9900X (October 24, 2026), wall seconds of the whole run by the
-`linear solver` and `preconditioner` of the subdomain solver blocks
+small matrix and a factorization takes a few milliseconds. Measured on one
+thread of a Ryzen 9 9900X (October 24, 2026), wall seconds of the whole run
+by the `linear solver` and `preconditioner` of the subdomain solver blocks
 ([solvers](solvers.md)): the nonconforming cantilever (315 and 66 nodes,
 1992 solves) 2.45 with `cg`, 2.02 with `jacobi`, 0.97 with `cholesky`, 1.72
 with `direct`; the matrix-inclusion split (703 and 262 nodes, 48 solves)

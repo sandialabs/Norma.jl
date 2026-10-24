@@ -8,6 +8,7 @@ include("opinf/opinf_solver.jl")
 include("kroms/krom_solver.jl")
 using IterativeSolvers
 using LinearAlgebra
+using Metis
 using Printf
 
 # What a solve that exhausts `maximum iterations` without meeting either
@@ -655,7 +656,7 @@ function solve_linear_direct(
     if same_pattern
         factor = cholesky!(factor, As; check=false)
     else
-        factor = cholesky(As; check=false)
+        factor = cholesky(As; perm=fill_reducing_ordering(A), check=false)
     end
     if issuccess(factor) == false
         norma_log(4, :solve, "Direct linear solver: matrix not positive definite, using LU")
@@ -666,6 +667,23 @@ function solve_linear_direct(
     cache.colptr = A.colptr
     cache.rowval = A.rowval
     return factor \ b
+end
+
+# Ordering of a symmetric sparse matrix for its Cholesky factorization: the
+# nested dissection of METIS on the graph of the matrix. The default ordering
+# of CHOLMOD gave the factor of the quasi-static 24³ cube (44 375 unknowns)
+# 50.1 M nonzeros, 15 times those of the matrix; the nested dissection gives
+# 28.9 M, and the factorization takes 0.50 s against 1.47 s on 1 thread and
+# 0.28 against 0.53 s on 12 (benchmark/README.md). The ordering of the cube
+# takes 0.13 s and is computed once per pattern, as the symbolic analysis is.
+# The graph needs the pattern of A only, which is symmetric for the
+# finite element matrices; the values are symmetric to roundoff and METIS
+# would reject them.
+function fill_reducing_ordering(A::SparseMatrixCSC{Float64,Int64})
+    n = size(A, 1)
+    n <= 1 && return collect(Int64, 1:n)
+    perm, _ = Metis.permutation(Metis.graph(A; check_hermitian=false))
+    return Vector{Int64}(perm)
 end
 
 # `symmetric` states whether A is symmetric when the caller knows (the material

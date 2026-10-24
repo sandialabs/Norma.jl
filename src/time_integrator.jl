@@ -524,7 +524,7 @@ function initialize(
     # fails, and LU factors it, as solve_linear_direct does.
     mass_free = reduced_matrix!(solver, model.mass, free)
     integrator.acceleration[free] = if solver.linear_solver == "direct"
-        factor = cholesky(Symmetric(mass_free); check=false)
+        factor = cholesky(Symmetric(mass_free); perm=fill_reducing_ordering(mass_free), check=false)
         issuccess(factor) ? factor \ rhs_free : lu(mass_free) \ rhs_free
     else
         solve_linear(mass_free, rhs_free, atol, rtol)

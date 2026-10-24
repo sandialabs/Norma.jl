@@ -198,7 +198,11 @@ function cholesky_preconditioner!(solver::HessianMinimizer, A::SparseMatrixCSC{F
     stale = ws.iterations > solver.preconditioner_refresh
     if factor === nothing || !same_pattern || stale
         As = Symmetric(A)
-        factor = same_pattern ? cholesky!(factor, As; check=false) : cholesky(As; check=false)
+        factor = if same_pattern
+            cholesky!(factor, As; check=false)
+        else
+            cholesky(As; perm=fill_reducing_ordering(A), check=false)
+        end
         if issuccess(factor) == false
             norma_log(4, :solve, "Cholesky preconditioner: matrix not positive definite, using Jacobi")
             cache.factor = nothing

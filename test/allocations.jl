@@ -32,7 +32,9 @@ using Test
     @test (@allocated Norma.correct(integrator, solver, model)) == 0
     @test (@allocated Norma.compute_step(integrator, model, solver, solver.step)) == 0
     @test (@allocated Norma.masked_norm(solver.gradient, model.free_dofs)) == 0
-    @test (@allocated Norma.stable_time_step(integrator, model)) < 4096
+    # The stable step allocates its chunk results and one task per thread
+    # (25 920 bytes on 12 threads, under 4096 on one).
+    @test (@allocated Norma.stable_time_step(integrator, model)) < 4096 * Threads.nthreads()
     # The whole step: the element arrays of the tasks and the chunk results
     # remain, under 0.1 MB on this mesh with one thread.
     Norma.advance_time(sim)

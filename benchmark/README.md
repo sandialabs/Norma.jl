@@ -42,6 +42,11 @@ its first system.
   initialized model (the evaluation, the reductions, the stable step, the
   kinematic updates, the reduced system, the linear solve), as the minimum of
   five calls after one call to compile.
+- `ordering.jl case.yaml`: the sparse Cholesky of the first reduced tangent
+  under the default ordering of CHOLMOD, the nested dissection of METIS that
+  Norma uses, and the natural ordering: nonzeros of the factor, time of the
+  factorization, of the numeric phase with the analysis reused, and of one
+  solve.
 - `fingerprint.jl case.yaml`: a hash of the final kinematic fields with the
   energies, to compare two versions of the code or two thread counts bit for
   bit. The fields and the energies do not depend on the thread count; the
@@ -68,6 +73,11 @@ wall seconds of the timed run.
 | quasistatic24-cg, 12 | | 2.45 |
 | quasistatic24-direct, 12 | | 24.1 |
 
+The direct solver and the Cholesky preconditioner under the METIS ordering
+(October 24, 2026, 12 threads, the ordering below): implicit24-direct 15.5 →
+9.5, implicit24-cg-cholesky 6.5 → 4.9, quasistatic24-direct 24.1 → 13.4,
+quasistatic24-cholesky 16.5 → 11.2.
+
 Coupled cases, one thread, wall seconds by the linear solver of the
 subdomains (the examples `nonoverlap/dynamic-same-step/cantilever-dn-nonconforming`
 over 200 steps and `nonoverlap/static-same-step/matrix-inclusion-split`):
@@ -86,6 +96,8 @@ Ill-conditioned cases, 12 threads, wall seconds by linear solver:
 |---|---:|---:|---:|---:|
 | incompressible24, 20 Newton iterations | 3.0 | | | 14.3 |
 | beam, 12 Newton iterations | 119.3 | 108.4 | 7.7 | 9.2 |
+| incompressible24, METIS ordering | | | | 8.3 |
+| beam, METIS ordering | | | 7.4 | 8.2 |
 
 Algebraic multigrid (AlgebraicMultigrid.jl 2.0.2, tried on October 24, 2026
 and not adopted), as the preconditioner of the library conjugate gradient on
@@ -112,8 +124,47 @@ phase with the symbolic analysis reused, and of one solve:
 
 The factorization gains nothing beyond 6 threads (one core complex of the
 processor), and the fill of the cube is 15 times the nonzeros of the matrix
-under the default ordering. The solve is cheap, which is why the factor
-reused as a preconditioner pays on the beam.
+under the default ordering. The solve takes 0.02 s, a twentieth of the
+factorization, which is why the factor reused as a preconditioner is the
+fastest option on the beam.
+
+Ordering of the factor (`ordering.jl`): CHOLMOD's default ordering (the
+approximate minimum degree, with its own nested dissection only when the
+fill exceeds its threshold), the nested dissection of METIS 5.1 through
+Metis.jl, and the natural ordering of the unknowns; nonzeros of the factor
+and seconds of the factorization, of the numeric phase, and of one solve.
+The METIS ordering takes 0.13 s on the cube and 0.26 s on the beam, once per
+pattern.
+
+| Case | ordering | nnz(L) | threads | factorization | numeric | solve |
+|---|---|---:|---:|---:|---:|---:|
+| quasistatic24 | default | 50.1 M | 1 | 1.47 | 1.35 | 0.021 |
+| | | | 6 | 0.55 | 0.46 | 0.020 |
+| | | | 12 | 0.53 | 0.41 | 0.019 |
+| | METIS | 28.9 M | 1 | 0.50 | 0.44 | 0.014 |
+| | | | 6 | 0.27 | 0.20 | 0.013 |
+| | | | 12 | 0.28 | 0.22 | 0.013 |
+| | natural | 81.6 M | 1 | 1.73 | 1.63 | 0.031 |
+| | | | 12 | 0.78 | 0.68 | 0.032 |
+| beam | default | 37.9 M | 1 | 0.51 | 0.38 | 0.021 |
+| | | | 6 | 0.37 | 0.24 | 0.021 |
+| | | | 12 | 0.44 | 0.31 | 0.021 |
+| | METIS | 30.5 M | 1 | 0.39 | 0.29 | 0.020 |
+| | | | 6 | 0.30 | 0.21 | 0.020 |
+| | | | 12 | 0.35 | 0.25 | 0.019 |
+| | natural | 1056 M | 1 | 101.6 | 100.2 | 0.380 |
+| | | | 12 | 17.0 | 15.6 | 0.330 |
+
+The direct solver and the Cholesky preconditioner use the METIS ordering
+since October 24, 2026, computed when the pattern of the reduced matrix
+changes, as the symbolic analysis is. Wall
+seconds of the runs at 12 threads before and after: quasistatic24-direct
+24.1 and 13.4, quasistatic24-cholesky 16.5 and 11.2, implicit24-direct 15.5
+and 9.5, implicit24-cg-cholesky 6.5 and 4.9, incompressible24-direct 14.3
+and 8.3, beam-direct 9.2 and 8.2, beam-cholesky 7.7 and 7.4. The numeric
+factorizations were 85% of the quasi-static direct run on the cube (50
+Newton iterations at 0.41 s) and 40% on the beam (12 iterations at 0.31 s),
+which bounds the gain of the ordering on each.
 
 Before: garbage collection took 52% of the explicit run on 12 threads (549 MB
 allocated per step), the stable time step read the untyped shape function
