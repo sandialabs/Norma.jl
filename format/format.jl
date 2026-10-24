@@ -16,7 +16,7 @@
 using JuliaFormatter
 
 const ROOT = dirname(@__DIR__)
-const PATHS = [joinpath(ROOT, p) for p in ("src", "test", "ext", "examples", "studies", "docs", "format")]
+const PATHS = [joinpath(ROOT, p) for p in ("src", "test", "ext", "examples", "studies", "docs", "format", "benchmark")]
 
 check = "--check" in ARGS
 unformatted = String[]

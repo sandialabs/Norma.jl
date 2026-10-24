@@ -47,3 +47,8 @@ CLAUDE.local.md
 *.bbl
 *.blg
 !format/Manifest.toml
+
+# Benchmark meshes, logs, and results
+benchmark/*.g
+benchmark/*.log
+benchmark/results.txt

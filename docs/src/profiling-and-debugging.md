@@ -51,3 +51,15 @@ julia --project=@/path/to/Norma.jl \
   -e 'using Profile; using Norma; cd("examples/contact/implicit-dynamic/2-bars"); @profile Norma.run("bars.yaml")' \
   -E 'using ProfileCanvas; ProfileCanvas.canvas()'
 ```
+
+## Benchmarks
+
+The directory `benchmark/` holds the cases and scripts of the thread-scaling
+measurements: hexahedral cubes meshed by a Cubit journal, an explicit case of
+110 592 elements, and Newmark and quasi-static cases of 45 000 free degrees of
+freedom with each linear solver option. `run.jl` times one case after a
+compilation run, `sweep.sh` runs the cases over a list of thread counts,
+`components.jl` times the parts of one step, and `fingerprint.jl` hashes the
+final fields so that two versions of the code, or two thread counts, can be
+compared bit for bit. The measurements at each change are in
+`benchmark/README.md`.
