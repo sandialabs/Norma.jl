@@ -955,10 +955,19 @@ end
 
 # The global matrix from the element value segments, as the vector above: on
 # one thread the scatter through the slots, on several every nonzero gathers
-# its entries in element order.
+# its entries in element order. The values are written into `A` when it has
+# the structure of the pattern (the matrix of the previous evaluation); a
+# fresh vector of 3.4 million values per evaluation was 27 MB on the 24³ cube.
 function reduce_element_matrix(pattern::MatrixPattern, values::Vector{Vector{Float64}}, num_dofs::Int64)
+    return reduce_element_matrix!(spzeros(0, 0), pattern, values, num_dofs)
+end
+
+function reduce_element_matrix!(
+    A::SparseMatrixCSC{Float64,Int64}, pattern::MatrixPattern, values::Vector{Vector{Float64}}, num_dofs::Int64
+)
     num_nonzeros = length(pattern.rowval)
-    nzval = Vector{Float64}(undef, num_nonzeros)
+    reuse = A.colptr === pattern.colptr && A.rowval === pattern.rowval && length(A.nzval) == num_nonzeros
+    nzval = reuse ? A.nzval : Vector{Float64}(undef, num_nonzeros)
     ptrs = pattern.entry_ptr
     entries = pattern.entry
     if Threads.nthreads() == 1
@@ -1216,11 +1225,13 @@ function evaluate(model::SolidMechanics, integrator::TimeIntegrator, solver::Sol
             sized_vector!(model.lumped_mass, num_dofs), buffers, buffers.lumped_mass
         )
     end
+    # The matrices too: the quasi-static Hessian aliases the stiffness, which
+    # the readers of the previous values (the tangent predictor) copy.
     if flags.compute_stiffness == true
-        model.stiffness = reduce_element_matrix(pattern, pattern.stiffness, num_dofs)
+        model.stiffness = reduce_element_matrix!(model.stiffness, pattern, pattern.stiffness, num_dofs)
     end
     if flags.compute_mass == true
-        model.mass = reduce_element_matrix(pattern, pattern.mass, num_dofs)
+        model.mass = reduce_element_matrix!(model.mass, pattern, pattern.mass, num_dofs)
     end
     model.body_force = body_force_vector
     return nothing

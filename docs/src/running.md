@@ -62,9 +62,9 @@ matrices and the sparse product of the conjugate gradient. The vector updates
 of the time integrators, the rest of the conjugate gradient, and the direct
 solver (through its BLAS calls) run on one thread. On a 12-core Ryzen 9 9900X
 (October 24, 2026), an explicit run of 110 592 hexahedra over 100 steps took
-11.6 s on one thread and 2.4 s on twelve, and a Newmark run of 45 000 free
-degrees of freedom with the Jacobi-preconditioned conjugate gradient took
-4.4 s and 1.8 s; `benchmark/README.md` has the cases and the measurements.
+11.6 s on one thread and 2.25 s on twelve pinned threads, and a Newmark run
+of 45 000 free degrees of freedom with the conjugate gradient took 4.9 s and
+1.34 s; `benchmark/README.md` has the cases and the measurements.
 The thread count does not change the results: the chunks and the order of
 every sum are fixed, so the fields and the energies are the same on any
 number of threads.
@@ -77,7 +77,8 @@ ones that hold their data. The `bin/norma` launcher therefore exports
 thread is requested and the variable is not in the environment. On 12
 threads of the Ryzen 9 9900X a coupled run of two subdomains of 45 000 and
 14 700 unknowns took 22.3 s pinned against 34.8 s, the Newmark run above
-1.62 against 2.02 s, and the explicit run 2.25 against 2.46 s; the direct
+1.62 against 2.02 s at that commit, and the explicit run 2.25 against
+2.46 s; the direct
 solver lost nothing (`benchmark/README.md`). A run started with `julia`
 directly needs the variable set by hand:
 

@@ -296,10 +296,18 @@ function accept_step!(integrator::QuasiStatic, solver::Solver)
     integrator.last_time_step = integrator.time - integrator.prev_time
     if integrator.predictor == :tangent
         # The Hessian of a quasi-static step is the stiffness of the model,
-        # whose values the next evaluation rewrites; the predictor of the next
-        # step runs before that evaluation, so the reference holds the
-        # converged stiffness of this step when it is read.
-        integrator.last_stiffness = solver.hessian
+        # whose values the next evaluation rewrites in place, so the converged
+        # stiffness is copied, into the previous copy when the pattern is
+        # unchanged.
+        H = solver.hessian
+        last = integrator.last_stiffness
+        if last.colptr === H.colptr && last.rowval === H.rowval && length(last.nzval) == length(H.nzval)
+            copyto!(last.nzval, H.nzval)
+        else
+            # The copy shares the structure arrays, so later steps copy the
+            # values only.
+            integrator.last_stiffness = SparseMatrixCSC(H.m, H.n, H.colptr, H.rowval, copy(H.nzval))
+        end
     end
     return nothing
 end

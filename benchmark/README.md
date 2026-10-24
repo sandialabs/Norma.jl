@@ -176,6 +176,15 @@ threads: 21.2 to 17.9 s. The roundoff of the reaction changes
 with the order of the sums, so the fields differ from the previous commit
 at that level; the Schwarz iteration counts are unchanged (15 per step).
 
+The stiffness and the mass are reduced into the model's existing matrices
+as well (October 24, 2026, `reduce_element_matrix!`): the values of the
+stiffness, 27 MB on the 24³ cube, were allocated at every evaluation. On 12
+pinned threads the Newmark cube takes 1.34 s against 1.62 (1.1 GB allocated
+against 2.2), the quasi-static cube 1.99 s against 2.26, and the coupled
+case 17.7 s against 17.9; the fields of the three cases are bitwise
+identical. The tangent predictor copies the converged stiffness of a step,
+which it held by reference while every evaluation built a new matrix.
+
 The allocation of the coupled run, 45 GB over 1200 Newton iterations, was
 the Newmark Hessian: the values of K + M/(βΔt²) were allocated at every
 iteration (28 MB on the clamped block, 8.5 MB on the free one), and the
