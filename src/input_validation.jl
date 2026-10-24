@@ -150,6 +150,8 @@ const SOLVER_KEYS = Set([
     "unconverged solve action",
     "linear solver absolute tolerance",
     "linear solver relative tolerance",
+    "preconditioner",
+    "preconditioner refresh iterations",
     "use line search",
     "line search backtrack factor",
     "line search decrease factor",

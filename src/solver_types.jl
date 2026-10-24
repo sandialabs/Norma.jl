@@ -48,6 +48,29 @@ mutable struct ReducedSystem
     nz_source::Vector{Int64}
     nzval::Vector{Float64}
     rhs::Vector{Float64}
+    # Position of the diagonal entry of every column among the nonzeros of the
+    # reduced matrix, for the Jacobi preconditioner.
+    diagonal::Vector{Int64}
+end
+
+# Workspace of the conjugate gradient (conjugate_gradient.jl), reused across
+# solves: the iterate, the residual, the search direction, its product with
+# the matrix, and the inverse diagonal of the Jacobi preconditioner (empty
+# without one). The last solve's iteration count and residual norm are kept
+# for reports and tests.
+mutable struct ConjugateGradientWorkspace
+    x::Vector{Float64}
+    r::Vector{Float64}
+    u::Vector{Float64}
+    c::Vector{Float64}
+    z::Vector{Float64}
+    inverse_diagonal::Vector{Float64}
+    iterations::Int64
+    residual::Float64
+end
+
+function ConjugateGradientWorkspace()
+    return ConjugateGradientWorkspace(Float64[], Float64[], Float64[], Float64[], Float64[], Float64[], 0, 0.0)
 end
 
 mutable struct HessianMinimizer <: Minimizer
@@ -62,6 +85,11 @@ mutable struct HessianMinimizer <: Minimizer
     linear_solver_relative_tolerance::Float64
     direct_cache::DirectSolverCache
     reduced::Union{Nothing,ReducedSystem}
+    preconditioner::Symbol
+    # Iterations of a solve preconditioned by the Cholesky factor above which
+    # the factor is recomputed at the next solve.
+    preconditioner_refresh::Int64
+    cg_workspace::ConjugateGradientWorkspace
     unconverged_action::String
     value::Float64
     gradient::Vector{Float64}

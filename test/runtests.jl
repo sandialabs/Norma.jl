@@ -197,6 +197,7 @@ const indexed_test_files = [
     (156, "schwarz-nonoverlap-static-inclusion-split-anderson-memory.jl"),
     (157, "allocations.jl"),
     (158, "reduced-system.jl"),
+    (159, "conjugate-gradient.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

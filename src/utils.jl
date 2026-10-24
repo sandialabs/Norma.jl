@@ -378,12 +378,18 @@ end
 # chunks have a fixed size, so the partition does not depend on the thread
 # count, and the results are returned in chunk order: a sum over them is the
 # same on every thread count and every run. Task j takes the chunks j,
-# j + ntasks, ...; each task holds one state from init(), the buffers it alone
-# writes, so that no two tasks write one cache line (per-thread accumulators
-# indexed by threadid() shared lines, and a loop of pure arithmetic over
-# 110 592 elements ran 0.895 ms against 0.227 ms with this form on 12 threads).
-# f(range, state) returns a value of type T.
+# j + ntasks, ..., and runs on thread j (static schedule), so that a chunk is
+# handled by the same thread in every pass and its data stay in that thread's
+# cache: a pass over vectors that the previous pass wrote from other threads
+# took 190 µs for 45 000 entries against 30 µs on data of its own. Each task
+# holds one state from init(), the buffers it alone writes, so that no two
+# tasks write one cache line (per-thread accumulators indexed by threadid()
+# shared lines, and a loop of pure arithmetic over 110 592 elements ran
+# 0.895 ms against 0.227 ms with this form on 12 threads). f(range, state)
+# returns a value of type T. Not for use inside another threaded loop.
 const CHUNK_ELEMENTS = 256
+# Chunk of the passes over vectors and matrix values.
+const VECTOR_CHUNK = 4096
 
 function chunk_results(f, ::Type{T}, init, n::Integer; chunk::Integer=CHUNK_ELEMENTS) where {T}
     nchunks = cld(n, chunk)
@@ -400,8 +406,9 @@ function chunk_results(f, ::Type{T}, init, n::Integer; chunk::Integer=CHUNK_ELEM
     if ntasks <= 1
         run_task(1)
     else
-        tasks = [Threads.@spawn run_task($task) for task in 1:ntasks]
-        foreach(wait, tasks)
+        Threads.@threads :static for task in 1:ntasks
+            run_task(task)
+        end
     end
     return results
 end

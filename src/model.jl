@@ -978,7 +978,16 @@ end
 # same elementwise arithmetic as the generic expression.
 function newmark_hessian(K::SparseMatrixCSC{Float64,Int64}, M::SparseMatrixCSC{Float64,Int64}, β::Float64, Δt::Float64)
     if K.colptr === M.colptr && K.rowval === M.rowval
-        return SparseMatrixCSC(K.m, K.n, K.colptr, K.rowval, K.nzval .+ M.nzval ./ β ./ Δt ./ Δt)
+        K_values = K.nzval
+        M_values = M.nzval
+        H_values = Vector{Float64}(undef, length(K_values))
+        chunk_results(Nothing, () -> nothing, length(H_values); chunk=VECTOR_CHUNK) do range, _
+            @inbounds for k in range
+                H_values[k] = K_values[k] + M_values[k] / β / Δt / Δt
+            end
+            return nothing
+        end
+        return SparseMatrixCSC(K.m, K.n, K.colptr, K.rowval, H_values)
     end
     return K + M / β / Δt / Δt
 end

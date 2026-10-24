@@ -40,6 +40,13 @@ function HessianMinimizer(params::Parameters, model::Model)
     if linear_solver != "cg" && linear_solver != "direct"
         norma_abortf("Unknown linear solver \"%s\": use \"cg\" or \"direct\".", linear_solver)
     end
+    preconditioner_name = String(get(solver_params, "preconditioner", "none"))
+    if preconditioner_name ∉ ("none", "jacobi", "cholesky")
+        norma_abortf("Unknown preconditioner \"%s\": use \"none\", \"jacobi\", or \"cholesky\".", preconditioner_name)
+    end
+    preconditioner = Symbol(preconditioner_name)
+    preconditioner_refresh = Int64(get(solver_params, "preconditioner refresh iterations", 10))
+    preconditioner_refresh > 0 || norma_abort("`preconditioner refresh iterations` must be positive.")
     direct_cache = DirectSolverCache(nothing, Int64[], Int64[])
     unconverged_action = unconverged_solve_action(solver_params, "fail")
     absolute_error = 0.0
@@ -69,6 +76,9 @@ function HessianMinimizer(params::Parameters, model::Model)
         linear_solver_relative_tolerance,
         direct_cache,
         nothing,
+        preconditioner,
+        preconditioner_refresh,
+        ConjugateGradientWorkspace(),
         unconverged_action,
         value,
         gradient,
@@ -322,8 +332,12 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     integrator.stored_energy = model.strain_energy
     β = integrator.β
     Δt = integrator.time_step
-    inertial_force = model.mass * integrator.acceleration
-    kinetic_energy = 0.5 * dot(integrator.velocity, model.mass, integrator.velocity)
+    # The consistent mass is symmetric, so its products go through the
+    # threaded row operator; the column product of the sparse library ran on
+    # one thread (1.1 ms each on 47 000 degrees of freedom).
+    mass_operator = SymmetricRowOperator(model.mass)
+    inertial_force = mass_operator * integrator.acceleration
+    kinetic_energy = 0.5 * dot(integrator.velocity, mass_operator * integrator.velocity)
     integrator.kinetic_energy = kinetic_energy
     internal_force = model.internal_force
     external_force = model.body_force + model.boundary_force
@@ -582,14 +596,17 @@ function ReducedSystem(A::SparseMatrixCSC{Float64,Int64}, free::BitVector)
     end
     rowval = Vector{Int64}(undef, num_nonzeros)
     nz_source = Vector{Int64}(undef, num_nonzeros)
+    diagonal = zeros(Int64, num_free)
     k = 0
-    @inbounds for j in free_index, p in full_colptr[j]:(full_colptr[j + 1] - 1)
+    @inbounds for (jf, j) in enumerate(free_index), p in full_colptr[j]:(full_colptr[j + 1] - 1)
         i = full_rowval[p]
         free[i] || continue
         k += 1
         rowval[k] = new_index[i]
         nz_source[k] = p
+        rowval[k] == jf && (diagonal[jf] = k)
     end
+    all(>(0), diagonal) || norma_abort("The reduced matrix has a column without a diagonal entry.")
     return ReducedSystem(
         full_colptr,
         full_rowval,
@@ -600,6 +617,7 @@ function ReducedSystem(A::SparseMatrixCSC{Float64,Int64}, free::BitVector)
         nz_source,
         zeros(num_nonzeros),
         zeros(num_free),
+        diagonal,
     )
 end
 
@@ -666,8 +684,9 @@ function solve_linear(
     if solver.linear_solver == "direct"
         return solve_linear_direct(solver.direct_cache, A, b, is_symmetric)
     end
+    is_symmetric && return conjugate_gradient!(solver, A, b)
     return solve_linear_cg(
-        A, b, solver.linear_solver_absolute_tolerance, solver.linear_solver_relative_tolerance, is_symmetric
+        A, b, solver.linear_solver_absolute_tolerance, solver.linear_solver_relative_tolerance, false
     )
 end
 
