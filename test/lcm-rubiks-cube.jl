@@ -83,7 +83,11 @@ function run_lcm_fem_stops(
             "linear solver" => "direct",
             "minimum iterations" => 1,
             "maximum iterations" => 20,
-            "absolute tolerance" => 1.0e-10,
+            # The Newton residual of this case reaches a floor of 8.8e-10 at
+            # the step [3.56, 3.65] ms on macOS arm64 with Julia 1.12 (6.9e-11
+            # on the other platforms); the comparison with LCM below is at
+            # 1e-8 and 5e-8.
+            "absolute tolerance" => 1.0e-9,
             "relative tolerance" => 1.0e-13,
         ),
     )
