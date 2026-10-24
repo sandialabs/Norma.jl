@@ -157,7 +157,7 @@ const CLAMPED_CT_MATERIAL = Dict{String,Any}(
         N, _, _, _ = Norma.isoparametric(block.element_type, block.num_points)
         for e in 1:(block.num_elements), q in 1:(block.num_points)
             point = model.reference[:, block.connectivity[:, e]] * N[:, q]
-            model.stress[1][e][q] .= (linear(point), 0.0, 0.0, 0.0, 0.0, 0.0)
+            model.stress[1][e][q] = SVector(linear(point), 0.0, 0.0, 0.0, 0.0, 0.0)
         end
         Norma.recover_stress!(model)
         recovered = model.recovered_stress[1, :]

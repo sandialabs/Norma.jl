@@ -63,7 +63,7 @@ end
     block = sim.model.blocks[1]
     material = sim.model.materials[1]
     c_p = sqrt(Norma.get_p_wave_modulus(material) / material.ρ)
-    h = Norma.minimum_block_altitude(sim.model, block, block.N, block.dN)
+    h = Norma.minimum_block_altitude(sim.model, block, block.N, block.dN, block.weights)
     sim.integrator.stable_method = :eigenvalue
     @test Norma.critical_time_step(sim.integrator, sim.model) ≈ h / c_p rtol = 1.0e-10
     Norma.finalize_writing(sim)

@@ -181,14 +181,22 @@ end
     return X, x
 end
 
-# Smallest element altitude of a block on the current configuration.
+# Smallest element altitude of a block on the current configuration. The
+# shape function tables of a block are stored untyped, so they are passed as
+# arguments: read inside the loop they would make every element a dynamic
+# call (205 MB allocated and 27 ms per call on 110 592 hexahedra before).
 function minimum_block_altitude(
-    model::SolidMechanics, block::ElementBlockData, ::SMatrix{NN,NP,T}, dN::SArray{Tuple{3,NN,NP},T}
+    model::SolidMechanics,
+    block::ElementBlockData,
+    ::SMatrix{NN,NP,T},
+    dN::SArray{Tuple{3,NN,NP},T},
+    weights::AbstractVector{T},
 ) where {NN,NP,T}
+    element_type = block.element_type
     minima = fill(Inf, maxthreadid())
     @threads for element in 1:block.num_elements
         _, x = element_coordinates(model, block, element, Val(NN))
-        h = element_altitude(block.element_type, x, element_volume(x, dN, block.weights))
+        h = element_altitude(element_type, x, element_volume(x, dN, weights))
         t = threadid()
         @inbounds minima[t] = min(minima[t], h)
     end
@@ -197,9 +205,19 @@ end
 
 # Smallest element critical step of a block on the current configuration.
 function minimum_block_eigenvalue_step(
-    model::SolidMechanics, block_index::Int, block::ElementBlockData, N::SMatrix{NN,NP,T}, dN::SArray{Tuple{3,NN,NP},T}
+    model::SolidMechanics,
+    block_index::Int,
+    block::ElementBlockData,
+    N::SMatrix{NN,NP,T},
+    dN::SArray{Tuple{3,NN,NP},T},
+    weights::AbstractVector{T},
+    mass_N::SMatrix,
+    mass_dN::SArray,
+    mass_weights::AbstractVector,
 ) where {NN,NP,T}
     material = model.materials[block_index]
+    element_type = block.element_type
+    density = material.ρ
     minima = fill(Inf, maxthreadid())
     @threads for element in 1:block.num_elements
         X, x = element_coordinates(model, block, element, Val(NN))
@@ -208,16 +226,16 @@ function minimum_block_eigenvalue_step(
             block_index,
             element,
             material,
-            material.ρ,
-            block.element_type,
+            density,
+            element_type,
             X,
             x,
             N,
             dN,
-            block.weights,
-            block.mass_N,
-            block.mass_dN,
-            block.mass_weights,
+            weights,
+            mass_N,
+            mass_dN,
+            mass_weights,
         )
         t = threadid()
         @inbounds minima[t] = min(minima[t], 2 / sqrt(ω²))
@@ -231,7 +249,17 @@ function critical_time_step(integrator::CentralDifference, model::SolidMechanics
     critical = Inf
     for (block_index, block) in enumerate(model.blocks)
         if integrator.stable_method === :eigenvalue
-            block_step = minimum_block_eigenvalue_step(model, block_index, block, block.N, block.dN)
+            block_step = minimum_block_eigenvalue_step(
+                model,
+                block_index,
+                block,
+                block.N,
+                block.dN,
+                block.weights,
+                block.mass_N,
+                block.mass_dN,
+                block.mass_weights,
+            )
         else
             if length(integrator.stable_reference) < block_index || !isfinite(integrator.stable_reference[block_index])
                 resize_reference!(integrator, length(model.blocks))
@@ -240,7 +268,8 @@ function critical_time_step(integrator::CentralDifference, model::SolidMechanics
                 )
             end
             block_step =
-                integrator.stable_reference[block_index] * minimum_block_altitude(model, block, block.N, block.dN)
+                integrator.stable_reference[block_index] *
+                minimum_block_altitude(model, block, block.N, block.dN, block.weights)
         end
         critical = min(critical, block_step)
     end

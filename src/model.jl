@@ -120,7 +120,7 @@ function SolidMechanics(params::Parameters)
     boundary_force = zeros(3 * num_nodes)
     boundary_conditions = Vector{BoundaryCondition}()
     free_dofs = trues(3 * num_nodes)
-    stress = Vector{Vector{Vector{Vector{Float64}}}}()
+    stress = Vector{Vector{Vector{SVector{6,Float64}}}}()
     state_old = Vector{Vector{Vector{Vector{Float64}}}}()
     state = Vector{Vector{Vector{Vector{Float64}}}}()
     prev_state_old = Vector{Vector{Vector{Vector{Float64}}}}()  # empty until first save_curr_state
@@ -186,14 +186,14 @@ function SolidMechanics(params::Parameters)
         else
             point_init_state = Vector{Float64}()
         end
-        block_stress = Vector{Vector{Vector{Float64}}}()
+        block_stress = Vector{Vector{SVector{6,Float64}}}()
         block_state = Vector{Vector{Vector{Float64}}}()
         block_stored_energy = Vector{Float64}()
         for _ in 1:num_block_elements
-            element_stress = Vector{Vector{Float64}}()
+            element_stress = Vector{SVector{6,Float64}}()
             element_state = Vector{Vector{Float64}}()
             for _ in 1:num_points
-                push!(element_stress, zeros(6))
+                push!(element_stress, zero(SVector{6,Float64}))
                 push!(element_state, copy(point_init_state))
             end
             push!(block_stress, element_stress)

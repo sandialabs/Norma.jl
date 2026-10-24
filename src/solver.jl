@@ -93,7 +93,8 @@ function ExplicitSolver(params::Parameters, model::Model)
     converged = false
     failed = false
     step = create_step(solver_params)
-    return ExplicitSolver(value, gradient, lumped_hessian, solution, initial_norm, converged, failed, step)
+    step_vector = Float64[]
+    return ExplicitSolver(value, gradient, lumped_hessian, solution, step_vector, initial_norm, converged, failed, step)
 end
 
 function SteepestDescent(params::Parameters, model::Model)
@@ -331,9 +332,9 @@ function evaluate(integrator::Newmark, solver::HessianMinimizer, model::SolidMec
     stiffness = nnz(K_robin) > 0 ? stiffness + K_robin : stiffness
     stiffness = nnz(K_rs) > 0 ? stiffness + K_rs : stiffness
     rs_internal_force = build_robin_schwarz_force(model)
-    internal_force = internal_force + rs_internal_force
     solver.hessian = newmark_hessian(stiffness, model.mass, β, Δt)
-    solver.gradient = internal_force - external_force + inertial_force
+    length(solver.gradient) == length(internal_force) || (solver.gradient = zeros(length(internal_force)))
+    @. solver.gradient = (internal_force + rs_internal_force) - external_force + inertial_force
     solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
     return nothing
 end
@@ -345,20 +346,36 @@ function evaluate(integrator::CentralDifference, solver::ExplicitSolver, model::
     end
     apply_robin_bcs_internal_force!(model)
     integrator.stored_energy = model.strain_energy
-    # Intertial force (local)
-    inertial_force = model.lumped_mass .* integrator.acceleration
-    kinetic_energy = 0.5 * model.lumped_mass ⋅ (integrator.velocity .* integrator.velocity)
-    integrator.kinetic_energy = kinetic_energy
-    # Body force -> global
-    # Model boundary force -> global
+    # The Robin-Robin Schwarz self term is a full vector built per evaluation;
+    # without such a condition it is zero and is not built.
+    has_robin_schwarz = any(
+        bc -> bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition, model.boundary_conditions
+    )
+    rs_internal_force = has_robin_schwarz ? build_robin_schwarz_force(model) : Float64[]
+    lumped_mass = model.lumped_mass
     internal_force = model.internal_force
-    external_force = model.body_force + model.boundary_force
-    rs_internal_force = build_robin_schwarz_force(model)
-    internal_force = internal_force + rs_internal_force
-    solver.value = model.strain_energy - external_force ⋅ integrator.displacement + kinetic_energy
-    # Gradient -> local, local, local
-    solver.gradient = internal_force - external_force + inertial_force
-    solver.lumped_hessian = model.lumped_mass
+    body_force = model.body_force
+    boundary_force = model.boundary_force
+    u = integrator.displacement
+    v = integrator.velocity
+    a = integrator.acceleration
+    length(solver.gradient) == length(internal_force) || (solver.gradient = zeros(length(internal_force)))
+    gradient = solver.gradient
+    # One pass: the gradient f_int - f_ext + M a, the kinetic energy of the
+    # lumped mass, and the work of the external force, without the vector
+    # temporaries of the broadcast forms.
+    kinetic_energy = 0.0
+    external_work = 0.0
+    @inbounds for i in eachindex(gradient)
+        external = body_force[i] + boundary_force[i]
+        kinetic_energy += 0.5 * lumped_mass[i] * v[i] * v[i]
+        external_work += external * u[i]
+        rs = has_robin_schwarz ? rs_internal_force[i] : 0.0
+        gradient[i] = internal_force[i] + rs - external + lumped_mass[i] * a[i]
+    end
+    integrator.kinetic_energy = kinetic_energy
+    solver.value = model.strain_energy - external_work + kinetic_energy
+    solver.lumped_hessian = lumped_mass
     return nothing
 end
 
@@ -650,8 +667,40 @@ end
 
 function compute_step(integrator::CentralDifference, model::SolidMechanics, solver::ExplicitSolver, _::ExplicitStep)
     free = model.free_dofs
-    step = -solver.gradient[free] ./ solver.lumped_hessian[free]
+    gradient = solver.gradient
+    lumped_hessian = solver.lumped_hessian
+    step = solver.step_vector
+    resize!(step, count(free))
+    k = 0
+    @inbounds for i in eachindex(free)
+        free[i] || continue
+        k += 1
+        step[k] = -gradient[i] / lumped_hessian[i]
+    end
     return step
+end
+
+# Norm of a vector over the free degrees of freedom, and the update x[free] +=
+# step with step indexed over the free degrees of freedom in order. The masked
+# forms norm(v[free]) and x[free] += step copy the vector at every call, 2.8 MB
+# each on 117 649 nodes, and the collection of those copies was half of an
+# explicit step on 12 threads.
+function masked_norm(v::AbstractVector{Float64}, free::BitVector)
+    s = 0.0
+    @inbounds for i in eachindex(v)
+        free[i] && (s += v[i] * v[i])
+    end
+    return sqrt(s)
+end
+
+function add_masked!(x::AbstractVector{Float64}, free::BitVector, step::AbstractVector{Float64})
+    k = 0
+    @inbounds for i in eachindex(x)
+        free[i] || continue
+        k += 1
+        x[i] += step[k]
+    end
+    return x
 end
 
 function update_solver_convergence_criterion(
@@ -841,7 +890,7 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
         return nothing
     end
     residual = solver.gradient
-    norm_residual = norm(residual[model.free_dofs])
+    norm_residual = masked_norm(residual, model.free_dofs)
     solver.initial_norm = max(norm_residual, unpredicted_residual_norm(integrator, solver, model))
     if is_explicit_dynamic == false
         raw_status = "[WAIT]"
@@ -870,14 +919,14 @@ function solve(integrator::TimeIntegrator, solver::Solver, model::Model)
     while true
         step = compute_step(integrator, model, solver, step_type)
         is_explicit_dynamic || (NEWTON_ITERATION_COUNT[] += 1)
-        solver.solution[model.free_dofs] += step
+        add_masked!(solver.solution, model.free_dofs, step)
         correct(integrator, solver, model)
         evaluate(integrator, solver, model)
         if model.failed == true
             return nothing
         end
         residual = solver.gradient
-        norm_residual = norm(residual[model.free_dofs])
+        norm_residual = masked_norm(residual, model.free_dofs)
         update_solver_convergence_criterion(solver, norm_residual)
         update_energy_stagnation_criterion(solver, iteration_number)
         if is_explicit_dynamic == false

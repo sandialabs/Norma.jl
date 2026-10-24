@@ -1831,12 +1831,18 @@ function commit_state(sim::SingleDomainSimulation)
     return nothing
 end
 
+# A copy of src into dst when the sizes agree, a new copy otherwise: the saved
+# state of a step is written over the previous one instead of allocated anew.
+function copy_into!(dst::Vector{Float64}, src::AbstractVector{Float64})
+    return length(dst) == length(src) ? copyto!(dst, src) : copy(src)
+end
+
 function save_curr_state(sim::SingleDomainSimulation)
     integrator = sim.integrator
-    integrator.prev_disp = copy(integrator.displacement)
-    integrator.prev_velo = copy(integrator.velocity)
-    integrator.prev_acce = copy(integrator.acceleration)
-    integrator.prev_∂Ω_f = copy(get_internal_force(sim.model))
+    integrator.prev_disp = copy_into!(integrator.prev_disp, integrator.displacement)
+    integrator.prev_velo = copy_into!(integrator.prev_velo, integrator.velocity)
+    integrator.prev_acce = copy_into!(integrator.prev_acce, integrator.acceleration)
+    integrator.prev_∂Ω_f = copy_into!(integrator.prev_∂Ω_f, get_internal_force(sim.model))
     # Save per-QP material state so restore_prev_state can roll back internal
     # variables (e.g. plastic strain) when a step fails and is retried with a
     # smaller time step.  Without this, model.state_old is left at the

@@ -603,8 +603,8 @@ end
         for method in ("lumped", "consistent", "both")
             sim = composite_tet10_simulation("composite-recovery", "composite-recovery.g"; num_points, recovery=method)
             model = sim.model
-            for element in model.stress[1], point_stress in element
-                point_stress .= σ
+            for element in model.stress[1]
+                fill!(element, SVector{6,Float64}(σ))
             end
             model.displacement .= A * model.reference
             Norma.recover_stress!(model)

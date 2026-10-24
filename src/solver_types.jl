@@ -58,6 +58,8 @@ mutable struct ExplicitSolver <: Explicit
     gradient::Vector{Float64}
     lumped_hessian::Vector{Float64}
     solution::Vector{Float64}
+    # The step of the free degrees of freedom, reused across steps.
+    step_vector::Vector{Float64}
     initial_norm::Float64
     converged::Bool
     failed::Bool

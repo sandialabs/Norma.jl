@@ -533,7 +533,6 @@ end
 
 function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     free = model.free_dofs
-    fixed = .!free
     Δt = integrator.time_step
     β = integrator.β
     γ = integrator.γ
@@ -545,12 +544,18 @@ function predict(integrator::Newmark, solver::Solver, model::SolidMechanics)
     a = integrator.acceleration
     u_pre = integrator.disp_pre
     v_pre = integrator.velo_pre
-    u_pre[free] = u[free] += Δt * v[free] + (0.5 - β) * Δt * Δt * a[free]
-    v_pre[free] = v[free] += (1.0 - γ) * Δt * a[free]
-    u_pre[fixed] = u[fixed]
-    v_pre[fixed] = v[fixed]
-    # Set acceleration consistent with predicted displacement (u = u_pre → a = 0)
-    a[free] .= 0.0
+    # One pass over the degrees of freedom: the masked forms u[free] copy the
+    # vector at every use. The acceleration of the free degrees of freedom is
+    # set consistent with the predicted displacement (u = u_pre → a = 0).
+    @inbounds for i in eachindex(u)
+        if free[i]
+            u[i] += Δt * v[i] + (0.5 - β) * Δt * Δt * a[i]
+            v[i] += (1.0 - γ) * Δt * a[i]
+            a[i] = 0.0
+        end
+        u_pre[i] = u[i]
+        v_pre[i] = v[i]
+    end
     return nothing
 end
 
@@ -561,10 +566,15 @@ function correct(integrator::Newmark, solver::Solver, model::SolidMechanics)
     γ = integrator.γ
     integrator.displacement = solver.solution
     u = integrator.displacement
+    v = integrator.velocity
+    a = integrator.acceleration
     u_pre = integrator.disp_pre
     v_pre = integrator.velo_pre
-    integrator.acceleration[free] = (u[free] - u_pre[free]) / β / Δt / Δt
-    integrator.velocity[free] = v_pre[free] + γ * Δt * integrator.acceleration[free]
+    @inbounds for i in eachindex(u)
+        free[i] || continue
+        a[i] = (u[i] - u_pre[i]) / β / Δt / Δt
+        v[i] = v_pre[i] + γ * Δt * a[i]
+    end
     return nothing
 end
 
@@ -601,8 +611,11 @@ function predict(integrator::CentralDifference, solver::ExplicitSolver, model::S
     u = integrator.displacement
     v = integrator.velocity
     a = integrator.acceleration
-    u[free] += Δt * v[free] + 0.5 * Δt * Δt * a[free]
-    v[free] += (1.0 - γ) * Δt * a[free]
+    @inbounds for i in eachindex(u)
+        free[i] || continue
+        u[i] += Δt * v[i] + 0.5 * Δt * Δt * a[i]
+        v[i] += (1.0 - γ) * Δt * a[i]
+    end
     return nothing
 end
 
@@ -611,8 +624,11 @@ function correct(integrator::CentralDifference, solver::ExplicitSolver, model::S
     γ = integrator.γ
     integrator.acceleration = solver.solution
     a = integrator.acceleration
+    v = integrator.velocity
     free = model.free_dofs
-    integrator.velocity[free] += γ * Δt * a[free]
+    @inbounds for i in eachindex(v)
+        free[i] && (v[i] += γ * Δt * a[i])
+    end
     return nothing
 end
 

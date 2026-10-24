@@ -150,7 +150,7 @@ mutable struct SolidMechanics <: Model
     state::Vector{Vector{Vector{Vector{Float64}}}}
     prev_state_old::Vector{Vector{Vector{Vector{Float64}}}}  # saved copy for step-failure rollback
     stop_state_old::Vector{Vector{Vector{Vector{Float64}}}}  # saved copy for Schwarz-stop rollback
-    stress::Vector{Vector{Vector{Vector{Float64}}}}
+    stress::Vector{Vector{Vector{SVector{6,Float64}}}}
     stored_energy::Vector{Vector{Float64}}
     strain_energy::Float64
     stiffness::SparseMatrixCSC{Float64,Int64}

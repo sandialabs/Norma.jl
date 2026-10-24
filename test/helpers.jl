@@ -24,7 +24,7 @@ function minimum_components(V::Vector{Float64})
     return [x y z]
 end
 
-function average_components(stress::Vector{Vector{Vector{Vector{Float64}}}})
+function average_components(stress::Vector)
     xx = 0.0
     yy = 0.0
     zz = 0.0
