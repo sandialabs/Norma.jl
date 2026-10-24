@@ -48,6 +48,9 @@ its first system.
   Schwarz iteration attributed inclusively to the source files of Norma and
   to the functions of the coupling layer, and the innermost functions by
   exclusive count, after one run to compile.
+- `product.jl case.yaml`: the sparse product of the first reduced tangent
+  with 64-bit and 32-bit column indices on all threads, and with the full
+  rows and with one stored triangle on one thread.
 - `ordering.jl case.yaml`: the sparse Cholesky of the first reduced tangent
   under the default ordering of CHOLMOD, the nested dissection of METIS that
   Norma uses, and the natural ordering: nonzeros of the factor, time of the
@@ -197,6 +200,28 @@ the monolithic bar, timed alternately with the previous commit under a
 loaded machine, 5.0 against 5.5 s. The fields of both cases are bitwise
 identical. The assembly itself allocates 0.3 MB per evaluation and the
 conjugate gradient 4 MB per solve in the tasks of its passes.
+
+### Memory traffic of the sparse product
+
+The product of the reduced tangent of the 24³ cube (45 000 unknowns, 3.36
+million nonzeros, 27 MB of values and 27 MB of 64-bit column indices) was
+timed with `product.jl` on October 24, 2026, threads pinned:
+
+| Variant | threads | ms |
+|---|---:|---:|
+| full rows, 64-bit indices | 1 | 0.866 |
+| full rows, 32-bit indices | 1 | 0.818 |
+| one stored triangle | 1 | 0.62 |
+| full rows, 64-bit indices | 12 | 0.115 |
+| full rows, 32-bit indices | 12 | 0.105 |
+
+The product scales 7.5 times on 12 threads: the matrix fits the two 32 MB
+level 3 caches when the threads are pinned, so it is not bound by the
+memory bandwidth at this size. The 32-bit indices save 9% of the product,
+about 2% of an implicit run, and were not adopted; one stored triangle saves
+28% on one thread but its transposed part scatters into every row, so it
+does not run on several threads without a second pass, and the full rows on
+12 threads are 5 times faster than the triangle on one.
 
 Algebraic multigrid (AlgebraicMultigrid.jl 2.0.2, tried on October 24, 2026
 and not adopted), as the preconditioner of the library conjugate gradient on
