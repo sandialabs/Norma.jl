@@ -46,16 +46,16 @@ Each controller step performs Schwarz iterations until the interface converges.
 |---|---|---|---|
 | `minimum iterations` | yes | — | minimum Schwarz iterations per step |
 | `maximum iterations` | yes | — | maximum Schwarz iterations per step |
-| `absolute tolerance` | unless every coupling is a matching pair | — | absolute tolerance on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds. When every Schwarz coupling is a matching pair it is not used, and it is ignored with a warning if given |
-| `relative tolerance` | unless every coupling is a matching pair | — | relative tolerance on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Matching pairs use their own interface criterion instead (see `matching relative tolerance`); when every Schwarz coupling is a matching pair it is not used, and it is ignored with a warning if given |
-| `matching relative tolerance` | when a pair sets `matching` | — | relative tolerance of the matching Dirichlet–Neumann criterion, on the one-sided jump of the matched quantity and on the force residual (see `Schwarz DN nonoverlap`); the controller's `relative tolerance` does not apply to matching pairs |
+| `absolute tolerance` | unless every coupling is a matching pair | — | absolute tolerance of the update criterion, on the change, between Schwarz iterations, of u + Δt v over all degrees of freedom of all subdomains (Δt the controller step); a stop converges when this or the relative test holds. When every Schwarz coupling is a matching pair it is not used, and it is ignored with a warning if given |
+| `relative tolerance` | unless every coupling is a matching pair | — | relative tolerance of the update criterion, on the same change divided by the norm of u + Δt v over all degrees of freedom of all subdomains, so the test does not depend on the coordinate origin. Matching pairs use the matching criterion instead (see `matching relative tolerance`); when every Schwarz coupling is a matching pair it is not used, and it is ignored with a warning if given |
+| `matching relative tolerance` | when a pair sets `matching` | — | relative tolerance of the matching criterion, on the one-sided jump of the matched quantity and on the force residual (see `Schwarz DN nonoverlap`); the controller's `relative tolerance` does not apply to matching pairs |
 | `matching absolute tolerance` | no | `0` | absolute tolerance of the matching criterion on the root mean square interface jump, in the units of the matched quantity (velocity or displacement); the controller's `absolute tolerance` does not apply to matching pairs |
 | `unconverged step action` | no | `abort` | what to do with a step that exhausts `maximum iterations` without converging: `abort` the run, or `warn` and continue with the last iterate |
 | `stalled interface jump action` | no | `warn` | what to do when the interface residual of a matching Dirichlet–Neumann pair stops decreasing above `matching relative tolerance`: `warn` and accept the iterate, or `abort` |
 
 A step that reaches `maximum iterations` without converging reports the
-measures it stopped at against the tolerances that apply: the displacement
-update against `absolute tolerance` and `relative tolerance`, the interface
+measures it stopped at against the tolerances that apply: the change of
+u + Δt v (the update criterion) against `absolute tolerance` and `relative tolerance`, the interface
 residual of the matching pairs against `matching relative tolerance`, or both.
 Under the default `abort` the run stops; `warn` continues with the last
 iterate.
@@ -105,7 +105,7 @@ residual of the previous Schwarz iteration of that stop: the larger of the
 interface jump and the force residual for matching Dirichlet–Neumann pairs,
 the relative change of u + Δt v otherwise. At the first Schwarz iteration of a
 stop (k = 0) it is the ceiling. The tolerance and the number of Newton
-iterations of every Schwarz iteration are logged with the Schwarz criterion.
+iterations of every Schwarz iteration are logged with the stopping criterion.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
@@ -125,7 +125,8 @@ constant Newton tolerance 1e-6 needed 0.667 at an error of 6.0e-9 (0.717 and
 Every Schwarz iteration restarts the subdomain solves from the state at the
 start of the stop, not from the previous Schwarz iterate, so a constant Newton
 tolerance larger than the Schwarz tolerance leaves an error of the size of the
-Newton error, which the Schwarz criterion does not detect.
+Newton error, which neither the update criterion nor the matching criterion
+detects.
 
 ### Relaxation and acceleration
 
@@ -348,7 +349,7 @@ Anderson acceleration the window-end reaction is a second field of the
 interface's step (joint step on datum and reaction, the reaction residual
 scaled once per interface to the datum residual), and the iteration converges
 at two to four times the count of the coarse-step-constrained arrangement.
-Fixed relaxation damps the reaction with the same factor: 0.5 and 0.25 diverge, and 0.1 reaches 4e-12 but not 1e-12 within 256 iterations on the first stop, so Anderson acceleration is the method for this constraint. The stopping criterion measures the jump at the window end only and adds to the force residual the difference between the reaction at the window end and the end value of the ramp that the interior substeps applied, in the W⁻¹ norm of the constrained side relative to the larger of the reaction and the momentum rate of its interface (issue #244: in the first windows of the cylinders the reaction is at roundoff, and relative to it alone the residual stayed near 1e-2 after the iteration had converged): the window balance of the rate invariant contains that difference, so a window is converged only when it is at the tolerance. The joint residual is formed from the end value of the ramp applied in the pass, which is kept until the joint step sets the next one, and every window starts from the measured reaction of the previous one. On the beam (October 19, 2026, after this was fixed) the window-end constraint conserves Ẽ to between 2.3e-13 and 7.7e-13 at 1.2 to 1.3 times the iterations of the coarse-step-constrained arrangement; at mesh ratio 1:0.5 with the fine-mesh, fine-step side constrained both pairs converge with mixing 0.5 and 0.25; the explicit pairs stall in no window and the implicit pairs in 6 to 17% of them, near 2e-12. Before the fix the measured reaction overwrote the ramp end value, the joint residual of the reaction was zero, and the same cases needed up to 40 iterations per window, stalled in most windows, and failed at 1:0.5 with mixing 0.5. The
+Fixed relaxation damps the reaction with the same factor: 0.5 and 0.25 diverge, and 0.1 reaches 4e-12 but not 1e-12 within 256 iterations on the first stop, so Anderson acceleration is the method for this constraint. The matching criterion measures the jump at the window end only and adds to the force residual the difference between the reaction at the window end and the end value of the ramp that the interior substeps applied, in the W⁻¹ norm of the constrained side relative to the larger of the reaction and the momentum rate of its interface (issue #244: in the first windows of the cylinders the reaction is at roundoff, and relative to it alone the residual stayed near 1e-2 after the iteration had converged): the window balance of the rate invariant contains that difference, so a window is converged only when it is at the tolerance. The joint residual is formed from the end value of the ramp applied in the pass, which is kept until the joint step sets the next one, and every window starts from the measured reaction of the previous one. On the beam (October 19, 2026, after this was fixed) the window-end constraint conserves Ẽ to between 2.3e-13 and 7.7e-13 at 1.2 to 1.3 times the iterations of the coarse-step-constrained arrangement; at mesh ratio 1:0.5 with the fine-mesh, fine-step side constrained both pairs converge with mixing 0.5 and 0.25; the explicit pairs stall in no window and the implicit pairs in 6 to 17% of them, near 2e-12. Before the fix the measured reaction overwrote the ramp end value, the joint residual of the reaction was zero, and the same cases needed up to 40 iterations per window, stalled in most windows, and failed at 1:0.5 with mixing 0.5. The
 same key applies to the Dirichlet side of a nonoverlap matching pair, which
 lifts role rule 1 (coarse-step side as the Dirichlet side) from a requirement
 to a preference for the iteration count. Measured on the beam, free part
@@ -579,11 +580,11 @@ below `matching absolute tolerance` (in the units of the matched quantity;
 default 0, which disables the absolute test). When every Schwarz coupling
 is a matching pair this criterion alone stops the iteration, including at the
 first Schwarz iteration of a stop, and the controller's `relative tolerance`
-and `absolute tolerance` are not used; otherwise the displacement criterion
+and `absolute tolerance` are not used; otherwise the update criterion
 must hold as well. A residual that stays above the tolerance and has not
 fallen 5% below its smallest value for three consecutive iterations is a
 stall, treated according to `stalled interface jump action`; when the simulation has other couplings,
-only iterations at which the displacement update has converged are counted. A
+only iterations at which the update criterion holds are counted. A
 single iteration without decrease, which Aitken factors produce, is not a
 stall.
 

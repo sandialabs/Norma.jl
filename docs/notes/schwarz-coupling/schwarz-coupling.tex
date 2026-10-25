@@ -359,7 +359,7 @@ iterate.
 \subsection{Stopping criteria}
 \label{sec:stopping}
 
-\paragraph{Displacement update.} With $\Delta t_c$ the controller step and
+\paragraph{Update criterion.} With $\Delta t_c$ the controller step and
 $~w_k = ~u_k + \Delta t_c\, ~v_k$ over all degrees of freedom of subdomain
 $k$ (prescribed ones included), the update between iterations $i-1$ and
 $i$ is
@@ -546,7 +546,7 @@ factor of magnitude at most $10^{-12}$ is recorded, and the iteration at
 which it was applied is not accepted as converged
 (Sec.~\ref{sec:stopping}): a zero factor leaves the interface datum at
 its previous value, every subdomain then re-solves against the data it
-already had, and the displacement update that follows measures the
+already had, and the update that follows measures the
 effect of an unchanged datum, not the interface residual. For a Dirichlet--Neumann pair the first secant factor
 appears at iteration $2$: at iteration $0$ the new slot has $~r = 0$,
 and at iteration $1$ the difference $~d$ is zero.
@@ -805,7 +805,7 @@ mass matrix. The element search and the shape function values are fixed
 at construction on the reference configuration and are not updated for
 finite deformation. The datum is not relaxed: the relaxation keys have no
 effect on this coupling, and the interface predictor does not apply to it.
-The iteration stops on the displacement update of
+The iteration stops by the update criterion of
 Sec.~\ref{sec:stopping}.
 
 \subsection{Overlap \texorpdfstring{$L^2$}{L2} error}
@@ -903,7 +903,7 @@ the coefficients formed from the projected displacement residual.
 reports, for each Dirichlet--Neumann pair, the one-sided jumps of the
 velocity and the displacement and the force residual defined in
 Sec.~\ref{sec:matching-stopping}; for the classical exchange they are
-reported only. The iteration stops on the displacement update of
+reported only. The iteration stops by the update criterion of
 Sec.~\ref{sec:stopping}, and the initial acceleration of each subdomain
 is computed per subdomain with the interface rows excluded from the
 correction (Sec.~\ref{sec:initialization}).
@@ -1200,9 +1200,9 @@ displacement tolerance divided by the step is not a valid velocity floor
 (on the cylinders of Sec.~\ref{sec:verification} it amounts to $200$\,m/s
 and stops the iteration after one pass). When every coupling of the
 simulation is a matching pair, this is the only stopping test, also at the
-first iteration of a stop, and the displacement update of
+first iteration of a stop, and the update criterion of
 Sec.~\ref{sec:stopping} is not used. Measured against the earlier rule that
-also required the displacement update to meet the controller's absolute
+also required the update to meet the controller's absolute
 tolerance at the first iteration, this changes only the stops at which
 nothing has yet reached the interface: on the nonconforming beam
 ($2000$ stops) the $7953$ Schwarz iterations and the energy output are
@@ -1217,7 +1217,7 @@ residual, maximized over the matching pairs, at iteration $i$. The
 iteration is stalled when $\mu_i$ has not fallen $5\%$ below its smallest
 value for three consecutive counted iterations (every iteration when all
 couplings are matching pairs; otherwise only those at which the
-displacement update has converged). The residual is not monotone under
+update criterion holds). The residual is not monotone under
 Aitken or Anderson acceleration, so a single non-decreasing iteration is
 not a stall. A stalled stop is accepted with a warning and the Anderson
 history cleared (\code{stalled interface jump action: warn}, the default)
@@ -1385,8 +1385,8 @@ side. The earlier-listed side applies $~g_i$ unrelaxed.
 
 \paragraph{Initialization and stopping.} When an interface node has a
 nonzero initial displacement or velocity, the initialization runs the two
-refinement passes of Sec.~\ref{sec:initialization}. The iteration stops on
-the displacement update of Sec.~\ref{sec:stopping}. The condition is not
+refinement passes of Sec.~\ref{sec:initialization}. The iteration stops by
+the update criterion of Sec.~\ref{sec:stopping}. The condition is not
 absorbing: under a dynamic integrator it can increase the energy, and the code
 warns when a Robin--Robin side is not quasi-static. It is the coupling of
 the quasi-static examples; no impedance (velocity-proportional) term is
@@ -1464,7 +1464,7 @@ function, or inequality enforcement. The surfaces must be declared in
 advance as side-set pairs; there is no global search and no self-contact.
 The projectors are not rebuilt during the run, so sliding is not tracked
 by the transfer operators. A restart is rejected with contact. The
-iteration stops on the displacement update of Sec.~\ref{sec:stopping}.
+iteration stops by the update criterion of Sec.~\ref{sec:stopping}.
 \section{Verification of the matching exchange}
 \label{sec:verification}
 
@@ -1513,7 +1513,7 @@ of $10^{-12}$ with the coupled initial acceleration.
 \includegraphics[width=\textwidth]{figs/beam-exchanges.pdf}
 \caption{Energy of the conforming beam, stops of $1\,\mu$s, $10$\,ms: the
 monolithic reference, the classical Dirichlet--Neumann exchange (Schwarz
-tolerance $10^{-8}$ on the displacement update, recursive Aitken), and the
+update criterion at $10^{-8}$, recursive Aitken), and the
 matching exchange (tolerance $10^{-12}$, Anderson acceleration). The
 classical exchange inverts an element at $1.0$\,ms with implicit
 subdomains (cross); the matching exchange coincides with the reference.}
@@ -1921,7 +1921,7 @@ departs from the constrained problem in the five respects listed in
 Sec.~\ref{sec:matching}: it transmits the static reaction
 $-~f^{\mathrm{int}}$, builds its two transfers independently, imposes
 displacement, velocity, and acceleration together, stops on the
-displacement update of the whole domain, and computes the initial
+change of $~u + \Delta t_c\, ~v$ over the whole domain, and computes the initial
 acceleration per subdomain with the interface held fixed. The relative
 difference between the force it applies on the Neumann side and the
 transposed d'Alembert reaction of the Dirichlet side, measured in the

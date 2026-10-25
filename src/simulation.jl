@@ -2166,7 +2166,7 @@ function validate_schwarz_tolerances(sim::MultiDomainSimulation)
     else
         for key in controller_keys
             haskey(sim.params, key) || norma_abort(
-                "The top-level key `$(key)` is required: it sets the displacement update criterion, " *
+                "The top-level key `$(key)` is required: it sets the update criterion, on the change of u + Δt v, " *
                 "which every Schwarz coupling other than a matching DN pair uses.",
             )
         end
