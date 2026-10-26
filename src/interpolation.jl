@@ -716,7 +716,16 @@ end
 using Symbolics
 @variables t, x, y, z
 
-function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::Function, time::Float64)
+# The facet integrals take optional weights at the facet integration points,
+# those of the overlap matching coupling on an overlapping subdomain
+# (facet_quadrature_points, TRACTION_WEIGHT_CACHE); without them every weight
+# is one.
+function get_side_set_nodal_forces(
+    nodal_coord::Matrix{Float64},
+    traction_fun::Function,
+    time::Float64,
+    point_weights::Union{Nothing,AbstractVector{Float64}}=nothing,
+)
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
     num_int_points = default_num_int_pts(element_type)
@@ -731,9 +740,20 @@ function get_side_set_nodal_forces(nodal_coord::Matrix{Float64}, traction_fun::F
         point_coord = nodal_coord * Nₚ
         txzy = (time, point_coord[1], point_coord[2], point_coord[3])
         traction_val = traction_fun(txzy)
+        point_weights === nothing || (wₚ *= point_weights[point])
         nodal_force_component += traction_val * Nₚ * j * wₚ
     end
     return nodal_force_component
+end
+
+# The reference coordinates of the integration points of a facet, in the order
+# of the facet integrals above.
+function facet_quadrature_points(nodal_coord::Matrix{Float64})
+    _, num_side_nodes = size(nodal_coord)
+    element_type = get_element_type(2, num_side_nodes)
+    num_int_points = default_num_int_pts(element_type)
+    N, _, _, _ = isoparametric(element_type, num_int_points)
+    return [nodal_coord * N[:, point] for point in 1:num_int_points]
 end
 
 function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float64)
@@ -753,7 +773,12 @@ function get_side_set_nodal_stiffness(nodal_coord::Matrix{Float64}, time::Float6
     return nodal_stiffness_component
 end
 
-function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun::Function, time::Float64)
+function get_side_set_nodal_pressure(
+    nodal_coord::Matrix{Float64},
+    pressure_fun::Function,
+    time::Float64,
+    point_weights::Union{Nothing,AbstractVector{Float64}}=nothing,
+)
     _, num_side_nodes = size(nodal_coord)
     element_type = get_element_type(2, num_side_nodes)
     num_int_points = default_num_int_pts(element_type)
@@ -770,6 +795,7 @@ function get_side_set_nodal_pressure(nodal_coord::Matrix{Float64}, pressure_fun:
         point_coord = nodal_coord * Nₚ
         txzy = (time, point_coord[1], point_coord[2], point_coord[3])
         pressure_val = pressure_fun(txzy)
+        point_weights === nothing || (wₚ *= point_weights[point])
         nodal_force_component += normal * (pressure_val * Nₚ * j * wₚ)'
     end
     return nodal_force_component

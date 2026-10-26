@@ -1298,6 +1298,11 @@ end
 # a model absent from the cache is assembled with unit weights.
 const ASSEMBLY_WEIGHT_CACHE = IdDict{SolidMechanics,Vector{Vector{Vector{Float64}}}}()
 
+# The same weights at the facet integration points of the traction and
+# pressure conditions of such a subdomain: weights[side][point], keyed by
+# condition. A condition absent from the cache is integrated with unit weights.
+const TRACTION_WEIGHT_CACHE = IdDict{BoundaryCondition,Vector{Vector{Float64}}}()
+
 function assembly_block_weights(model::SolidMechanics, block_index::Int64)
     weights = get(ASSEMBLY_WEIGHT_CACHE, model, nothing)
     return weights === nothing ? nothing : weights[block_index]

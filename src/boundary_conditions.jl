@@ -707,11 +707,13 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsSideSetDirichletBound
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannRobinBoundaryCondition)
+    side_weights = get(TRACTION_WEIGHT_CACHE, bc, nothing)
     ss_node_index = 1
-    for side in bc.num_nodes_per_side
+    for (side_index, side) in enumerate(bc.num_nodes_per_side)
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
-        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_fun, model.time)
+        point_weights = side_weights === nothing ? nothing : side_weights[side_index]
+        nodal_force_component = get_side_set_nodal_forces(side_coordinates, bc.traction_fun, model.time, point_weights)
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes
@@ -723,11 +725,15 @@ function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannRobinBoundaryC
 end
 
 function apply_bc(model::SolidMechanics, bc::SolidMechanicsNeumannPressureBoundaryCondition)
+    side_weights = get(TRACTION_WEIGHT_CACHE, bc, nothing)
     ss_node_index = 1
-    for side in bc.num_nodes_per_side
+    for (side_index, side) in enumerate(bc.num_nodes_per_side)
         side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
         side_coordinates = model.reference[:, side_nodes]
-        nodal_force_component = get_side_set_nodal_pressure(side_coordinates, bc.pressure_fun, model.time)
+        point_weights = side_weights === nothing ? nothing : side_weights[side_index]
+        nodal_force_component = get_side_set_nodal_pressure(
+            side_coordinates, bc.pressure_fun, model.time, point_weights
+        )
         ss_node_index += side
         side_node_index = 1
         for node_index in side_nodes

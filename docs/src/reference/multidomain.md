@@ -307,7 +307,10 @@ receives on all of its nodes the partner's d'Alembert reaction on the
 partner's Schwarz boundary through the transpose of the partner's projector,
 −Π_jᵀρ_j. Mass, internal force, stiffness, and energy of every quadrature
 point inside the partner are weighted by one half in the assembly (constant
-weights; a point inside n partners has the weight 1/(1 + n)), so that the
+weights; a point inside n partners has the weight 1/(1 + n)), and so are the
+`Neumann` and `Neumann pressure` loads at their facet integration points, so
+that a load on a boundary inside the partner is counted once; the spring term
+of a `Robin` condition is not weighted. With these weights the
 fixed point of the Schwarz iteration is the blended constrained problem, the
 window balance of the rate invariant cancels as for a nonoverlap matching
 pair, and the blended energy output and the rate invariant count the overlap

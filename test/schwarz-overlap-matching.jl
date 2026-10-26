@@ -21,7 +21,7 @@ const overlap_matching_example = "../examples/overlap/dynamic-same-step/cantilev
 const overlap_conforming_example = "../examples/overlap/dynamic-same-step/cantilever-conforming"
 
 function run_overlap_matching(
-    explicit::Bool, conforming::Bool; num_steps::Int=50, free_substeps::Int=1, direct::Bool=false
+    explicit::Bool, conforming::Bool; num_steps::Int=50, free_substeps::Int=1, direct::Bool=false, loads::Bool=false
 )
     meshes = conforming ? overlap_conforming_example : overlap_matching_example
     for name in ("cantilever-free", "cantilever-clamped")
@@ -40,6 +40,14 @@ function run_overlap_matching(
             sub["boundary conditions"]["Schwarz overlap matching"][1]["matching at"] = "window end"
         end
         direct && (sub["boundary conditions"]["Schwarz overlap matching"][1]["interface solve"] = "direct")
+        if loads
+            sub["boundary conditions"]["Neumann"] = [
+                Norma.Parameters("side set" => "ssy+", "component" => "y", "function" => "1.0e6")
+            ]
+            sub["boundary conditions"]["Neumann pressure"] = [
+                Norma.Parameters("side set" => "ssz+", "function" => "1.0e6")
+            ]
+        end
         YAML.write_file("$name.yaml", sub)
     end
     params = YAML.load_file("$overlap_matching_example/cantilever.yaml"; dicttype=Norma.Parameters)
@@ -161,4 +169,33 @@ end
     # elastic, E = 6.895e9, ν = 0.25, 254 × 25.4 × 12.7 mm (the undecomposed
     # mesh of the conforming example gives 1506.19 J).
     @test data[1][i_S] ≈ 1506.19 rtol = 2.0e-3
+end
+
+# A load on a part of the boundary that lies in the overlap is weighted as the
+# volume integrands are: a uniform traction on the top faces and a uniform
+# pressure on the side faces of both subdomains give the resultants of the
+# undecomposed beam, 1e6 Pa times 254 × 12.7 mm and 254 × 25.4 mm, and not
+# those of the two faces summed, which count the 50.8 mm overlap twice.
+@testset "Schwarz Overlap Matching: Weighted Tractions" begin
+    sim, _, _, _ = run_overlap_matching(false, true; num_steps=1, loads=true)
+    @test !sim.failed
+    # The boundary force also holds the reaction received from the partner, so
+    # each load is applied alone to a cleared vector.
+    function resultant(type, component)
+        total = 0.0
+        for subsim in sim.subsims
+            model = subsim.model
+            for bc in model.boundary_conditions
+                bc isa type || continue
+                fill!(model.boundary_force, 0.0)
+                Norma.apply_bc(model, bc)
+                total += sum(model.boundary_force[component:3:end])
+            end
+        end
+        return total
+    end
+    traction = resultant(Norma.SolidMechanicsNeumannBoundaryCondition, 2)
+    pressure = resultant(Norma.SolidMechanicsNeumannPressureBoundaryCondition, 3)
+    @test traction ≈ 1.0e6 * 0.254 * 0.0127 rtol = 1.0e-12
+    @test abs(pressure) ≈ 1.0e6 * 0.254 * 0.0254 rtol = 1.0e-12
 end

@@ -157,7 +157,31 @@ function set_assembly_weights!(subsim::SingleDomainSimulation)
         "a rule of its own, which the weights at the integration points do not cover.",
     )
     ASSEMBLY_WEIGHT_CACHE[model] = get_arlequin_weights(subsim).weights
+    set_traction_weights!(subsim)
     model.compute_mass = model.compute_lumped_mass = model.compute_stiffness = true
+    return nothing
+end
+
+# The constant overlap weights at the facet integration points of the traction
+# and pressure conditions of a subdomain, so that a load on a part of its
+# boundary that lies inside the partner is counted once in the sum of the
+# subdomains, as the volume integrands are.
+function set_traction_weights!(subsim::SingleDomainSimulation)
+    model = subsim.model
+    partners = overlap_partners(subsim)
+    for bc in model.boundary_conditions
+        bc isa Union{SolidMechanicsNeumannRobinBoundaryCondition,SolidMechanicsNeumannPressureBoundaryCondition} ||
+            continue
+        side_weights = Vector{Vector{Float64}}()
+        ss_node_index = 1
+        for side in bc.num_nodes_per_side
+            side_nodes = bc.side_set_node_indices[ss_node_index:(ss_node_index + side - 1)]
+            ss_node_index += side
+            points = facet_quadrature_points(model.reference[:, side_nodes])
+            push!(side_weights, [constant_overlap_weight(point, partners) for point in points])
+        end
+        TRACTION_WEIGHT_CACHE[bc] = side_weights
+    end
     return nothing
 end
 
