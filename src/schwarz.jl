@@ -1091,7 +1091,9 @@ end
 # Warns when the Dirichlet role of a matching pair is assigned against the
 # role rules (coupling note, assignment of the Dirichlet role), in their order
 # of precedence: with different time steps the coarse-step side is the
-# Dirichlet side (the impulse residual vanishes only then); with different
+# Dirichlet side under the constraint at every substep (the impulse residual
+# vanishes only then; the window-end constraint balances it with either side as
+# the Dirichlet side, so no warning is given there); with different
 # integrators the implicit side is the Dirichlet side (with the explicit side
 # as the Dirichlet side the gain of the iteration reaches -13 on the beam and
 # no fixed factor converges); with the same integrator and step the finer
