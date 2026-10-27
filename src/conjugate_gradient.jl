@@ -25,9 +25,33 @@ using LinearAlgebra
 # previous pass. A fixed chunk of 4096 entries left one thread of 12 idle on
 # 43 125 unknowns and ran 14 739 unknowns on 4 threads.
 const MINIMUM_VECTOR_CHUNK = 512
+# The dot products are summed over fixed blocks of `REDUCTION_BLOCK` entries,
+# each block in index order and the block sums in block order, whatever the
+# chunks: the chunks follow the thread count, and the partial sums of the
+# chunks themselves made the iterates differ in the last digits between 1 and
+# 12 threads. The chunks are multiples of the block, so a block is never split
+# between two chunks.
+const REDUCTION_BLOCK = 512
 function vector_chunk(n::Int64)
     n < ROW_PRODUCT_THREAD_THRESHOLD && return n
-    return max(MINIMUM_VECTOR_CHUNK, cld(n, Threads.nthreads()))
+    chunk = max(MINIMUM_VECTOR_CHUNK, cld(n, Threads.nthreads()))
+    return cld(chunk, REDUCTION_BLOCK) * REDUCTION_BLOCK
+end
+
+# f(range) for the consecutive blocks of REDUCTION_BLOCK entries of 1:n, run
+# in the chunks of vector_chunk; the values are returned in block order.
+function block_partials(f, ::Type{T}, n::Int64) where {T}
+    partials = Vector{T}(undef, cld(n, REDUCTION_BLOCK))
+    chunk_results(Nothing, () -> nothing, n; chunk=vector_chunk(n)) do range, _
+        lo = first(range)
+        while lo <= last(range)
+            hi = min(lo + REDUCTION_BLOCK - 1, last(range))
+            @inbounds partials[div(lo - 1, REDUCTION_BLOCK) + 1] = f(lo:hi)
+            lo = hi + 1
+        end
+        return nothing
+    end
+    return partials
 end
 
 function resize_workspace!(ws::ConjugateGradientWorkspace, n::Int64)
@@ -37,9 +61,9 @@ function resize_workspace!(ws::ConjugateGradientWorkspace, n::Int64)
     return nothing
 end
 
-# r ⋅ z by chunks, with the partial sums in chunk order.
+# r ⋅ z by blocks, with the partial sums in block order.
 function chunk_dot(r::Vector{Float64}, z::Vector{Float64})
-    partials = chunk_results(Float64, () -> nothing, length(r); chunk=vector_chunk(length(r))) do range, _
+    partials = block_partials(Float64, length(r)) do range
         s = 0.0
         @inbounds for i in range
             s += r[i] * z[i]
@@ -49,10 +73,10 @@ function chunk_dot(r::Vector{Float64}, z::Vector{Float64})
     return sum(partials)
 end
 
-# c = A u and u ⋅ c, by chunks of rows of the symmetric matrix.
+# c = A u and u ⋅ c, by blocks of rows of the symmetric matrix.
 function product_and_dot!(c::Vector{Float64}, A::SymmetricRowOperator, u::Vector{Float64})
     rowptr, colval, nzval = A.rowptr, A.colval, A.nzval
-    partials = chunk_results(Float64, () -> nothing, A.n; chunk=vector_chunk(A.n)) do rows, _
+    partials = block_partials(Float64, A.n) do rows
         row_product!(c, rowptr, colval, nzval, u, rows)
         s = 0.0
         @inbounds for i in rows
@@ -76,7 +100,7 @@ function update_and_dots!(
     jacobi = !isempty(inverse_diagonal)
     # The two forms are separate loops: a branch inside the loop kept it from
     # vectorizing (0.22 against 0.07 ms per pass on 45 000 entries).
-    partials = chunk_results(NTuple{2,Float64}, () -> nothing, length(x); chunk=vector_chunk(length(x))) do range, _
+    partials = block_partials(NTuple{2,Float64}, length(x)) do range
         rr = 0.0
         rz = 0.0
         if jacobi
