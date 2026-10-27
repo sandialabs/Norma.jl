@@ -20,12 +20,14 @@
 # secant, and Anderson with depth 1 to 50, each with relaxation (mixing) 0.1
 # to 1, all invert elements of filler_in or stall in the first step (80 runs).
 #
-# Each interface here keeps the orientation of that Dirichlet-Neumann chain:
-# the side that was Dirichlet has a large Robin parameter, close to a
-# Dirichlet condition, and the side that was Neumann one near the interface
-# stiffness of the filler, so that the gain of each interface is about the
-# ratio of the two. The Robin parameters (force per area per displacement, h
-# the element size on the side set), Dirichlet side first:
+# Here the soft filler side of every interface has a large Robin parameter,
+# close to a Dirichlet condition (on ssint, filler against filler, the side
+# toward the core), and the stiff side one near the interface stiffness of the
+# filler, so that the gain of each interface is about the ratio of the two: a
+# Dirichlet-Robin iteration with the soft side as the Dirichlet side, in which
+# the Robin term supports the core. On sscore this reverses the roles of the
+# Dirichlet-Neumann chain. The Robin parameters (force per area per
+# displacement, h the element size on the side set), near-Dirichlet side first:
 #   sscore   filler_in   7.6e13 (10 E_core/h)        core        1.0e9
 #   ssint    filler_in   5.6e12 (10 kappa_filler/h)  filler_out  3.0e10
 #   ssshell  filler_out  2.1e13 (E_shell/h)          shell       3.0e10

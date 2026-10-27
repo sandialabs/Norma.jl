@@ -408,11 +408,11 @@ parameters E/h. Fixed relaxation converges only below about 0.005 (0.004
 needs 4017 iterations for the first step, 0.008 diverges), which measures a
 largest gain of about −400. The input `cylinders-3.yaml` of that example
 records the measurements. Robin–Robin coupling on all three interfaces of the
-chain of four converges (`cylinders-4.yaml`): each interface keeps the
-orientation of the Dirichlet–Neumann chain, with a Robin parameter close to a
-Dirichlet condition on the side that was Dirichlet and one near the filler's
-interface stiffness on the side that was Neumann, and Anderson acceleration
-needs 30 to 34 iterations per step against 21 for the chain of three.
+chain of four converges (`cylinders-4.yaml`): the soft filler side of every
+interface has a Robin parameter close to a Dirichlet condition and the stiff
+side one near the filler's interface stiffness, so that the Robin term
+supports the core, and Anderson acceleration needs 30 to 34 iterations per
+step against 21 for the chain of three.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
