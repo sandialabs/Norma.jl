@@ -790,8 +790,6 @@ function create_element_value_buffers(blocks::Vector{ElementBlockData}, num_node
     force = [zeros(3 * block.num_nodes_per_element * block.num_elements) for block in blocks]
     lumped_mass = [zeros(3 * block.num_nodes_per_element * block.num_elements) for block in blocks]
     dof_target = Vector{Vector{Int64}}(undef, length(blocks))
-    dof_ptr = Vector{Vector{Int64}}(undef, length(blocks))
-    dof_source = Vector{Vector{Int32}}(undef, length(blocks))
     for (block_index, block) in enumerate(blocks)
         nd = 3 * block.num_nodes_per_element
         dofs = Vector{Int64}(undef, nd)
@@ -804,10 +802,10 @@ function create_element_value_buffers(blocks::Vector{ElementBlockData}, num_node
                 targets[k] = dofs[i]
             end
         end
-        dof_ptr[block_index], dof_source[block_index] = inverse_map(targets, 3 * Int64(num_nodes))
         dof_target[block_index] = targets
     end
-    return ElementValueBuffers(force, lumped_mass, dof_target, dof_ptr, dof_source)
+    dof_ptr, dof_block, dof_source = inverse_map(dof_target, 3 * Int64(num_nodes))
+    return ElementValueBuffers(force, lumped_mass, dof_target, dof_ptr, dof_block, dof_source)
 end
 
 # The sparsity pattern is that of the sum over elements of the element
@@ -859,8 +857,8 @@ function build_matrix_pattern(model::SolidMechanics)
     stiffness = [zeros(length(block_slots)) for block_slots in slots]
     # The mass values are sized on first use: quasi-static runs never need them.
     mass = [Float64[] for _ in slots]
-    inverses = [inverse_map(block_slots, length(rowval)) for block_slots in slots]
-    return MatrixPattern(colptr, rowval, slots, stiffness, mass, first.(inverses), last.(inverses))
+    entry_ptr, entry_block, entry = inverse_map(slots, length(rowval))
+    return MatrixPattern(colptr, rowval, slots, stiffness, mass, entry_ptr, entry_block, entry)
 end
 
 # Copy the element arrays of one element into its value segments. Segments of
@@ -925,8 +923,9 @@ function reduce_element_vector!(
     global_vector::Vector{Float64}, buffers::ElementValueBuffers, values::Vector{Vector{Float64}}
 )
     num_dofs = length(global_vector)
-    ptrs = buffers.dof_ptr
-    sources = buffers.dof_source
+    ptr = buffers.dof_ptr
+    block = buffers.dof_block
+    source = buffers.dof_source
     if Threads.nthreads() == 1
         fill!(global_vector, 0.0)
         @inbounds for block_index in eachindex(values)
@@ -940,13 +939,8 @@ function reduce_element_vector!(
     end
     @threads :static for dof in 1:num_dofs
         s = 0.0
-        @inbounds for block_index in eachindex(values)
-            block_values = values[block_index]
-            ptr = ptrs[block_index]
-            source = sources[block_index]
-            for p in ptr[dof]:(ptr[dof + 1] - 1)
-                s += block_values[source[p]]
-            end
+        @inbounds for p in ptr[dof]:(ptr[dof + 1] - 1)
+            s += values[block[p]][source[p]]
         end
         @inbounds global_vector[dof] = s
     end
@@ -968,8 +962,9 @@ function reduce_element_matrix!(
     num_nonzeros = length(pattern.rowval)
     reuse = A.colptr === pattern.colptr && A.rowval === pattern.rowval && length(A.nzval) == num_nonzeros
     nzval = reuse ? A.nzval : Vector{Float64}(undef, num_nonzeros)
-    ptrs = pattern.entry_ptr
-    entries = pattern.entry
+    ptr = pattern.entry_ptr
+    block = pattern.entry_block
+    entry = pattern.entry
     if Threads.nthreads() == 1
         fill!(nzval, 0.0)
         @inbounds for block_index in eachindex(values)
@@ -983,13 +978,8 @@ function reduce_element_matrix!(
     end
     @threads :static for j in 1:num_nonzeros
         s = 0.0
-        @inbounds for block_index in eachindex(values)
-            block_values = values[block_index]
-            ptr = ptrs[block_index]
-            entry = entries[block_index]
-            for p in ptr[j]:(ptr[j + 1] - 1)
-                s += block_values[entry[p]]
-            end
+        @inbounds for p in ptr[j]:(ptr[j + 1] - 1)
+            s += values[block[p]][entry[p]]
         end
         @inbounds nzval[j] = s
     end

@@ -198,6 +198,7 @@ const indexed_test_files = [
     (157, "allocations.jl"),
     (158, "reduced-system.jl"),
     (159, "conjugate-gradient.jl"),
+    (160, "multi-block-assembly.jl"),
 ]
 
 # Neural-network OpInf tests. These load the optional PyCall dependency to reach

@@ -391,7 +391,17 @@ const CHUNK_ELEMENTS = 256
 # Chunk of the passes over vectors and matrix values.
 const VECTOR_CHUNK = 4096
 
-function chunk_results(f, ::Type{T}, init, n::Integer; chunk::Integer=CHUNK_ELEMENTS) where {T}
+# Chunk of an element loop over n elements: CHUNK_ELEMENTS for large blocks,
+# smaller for small ones, so that a block yields at least
+# MINIMUM_ELEMENT_CHUNKS chunks to divide among the threads. It depends on n
+# alone, not on the thread count, so the sums stay the same on every thread
+# count. On a polycrystal of 64 blocks of about 590 elements, chunks of 256 kept
+# 3 of 12 threads at work (issue #251).
+const MINIMUM_ELEMENT_CHUNKS = 32
+const MINIMUM_ELEMENT_CHUNK = 16
+element_chunk(n::Integer) = clamp(cld(n, MINIMUM_ELEMENT_CHUNKS), MINIMUM_ELEMENT_CHUNK, CHUNK_ELEMENTS)
+
+function chunk_results(f, ::Type{T}, init, n::Integer; chunk::Integer=element_chunk(n)) where {T}
     nchunks = cld(n, chunk)
     results = Vector{T}(undef, nchunks)
     ntasks = min(Threads.nthreads(), nchunks)
@@ -413,16 +423,22 @@ function chunk_results(f, ::Type{T}, init, n::Integer; chunk::Integer=CHUNK_ELEM
     return results
 end
 
-# Inverse of a many-to-one map k -> targets[k] onto 1:num_targets, in the
-# compressed form ptr, source: the sources of target t are
-# source[ptr[t]:(ptr[t + 1] - 1)], in increasing k. A reduction that adds, for
-# every target, its sources in that order gives the same sums as the loop over
-# k that scatters into the targets, and every target is written by one task.
-function inverse_map(targets::AbstractVector{<:Integer}, num_targets::Integer)
-    length(targets) <= typemax(Int32) ||
-        norma_abort("The inverse map of $(length(targets)) entries exceeds the 32-bit index range.")
+# Inverse of the many-to-one maps k -> targets[b][k] of all blocks b onto
+# 1:num_targets, in the compressed form ptr, block, source: the sources of
+# target t are (block[p], source[p]) for p in ptr[t]:(ptr[t + 1] - 1), in
+# increasing block and, within a block, increasing k. A reduction that adds,
+# for every target, its sources in that order gives the same sums as the loop
+# over the blocks and k that scatters into the targets, and every target is
+# written by one task. One map for all blocks: a map per block held a pointer
+# array as long as the targets, 8 GB for the stiffness of 64 blocks (issue
+# #251), and the gather visited every block for every target.
+function inverse_map(targets::AbstractVector{<:AbstractVector{<:Integer}}, num_targets::Integer)
+    longest = maximum(length, targets; init=0)
+    longest <= typemax(Int32) ||
+        norma_abort("The inverse map of a block of $(longest) entries exceeds the 32-bit index range.")
+    total = sum(length, targets; init=0)
     ptr = zeros(Int64, num_targets + 1)
-    @inbounds for t in targets
+    @inbounds for block_targets in targets, t in block_targets
         ptr[t + 1] += 1
     end
     ptr[1] = 1
@@ -430,10 +446,12 @@ function inverse_map(targets::AbstractVector{<:Integer}, num_targets::Integer)
         ptr[t + 1] += ptr[t]
     end
     next = ptr[1:num_targets]
-    source = Vector{Int32}(undef, length(targets))
-    @inbounds for (k, t) in enumerate(targets)
+    block = Vector{Int32}(undef, total)
+    source = Vector{Int32}(undef, total)
+    @inbounds for (b, block_targets) in enumerate(targets), (k, t) in enumerate(block_targets)
+        block[next[t]] = b
         source[next[t]] = k
         next[t] += 1
     end
-    return ptr, source
+    return ptr, block, source
 end
