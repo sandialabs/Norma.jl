@@ -397,7 +397,7 @@ support of its own has a singular stiffness, so each such subdomain must be
 the Dirichlet side of at least one interface. When that forces the Dirichlet
 role onto the stiffer side of an interface with a large stiffness ratio, the
 iteration can diverge under every relaxation. On the quarter of the three
-nested cylinders (`examples/nonoverlap/static-same-step/concentric-cylinders`,
+nested cylinders (`examples/jmp/concentric-cylinders/quasistatic`,
 test 154, issue #246) the chains of two and three subdomains, in which the
 core stays inside one subdomain, converge in 21 to 25 iterations per step with
 Anderson acceleration; the chain of four, in which the core (shear modulus

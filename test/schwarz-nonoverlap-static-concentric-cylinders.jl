@@ -18,7 +18,7 @@ function mean_core_displacement_z(model)
 end
 
 @testset "Schwarz Nonoverlap Static Concentric Cylinders" begin
-    src = "../examples/nonoverlap/static-same-step/concentric-cylinders/quarter/"
+    src = "../examples/jmp/concentric-cylinders/quasistatic/quarter/"
     mono_files = ["cylinders.yaml", "cylinders.g"]
     for file in mono_files
         cp(src * "monolithic/" * file, file; force=true)

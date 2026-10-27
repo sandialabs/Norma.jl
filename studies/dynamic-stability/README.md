@@ -205,8 +205,8 @@ Natural next experiments, each a change of one fixed setting in a separate
 runs directory: displacement matching (`matching: displacement`,
 trapezoidal Newmark pairs only), other step ratios (2:1, 8:1), the mixed
 pairs at ratio 0.5 with subcycling, the Anderson depth and mixing parameter,
-and the nested cylinders (`examples/jmp/concentric-cylinders` and its linear
-version) with the same factors.
+and the nested cylinders (`examples/jmp/concentric-cylinders/dynamic` and its linear
+version, `dynamic-linear`) with the same factors.
 
 ## Files
 

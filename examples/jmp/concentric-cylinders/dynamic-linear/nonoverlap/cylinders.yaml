@@ -1,9 +1,9 @@
 # Linear elastic version of the nested cylinders of
-# examples/jmp/concentric-cylinders, for devising and testing conservation
+# examples/jmp/concentric-cylinders/dynamic, for devising and testing conservation
 # schemes: three nested cylinders (core, filler, shell) of linear elastic
 # materials, fixed in z at the bottom face of the shell and moving at -5 m/s
 # in z. With linear elastic materials the rate invariant of the differentiated
-# system, which the constrained Dirichlet-Neumann exchange conserves, is
+# system, which the matching Dirichlet-Neumann exchange conserves, is
 # defined, so the energy output measures conservation and not only
 # boundedness. The speed is 5 m/s rather than the -35 m/s of the neohookean
 # example, which strains the filler beyond the range of a small-strain model.
@@ -18,11 +18,15 @@
 #           Poisson ratio (3K - 2G)/(2(3K + G)) = 0.4940422881311684,
 #           density 1843 kg/m^3
 #
-# One-domain multidomain wrapper of cylinders.yaml, which writes the blended
-# energy output (the energy, and the rate invariant of the differentiated system) to
-# reference-energy.csv.
+# Nonoverlapping decomposition: the inner domain (core and inner filler,
+# the finer mesh) and the outer domain (outer filler and shell), coupled by
+# the matching Dirichlet-Neumann exchange with velocity matching and the
+# inner side as the Dirichlet side. The Schwarz iteration stops on the
+# relative interface velocity jump and force residual (matching relative
+# tolerance). The input has no controller relative and absolute tolerances:
+# they act on the displacement update, which matching pairs do not use.
 type: multi
-domains: ["cylinders.yaml"]
+domains: ["inner.yaml", "outer.yaml"]
 blended energy output: true
 Exodus output interval: 2.0e-05
 CSV output interval: 0
@@ -30,6 +34,6 @@ initial time: 0.0
 final time: 1.0e-03
 time step: 5.0e-07
 minimum iterations: 1
-maximum iterations: 1
-relative tolerance: 1.0e-12
-absolute tolerance: 1.0e-15
+maximum iterations: 256
+matching relative tolerance: 1.0e-12
+relaxation parameter: 0.5
