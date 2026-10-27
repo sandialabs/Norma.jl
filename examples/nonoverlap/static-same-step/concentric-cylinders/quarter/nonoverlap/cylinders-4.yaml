@@ -5,8 +5,8 @@
 # --sd 4 --quarter), with the loading of ../monolithic. Robin-Robin coupling
 # on all three interfaces: sscore (core against filler), ssint (filler against
 # filler), and ssshell (filler against shell). With this input Anderson
-# acceleration (depth 10, mixing 0.5) converges in __ and __ Schwarz
-# iterations; the mean z displacement of the core at t = 1 is within __% of
+# acceleration (depth 10, mixing 0.5) converges in 35 and 33 Schwarz
+# iterations; the mean z displacement of the core at t = 1 is within 0.37% of
 # the monolithic one (../../compare-to-monolithic.jl 4 prints both).
 #
 # Dirichlet-Neumann coupling does not work for this chain (cylinders-3.yaml):
