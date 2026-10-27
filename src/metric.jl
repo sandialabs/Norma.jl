@@ -163,10 +163,10 @@ function node_neighbors(model::SolidMechanics)
     return node_neighbors(size(model.reference, 2), (block.connectivity for block in model.blocks))
 end
 
-# Node adjacency of the input mesh, from the connectivity of its blocks.
+# Node adjacency of the input mesh, from the connectivity of its blocks, which
+# Exodus.Block holds with one column per element.
 function node_neighbors(mesh::ExodusDatabase, num_nodes::Int)
-    connectivities = (permutedims(get_block_connectivity(mesh, block.id)) for block in Exodus.read_sets(mesh, Block))
-    return node_neighbors(num_nodes, connectivities)
+    return node_neighbors(num_nodes, (block.conn for block in Exodus.read_sets(mesh, Block)))
 end
 
 # Sizes (3 × n) and rotation vectors (3 × n) of tensors given at the nodes,
