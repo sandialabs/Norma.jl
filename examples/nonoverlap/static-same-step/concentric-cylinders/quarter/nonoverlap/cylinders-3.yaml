@@ -11,21 +11,23 @@
 # displacement of the core at t = 1 is within 0.4% of the monolithic one.
 #
 # The four-subdomain chain core, filler_in, filler_out, shell (meshes from
-# generate-meshes.sh --sd 4) does not converge. The same requirement makes the
-# core the Dirichlet side of sscore, against the filler, whose shear modulus is
-# 525 times smaller (72 MPa against 37.6 GPa). The Dirichlet-Neumann iteration
-# then diverges: at refinement 0.5, Anderson (mixing 0.5) inverts elements of
-# the filler in Schwarz iteration 3 of the first step (counting from 0), fixed
-# relaxation 0.5 and 0.1 in iterations 4 and 5, Aitken secant in iteration
-# 117, and Anderson with mixing 0.02 has not converged in 512 iterations. The
-# divergence does not depend on the load step: with 20 and 100 steps the
-# changes of the first iterations scale with the step, and Anderson inverts
-# elements in iterations 15 and 17.
+# generate-meshes.sh --sd 4) does not converge with Dirichlet-Neumann coupling
+# (cylinders-4.yaml couples it Robin-Robin instead). The same requirement
+# makes the core the Dirichlet side of sscore, against the filler, whose shear
+# modulus is 525 times smaller (72 MPa against 37.6 GPa). The
+# Dirichlet-Neumann iteration then diverges: at refinement 0.5, Anderson
+# (mixing 0.5) inverts elements of the filler in Schwarz iteration 3 of the
+# first step (counting from 0), fixed relaxation 0.5 and 0.1 in iterations 4
+# and 5, Aitken secant in iteration 117, and Anderson with mixing 0.02 has not
+# converged in 512 iterations. The divergence does not depend on the load
+# step: with 20 and 100 steps the changes of the first iterations scale with
+# the step, and Anderson inverts elements in iterations 15 and 17.
 # Robin-Robin coupling on sscore, with the Robin parameter of each side E/h of
 # its own material, of the partner's, or their geometric mean, did not
-# converge in 512 iterations either. The roles of Dirichlet and Neumann sides
-# have to respect both the supports and the stiffness ratio: on ssshell the
-# soft filler is the Dirichlet side, and the iteration converges.
+# converge in 512 iterations either; Robin-Robin on all three interfaces, with
+# the parameters of cylinders-4.yaml, converges. The roles of Dirichlet and
+# Neumann sides have to respect both the supports and the stiffness ratio: on
+# ssshell the soft filler is the Dirichlet side, and the iteration converges.
 type: multi
 domains: ["inner-3.yaml", "filler_out-3.yaml", "shell-3.yaml"]
 Exodus output interval: 1

@@ -20,7 +20,8 @@
 #
 # The committed meshes of the quasi-static example are the quarter meshes at
 # refinement 0.5: monolithic/cylinders.g and nonoverlap/inner.g and outer.g
-# from --sd 2, nonoverlap/filler_out.g and shell.g from --sd 4:
+# from --sd 2, nonoverlap/core.g, filler_in.g, filler_out.g and shell.g from
+# --sd 4:
 #
 #   ./generate-meshes.sh --refine 0.5 --sd 2 --quarter
 #   ./generate-meshes.sh --refine 0.5 --sd 4 --quarter

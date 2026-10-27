@@ -1,0 +1,71 @@
+# Quasi-static nonoverlapping Schwarz on the quarter of the three nested
+# cylinders (issue #246), four subdomains in a chain: core, filler_in (the
+# filler inside the region of radius 2.25 in and height 9 in), filler_out (the
+# rest of the filler), and shell (meshes from generate-meshes.sh --refine 0.5
+# --sd 4 --quarter), with the loading of ../monolithic. Robin-Robin coupling
+# on all three interfaces: sscore (core against filler), ssint (filler against
+# filler), and ssshell (filler against shell). With this input Anderson
+# acceleration (depth 10, mixing 0.5) converges in __ and __ Schwarz
+# iterations; the mean z displacement of the core at t = 1 is within __% of
+# the monolithic one (../../compare-to-monolithic.jl 4 prints both).
+#
+# Dirichlet-Neumann coupling does not work for this chain (cylinders-3.yaml):
+# only the shell is supported, so the core must be the Dirichlet side of
+# sscore against a filler whose shear modulus is 525 times smaller. Fixed
+# relaxation measures the gain of that iteration: in the first of 10 load
+# steps, relaxation 0.004 converges in 4017 Schwarz iterations, and with 0.008
+# the change grows by a factor 2.2 per iteration until elements of filler_in
+# invert in iteration 24, so the largest |g| is about 400 and the relaxation
+# must stay below about 0.005. Classical relaxation, Aitken recursive and
+# secant, and Anderson with depth 1 to 50, each with relaxation (mixing) 0.1
+# to 1, all invert elements of filler_in or stall in the first step (80 runs).
+#
+# Each interface here keeps the orientation of that Dirichlet-Neumann chain:
+# the side that was Dirichlet has a large Robin parameter, close to a
+# Dirichlet condition, and the side that was Neumann one near the interface
+# stiffness of the filler, so that the gain of each interface is about the
+# ratio of the two. The Robin parameters (force per area per displacement, h
+# the element size on the side set), Dirichlet side first:
+#   sscore   filler_in   7.6e13 (10 E_core/h)        core        1.0e9
+#   ssint    filler_in   5.6e12 (10 kappa_filler/h)  filler_out  3.0e10
+#   ssshell  filler_out  2.1e13 (E_shell/h)          shell       3.0e10
+# The core-side value is of the order of mu_filler/L, with L the 19 to 38 mm
+# between the core and the region boundary: the stiffness of the filler
+# against a smooth motion of the core.
+#
+# Measured with Norma 49703f16, 10 load steps and up to 256 Schwarz iterations,
+# on meshes from Cubit 15.9.0 (core.g and filler_in.g are those meshes;
+# filler_out.g and shell.g of that set have the same element sizes as the
+# committed ones, from Cubit 17.08.3). Anderson converges for every mixing from
+# 0.1 to 1: depth 10 to 50 in 30 to 34 iterations per step for mixing 0.3 to 1
+# (31.6 for depth 10, mixing 0.5; core-side parameter 4e9 instead of 1e9:
+# 31.3), and in 36 to 52 for mixing 0.1 and 0.2; depth 5 in 36 to 61. Aitken
+# secant converges for every relaxation in 160 to 177 iterations per step,
+# Aitken recursive in 157 to 180 or stalls at 256, Anderson depth 1 only for
+# mixing 0.4 to 0.6, and classical relaxation inverts elements. Against 21
+# iterations for the chain of three (Dirichlet-Neumann, Anderson), the fourth
+# subdomain costs about 1.5 times the iterations.
+#
+# Robin-Robin on all three interfaces is what Anderson needs. With Robin-Robin
+# on sscore only (filler side 7.6e13, core side 5e8 to 6.8e11) and
+# Dirichlet-Neumann on ssint and ssshell, no run inverts elements and Aitken
+# secant converges for core-side parameters 5e8 to 8.1e9 (163 to 171
+# iterations per step), but Anderson (depth 10, mixing 0.5) stalls between
+# 1e-6 and 1e-3 in 256 iterations for every parameter: the Robin datum and the
+# interface displacements are relaxed in separate least-squares problems,
+# which the shared subdomain filler_in couples. A filler-side parameter on
+# sscore below the core's E/h, 7.6e10, stalls as well.
+type: multi
+domains: ["core-4.yaml", "filler_in-4.yaml", "filler_out-4.yaml", "shell-4.yaml"]
+Exodus output interval: 1
+CSV output interval: 0
+initial time: 0.0
+final time: 1.0
+time step: 0.5
+minimum iterations: 1
+maximum iterations: 64
+relative tolerance: 1.0e-08
+absolute tolerance: 1.0e-12
+relaxation: anderson
+anderson depth: 10
+relaxation parameter: 0.5

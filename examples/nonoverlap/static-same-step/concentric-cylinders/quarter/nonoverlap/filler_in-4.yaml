@@ -1,0 +1,41 @@
+type: single
+input mesh file: filler_in.g
+output mesh file: filler_in-4.e
+model:
+  type: solid mechanics
+  material:
+    blocks:
+      filler: filler
+    filler:
+      model: neohookean
+      bulk modulus: 5.99e+09
+      shear modulus: 7.1658e+07
+      density: 1843.0
+time integrator:
+  type: quasi static
+boundary conditions:
+  Dirichlet:
+    - node set: nsx-
+      component: x
+      function: "0.0"
+    - node set: nsy-
+      component: y
+      function: "0.0"
+  Schwarz RR nonoverlap:
+    - side set: ssint
+      source: filler_out-4
+      source block: filler
+      source side set: ssint
+      robin parameter: 5.6e+12  # 10 kappa_filler/h, h = 10.7 mm: near Dirichlet
+    - side set: sscore
+      source: core-4
+      source block: core
+      source side set: sscore
+      robin parameter: 7.6e+13  # 10 E_core/h, h = 13.2 mm: near Dirichlet
+solver:
+  type: Hessian minimizer
+  step: full Newton
+  minimum iterations: 1
+  maximum iterations: 16
+  relative tolerance: 1.0e-10
+  absolute tolerance: 1.0e-06
