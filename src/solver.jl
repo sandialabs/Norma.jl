@@ -665,7 +665,7 @@ function solve_linear_direct(
     end
     if symmetric == false
         cache.factor = nothing
-        return solve_and_free!(lu(A), b)
+        return solve_and_free!(umfpack_lu(A), b)
     end
     As = Symmetric(A)
     factor = cache.factor
@@ -683,7 +683,7 @@ function solve_linear_direct(
     if issuccess(factor) == false
         norma_log(4, :solve, "Direct linear solver: matrix not positive definite, using LU")
         cache.factor = nothing
-        return solve_and_free!(lu(A), b)
+        return solve_and_free!(umfpack_lu(A), b)
     end
     cache.factor = factor
     cache.colptr = A.colptr
@@ -706,6 +706,23 @@ function fill_reducing_ordering(A::SparseMatrixCSC{Float64,Int64})
     n <= 1 && return collect(Int64, 1:n)
     perm, _ = Metis.permutation(Metis.graph(A; check_hermitian=false))
     return Vector{Int64}(perm)
+end
+
+# The LU factor of UMFPACK under its own nested dissection ordering (METIS)
+# instead of its default (AMD), as the Cholesky factor above is ordered by
+# METIS. On the algorithmic tangent of a crystal-plasticity polycrystal of
+# 388 661 unknowns (64 grains, composite tet 10), the factor has 1.79 billion
+# nonzeros against 4.43 billion and takes 148 s against 593–709 s, and the
+# first Newton iteration peaks at 31.1 GiB against 92.4 GiB; on a cell of
+# 151 658 unknowns the factor has 370 million nonzeros against 720 million,
+# and a Newton iteration takes 39 s against 72 s (issue #251). The solutions
+# agree with those of the default ordering to 6e-13. A METIS permutation
+# passed to UMFPACK instead made the factorization 5 times slower.
+function umfpack_lu(A::SparseMatrixCSC{Float64,Int64})
+    UMFPACK = SparseArrays.UMFPACK
+    control = UMFPACK.get_umfpack_control(Float64, Int64)
+    control[UMFPACK.JL_UMFPACK_ORDERING] = SparseArrays.LibSuiteSparse.UMFPACK_ORDERING_METIS
+    return lu(A; control=control)
 end
 
 # `symmetric` states whether A is symmetric when the caller knows (the material
