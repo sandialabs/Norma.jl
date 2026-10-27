@@ -9,7 +9,9 @@
 # outer) and in a chain of three (inner, filler_out, shell), against the
 # monolithic run. Each unsupported subdomain is the Dirichlet side toward the
 # supported shell. The chain of four that also separates the core from the
-# filler diverges and is not tested; the input cylinders-3.yaml records why.
+# filler diverges with Dirichlet-Neumann coupling (cylinders-3.yaml records
+# why) and converges with Robin-Robin coupling on all interfaces
+# (cylinders-4.yaml); neither is tested.
 function mean_core_displacement_z(model)
     nodes = unique(vec(model.blocks[1].connectivity))
     return sum(model.displacement[3, nodes]) / length(nodes)

@@ -403,8 +403,16 @@ core stays inside one subdomain, converge in 21 to 25 iterations per step with
 Anderson acceleration; the chain of four, in which the core (shear modulus
 37.6 GPa) is the Dirichlet side against the filler (72 MPa), inverts elements
 or does not converge under Anderson, fixed, and Aitken relaxation, at any load
-step, and also with Robin–Robin coupling on that interface. The input
-`cylinders-3.yaml` of that example records the measurements.
+step, and also with Robin–Robin coupling on that interface with Robin
+parameters E/h. Fixed relaxation converges only below about 0.005 (0.004
+needs 4017 iterations for the first step, 0.008 diverges), which measures a
+largest gain of about −400. The input `cylinders-3.yaml` of that example
+records the measurements. Robin–Robin coupling on all three interfaces of the
+chain of four converges (`cylinders-4.yaml`): the soft filler side of every
+interface has a Robin parameter close to a Dirichlet condition and the stiff
+side one near the filler's interface stiffness, so that the Robin term
+supports the core, and Anderson acceleration needs 30 to 34 iterations per
+step against 21 for the chain of three.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
@@ -538,7 +546,12 @@ computed for each interface separately fit wrong secant models: on a disk in a
 matrix whose interface is coupled as four side sets
 (`examples/nonoverlap/static-same-step/matrix-inclusion-split`, test 139) they
 inverted an element or did not converge in 500 iterations, against 23 for the
-stacked problem and 21 for the interface as one side set (issue #233). The
+stacked problem and 21 for the interface as one side set (issue #233). Groups
+are not coupled: on the chain of four nested cylinders with Robin–Robin
+coupling on one interface and Dirichlet–Neumann on the two others, which share
+a subdomain with it, Anderson (depth 10) did not converge in 256 iterations for
+any Robin parameter while Aitken did (163 to 171 iterations per step); with
+Robin–Robin on all three interfaces, one group, it converged in 31 to 32. The
 histories hold at most m + 1 columns. A column holds, for each relaxed field
 of an interface, the iterate and the residual on the partner degrees of
 freedom that the transfer reads: the nodes of the partner side set, or for an
