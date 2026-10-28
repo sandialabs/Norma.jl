@@ -438,6 +438,34 @@ for (label, mesh_dir) in (("conforming", constrained_dn_example), ("2:1 nonconfo
     end
 end
 
+# A final time that is not a whole number of time steps. The run ends at the
+# first stop that reaches it, and the per-stop arrays are sized for that stop:
+# rounding the count to the nearest whole number of steps gave one stop fewer
+# than the loop takes when the remainder was below half a step, and the last
+# stop wrote past the end of the Schwarz iteration counts.
+@testset "Control stop count" begin
+    @test Norma.control_stop_count(0.0, 1.0e-5, 1.0e-6) == 11
+    @test Norma.control_stop_count(0.0, 1.01e-5, 1.0e-6) == 12
+    @test Norma.control_stop_count(0.0, 1.06e-5, 1.0e-6) == 12
+    @test Norma.control_stop_count(0.0, 0.1, 3.401e-6) == 29405
+    @test Norma.control_stop_count(0.0, 0.1, 1.0e-6) == 100001
+    @test Norma.control_stop_count(0.0, 1.0e-7, 1.0e-6) == 2
+end
+for solve in ("iterative", "direct")
+    @testset "Matching DN: Final Time Between Stops, EE $solve" begin
+        dt = 1.0e-6
+        sim, header, data = run_constrained_dn(
+            true; num_steps=5, dt, interface_solve=solve, edit_params=p -> p["final time"] = 5.1 * dt
+        )
+        @test sim.failed == false
+        @test sim.controller.stop == 6
+        @test sim.controller.time ≈ 6 * dt
+        @test length(sim.controller.schwarz_iters) == 6
+        @test length(data) == 7
+        @test invariant_drift(header, data) < 1.0e-12
+    end
+end
+
 # Aitken relaxation of the constrained exchange forms its factor from the
 # projected interface trace Π_D v_N that the Dirichlet side receives. Formed
 # from the partner's whole velocity field, whose interior values follow a map
