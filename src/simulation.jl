@@ -153,8 +153,8 @@ function process_restart!(params::Parameters, input_mesh, basename::String)
     restart_time = Exodus.read_time(input_mesh, restart_index)
     integrator_params = params["time integrator"]
     # A restart at or past `final time` leaves nothing to integrate. Without
-    # this check, num_stops = max(round((final_time - restart_time) /
-    # time_step) + 1, 2) is forced to at least 2 regardless, and evolve()
+    # this check, num_stops = control_stop_count(restart_time, final_time,
+    # time_step) is forced to at least 2 regardless, and evolve()
     # always advances one control step before checking stop_evolve(), so the
     # run would silently take one step past final_time and write a bogus
     # extra stop there. Abort instead.
@@ -863,7 +863,7 @@ function SolidMultiDomainTimeController(params::Parameters)
     time_step = params["time step"]
     # Multi-domain: control step = integrator dt (Schwarz coupling each step).
     # Output timing is handled by _is_output_time in write_stop.
-    num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
+    num_stops = control_stop_count(initial_time, final_time, time_step)
     absolute_error = relative_error = 0.0
     time = prev_time = initial_time
     stop = 0
@@ -1098,7 +1098,7 @@ function SolidSingleDomainTimeController(params::Parameters)
     time_step = integrator_params["time step"]
     # Control step = integrator dt always. Output timing is handled
     # by _is_output_time in write_stop, not by controller stops.
-    num_stops = max(round(Int64, (final_time - initial_time) / time_step) + 1, 2)
+    num_stops = control_stop_count(initial_time, final_time, time_step)
     time = prev_time = initial_time
     stop = 0
     return SolidSingleDomainTimeController(initial_time, final_time, time_step, time, prev_time, num_stops, stop)
@@ -1129,6 +1129,7 @@ function create_bcs(sim::MultiDomainSimulation)
 end
 
 function evolve(sim::Simulation)
+    warn_final_time(sim.controller)
     sync_control_time(sim)
     initialize(sim)
     initialize_writing(sim)
@@ -1151,7 +1152,37 @@ end
 function stop_evolve(sim::Simulation)
     time = sim.controller.time
     final_time = sim.controller.final_time
-    return isapprox(time, final_time; rtol=1e-9, atol=1e-12) || time > final_time
+    return reaches_final_time(time, final_time)
+end
+
+reaches_final_time(time, final_time) = isapprox(time, final_time; rtol=1e-9, atol=1e-12) || time > final_time
+
+# Number of control stops, the initial one included. The run ends at the first
+# stop that reaches `final time` (stop_evolve), so when `final time` is not a
+# whole number of steps past `initial time` the last stop lies past it; the
+# per-stop arrays (Schwarz iteration counts, output steps) are sized by this
+# count. Rounding to the nearest whole number instead gave one stop fewer than
+# the loop takes when the remainder was below half a step.
+function control_stop_count(initial_time, final_time, time_step)
+    num_steps = max(round(Int64, (final_time - initial_time) / time_step), 1)
+    if !reaches_final_time(initial_time + num_steps * time_step, final_time)
+        num_steps += 1
+    end
+    return num_steps + 1
+end
+
+function warn_final_time(controller)
+    last_time = controller.initial_time + (controller.num_stops - 1) * controller.time_step
+    isapprox(last_time, controller.final_time; rtol=1e-9, atol=1e-12) && return nothing
+    norma_logf(
+        0,
+        :warning,
+        "Final time %.6e is not a whole number of time steps %.6e past the initial time; the last stop is at %.6e.",
+        controller.final_time,
+        controller.time_step,
+        last_time,
+    )
+    return nothing
 end
 
 function solve_contact(sim::MultiDomainSimulation)
