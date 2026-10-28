@@ -136,6 +136,7 @@ detects.
 | `anderson depth` | no | `10` | number m of previous iterates combined by Anderson acceleration; it must cover the Schwarz iterations a stop needs (5 is too short with an explicit Dirichlet side) |
 | `relaxation parameter` | no | `1.0`; `0.5` under `anderson` | relaxation factor θ: the constant factor under fixed relaxation; under either Aitken method the factor used wherever an adaptive one is not yet available; under `anderson` the mixing parameter β of the update (see below), which is also the factor of the first Schwarz iteration of every stop |
 | `aitken N0 parameter` | no | `1` | Schwarz iteration, counting from zero, at which the adaptive factor takes over from `relaxation parameter` (Aitken methods only) |
+| `aitken scope` | no | `per interface` | `per interface`: each relaxed interface has its own Aitken factor; `global`: one factor for all relaxed interfaces, from their stacked residuals (Aitken methods only; see below) |
 | `interface predictor` | no | `false` | extrapolate the interface state at the start of each step |
 | `naive stabilized` | no | `false` | naive interface stabilization |
 
@@ -178,6 +179,36 @@ load steps, with `relaxation parameter: 0.5` and a relative tolerance of
 1.33 per Schwarz iteration, and every load step ended at the limit of 128
 Schwarz iterations. With the relative floor the same run converges in 26 to
 33 Schwarz iterations per load step.
+
+By default each relaxed interface (one side set of one coupling) has its own
+Aitken factor, formed from its own residuals. With `aitken scope: global`
+the residuals and iterates of all relaxed interfaces are stacked into one
+vector and a single factor is formed from it, by the same secant or recursive
+formula, and applied to every interface:
+θ = −(Σᵢ dᵢ·δᵢ) / Σᵢ ‖δᵢ‖² for the secant form and
+θ = −θ_prev (Σᵢ rᵢ⁽ⁿ⁻¹⁾·δᵢ) / Σᵢ ‖δᵢ‖² for the recursive form, with the sums
+over the interfaces. The residual of an interface depends on the data of the
+others, which per-interface factors ignore. Each interface contributes its
+relaxed datum on the interface: the Robin datum, the projected trace of the
+constrained datum of a matching pair, or the projected trace of the partner
+displacement of an unconstrained Dirichlet-Neumann or contact pair. For one
+relaxed Robin or matching interface the two scopes are identical. The
+per-interface factor of an unconstrained pair is formed from the whole
+partner displacement field instead of its trace, so all side sets coupled to
+the same partner subdomain already share one factor under `per interface`.
+The residuals are gathered when the first relaxed
+interface of a Schwarz iteration applies its datum, that is, at the end of
+the previous Gauss-Seidel sweep, and each interface applies the factor to the
+partner data it reads at its own application. Interfaces are grouped by the
+relaxed quantity (Robin datum, displacement, velocity), with one factor per
+group, so that no sum mixes units. The coupled initial acceleration of
+matching pairs keeps per-pair factors. Where the global factor does not
+apply, the run aborts rather than fall back to other factors: at setup when
+`aitken scope: global` is set without an Aitken `relaxation`, with a
+`Schwarz overlap matching` coupling, or with a Dirichlet-Neumann or contact
+coupling whose partner is a reduced-order model; and at the first stop with
+several substeps of a relaxed side (see below), which depends on the time
+steps at run time.
 
 Aitken acceleration is applied only to stops with a single substep, that is
 when the controller `time step` equals the relaxed subdomain's time step. A

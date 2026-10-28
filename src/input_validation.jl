@@ -103,6 +103,7 @@ const TOP_LEVEL_MULTI_KEYS = Set([
     "relaxation parameter",
     "anderson depth",
     "aitken N0 parameter",
+    "aitken scope",
     "naive stabilized",
     "interface predictor",
     "stalled interface jump action",
