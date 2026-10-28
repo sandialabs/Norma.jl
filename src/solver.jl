@@ -627,14 +627,31 @@ function ReducedSystem(A::SparseMatrixCSC{Float64,Int64}, free::BitVector)
     )
 end
 
+# Solves by an LU factor of UMFPACK and frees the factor at once. The memory
+# of the factor is freed by the finalizers of its numeric and symbolic parts,
+# which run only after a garbage collection finds the dropped factor; until
+# then it stays allocated beside the factors of the solves that follow. On a
+# crystal-plasticity polycrystal of 388 661 unknowns, a run of 361 Newton
+# iterations peaked at 87 GiB against 31 GiB at its first iteration (issue
+# #251). Freeing the factor leaves the solution unchanged to the bit.
+function solve_and_free!(factor::SparseArrays.UMFPACK.UmfpackLU, b::Vector{Float64})
+    try
+        return factor \ b
+    finally
+        finalize(factor.numeric)
+        finalize(factor.symbolic)
+    end
+end
+
 # Sparse Cholesky of the reduced system, with LU when the matrix is not
 # symmetric (the algorithmic tangent of crystal plasticity) or not positive
 # definite. Cholesky only reads the upper triangle, so a nonsymmetric matrix
-# must not reach it. The symbolic analysis is reused across Newton iterations
-# while the pattern is unchanged. A material evaluated at a trial iterate can
-# leave Inf or NaN in the system, which LU rejects with an exception that
-# would end the run; the step is NaN instead, as Cholesky returns it, and the
-# next evaluation fails, so that the time step is cut.
+# must not reach it. The symbolic analysis of Cholesky is reused across Newton
+# iterations while the pattern is unchanged; each LU factor is freed right
+# after its solve. A material evaluated at a trial iterate can leave Inf or
+# NaN in the system, which LU rejects with an exception that would end the
+# run; the step is NaN instead, as Cholesky returns it, and the next
+# evaluation fails, so that the time step is cut.
 function solve_linear_direct(
     cache::DirectSolverCache,
     A::SparseMatrixCSC{Float64,Int64},
@@ -648,7 +665,7 @@ function solve_linear_direct(
     end
     if symmetric == false
         cache.factor = nothing
-        return lu(A) \ b
+        return solve_and_free!(lu(A), b)
     end
     As = Symmetric(A)
     factor = cache.factor
@@ -666,7 +683,7 @@ function solve_linear_direct(
     if issuccess(factor) == false
         norma_log(4, :solve, "Direct linear solver: matrix not positive definite, using LU")
         cache.factor = nothing
-        return lu(A) \ b
+        return solve_and_free!(lu(A), b)
     end
     cache.factor = factor
     cache.colptr = A.colptr
