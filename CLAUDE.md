@@ -102,7 +102,7 @@ Every major component splits into:
 | `simulation_types.jl` / `simulation.jl` | `SingleDomainSimulation` and `MultiDomainSimulation`; top-level `create_simulation` and `evolve` |
 | `model_types.jl` / `model.jl` | `SolidMechanics` struct (mesh, DOFs, forces, stiffness/mass matrices, kinematics) |
 | `constitutive_types.jl` / `constitutive.jl` | Material hierarchy: `Material → Solid → {Elastic, Inelastic}`; stress computation |
-| `solver_types.jl` / `solver.jl` | `HessianMinimizer` (Newton), `ExplicitSolver`, `SteepestDescent`; line search; the reduced system on the free degrees of freedom (`ReducedSystem`) and the direct solver (CHOLMOD under the nested-dissection ordering of METIS, `fill_reducing_ordering`; UMFPACK's LU, each factor freed right after its solve, `solve_and_free!`) |
+| `solver_types.jl` / `solver.jl` | `HessianMinimizer` (Newton), `ExplicitSolver`, `SteepestDescent`; line search; the reduced system on the free degrees of freedom (`ReducedSystem`) and the direct solver (CHOLMOD under the nested-dissection ordering of METIS, `fill_reducing_ordering`; UMFPACK's LU under its own METIS ordering, `umfpack_lu`, each factor freed right after its solve, `solve_and_free!`) |
 | `conjugate_gradient.jl` | preconditioned conjugate gradient on a reused workspace (`preconditioner: none`, `jacobi`, `cholesky`), passes in fixed chunks pinned to threads |
 | `time_integrator_types.jl` / `time_integrator.jl` | Implicit (Newmark) and explicit time stepping schemes |
 | `ics_bcs_types.jl` / `ics_bcs.jl` | Initial and boundary conditions |
