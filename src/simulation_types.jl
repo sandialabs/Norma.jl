@@ -61,6 +61,8 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     relaxation_parameter::Float64
     relaxation_method::Symbol
     aitken_N0::Int
+    # :per_interface (default) or :global; see aitken_global_theta! (schwarz.jl).
+    aitken_scope::Symbol
     anderson_depth::Int
     naive_stabilized::Bool
     # Relaxation state for the Schwarz fixed-point iteration, stored per

@@ -523,6 +523,44 @@ function reject_unused_relaxation(sim::MultiDomainSimulation)
     )
 end
 
+# Couplings the global Aitken factor (`aitken scope: global`, see
+# aitken_global_theta! in schwarz.jl) does not cover are rejected at setup,
+# instead of silently taking per-interface factors:
+#   - `Schwarz overlap matching`, whose two sides are each relaxed after their
+#     partner has solved and keep their own factor;
+#   - Dirichlet-Neumann and contact pairs with a reduced-order partner, whose
+#     relaxed data are reduced coordinates, not an interface trace that can be
+#     stacked with those of the other interfaces.
+# Stops with several substeps of a relaxed side cannot be detected here (the
+# stable step of an explicit integrator and adaptive stepping set them at run
+# time) and abort when they occur (relaxation_theta!).
+function reject_unsupported_global_aitken(sim::MultiDomainSimulation)
+    sim.controller.aitken_scope === :global || return nothing
+    for subsim in sim.subsims
+        model = subsim.model
+        hasproperty(model, :boundary_conditions) || continue
+        for bc in model.boundary_conditions
+            if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
+                norma_abort(
+                    "`aitken scope: global` is not supported with `Schwarz overlap matching`: both sides of " *
+                    "that coupling are relaxed, each after its partner has solved, and keep their own factor. " *
+                    "Use `aitken scope: per interface` or `relaxation: anderson`.",
+                )
+            end
+            relaxable = is_swappable_dn_schwarz(bc) && (bc.is_dirichlet || bc.swap_bcs)
+            if relaxable && coupled_subsim_of(bc).model isa RomModel
+                norma_abort(
+                    "`aitken scope: global` is not supported for a Dirichlet-Neumann or contact coupling with a " *
+                    "reduced-order partner (`$(sim.name_by_handle[bc.coupled_handle.id])`): its relaxed data are " *
+                    "reduced coordinates, which are not stacked with the interface traces of the other couplings. " *
+                    "Use `aitken scope: per interface`.",
+                )
+            end
+        end
+    end
+    return nothing
+end
+
 # The restart refinement pass (see the Mfc correction in time_integrator.jl)
 # runs before detect_contact() re-establishes active_contact for the
 # restarted step, so apply_bc skips every Schwarz contact BC during that
@@ -576,6 +614,7 @@ function create_simulation(params::Parameters)
             warn_restart_with_nonoverlap_schwarz(sim)
             warn_neumann_before_dirichlet(sim)
             reject_unused_relaxation(sim)
+            reject_unsupported_global_aitken(sim)
             reject_restart_with_contact(sim)
             initialize_storage(sim)
         catch
@@ -925,6 +964,30 @@ function SolidMultiDomainTimeController(params::Parameters)
         relaxation_parameter = Float64(params["relaxation parameter"])
     end
     anderson_depth = Int(get(params, "anderson depth", 10))
+    # Scope of the Aitken factor: one factor per interface (default), or one
+    # factor for all relaxed interfaces from their stacked residuals
+    # (aitken_global_theta! in schwarz.jl).
+    aitken_scope = :per_interface
+    if haskey(params, "aitken scope")
+        scope_value = params["aitken scope"]
+        scope_string = scope_value isa AbstractString ? lowercase(strip(scope_value)) : ""
+        if scope_string == "per interface"
+            aitken_scope = :per_interface
+        elseif scope_string == "global"
+            aitken_scope = :global
+        else
+            norma_abort(
+                "Schwarz controller: unsupported `aitken scope: $(scope_value)` " *
+                "(only `per interface` and `global` are recognized).",
+            )
+        end
+        if aitken_scope === :global && relaxation_method !== :aitken_recursive && relaxation_method !== :aitken_secant
+            norma_abort(
+                "Schwarz controller: `aitken scope: global` requires `relaxation: aitken recursive` or " *
+                "`relaxation: aitken secant`; it has no effect on fixed relaxation or Anderson acceleration.",
+            )
+        end
+    end
     # Echo the effective relaxation settings once, so a misspelled or misplaced
     # YAML key (silently ignored, like all unrecognized keys) is visible at startup.
     if relaxation_method === :fixed
@@ -944,10 +1007,11 @@ function SolidMultiDomainTimeController(params::Parameters)
         norma_logf(
             0,
             :schwarz,
-            "Relaxation: %s, θ₀ = %.4e, N0 = %d",
+            "Relaxation: %s, θ₀ = %.4e, N0 = %d, %s",
             relaxation_method_name(relaxation_method),
             relaxation_parameter,
             aitken_N0,
+            aitken_scope === :global ? "global" : "per interface",
         )
     end
     naive_stabilized = get(params, "naive stabilized", false)
@@ -1005,6 +1069,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         relaxation_parameter,
         relaxation_method,
         aitken_N0,
+        aitken_scope,
         anderson_depth,
         naive_stabilized,
         lambda_time,
@@ -2103,6 +2168,7 @@ function reset_relaxation_state!(controller::MultiDomainTimeController)
     empty!(controller.aitken_prev_residual_disp)
     empty!(controller.aitken_theta_disp)
     empty!(controller.aitken_prev_lambda_disp)
+    reset_aitken_global_state!(controller)
     reset_anderson_state!(controller)
     return nothing
 end

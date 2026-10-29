@@ -266,6 +266,279 @@ function relaxation_aitken_secant_theta!(
 end
 
 # ---------------------------------------------------------------------------
+# Global Aitken factor (`aitken scope: global`).
+#
+# The per-interface factors above give every relaxed interface its own θ from
+# its own residuals. Under `aitken scope: global` one factor is formed for all
+# relaxed interfaces from their residuals and iterates stacked into one vector,
+# as the stacked Anderson step does (anderson_data!): the secant form
+#
+#   θ = -(Σ_i d_i · δ_i) / Σ_i ‖δ_i‖²,
+#
+# and the recursive (Irons-Tuck) form
+#
+#   θ = -θ_prev (Σ_i r_i^(n-1) · δ_i) / Σ_i ‖δ_i‖²,
+#
+# with the sums over the interfaces i, and each interface's r, δ, and d
+# formed on its relaxed datum: the Robin datum, the projected trace of the
+# constrained datum, or the projected trace of the partner displacement of
+# an unconstrained pair. The first two are the vectors of the per-interface
+# factors, so for a single Robin or constrained interface both scopes give
+# the same factors; the per-interface factor of an unconstrained pair uses
+# the whole partner field instead (see aitken_global_entry). The residual of
+# an interface depends on the data of the others, which per-interface
+# factors ignore.
+#
+# The residuals are gathered when the first Aitken-relaxed interface of a
+# Schwarz iteration applies its datum, from the partner data at that moment,
+# that is, at the end of the previous Gauss-Seidel pass (for an interface
+# whose partner has already been solved in the current pass, of the current
+# one). The factor is then applied by each interface at its own application,
+# to the partner data it reads there, as the per-interface factor is. With
+# all relaxed interfaces on one subdomain, as on the inclusion split, the two
+# moments coincide. The interfaces are grouped by the relaxed quantity (the
+# Robin datum, displacement, velocity), one factor per group, so that no sum
+# mixes units. Couplings the global factor does not cover are rejected
+# instead of falling back to other factors: the overlap matching coupling
+# (both sides of a pair relaxed, each after its partner has solved) and pairs
+# with a reduced-order partner at setup (reject_unsupported_global_aitken),
+# and stops with several substeps of a relaxed side, where no Aitken factor
+# applies (aitken_applies), when they occur (relaxation_theta!).
+# ---------------------------------------------------------------------------
+
+# Global secant factor of the stacked vectors: the iterate differences ds, the
+# residual differences δs, and the current iterates. `fallback` when either
+# difference is not resolved relative to the iterate (aitken_resolved). For
+# one interface, the factor of relaxation_aitken_secant_theta!.
+function aitken_secant_stacked(ds, δs, iterates, fallback::Float64)
+    δ_sq = sum(δ -> dot(δ, δ), δs; init=0.0)
+    d_sq = sum(d -> dot(d, d), ds; init=0.0)
+    iterate_sq = sum(x -> dot(x, x), iterates; init=0.0)
+    if aitken_resolved(δ_sq, iterate_sq) && aitken_resolved(d_sq, iterate_sq)
+        return -sum(dot(d, δ) for (d, δ) in zip(ds, δs); init=0.0) / δ_sq
+    end
+    return fallback
+end
+
+# Global recursive (Irons-Tuck) factor of the stacked vectors: the previous
+# residuals, the residual differences δs, and the current iterates. The
+# previous factor θ_prev when the residual difference is not resolved. For
+# one interface, the factor of relaxation_aitken_recursive_theta!.
+function aitken_recursive_stacked(prev_residuals, δs, iterates, θ_prev::Float64)
+    δ_sq = sum(δ -> dot(δ, δ), δs; init=0.0)
+    iterate_sq = sum(x -> dot(x, x), iterates; init=0.0)
+    if aitken_resolved(δ_sq, iterate_sq)
+        return -θ_prev * sum(dot(r, δ) for (r, δ) in zip(prev_residuals, δs); init=0.0) / δ_sq
+    end
+    return θ_prev
+end
+
+# Per controller: the factor of every interface at the current Schwarz
+# iteration, and from the previous one, per interface its residual and
+# iterate, and per relaxed quantity the factor (recursive form). Cleared at
+# every stop with the rest of the relaxation state (reset_relaxation_state!).
+mutable struct AitkenGlobalState
+    iteration::Int
+    theta::Dict{RelaxationKey,Float64}
+    prev_residual::Dict{RelaxationKey,Vector{Float64}}
+    prev_iterate::Dict{RelaxationKey,Vector{Float64}}
+    prev_theta::Dict{Symbol,Float64}
+end
+
+function AitkenGlobalState()
+    return AitkenGlobalState(
+        -1,
+        Dict{RelaxationKey,Float64}(),
+        Dict{RelaxationKey,Vector{Float64}}(),
+        Dict{RelaxationKey,Vector{Float64}}(),
+        Dict{Symbol,Float64}(),
+    )
+end
+
+const AITKEN_GLOBAL_STATE = IdDict{Any,AitkenGlobalState}()
+
+function reset_aitken_global_state!(controller)
+    delete!(AITKEN_GLOBAL_STATE, controller)
+    return nothing
+end
+
+# Whether the factor of the interface of `bc` is the global one.
+function uses_global_aitken(bc::SolidMechanicsSchwarzBoundaryCondition)
+    controller = bc.parent.controller
+    controller.aitken_scope === :global || return false
+    method = controller.relaxation_method
+    method === :aitken_secant || method === :aitken_recursive || return false
+    return !(bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition)
+end
+
+# The residual and iterate from which the global Aitken factor takes the
+# contribution of the interface of `bc`, at the current partner data: the
+# Robin datum, the projected trace of the constrained datum, or the projected
+# trace of the partner displacement. An interface without a
+# stored iterate takes the iterate that its application falls back to (zero
+# for the Robin datum, the partner datum otherwise). Nothing when the
+# interface is not Aitken-relaxed with the global factor at this stop: not
+# its relaxed side, an inactive contact pair, a windowed stop, or not yet
+# applied in this stop.
+function aitken_global_entry(bc::SolidMechanicsSchwarzBoundaryCondition)
+    uses_global_aitken(bc) || return nothing
+    controller = bc.parent.controller
+    key = relaxation_key(bc)
+    if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+        bc.self_handle.id < bc.coupled_handle.id || return nothing
+    elseif is_swappable_dn_schwarz(bc)
+        bc.is_dirichlet && !is_direct_dn(bc) || return nothing
+        bc isa SolidMechanicsContactSchwarzBoundaryCondition && !controller.active_contact && return nothing
+    else
+        return nothing
+    end
+    haskey(controller.lambda_time, key) && aitken_applies(controller, key) || return nothing
+    times = controller.lambda_time[key]
+    isempty(times) && return nothing
+    time = times[1]
+    disp_slots = relaxation_slots!(controller.lambda_disp, key)
+    ensure_slot!(disp_slots, 1)
+    if bc isa SolidMechanicsRobinNonOverlapSchwarzBoundaryCondition
+        rhs = with_partner_state(() -> robin_datum(self_subsim_of(bc).model, bc), bc, time)
+        g = isempty(disp_slots[1]) ? zeros(length(rhs)) : disp_slots[1]
+        return (quantity=:robin, key=key, residual=rhs .- g, iterate=copy(g))
+    end
+    disp, velo, _, _ = partner_fields(bc, time)
+    if is_constrained_dn(bc)
+        relax_velocity = bc.constraint == :velocity
+        slots = relax_velocity ? relaxation_slots!(controller.lambda_velo, key) : disp_slots
+        ensure_slot!(slots, 1)
+        g = relax_velocity ? velo : disp
+        x = isempty(slots[1]) ? g : slots[1]
+        trace_g = constrained_partner_trace(bc, g)
+        trace_x = constrained_partner_trace(bc, x)
+        quantity = relax_velocity ? :velocity : :displacement
+        return (quantity=quantity, key=key, residual=trace_g .- trace_x, iterate=trace_x)
+    end
+    x = isempty(disp_slots[1]) ? disp : disp_slots[1]
+    # The per-interface factor of an unconstrained pair is formed from the
+    # whole partner field, so the side sets of one partner subdomain share it
+    # and stacking them would only repeat that field. The global factor is
+    # formed from the projected interface trace instead, as the Anderson
+    # coefficients are (anderson_entry); a reduced-order partner, whose fields
+    # are its reduced coordinates, keeps the whole field.
+    coupled_subsim_of(bc).model isa RomModel &&
+        return (quantity=:displacement, key=key, residual=disp .- x, iterate=copy(x))
+    trace_g = constrained_partner_trace(bc, disp)
+    trace_x = constrained_partner_trace(bc, x)
+    return (quantity=:displacement, key=key, residual=trace_g .- trace_x, iterate=trace_x)
+end
+
+# The global Aitken factor of the interface of `bc`. The first call of a
+# Schwarz iteration gathers the residuals of every Aitken-relaxed interface
+# (aitken_global_entry) and forms one factor per relaxed quantity; the other
+# calls of the iteration read it. As for the per-interface factors,
+# `relaxation parameter` is the factor below `aitken N0 parameter` and
+# wherever no previous residual exists; an interface not gathered (applied
+# for the first time after the first call of its stop) takes it as well.
+function aitken_global_theta!(bc::SolidMechanicsSchwarzBoundaryCondition)
+    controller = bc.parent.controller
+    state = get!(AitkenGlobalState, AITKEN_GLOBAL_STATE, controller)
+    iter = controller.iteration_number
+    θ_0 = controller.relaxation_parameter
+    if state.iteration != iter
+        empty!(state.theta)
+        recursive = controller.relaxation_method === :aitken_recursive
+        entries = []
+        for subsim in bc.parent.subsims, other in subsim.model.boundary_conditions
+            other isa SolidMechanicsSchwarzBoundaryCondition || continue
+            entry = aitken_global_entry(other)
+            entry === nothing || push!(entries, entry)
+        end
+        for quantity in unique(getfield.(entries, :quantity))
+            group = [entry for entry in entries if entry.quantity === quantity]
+            # Interfaces with a previous residual (and, for the secant form,
+            # a previous iterate) of the same size.
+            paired = [
+                entry for entry in group if
+                length(get(state.prev_residual, entry.key, Float64[])) == length(entry.residual) > 0 &&
+                    (recursive || length(get(state.prev_iterate, entry.key, Float64[])) == length(entry.iterate))
+            ]
+            θ = if iter < controller.aitken_N0 || isempty(paired)
+                θ_0
+            elseif recursive
+                aitken_recursive_stacked(
+                    [state.prev_residual[entry.key] for entry in paired],
+                    [entry.residual .- state.prev_residual[entry.key] for entry in paired],
+                    [entry.iterate for entry in paired],
+                    get(state.prev_theta, quantity, θ_0),
+                )
+            else
+                aitken_secant_stacked(
+                    [entry.iterate .- state.prev_iterate[entry.key] for entry in paired],
+                    [entry.residual .- state.prev_residual[entry.key] for entry in paired],
+                    [entry.iterate for entry in paired],
+                    θ_0,
+                )
+            end
+            for entry in group
+                # Below N0 the recursive form starts afresh, as the
+                # per-interface one does (relaxation_aitken_recursive_theta!).
+                if recursive && iter < controller.aitken_N0
+                    delete!(state.prev_residual, entry.key)
+                else
+                    state.prev_residual[entry.key] = entry.residual
+                end
+                state.prev_iterate[entry.key] = entry.iterate
+                state.theta[entry.key] = θ
+            end
+            state.prev_theta[quantity] = θ
+            norma_logf(
+                1,
+                :schwarz,
+                "%s global θ[iter=%d] %s: %d interfaces = %.4e",
+                relaxation_method_name(controller.relaxation_method),
+                iter,
+                string(quantity),
+                length(group),
+                θ,
+            )
+        end
+        state.iteration = iter
+    end
+    return get(state.theta, relaxation_key(bc), θ_0)
+end
+
+# The relaxation factor of the interface of `bc` for this Schwarz iterate,
+# from its unrelaxed candidate and its previous iterate: the global Aitken
+# factor under `aitken scope: global` (aborting in a windowed stop), otherwise
+# the per-interface factor of the selected Aitken form, or the fixed factor.
+function relaxation_theta!(
+    bc::SolidMechanicsSchwarzBoundaryCondition,
+    key::RelaxationKey,
+    slot_k::Int,
+    iter::Int,
+    candidate::AbstractVector{Float64},
+    previous::AbstractVector{Float64},
+)
+    controller = bc.parent.controller
+    if uses_global_aitken(bc)
+        # A stop with several substeps of the relaxed side keys several time
+        # slots, where no Aitken factor applies and the per-interface scope
+        # falls back to `relaxation parameter`. Under the global scope that
+        # fallback would silently replace the requested factor, so the run
+        # stops instead. Whether a stop has several substeps is known only at
+        # run time (stable step of an explicit integrator, adaptive stepping).
+        aitken_applies(controller, key) || norma_abort(
+            "`aitken scope: global` is not supported for stops with several substeps of a relaxed side " *
+            "(interface $(key), controller time step $(controller.time_step)): the Aitken factor applies " *
+            "only when the controller `time step` equals the time step of the relaxed subdomain. Use " *
+            "`aitken scope: per interface`, which takes `relaxation parameter` in such stops.",
+        )
+        return aitken_global_theta!(bc)
+    end
+    if controller.relaxation_method === :aitken_secant
+        return relaxation_aitken_secant_theta!(controller, key, slot_k, iter, candidate, previous)
+    end
+    return relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, candidate, previous)
+end
+
+# ---------------------------------------------------------------------------
 # Anderson acceleration (Walker and Ni 2011; the interface quasi-Newton form of
 # Degroote, Bathe, and Vierendeels 2009) of the relaxed interface data.
 #
@@ -819,11 +1092,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
         else
             theta = controller.relaxation_parameter
             if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
-                theta = if controller.relaxation_method === :aitken_secant
-                    relaxation_aitken_secant_theta!(controller, key, slot_k, iter, rhs, g)
-                else
-                    relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, rhs, g)
-                end
+                theta = relaxation_theta!(bc, key, slot_k, iter, rhs, g)
             end
             frozen_relaxation_update!(controller, theta)
             datum = (1 - theta) .* g .+ theta .* rhs
@@ -2672,11 +2941,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             elseif use_anderson
                 c_slots[slot_k] = expand(anderson_data!(bc, time)[1], interp_c, anderson_footprint(bc))
             else
-                θ = if controller.relaxation_method === :aitken_secant
-                    relaxation_aitken_secant_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
-                else
-                    relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, trace_c, trace_prev)
-                end
+                θ = relaxation_theta!(bc, key, slot_k, iter, trace_c, trace_prev)
                 frozen_relaxation_update!(controller, θ)
                 c_slots[slot_k] = θ * interp_c + (1 - θ) * λ_c_prev
             end
@@ -2710,12 +2975,12 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
         elseif controller.relaxation_method === :aitken_secant
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
-            θ = relaxation_aitken_secant_theta!(controller, key, slot_k, iter, interp_disp, λ_u_prev)
+            θ = relaxation_theta!(bc, key, slot_k, iter, interp_disp, λ_u_prev)
             frozen_relaxation_update!(controller, θ)
             disp_slots[slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
             recover_interface_kinematics!(controller, key, slot_k, coupled_integrator, interp_velo, interp_acce)
         else
-            θ = relaxation_aitken_recursive_theta!(controller, key, slot_k, iter, interp_disp, λ_u_prev)
+            θ = relaxation_theta!(bc, key, slot_k, iter, interp_disp, λ_u_prev)
             frozen_relaxation_update!(controller, θ)
 
             disp_slots[slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
