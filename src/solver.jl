@@ -627,14 +627,31 @@ function ReducedSystem(A::SparseMatrixCSC{Float64,Int64}, free::BitVector)
     )
 end
 
+# Solves by an LU factor of UMFPACK and frees the factor at once. The memory
+# of the factor is freed by the finalizers of its numeric and symbolic parts,
+# which run only after a garbage collection finds the dropped factor; until
+# then it stays allocated beside the factors of the solves that follow. On a
+# crystal-plasticity polycrystal of 388 661 unknowns, a run of 361 Newton
+# iterations peaked at 87 GiB against 31 GiB at its first iteration (issue
+# #251). Freeing the factor leaves the solution unchanged to the bit.
+function solve_and_free!(factor::SparseArrays.UMFPACK.UmfpackLU, b::Vector{Float64})
+    try
+        return factor \ b
+    finally
+        finalize(factor.numeric)
+        finalize(factor.symbolic)
+    end
+end
+
 # Sparse Cholesky of the reduced system, with LU when the matrix is not
 # symmetric (the algorithmic tangent of crystal plasticity) or not positive
 # definite. Cholesky only reads the upper triangle, so a nonsymmetric matrix
-# must not reach it. The symbolic analysis is reused across Newton iterations
-# while the pattern is unchanged. A material evaluated at a trial iterate can
-# leave Inf or NaN in the system, which LU rejects with an exception that
-# would end the run; the step is NaN instead, as Cholesky returns it, and the
-# next evaluation fails, so that the time step is cut.
+# must not reach it. The symbolic analysis of Cholesky is reused across Newton
+# iterations while the pattern is unchanged; each LU factor is freed right
+# after its solve. A material evaluated at a trial iterate can leave Inf or
+# NaN in the system, which LU rejects with an exception that would end the
+# run; the step is NaN instead, as Cholesky returns it, and the next
+# evaluation fails, so that the time step is cut.
 function solve_linear_direct(
     cache::DirectSolverCache,
     A::SparseMatrixCSC{Float64,Int64},
@@ -648,7 +665,7 @@ function solve_linear_direct(
     end
     if symmetric == false
         cache.factor = nothing
-        return lu(A) \ b
+        return solve_and_free!(umfpack_lu(A), b)
     end
     As = Symmetric(A)
     factor = cache.factor
@@ -666,7 +683,7 @@ function solve_linear_direct(
     if issuccess(factor) == false
         norma_log(4, :solve, "Direct linear solver: matrix not positive definite, using LU")
         cache.factor = nothing
-        return lu(A) \ b
+        return solve_and_free!(umfpack_lu(A), b)
     end
     cache.factor = factor
     cache.colptr = A.colptr
@@ -689,6 +706,23 @@ function fill_reducing_ordering(A::SparseMatrixCSC{Float64,Int64})
     n <= 1 && return collect(Int64, 1:n)
     perm, _ = Metis.permutation(Metis.graph(A; check_hermitian=false))
     return Vector{Int64}(perm)
+end
+
+# The LU factor of UMFPACK under its own nested dissection ordering (METIS)
+# instead of its default (AMD), as the Cholesky factor above is ordered by
+# METIS. On the algorithmic tangent of a crystal-plasticity polycrystal of
+# 388 661 unknowns (64 grains, composite tet 10), the factor has 1.79 billion
+# nonzeros against 4.43 billion and takes 148 s against 593–709 s, and the
+# first Newton iteration peaks at 31.1 GiB against 92.4 GiB; on a cell of
+# 151 658 unknowns the factor has 370 million nonzeros against 720 million,
+# and a Newton iteration takes 39 s against 72 s (issue #251). The solutions
+# agree with those of the default ordering to 6e-13. A METIS permutation
+# passed to UMFPACK instead made the factorization 5 times slower.
+function umfpack_lu(A::SparseMatrixCSC{Float64,Int64})
+    UMFPACK = SparseArrays.UMFPACK
+    control = UMFPACK.get_umfpack_control(Float64, Int64)
+    control[UMFPACK.JL_UMFPACK_ORDERING] = SparseArrays.LibSuiteSparse.UMFPACK_ORDERING_METIS
+    return lu(A; control=control)
 end
 
 # `symmetric` states whether A is symmetric when the caller knows (the material

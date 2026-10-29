@@ -80,6 +80,37 @@ end
     end
 end
 
+# Each LU factor of the direct solver is freed right after its solve, instead
+# of waiting for a garbage collection to run the finalizers of its numeric and
+# symbolic parts, and the solution is unchanged to the bit. The factor is
+# ordered by the METIS option of UMFPACK, and the solution is that of the
+# default ordering (AMD) to roundoff, which the condition number of the
+# indefinite matrix, near 700, raises to about 1e-12. A convection-diffusion
+# operator on an m³ grid is nonsymmetric, as the algorithmic tangent of
+# crystal plasticity is; the diffusion operator shifted to be indefinite
+# reaches LU after Cholesky fails.
+@testset "Direct Linear Solver LU" begin
+    m = 15
+    D = Norma.spdiagm(-1 => fill(-1.0, m - 1), 0 => fill(2.0, m), 1 => fill(-1.0, m - 1))
+    C = Norma.spdiagm(-1 => fill(-0.3, m - 1), 1 => fill(0.3, m - 1))
+    E = Norma.sparse(1.0I, m, m)
+    nonsymmetric = kron(D + C, E, E) + kron(E, D, E) + kron(E, E, D + C)
+    indefinite = kron(D, E, E) + kron(E, D, E) + kron(E, E, D) - 2.0I
+    b = collect(range(1.0, 2.0; length=m^3))
+    LibSuiteSparse = Norma.SparseArrays.LibSuiteSparse
+    for A in (nonsymmetric, indefinite)
+        factor = Norma.umfpack_lu(A)
+        x = Norma.solve_and_free!(factor, b)
+        @test factor.numeric.p == C_NULL && factor.symbolic.p == C_NULL
+        @test x == Norma.umfpack_lu(A) \ b
+        cache = Norma.DirectSolverCache(nothing, Int64[], Int64[])
+        @test Norma.solve_linear_direct(cache, A, b) == x
+        @test cache.factor === nothing
+        @test factor.info[LibSuiteSparse.UMFPACK_ORDERING_USED + 1] == LibSuiteSparse.UMFPACK_ORDERING_METIS
+        @test x ≈ lu(A) \ b rtol = 1.0e-10
+    end
+end
+
 @testset "Single Static Solid Cube Line Search" begin
     cp("../examples/single/static-solid/cube/standard/cube-line-search.yaml", "cube-line-search.yaml"; force=true)
     cp("../examples/single/static-solid/cube/standard/cube.g", "cube.g"; force=true)
