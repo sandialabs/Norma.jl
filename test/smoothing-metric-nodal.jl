@@ -197,6 +197,37 @@ const nodal_cube_tensor = let
     [string(c) for c in Norma.components_from_symmetric(M)]
 end
 
+@testset "node_neighbors" begin
+    # The adjacency read from the mesh file is the adjacency of the model
+    # built on it.  The Exodus connectivity is stored element by element, so
+    # the nodes of an element are contiguous in it, not a row of the matrix
+    # that get_block_connectivity returns.
+    sim = Norma.create_simulation(
+        metric_model("../examples/ems/cube/cube.g", Dict{String,Any}("sizes" => nodal_cube_sizes))
+    )
+    model = sim.model
+    num_nodes = size(model.reference, 2)
+    mesh = ExodusDatabase("../examples/ems/cube/cube.g", "r")
+    neighbors = Norma.node_neighbors(mesh, num_nodes)
+    Exodus.close(mesh)
+    model_neighbors = Norma.node_neighbors(model)
+    @test length(neighbors) == num_nodes
+    @test count(Set(neighbors[n]) != Set(model_neighbors[n]) for n in 1:num_nodes) == 0
+    # A frame that turns about z by the x coordinate, a radian across the
+    # cube, is followed through the elements: every node takes the frame of
+    # its own turn, none the frame a quarter turn away, which swaps its first
+    # two sizes.  A quarter turn about z maps the frame to an equivalent one,
+    # so such a node would not be reported as a jump.
+    h = SVector(0.05, 0.1, 0.2)
+    x = model.reference[1, :]
+    tensors = [Norma.metric_tensor(h, Norma.rt_of_rv(SVector(0.0, 0.0, x[n]))) for n in 1:num_nodes]
+    sizes, rotations, jumps = Norma.principal_of_nodal_tensors(tensors, neighbors)
+    @test jumps == 0
+    @test maximum(norm(sizes[:, n] - h) for n in 1:num_nodes) < 1.0e-8
+    @test maximum(norm(rotations[:, n] - [0.0, 0.0, x[n]]) for n in 1:num_nodes) < 1.0e-8
+    Norma.finalize_writing(sim)
+end
+
 @testset "tensor_functions" begin
     # The tensor given by its components and by its sizes and rotation vector
     # give the same energy and force: the factor chosen for the tensor does
