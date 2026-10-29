@@ -19,10 +19,11 @@ struct BackTrackLineSearch <: LineSearch
     max_iters::Int64
 end
 
-# Cached sparse factorization of the direct linear solver. The factor is
-# reused by numeric refactorization while the pattern of the reduced system
-# is unchanged, which is every Newton iteration once the free degrees of
-# freedom are fixed.
+# Cached sparse factorization of the direct linear solver, a Cholesky factor
+# of CHOLMOD or an LU factor of UMFPACK whose numeric part is freed after each
+# solve. Its ordering and symbolic analysis are reused by a numeric
+# refactorization while the pattern of the reduced system is unchanged, which
+# is every Newton iteration once the free degrees of freedom are fixed.
 mutable struct DirectSolverCache
     factor::Any
     colptr::Vector{Int64}

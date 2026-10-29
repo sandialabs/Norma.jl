@@ -532,11 +532,11 @@ function initialize(
     # cannot reduce below (a floor of 5e-10 on the beam against a tolerance of
     # 1e-12). The consistent mass is not always positive definite: the
     # default 5-point rule of the TETRA10 has a negative weight. Cholesky then
-    # fails, and LU factors it, as solve_linear_direct does.
+    # fails, and the LU of solve_linear_direct factors it.
     mass_free = reduced_matrix!(solver, model.mass, free)
     integrator.acceleration[free] = if solver.linear_solver == "direct"
         factor = cholesky(Symmetric(mass_free); perm=fill_reducing_ordering(mass_free), check=false)
-        issuccess(factor) ? factor \ rhs_free : lu(mass_free) \ rhs_free
+        issuccess(factor) ? factor \ rhs_free : solve_and_free!(umfpack_lu(mass_free), rhs_free)
     else
         solve_linear(mass_free, rhs_free, atol, rtol)
     end

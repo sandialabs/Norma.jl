@@ -66,8 +66,8 @@ end
         cache = Norma.DirectSolverCache(nothing, Int64[], Int64[])
         x = Norma.solve_linear_direct(cache, A, b)
         @test x ≈ Matrix(A) \ b rtol = 1.0e-12
-        # Only a Cholesky factor is kept for reuse.
-        @test (cache.factor !== nothing) == cholesky
+        @test (cache.factor isa Norma.SparseArrays.CHOLMOD.Factor) == cholesky
+        @test (cache.factor isa Norma.SparseArrays.UMFPACK.UmfpackLU) == !cholesky
     end
     for value in (NaN, Inf)
         A = Norma.sparse(Matrix(T))
@@ -82,7 +82,9 @@ end
 
 # Each LU factor of the direct solver is freed right after its solve, instead
 # of waiting for a garbage collection to run the finalizers of its numeric and
-# symbolic parts, and the solution is unchanged to the bit. The factor is
+# symbolic parts, and the solution is unchanged to the bit. The direct solver
+# keeps the symbolic part and refactors with it while the pattern is
+# unchanged, and the refactored solution is that of a new factor to the bit. The factor is
 # ordered by the METIS option of UMFPACK, and the solution is that of the
 # default ordering (AMD) to roundoff, which the condition number of the
 # indefinite matrix, near 700, raises to about 1e-12. A convection-diffusion
@@ -105,7 +107,13 @@ end
         @test x == Norma.umfpack_lu(A) \ b
         cache = Norma.DirectSolverCache(nothing, Int64[], Int64[])
         @test Norma.solve_linear_direct(cache, A, b) == x
-        @test cache.factor === nothing
+        cached = cache.factor
+        symbolic = cached.symbolic
+        @test cached.numeric.p == C_NULL && symbolic.p != C_NULL
+        B = copy(A)
+        Norma.nonzeros(B) .*= 1.5
+        @test Norma.solve_linear_direct(cache, B, b) == Norma.umfpack_lu(B) \ b
+        @test cache.factor === cached && cache.factor.symbolic === symbolic
         @test factor.info[LibSuiteSparse.UMFPACK_ORDERING_USED + 1] == LibSuiteSparse.UMFPACK_ORDERING_METIS
         @test x ≈ lu(A) \ b rtol = 1.0e-10
     end
