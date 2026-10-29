@@ -1514,6 +1514,9 @@ function evaluate_block!(
     return !model.failed, sum(energies)
 end
 
+# The connectivity of a block as Exodus stores it, element by element, shaped
+# num_elements × num_nodes: the nodes of element e are the entries
+# (e - 1) * num_nodes + 1 to e * num_nodes in linear order, not row e.
 function get_block_connectivity(mesh::ExodusDatabase, block_id::Integer)
     _, num_elements, num_nodes, _, _, _ = Exodus.read_block_parameters(mesh, Int32(block_id))
     conn = Exodus.read_block_connectivity(mesh, Int32(block_id), num_elements * num_nodes)
