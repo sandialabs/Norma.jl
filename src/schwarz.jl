@@ -1255,8 +1255,9 @@ function compute_constrained_dn_projectors!(
     if !isapprox(Δt_1, Δt_2; rtol=1.0e-12)
         fine_bc = Δt_1 < Δt_2 ? dst_bc : src_bc
         fine_sim = Δt_1 < Δt_2 ? dst_sim : src_sim
+        default_window_end!(fine_bc, fine_sim, Δt_1 < Δt_2 ? src_sim : dst_sim)
         fine_bc.window_end_constraint || norma_abort(
-            "`Schwarz overlap matching` with different time steps requires `matching at: window end` on the " *
+            "`Schwarz overlap matching` with different time steps does not support `matching at: every substep` on the " *
             "fine-step side ('$(fine_sim.name)', side set '$(fine_bc.name)'): both sides are constrained, " *
             "and a side that takes several steps per window matches at the window end and carries the ramp " *
             "of its own reaction at its interior substeps.",
@@ -1335,6 +1336,11 @@ function compute_constrained_dn_projectors!(
     nested = pu_error_D_on_N <= NESTED_PARTITION_TOLERANCE
     B = nested ? B_on_N : B_on_D
     if dst_bc.is_dirichlet
+        default_window_end!(dst_bc, dst_sim, src_sim)
+    else
+        default_window_end!(src_bc, src_sim, dst_sim)
+    end
+    if dst_bc.is_dirichlet
         warn_dirichlet_role(dst_sim, src_sim, dst_bc.name, src_bc.name, n1, n2; window_end=dst_bc.window_end_constraint)
     else
         warn_dirichlet_role(src_sim, dst_sim, src_bc.name, dst_bc.name, n2, n1; window_end=src_bc.window_end_constraint)
@@ -1360,6 +1366,45 @@ function compute_constrained_dn_projectors!(
         pu_error_D,
         pu_error_N,
     )
+    return nothing
+end
+
+# A constrained side with the smaller time step of its pair matches at the
+# window end unless the input sets `matching at`: constrained at every substep
+# it leaves the interface impulse unbalanced, and the energy then varies by the
+# order of the impulse residual (12% and 31% on the beam with the implicit and
+# the explicit pair at 4:1 over 10 ms). The window-end constraint converges
+# under Anderson acceleration; on the beam the fixed factors 0.5 and 0.25
+# diverge, and Aitken relaxation has not been measured with it.
+function default_window_end!(bc, sim::SingleDomainSimulation, partner_sim::SingleDomainSimulation)
+    Δt = sim.integrator.time_step
+    Δt_partner = partner_sim.integrator.time_step
+    (Δt < Δt_partner && !isapprox(Δt, Δt_partner; rtol=1.0e-12)) || return nothing
+    if !bc.matching_at_given
+        bc.window_end_constraint = true
+        norma_logf(
+            0,
+            :schwarz,
+            "Matching interface '%s' of %s: the constrained side has the smaller time step (%.3e against %.3e) " *
+            "and matches at the window end.",
+            bc.name,
+            sim.name,
+            Δt,
+            Δt_partner,
+        )
+    end
+    if bc.window_end_constraint && bc.parent.controller.relaxation_method !== :anderson
+        norma_logf(
+            0,
+            :warn,
+            "Matching interface '%s' of %s matches at the window end under %s: the window-end constraint " *
+            "converges under `relaxation: anderson`; on the cantilever beam the fixed factors 0.5 and 0.25 " *
+            "diverge, and Aitken relaxation has not been measured with it.",
+            bc.name,
+            sim.name,
+            relaxation_method_name(bc.parent.controller.relaxation_method),
+        )
+    end
     return nothing
 end
 

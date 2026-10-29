@@ -356,7 +356,7 @@ current iteration. Both sides of the overlap must set the condition.
 |---|---|---|---|
 | `source block` | yes | — | partner element block that contains this side set |
 | `matching` | no | `velocity` | matched quantity, `velocity` or `displacement` |
-| `matching at` | no | `every substep` | `window end` on the fine-step side of a pair with different steps (below) |
+| `matching at` | no | `window end` on the fine-step side of a pair with different steps, `every substep` otherwise | where the side imposes the matched quantity (below); with different steps the fine-step side must match at the window end, and `every substep` there aborts |
 | `interface solve` | no | `iterative` | `direct` on both sides: two central difference sides at equal steps solve both reactions from one symmetric block system per step, [A₁ −B; −Bᵀ A₂] with A_k = m_Γk⁻¹ + Π_k m_j⁻¹ Π_kᵀ and B the coupling of the rows the two transfers share, factored once; no Schwarz iteration, the velocity constraint on both boundaries to roundoff (test 140) |
 | `search tolerance` | no | `1.0e-6` | as for `Schwarz overlap` |
 
@@ -451,7 +451,7 @@ step against 21 for the chain of three.
 | `default BC type` | no | `Dirichlet` | this side's role: `Dirichlet` or `Neumann` (the two sides must be opposite) |
 | `swap BC types` | no | `false` | swap the Dirichlet/Neumann roles once per controller stop, before its Schwarz iteration |
 | `matching` | no | — | selects the matching exchange and its matched quantity, `velocity` or `displacement`: the Dirichlet side imposes the projected matched quantity of the Neumann side and derives the other two kinematic fields from its own Newmark relations, and the Neumann side receives the d'Alembert reaction of the Dirichlet side; must be set on both sides with the same value, and requires the top-level `matching relative tolerance`. Without it the pair uses the standard exchange, which imposes the projected displacement, velocity, and acceleration together. The keys `constrained` and `constraint`, which selected this exchange before October 2026, abort |
-| `matching at` | no | `every substep` | `window end`: a subcycled Dirichlet side matches at the window end only and carries the ramp of its own reaction at interior substeps (see `Schwarz overlap matching`) |
+| `matching at` | no | `window end` on a Dirichlet side with the smaller time step, `every substep` otherwise | `window end`: a subcycled Dirichlet side matches at the window end only and carries the ramp of its own reaction at interior substeps (see `Schwarz overlap matching`); `every substep` on such a side constrains it at every substep, which leaves the interface impulse unbalanced (the setup warns), and serves only to show that effect. The window-end constraint converges under `relaxation: anderson`; the setup warns under any other relaxation, since on the beam the fixed factors 0.5 and 0.25 diverge |
 | `interface solve` | no | `iterative` | `direct` replaces the Schwarz iteration by one solve of the interface force per stop; only for a pair with `matching: velocity` of two central difference subdomains at equal time steps, set on both sides |
 
 A matching pair sets `matching` on both sides and the controller file sets

@@ -255,10 +255,14 @@ mutable struct SolidMechanicsNonOverlapSchwarzBoundaryCondition <:
     # substeps then add up to the change of its reaction and the window balance
     # of the rate invariant cancels, and the impulse of the ramp equals the
     # impulse the coarse side receives: a fine-step Dirichlet side conserves
-    # both, as the coarse-step Dirichlet side does. With `every substep` (the
-    # default) the matched quantity is imposed at every substep from the
-    # partner's interpolated history.
+    # both, as the coarse-step Dirichlet side does. With `every substep` the
+    # matched quantity is imposed at every substep from the partner's
+    # interpolated history. Without the key, a Dirichlet side with the smaller
+    # time step matches at the window end (default_window_end!) and any other
+    # side at every substep.
     window_end_constraint::Bool
+    # Whether `matching at` was given in the input.
+    matching_at_given::Bool
     window_start_reaction::Vector{Float64}
     # The window-end reaction that forms the ramp of the current iteration
     # (relaxed or Anderson-accelerated) and the one measured at the end of
@@ -315,8 +319,10 @@ mutable struct SolidMechanicsOverlapMatchingSchwarzBoundaryCondition <:
     transferred_force::Vector{Float64}
     transferred_force_history::Vector{Tuple{Float64,Vector{Float64}}}
     # As for the nonoverlap condition: the fine-step side of an overlap matching
-    # pair with different steps must set `matching at: window end`.
+    # pair with different steps matches at the window end, by default or by
+    # `matching at: window end`.
     window_end_constraint::Bool
+    matching_at_given::Bool
     window_start_reaction::Vector{Float64}
     window_end_reaction::Vector{Float64}
     window_end_reaction_raw::Vector{Float64}

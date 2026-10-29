@@ -371,7 +371,7 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
     constrained::Bool=false,
     constraint::Symbol=:unset,
     direct_solve::Bool=false,
-    window_end_constraint::Bool=false,
+    window_end_constraint::Union{Bool,Nothing}=nothing,
 )
     dirichlet_projector = Matrix{Float64}(undef, 0, 0)
     neumann_projector = Matrix{Float64}(undef, 0, 0)
@@ -398,7 +398,8 @@ function SolidMechanicsNonOverlapSchwarzBoundaryCondition(
         direct_solve,
         Float64[],
         Tuple{Float64,Vector{Float64}}[],
-        window_end_constraint,
+        window_end_constraint === true,
+        window_end_constraint !== nothing,
         Float64[],
         Float64[],
         Float64[],
@@ -420,9 +421,11 @@ function parse_direct_solve(bc_params::Parameters, side_set_name::String)
     )
 end
 
-# The value of `matching at`: `every substep` (default) or `window end`.
+# The value of `matching at`: `every substep` or `window end`, `nothing` when
+# the key is not given (the setup then chooses, default_window_end!).
 function parse_window_end_constraint(bc_params::Parameters, side_set_name::String)
-    value = String(get(bc_params, "matching at", "every substep"))
+    haskey(bc_params, "matching at") || return nothing
+    value = String(bc_params["matching at"])
     value == "every substep" && return false
     value == "window end" && return true
     return norma_abort(
@@ -442,7 +445,7 @@ function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
     subsim::Simulation,
     coupled_subsim::Simulation,
     constraint::Symbol,
-    window_end_constraint::Bool,
+    window_end_constraint::Union{Bool,Nothing},
     direct_solve::Bool=false,
 )
     local_from_global_map, global_from_local_map = get_side_set_node_maps(mesh, side_set_id)
@@ -468,7 +471,8 @@ function SolidMechanicsOverlapMatchingSchwarzBoundaryCondition(
         direct_solve,
         Float64[],
         Tuple{Float64,Vector{Float64}}[],
-        window_end_constraint,
+        window_end_constraint === true,
+        window_end_constraint !== nothing,
         Float64[],
         Float64[],
         Float64[],
@@ -595,7 +599,7 @@ function SMCouplingSchwarzBC(
             )
         end
         window_end_constraint = parse_window_end_constraint(bc_params, side_set_name)
-        if window_end_constraint && !constrained
+        if window_end_constraint === true && !constrained
             norma_abort("`matching at: window end` on side set \"$(side_set_name)\" requires `matching`.")
         end
         SolidMechanicsNonOverlapSchwarzBoundaryCondition(

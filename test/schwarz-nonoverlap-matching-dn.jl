@@ -777,11 +777,24 @@ end
     @test occursin("fewer interface nodes", out)
     out = setup_output(; mesh_dir=nonconforming_beam, clamped_dirichlet=false)
     @test !occursin("[WARN]", out)
-    # Fine-step side (free part, 4:1) as the Dirichlet side.
+    # Fine-step side (free part, 4:1) as the Dirichlet side: without
+    # `matching at` it matches at the window end, and under a relaxation other
+    # than Anderson acceleration the setup warns that the constraint may not
+    # converge; with `matching at: every substep` the impulse is not balanced
+    # and the setup warns about the role.
     out = setup_output(; free_substeps=4, clamped_dirichlet=false)
+    @test occursin("matches at the window end.", out)
+    @test occursin("converges under `relaxation: anderson`", out)
+    @test !occursin("finer time step", out)
+    out = setup_output(; free_substeps=4, clamped_dirichlet=false, relaxation="anderson")
+    @test occursin("matches at the window end.", out)
+    @test !occursin("[WARN]", out)
+    out = setup_output(; free_substeps=4, clamped_dirichlet=false, edit_bc=bc -> (bc["matching at"] = "every substep"))
     @test occursin("finer time step", out)
+    @test !occursin("matches at the window end.", out)
     out = setup_output(; free_substeps=4, clamped_dirichlet=true)
     @test !occursin("finer time step", out)
+    @test !occursin("matches at the window end", out)
 end
 
 # Issue #244: when the interface forces are at roundoff, as in a body that
