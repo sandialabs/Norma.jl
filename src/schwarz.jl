@@ -291,8 +291,8 @@ end
 #
 # The residuals are gathered when the first Aitken-relaxed interface of a
 # Schwarz iteration applies its datum, from the partner data at that moment,
-# that is, at the end of the previous Gauss-Seidel sweep (for an interface
-# whose partner has already been solved in the current sweep, of the current
+# that is, at the end of the previous Gauss-Seidel pass (for an interface
+# whose partner has already been solved in the current pass, of the current
 # one). The factor is then applied by each interface at its own application,
 # to the partner data it reads there, as the per-interface factor is. With
 # all relaxed interfaces on one subdomain, as on the inclusion split, the two

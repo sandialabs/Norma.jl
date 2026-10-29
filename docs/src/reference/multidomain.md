@@ -198,7 +198,7 @@ partner displacement field instead of its trace, so all side sets coupled to
 the same partner subdomain already share one factor under `per interface`.
 The residuals are gathered when the first relaxed
 interface of a Schwarz iteration applies its datum, that is, at the end of
-the previous Gauss-Seidel sweep, and each interface applies the factor to the
+the previous Gauss-Seidel pass, and each interface applies the factor to the
 partner data it reads at its own application. Interfaces are grouped by the
 relaxed quantity (Robin datum, displacement, velocity), with one factor per
 group, so that no sum mixes units. The coupled initial acceleration of
