@@ -457,7 +457,7 @@ function aitken_global_theta!(bc::SolidMechanicsSchwarzBoundaryCondition)
             paired = [
                 entry for entry in group if
                 length(get(state.prev_residual, entry.key, Float64[])) == length(entry.residual) > 0 &&
-                (recursive || length(get(state.prev_iterate, entry.key, Float64[])) == length(entry.iterate))
+                    (recursive || length(get(state.prev_iterate, entry.key, Float64[])) == length(entry.iterate))
             ]
             θ = if iter < controller.aitken_N0 || isempty(paired)
                 θ_0
