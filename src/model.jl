@@ -561,6 +561,101 @@ function element_energies(
     return energies
 end
 
+# Energies of a set of elements and their gradients with respect to the
+# positions of their nodes, a 3 × 4 matrix per element whose column a is
+# ∂W_e/∂x_a = Σ_points P ∇N_a dV with P the first Piola-Kirchhoff stress of
+# the smoothing material pulled back from the metric space, which is what
+# the assembly accumulates as the internal force (add_internal_force!).  The
+# conventions are those of element_energies; the ideal element is held fixed
+# in the derivative, so with the target sampled at `positions` the gradient
+# omits the dependence of the target on the positions (a size field varying
+# over the element, or the equal-volume rule), and is exact when
+# `sample_positions` is another array.  An inverted or degenerate element
+# gets an infinite energy and a zero gradient.  For the local relaxations of
+# the adaptivity loop (relax_split_node, relax_cavity_nodes), where one
+# evaluation replaces the six of a gradient by central differences.
+function element_energy_gradients(
+    model::SolidMechanics,
+    block_index::Int,
+    connectivity::AbstractMatrix{<:Integer},
+    positions::AbstractMatrix{Float64};
+    sample_positions::AbstractMatrix{Float64}=positions,
+    metric::Union{MetricField,Nothing}=model.metric_field,
+)
+    block = model.blocks[block_index]
+    material = model.materials[block_index]
+    Q = adaptivity_orientation(model, material, block_index)
+    return element_energy_gradients(
+        model,
+        block.element_type,
+        material,
+        Q,
+        block.N,
+        block.dN,
+        block.weights,
+        connectivity,
+        positions,
+        sample_positions,
+        metric,
+    )
+end
+
+function element_energy_gradients(
+    model::SolidMechanics,
+    element_type::ElementType,
+    material::Material,
+    Q::SMatrix{3,3,Float64,9},
+    N::SMatrix,
+    dN::SArray,
+    ip_weights::AbstractVector,
+    connectivity::AbstractMatrix{<:Integer},
+    positions::AbstractMatrix{Float64},
+    sample_positions::AbstractMatrix{Float64},
+    metric::Union{MetricField,Nothing},
+)
+    num_points = size(N, 2)
+    num_elements = size(connectivity, 2)
+    energies = zeros(num_elements)
+    gradients = Vector{SMatrix{3,4,Float64,12}}(undef, num_elements)
+    oriented = has_orientation(material)
+    for element in 1:num_elements
+        node_indices = view(connectivity, :, element)
+        sample = tetrahedron_coordinates(sample_positions, node_indices)
+        X, F_M, F_M_inv = smoothing_reference(model, element_type, sample; node_indices, metric)
+        element_reference_position = gather_nodal(X, N)
+        element_current_position = tetrahedron_coordinates(positions, node_indices)
+        energy = 0.0
+        gradient = zero(SMatrix{3,4,Float64,12})
+        for point in 1:num_points
+            dNdξ = dN[:, :, point]
+            dxdξ = dNdξ * element_current_position'
+            dXdξ = dNdξ * element_reference_position'
+            dNdX = dXdξ \ dNdξ
+            F = element_current_position * dNdX'
+            J = det(F)
+            if det(dxdξ) ≤ 0.0 || J ≤ DEGENERATE_JACOBIAN || isfinite(J) == false
+                energy = Inf
+                gradient = zero(SMatrix{3,4,Float64,12})
+                break
+            end
+            F_U = F_M * F * F_M_inv
+            if oriented
+                W, P_lattice, _ = constitutive(material, Q' * F_U * Q; need_tangent=false)
+                P_U = Q * P_lattice * Q'
+            else
+                W, P_U, _ = constitutive(material, F_U; need_tangent=false)
+            end
+            P = F_M' * P_U * F_M_inv'
+            dvol = det(dXdξ) * ip_weights[point]
+            energy += W * dvol
+            gradient += (P * dNdX) * dvol
+        end
+        energies[element] = energy
+        gradients[element] = gradient
+    end
+    return energies, gradients
+end
+
 # Pull the tangent of the energy in the metric space back to the reference
 # configuration: with F_U = F_M F F_M⁻¹ and P = F_M' P_U F_M⁻ᵀ,
 # A_iJkL = (F_M)_pi (F_M⁻¹)_Jq A^U_pqrs (F_M)_rk (F_M⁻¹)_Ls.

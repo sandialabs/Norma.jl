@@ -434,17 +434,27 @@ With `cavity relaxation: true` a swap or collapse that the energy test
 refuses at the fixed positions is judged again after a relaxation of the
 interior nodes of its cavity (the nodes in no node set and on no side set):
 each node in turn takes up to five descent steps on the energy of the
-elements around it under the new connectivity, with the gradient by central
-differences and the step halved until the energy decreases, as the node of
-a split does. The energy test and the geometric floor then compare the old
-elements with the new ones at the relaxed positions, both together with the
-elements around the moved nodes that the operation keeps, since those
-change with the positions; an accepted operation moves the nodes, the
+elements around it under the new connectivity, with the gradient of the
+energy with respect to the node (the element internal force of the
+smoothing material, one evaluation of the elements around the node) and the
+step halved until the energy decreases, as the node of a split does. When
+after the first step over the nodes the energy of the new and surrounding
+elements is still above 1.5 times that of the old and surrounding ones, the
+relaxation stops and the operation is refused: on the awful cube 98% of the
+operations the full relaxation accepts are below that ratio after the first
+step, and 71% of the relaxations tried are above it. The energy test and
+the geometric floor then compare the old elements with the new ones at the
+relaxed positions, both together with the elements around the moved nodes
+that the operation keeps, since those change with the positions; an accepted operation moves the nodes, the
 stored values of the elements around them are evaluated again, and the
 refusals of their edges and faces are forgotten. The relaxation applies to
 the energy test only, not to the tests on the length or on the scaled
 Jacobian. A swap that is accepted at the fixed positions is not relaxed,
-since the smoothing phase that follows moves the nodes anyway.
+since the smoothing phase that follows moves the nodes anyway. Measured on
+the awful cube example under the energy criteria: the final energy 7.08
+against 9.51, the minimum scaled Jacobian 0.38 against 0.36, and the mean
+0.72 against 0.68 at the same element count, with the topology phases
+taking 26 s against 2.4 s, which is why the option is off by default.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|

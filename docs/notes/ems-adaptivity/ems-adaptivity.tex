@@ -779,9 +779,16 @@ The same relaxation applies to a swap or a collapse that
 (\code{cavity relaxation: true}, October 30, 2026). The interior nodes
 of the cavity---those in no node set and on no side set---are relaxed one
 at a time against the new connectivity, each by up to five descent steps
-on the energy of the elements around it, with the gradient by central
-differences and the step halved until the energy decreases, as for the
-node of a split. The test then compares the old elements with the new
+on the energy of the elements around it, with the gradient of the energy
+with respect to the node---the element internal force of the smoothing
+material, $\sum_q \bs{P}\,\nabla N_a\,dV$, from one evaluation of the
+elements around the node---and the step halved until the energy
+decreases, as for the node of a split; when after the first step over
+the nodes the energy of the new and surrounding elements is still above
+$1.5$ times that of the old and surrounding ones the relaxation stops
+and the operation is refused (on the awful cube 98\% of the operations
+the full relaxation accepts are below that ratio after the first step,
+and 71\% of the relaxations tried are above it). The test then compares the old elements with the new
 ones at the relaxed positions, both together with the elements around
 the moved nodes that the operation keeps, since those change with the
 positions; so an accepted operation still lowers the global functional,
@@ -800,13 +807,21 @@ needs 500 steps to converge, the energy after smoothing is
 $9.92\times 10^{3}$ against $1.51\times 10^{4}$, the minimum scaled
 Jacobian $0.40$ against $0.36$, and the mean $0.70$ against $0.65$. Started from the Delaunay connectivity of the same
 positions instead, the relaxed phase ends within 2\% in energy of these
-values. The cost is the obstacle: 86 to 119~s against 0.1~s for the
-phase, since every refused candidate is relaxed, with six energy
-evaluations of the elements around a node per gradient, and a refusal is
-forgotten as soon as a node around it moves. The relaxation is therefore
-off by default until the gradient is computed analytically, as the
-assembly computes the internal force, and the candidates to relax are
-bounded.
+values. The cost is the obstacle: every refused candidate is relaxed,
+and a refusal is forgotten as soon as a node around it moves. On the
+loop of \code{awful-cube-adaptive.yaml} under the energy criteria the
+topology phases took 117~s with the gradient by central differences
+against 2.4~s without the relaxation; the analytic gradient brought them
+to 51~s with the same mesh to the last digit, and the stop after the
+first step to 26~s, with the final energy 7.08 against 9.51, the
+minimum scaled Jacobian 0.38 against 0.36 and the mean 0.72 against
+0.68 at the same element count. A bound on the energy ratio of the new
+to the old cavity at the fixed positions does not select the candidates:
+the accepted operations have a median ratio of 2.6 and a tail to
+$10^{13}$ (new elements nearly degenerate at the fixed positions that
+the moved nodes open up). The relaxation is off by default at a factor
+of 11 in the time of the topology phases; the number of relaxations
+tried, 120\,678 for 5642 accepted, is the remaining lever.
 \end{remark}
 
 \section{Question 3: stagnation detection}

@@ -362,6 +362,7 @@ function accept_proposal(
         new_connectivity,
         block,
         old_energy,
+        new_energy,
         options,
         removed_node,
         surviving_node,
@@ -369,8 +370,24 @@ function accept_proposal(
     )
 end
 
-# Descent steps of the relaxation of each node of a cavity.
+# Descent steps of the relaxation of each node of a cavity, and the ratio
+# of the energy of the new and surrounding elements after the first step to
+# that of the old and surrounding elements above which the relaxation stops:
+# on the awful cube loop 98.2% of the operations the full relaxation accepts
+# are below 1.5 after the first step, and 71% of the relaxations tried are
+# above it (study of October 30, 2026, relaxation.md).
 const CAVITY_RELAXATION_STEPS = 5
+const CAVITY_RELAXATION_CONTINUE_RATIO = 1.5
+
+# Diagnostic of the studies: when `RECORD_RELAXATION_RATIOS[]` is set, every
+# proposal the relaxation judges appends to `RELAXATION_RATIOS` the ratio of
+# the new to the old cavity energy at the fixed positions, the ratio of the
+# energy of the new and surrounding elements after the first step over the
+# nodes to that of the old and surrounding elements, and whether it was
+# accepted.
+const RECORD_RELAXATION_RATIOS = Ref(false)
+const RELAXATION_RATIOS = Tuple{Float64,Float64,Bool}[]
+const RELAXATION_RATIOS_LOCK = ReentrantLock()
 
 # The nodes of a cavity that its relaxation may move: the nodes of its old
 # and new elements, other than the node a collapse removes, that are in no
@@ -415,10 +432,14 @@ end
 # Relax the given nodes against the new elements of a cavity and the
 # elements around the nodes outside it, one node at a time with the others
 # fixed, by descent steps on the energy of the elements around the node, as
-# relax_split_node: the gradient by central differences of the position,
-# the step scaled by the mean length of the edges from the node, halved
-# until the energy decreases.  Returns the positions with the nodes moved,
-# or nothing when no node moved.
+# relax_split_node: the gradient from element_energy_gradients, the step
+# scaled by the mean length of the edges from the node, halved until the
+# energy decreases.  After the first step over the nodes the energy of the
+# elements is compared with `energy_before`, that of the old and surrounding
+# elements, and the relaxation stops when the ratio is above
+# CAVITY_RELAXATION_CONTINUE_RATIO.  Returns the positions with the nodes
+# moved, or nothing when no node moved or the relaxation stopped, and the
+# energy after the first step (NaN when no step was taken).
 function relax_cavity_nodes(
     model::SolidMechanics,
     topology::MeshTopology,
@@ -426,6 +447,7 @@ function relax_cavity_nodes(
     new_connectivity::Matrix{Int},
     outer_connectivity::Matrix{Int},
     nodes::Vector{Int},
+    energy_before::Float64,
 )
     positions = topology.positions
     trial = MovedPositions(positions, nodes, Matrix{Float64}(positions[:, nodes]))
@@ -438,7 +460,8 @@ function relax_cavity_nodes(
         push!(scales, sum(norm(SVector{3,Float64}(view(positions, :, m)) - x) for m in neighbors) / length(neighbors))
     end
     moved = false
-    for _ in 1:CAVITY_RELAXATION_STEPS
+    first_step_energy = NaN
+    for step_index in 1:CAVITY_RELAXATION_STEPS
         improved = false
         for (k, n) in enumerate(nodes)
             star = stars[k]
@@ -447,35 +470,24 @@ function relax_cavity_nodes(
                 return sum(element_energies(model, block, star, trial))
             end
             x = SVector{3,Float64}(view(trial.moved, :, k))
-            value = energy(x)
+            energies, gradients = element_energy_gradients(model, block, star, trial)
+            value = sum(energies)
             isfinite(value) || return nothing
-            δ = 1.0e-6 * scales[k]
-            gradient = SVector{3,Float64}(
-                (energy(x + SVector(δ, 0.0, 0.0)) - energy(x - SVector(δ, 0.0, 0.0))) / (2δ),
-                (energy(x + SVector(0.0, δ, 0.0)) - energy(x - SVector(0.0, δ, 0.0))) / (2δ),
-                (energy(x + SVector(0.0, 0.0, δ)) - energy(x - SVector(0.0, 0.0, δ))) / (2δ),
-            )
-            trial.moved[:, k] = x
-            all(isfinite, gradient) || continue
-            step_length = 0.1 * scales[k] / max(norm(gradient), floatmin(Float64))
-            node_improved = false
-            for _ in 1:8
-                trial_value = energy(x - step_length * gradient)
-                if isfinite(trial_value) && trial_value < value
-                    node_improved = true
-                    break
-                end
-                step_length *= 0.5
-            end
-            if node_improved
-                improved = moved = true
-            else
+            step = node_descent_step(energy, identity, x, value, node_gradient(gradients, star, n), scales[k])
+            if step === nothing
                 trial.moved[:, k] = x
+            else
+                trial.moved[:, k] = step[1]
+                improved = moved = true
             end
         end
         improved || break
+        if step_index == 1
+            first_step_energy = sum(element_energies(model, block, around, trial))
+            first_step_energy > CAVITY_RELAXATION_CONTINUE_RATIO * energy_before && return nothing, first_step_energy
+        end
     end
-    return moved ? trial : nothing
+    return moved ? trial : nothing, first_step_energy
 end
 
 # The acceptance test of a proposal after the relaxation of its cavity: the
@@ -490,6 +502,7 @@ function relaxed_proposal(
     new_connectivity::Matrix{Int},
     block::Int,
     old_energy::Float64,
+    new_energy::Float64,
     options::AdaptivityOptions,
     removed_node::Int,
     surviving_node::Int,
@@ -500,25 +513,38 @@ function relaxed_proposal(
     outer = outer_elements(topology, old_elements, nodes)
     outer_connectivity = topology.connectivity[:, outer]
     energy_before = old_energy + sum(element_energies(model, block, outer_connectivity, topology.positions))
-    positions = relax_cavity_nodes(model, topology, block, new_connectivity, outer_connectivity, nodes)
-    positions === nothing && return nothing
+    positions, first_step_energy = relax_cavity_nodes(
+        model, topology, block, new_connectivity, outer_connectivity, nodes, energy_before
+    )
+    accepted = false
+    energy_after = Inf
     extended = hcat(new_connectivity, outer_connectivity)
-    energies = element_energies(model, block, extended, positions)
-    all(isfinite, energies) || return nothing
-    energy_after = sum(energies)
-    passes_acceptance_tests(
-        model,
-        topology,
-        vcat(old_elements, outer),
-        extended,
-        block,
-        positions,
-        model.metric_field,
-        energies,
-        energy_before,
-        energy_after,
-        options,
-    ) || return nothing
+    energies = Float64[]
+    if positions !== nothing
+        energies = element_energies(model, block, extended, positions)
+        if all(isfinite, energies)
+            energy_after = sum(energies)
+            accepted = passes_acceptance_tests(
+                model,
+                topology,
+                vcat(old_elements, outer),
+                extended,
+                block,
+                positions,
+                model.metric_field,
+                energies,
+                energy_before,
+                energy_after,
+                options,
+            )
+        end
+    end
+    if RECORD_RELAXATION_RATIOS[]
+        lock(RELAXATION_RATIOS_LOCK) do
+            return push!(RELAXATION_RATIOS, (new_energy / old_energy, first_step_energy / energy_before, accepted))
+        end
+    end
+    accepted || return nothing
     return CavityProposal(
         old_elements,
         new_connectivity,
@@ -1243,11 +1269,46 @@ function split_cavity_energy(
 end
 
 # Local relaxation of a new node with the rest of the cavity fixed: a few
-# steps of descent on the energy of the new elements, the gradient by central
-# differences of the position (three degrees of freedom), each step returned
-# to the node's surfaces.  The operation is then judged at its locally
-# relaxed position rather than at the midpoint.
+# steps of descent on the energy of the new elements, with the gradient of
+# the energy with respect to the node from element_energy_gradients (one
+# evaluation of the cavity instead of the six of central differences), each
+# step returned to the node's surfaces.  The operation is then judged at its
+# locally relaxed position rather than at the midpoint.
 const SPLIT_RELAXATION_STEPS = 5
+
+# Gradient of the energy of the elements of `connectivity` with respect to
+# node `n`, from their gradients.
+function node_gradient(gradients::Vector{SMatrix{3,4,Float64,12}}, connectivity::AbstractMatrix{<:Integer}, n::Int)
+    g = zero(SVector{3,Float64})
+    for e in eachindex(gradients), a in 1:4
+        connectivity[a, e] == n && (g += gradients[e][:, a])
+    end
+    return g
+end
+
+# One descent step of a node on the energy `energy(x)` of the elements
+# around it from the gradient `g` at `x` with value `value`: the step length
+# starts at a tenth of the node's scale and is halved up to eight times
+# until the energy decreases, each trial returned by `project`.  Returns the
+# new position and value, or nothing when no step decreased the energy.  (A
+# second trial at the minimizer of the quadratic fitted through the value,
+# the slope, and the first trial was measured on the awful cube loop: more
+# operations accepted and a lower energy, 6.75 against 7.08, but a lower
+# minimum scaled Jacobian, 0.363 against 0.382, and 47% more time per
+# relaxation; not kept.)
+function node_descent_step(
+    energy::Function, project::Function, x::SVector{3,Float64}, value::Float64, g::SVector{3,Float64}, scale::Float64
+)
+    all(isfinite, g) || return nothing
+    step_length = 0.1 * scale / max(norm(g), floatmin(Float64))
+    for _ in 1:8
+        trial = project(x - step_length * g)
+        trial_value = energy(trial)
+        isfinite(trial_value) && trial_value < value && return trial, trial_value
+        step_length *= 0.5
+    end
+    return nothing
+end
 
 function relax_split_node(
     model::SolidMechanics,
@@ -1260,30 +1321,18 @@ function relax_split_node(
     metric::Union{MetricField,Nothing},
 )
     energy(x) = split_cavity_energy(model, topology, block, connectivity, x, metric)
+    project(x) = project_to_surfaces(x, constraints, model.time)
+    m = size(topology.positions, 2) + 1
     x = position
     value = energy(x)
     isfinite(value) || return x, value
-    δ = 1.0e-6 * scale
     for _ in 1:SPLIT_RELAXATION_STEPS
-        gradient = SVector{3,Float64}(
-            (energy(x + SVector(δ, 0.0, 0.0)) - energy(x - SVector(δ, 0.0, 0.0))) / (2δ),
-            (energy(x + SVector(0.0, δ, 0.0)) - energy(x - SVector(0.0, δ, 0.0))) / (2δ),
-            (energy(x + SVector(0.0, 0.0, δ)) - energy(x - SVector(0.0, 0.0, δ))) / (2δ),
+        _, gradients = element_energy_gradients(
+            model, block, connectivity, PositionsWithNode(topology.positions, x); metric
         )
-        all(isfinite, gradient) || break
-        step_length = 0.1 * scale / max(norm(gradient), floatmin(Float64))
-        improved = false
-        for _ in 1:8
-            trial = project_to_surfaces(x - step_length * gradient, constraints, model.time)
-            trial_value = energy(trial)
-            if isfinite(trial_value) && trial_value < value
-                x, value = trial, trial_value
-                improved = true
-                break
-            end
-            step_length *= 0.5
-        end
-        improved || break
+        step = node_descent_step(energy, project, x, value, node_gradient(gradients, connectivity, m), scale)
+        step === nothing && break
+        x, value = step
     end
     return x, value
 end

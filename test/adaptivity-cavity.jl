@@ -216,3 +216,50 @@ end
     Norma.finalize_writing(metric_sim)
     Norma.finalize_writing(volume_sim)
 end
+
+@testset "energy_gradients" begin
+    # The gradient kernel gives the energies of element_energies and, summed
+    # over the mesh with the target sampled on the original mesh, the
+    # internal force the assembly computes; on a cavity with the target held
+    # fixed it matches the central differences of the energy.
+    for sim in (metric_sim, volume_sim)
+        model = sim.model
+        conn = model.blocks[1].connectivity
+        positions = model.reference + model.displacement
+        energies = Norma.element_energies(model, 1, conn, positions; sample_positions=model.reference)
+        energies_g, gradients = Norma.element_energy_gradients(
+            model, 1, conn, positions; sample_positions=model.reference
+        )
+        @test energies_g ≈ energies rtol = 1.0e-12
+        force = zeros(3, size(positions, 2))
+        for e in 1:size(conn, 2), a in 1:4
+            force[:, conn[a, e]] .+= gradients[e][:, a]
+        end
+        @test vec(force) ≈ model.internal_force rtol = 1.0e-10
+        # A cavity with the target sampled at fixed positions.
+        sample = copy(loop_positions)
+        cavity_energy(x) = sum(Norma.element_energies(model, 1, loop_conn, x; sample_positions=sample))
+        _, cavity_gradients = Norma.element_energy_gradients(
+            model, 1, loop_conn, loop_positions; sample_positions=sample
+        )
+        δ = 1.0e-6 * h
+        for n in unique(vec(loop_conn))
+            g = Norma.node_gradient(cavity_gradients, loop_conn, n)
+            numerical = zeros(3)
+            for i in 1:3
+                plus = copy(loop_positions)
+                minus = copy(loop_positions)
+                plus[i, n] += δ
+                minus[i, n] -= δ
+                numerical[i] = (cavity_energy(plus) - cavity_energy(minus)) / (2δ)
+            end
+            @test g ≈ numerical rtol = 1.0e-6 atol = 1.0e-8 * norm(cavity_gradients[1])
+        end
+        # An inverted element has an infinite energy and a zero gradient.
+        inverted = copy(loop_conn)
+        inverted[3, 1], inverted[4, 1] = inverted[4, 1], inverted[3, 1]
+        e_inv, g_inv = Norma.element_energy_gradients(model, 1, inverted, loop_positions)
+        @test e_inv[1] == Inf
+        @test g_inv[1] == zero(g_inv[1])
+    end
+end
