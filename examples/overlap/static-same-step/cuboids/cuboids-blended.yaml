@@ -11,4 +11,4 @@ absolute tolerance: 1.0e-08
 # Emit overlap-corrected (Arlequin-blended) energy to cuboids-blended-energy.csv:
 # columns time, stored_energy, kinetic_energy, total_energy, one row per stop.
 # The blending removes the double count of the shared overlap region.
-blended energy output: true
+energy output: true

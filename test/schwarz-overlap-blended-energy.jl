@@ -144,7 +144,7 @@ end
 end
 
 @testset "Overlap Blended Energy: Double Count Removed" begin
-    # Exercises the shipped example that enables `blended energy output`.
+    # Exercises the shipped example that enables `energy output`.
     cp("../examples/overlap/static-same-step/cuboids/cuboids-blended.yaml", "cuboids-blended.yaml"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-1.yaml", "cuboid-1.yaml"; force=true)
     cp("../examples/overlap/static-same-step/cuboids/cuboid-2.yaml", "cuboid-2.yaml"; force=true)
@@ -219,7 +219,10 @@ end
     end
 
     naive = sim.subsims[1].model.strain_energy + sim.subsims[2].model.strain_energy
-    stored, kinetic, total = Norma.total_blended_energy(sim)
+    stored_k, kinetic_k = Norma.subdomain_blended_energies(sim)
+    stored = sum(stored_k)
+    kinetic = sum(kinetic_k)
+    total = stored + kinetic
     @test kinetic == 0.0                              # zero initial velocity
     @test total ≈ stored rtol = 1.0e-12
     @test naive > 1.1 * monodomain                    # naive genuinely double-counts

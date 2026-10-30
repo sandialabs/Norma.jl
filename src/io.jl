@@ -332,8 +332,8 @@ function write_stop(sim::MultiDomainSimulation; wall_time::Float64=0.0)
     for subsim in sim.subsims
         write_stop(subsim)
     end
-    if get(sim.params, "blended energy output", false) == true
-        write_blended_energy_csv(sim)
+    if get(sim.params, "energy output", false) == true
+        write_energy_csv(sim)
     end
 end
 

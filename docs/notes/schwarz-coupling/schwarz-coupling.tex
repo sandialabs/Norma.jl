@@ -472,7 +472,7 @@ Sec.~\ref{sec:initial}, and contact pairs evaluate their detection
 Exodus and CSV output are written at the controller stops that are
 multiples of \code{Exodus output interval} (default $\Delta t_c$) and
 \code{CSV output interval} (default off). With
-\code{blended energy output: true} the controller writes
+\code{energy output: true} the controller writes
 \code{<name>-energy.csv} at every stop, with the columns \code{time},
 \code{stored\_energy}, \code{kinetic\_energy}, \code{total\_energy}
 ($E$ of \eqref{eq:energy}, blended over overlaps as in
@@ -487,7 +487,12 @@ Dirichlet--Neumann pair, the relative one-sided jumps
 \code{displacement\_jump\_<D>\_<N>} and \code{velocity\_jump\_<D>\_<N>}
 of Sec.~\ref{sec:matching-stopping} with their root mean square values
 (\code{\_rms}) and, for matching pairs, the impulse residual
-\eqref{eq:impulse} per component and its relative value. The
+\eqref{eq:impulse} per component and its relative value, followed by
+\code{stored\_energy\_<domain>}, \code{kinetic\_energy\_<domain>},
+and \code{total\_energy\_<domain>} for every subdomain, its contribution
+to $E$, which the totals sum. The kinetic energy of a central difference
+subdomain in this file is the staggered form \eqref{eq:staggered}, not the
+$\tfrac12 (~v^n)^T ~M ~v^n$ that the subdomain writes in its own output. The
 rate invariant and staggered columns are not blended over overlaps.
 
 \subsection{Swaps and restart}
@@ -832,7 +837,7 @@ Sec.~\ref{sec:swaps}.
 \label{sec:blended}
 
 The overlap region is meshed twice, so the sum of the subdomain energies
-counts it twice. The blended energy output weights the energy density at
+counts it twice. The energy output weights the energy density at
 each quadrature point $~x$ of subdomain $k$ by the Arlequin partition of
 unity
 \begin{equation}
@@ -2005,12 +2010,13 @@ $1$), \code{anderson depth} (default $10$); \code{interface predictor}
 \code{inexact Newton} block with \code{tolerance ratio} ($0.01$),
 \code{minimum tolerance} ($10^{-12}$), \code{maximum tolerance}
 ($10^{-2}$), \code{tight final solve} (false); \code{naive stabilized}
-(default false, contact only); \code{blended energy output} (default
+(default false, contact only); \code{energy output} (default
 false); \code{Exodus output interval} (default the controller step),
 \code{CSV output interval} (default off); \code{swaps}; \code{restart}.
 The keys \code{constrained}, \code{constraint},
-\code{constraint absolute tolerance}, and \code{forcing factor} are
-retired and abort with a message naming their replacements.
+\code{constraint absolute tolerance}, \code{forcing factor}, and
+\code{blended energy output} are retired and abort with a message naming
+their replacements.
 
 \paragraph{\code{Schwarz overlap}.} \code{side set}, \code{source},
 \code{source block} (required); \code{search tolerance} (default

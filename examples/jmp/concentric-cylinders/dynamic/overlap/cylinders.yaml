@@ -1,6 +1,6 @@
 type: multi
 domains: ["inner.yaml", "outer.yaml"]
-blended energy output: true
+energy output: true
 Exodus output interval: 2.0e-05
 CSV output interval: 0
 initial time: 0.0

@@ -18,12 +18,12 @@
 #           Poisson ratio (3K - 2G)/(2(3K + G)) = 0.4940422881311684,
 #           density 1843 kg/m^3
 #
-# One-domain multidomain wrapper of cylinders.yaml, which writes the blended
-# energy output (the energy, and the rate invariant of the differentiated system) to
+# One-domain multidomain wrapper of cylinders.yaml, which writes the energy
+# output (the energy, and the rate invariant of the differentiated system) to
 # reference-energy.csv.
 type: multi
 domains: ["cylinders.yaml"]
-blended energy output: true
+energy output: true
 Exodus output interval: 2.0e-05
 CSV output interval: 0
 initial time: 0.0

@@ -217,7 +217,7 @@ function run_input(c::Case, domains, final_time, exodus_interval)
     text = """
         type: multi
         domains: [$list]
-        blended energy output: true
+        energy output: true
         Exodus output interval: $(num(exodus_interval))
         CSV output interval: 0
         initial time: 0.0

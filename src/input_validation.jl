@@ -111,7 +111,7 @@ const TOP_LEVEL_MULTI_KEYS = Set([
     "matching absolute tolerance",
     "unconverged step action",
     "inexact Newton",
-    "blended energy output",
+    "energy output",
     "Exodus output interval",
     "CSV output interval",
     "CSV write sidesets",

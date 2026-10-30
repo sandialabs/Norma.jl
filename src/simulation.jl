@@ -610,6 +610,10 @@ function create_simulation(params::Parameters)
         try
             create_bcs(sim)
             validate_schwarz_tolerances(sim)
+            haskey(sim.params, "blended energy output") && norma_abort(
+                "`blended energy output` was renamed `energy output`, with the same meaning; its file " *
+                "`<name>-energy.csv` now also has the stored, kinetic, and total energy of each subdomain.",
+            )
             validate_swap_criteria(sim)
             warn_restart_with_nonoverlap_schwarz(sim)
             warn_neumann_before_dirichlet(sim)

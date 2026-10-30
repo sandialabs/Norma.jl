@@ -48,7 +48,7 @@ function run_monolithic_e2(explicit::Bool; num_steps=50, dt=5.0e-7)
         "maximum iterations" => 4,
         "relative tolerance" => 1.0e-12,
         "absolute tolerance" => 1.0e-14,
-        "blended energy output" => true,
+        "energy output" => true,
     )
     sim = Norma.run(params)
     rows = readlines("mono-invariant-energy.csv")

@@ -230,25 +230,56 @@ repeatedly means the coupling is not advancing; check `relaxation parameter`.
 |---|---|---|---|
 | `Exodus output interval` | no | the controller `time step` | applied uniformly to all subdomains |
 | `CSV output interval` | no | `0.0` (disabled) | applied uniformly to all subdomains |
-| `blended energy output` | no | `false` | write an Arlequin-blended kinetic/stored/total-energy CSV each stop, removing the double count in overlapping regions |
+| `energy output` | no | `false` | write the energy of the coupled problem, `<name>-energy.csv`, at each stop; the key was named `blended energy output` before October 30, 2026, and that name aborts |
 
-The blending weights depend only on the reference configuration and are
-computed once, with grid searches over the partner elements and the Schwarz
-side sets, so enabling the energy output costs a few seconds of setup and a
-small fraction of a step per stop.
+The file `<name>-energy.csv` is the energy of the coupled problem. It
+differs from the energy that each subdomain writes for itself, the files
+`<subdomain>-potential-NNNN.csv`, `-kinetic-NNNN.csv`, and
+`-total-energy-NNNN.csv` written when `CSV output interval` is set, in two
+cases.
 
-The file `<name>-energy.csv` has one row per stop. Its columns are, in order:
+1. The kinetic energy of a central difference subdomain is the staggered
+   product ½ v_{n−½}ᵀ M_L v_{n+½} of its two half-step velocities around the
+   stop n, with M_L the lumped mass matrix. It equals
+   ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for the velocity v and the acceleration a at
+   the stop. The kinetic energy that the subdomain writes for itself is
+   ½ vᵀ M_L v. The staggered form is used because central difference
+   conserves the energy with it exactly on a linear problem and not with
+   ½ vᵀ M_L v (measurement below). The run log states this at the first stop
+   and names the central difference subdomains.
+2. The stored and kinetic energy of a subdomain with an overlapping coupling
+   are weighted, so that the region meshed by two subdomains is counted once.
+   The weight of a quadrature point is d_own / (d_own + d_partner), with
+   d_own and d_partner the distances to the subdomain's own Schwarz boundary
+   and to the partner's, measured on the reference configuration; it is 1
+   outside the overlap, and the weights of the two subdomains sum to 1. The
+   `Schwarz overlap matching` coupling uses instead the constant weight
+   1/(1 + n) at a point inside n partners, the weight of its assembly. A
+   subdomain with an overlapping coupling therefore contributes a share of
+   the energy of its mesh.
+
+For a subdomain without an overlapping coupling (nonoverlapping, contact, or
+a single domain) the weights are 1 and are not computed. Its stored energy is
+then its own strain energy, and its kinetic energy is its own ½ vᵀ M v for
+Newmark and the staggered product above for central difference. For a
+subdomain with an overlapping coupling the weights depend only on the
+reference configuration and are computed once, with grid searches over the
+partner elements and the Schwarz side sets, which takes a few seconds of
+setup.
+
+The file has one row per stop. Its columns are, in order:
 
 | Column | Meaning |
 |---|---|
 | `time` | time of the stop |
-| `stored_energy`, `kinetic_energy`, `total_energy` | blended energy E: strain energy, kinetic energy (the staggered form ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a for central difference subdomains), and their sum |
+| `stored_energy`, `kinetic_energy`, `total_energy` | the energy E of the coupled problem: the sums over the subdomains of the columns `stored_energy_<subdomain>`, `kinetic_energy_<subdomain>`, and `total_energy_<subdomain>` below |
 | `rate_invariant_total` | Ẽ, the rate invariant: the sum over subdomains of the energy functional evaluated on the velocity and the acceleration, which is the invariant of the time-differentiated equation of motion; in units of energy per time squared |
 | `rate_invariant_<subdomain>` | Ẽ of one subdomain, one column per subdomain in the order of `domains` |
 | `staggered_kinetic_interface`, `staggered_kinetic_interior` | staggered kinetic energy of the central difference subdomains, summed over the rows of the nodes in any Schwarz side set and over the remaining rows; `NaN` without central difference subdomains |
 | `displacement_jump_<D>_<N>`, `velocity_jump_<D>_<N>` | one-sided interface jumps of each Dirichlet–Neumann pair at the end of the stop, D the Dirichlet and N the Neumann subdomain (defined under `Schwarz DN nonoverlap`) |
 | `displacement_jump_rms_<D>_<N>`, `velocity_jump_rms_<D>_<N>` | the same jumps as root mean square values over the interface, ‖q_D − Π_D q_N‖_{W_D} / √\|Γ_D\|, in units of displacement and of velocity |
 | `impulse_residual_x_<D>_<N>`, `_y_`, `_z_`, `impulse_residual_relative_<D>_<N>` | matching pairs: the trapezoid-in-time sum over the Neumann side's substeps of the force it received, minus Π_Dᵀ times the trapezoid sum of the Dirichlet side's reaction over its own substeps, summed over the interface nodes per component (in units of force times time), and its W_N⁻¹ norm relative to that of the transferred impulse; `NaN` for direct pairs |
+| `stored_energy_<subdomain>`, `kinetic_energy_<subdomain>`, `total_energy_<subdomain>` | the contribution of each subdomain to E, one column per subdomain in the order of `domains` for each of the three: strain energy, kinetic energy (the staggered product ½ v_{n−½}ᵀ M_L v_{n+½} for a central difference subdomain, not ½ vᵀ M_L v), and their sum; weighted for a subdomain with an overlapping coupling |
 
 For a central difference subdomain, `kinetic_energy` is the product
 ½ v_{n−½}ᵀ M_L v_{n+½} of the two half-step velocities around the stop n,
@@ -344,7 +375,7 @@ that a load on a boundary inside the partner is counted once; the spring term
 of a `Robin` condition is not weighted. With these weights the
 fixed point of the Schwarz iteration is the blended constrained problem, the
 window balance of the rate invariant cancels as for a nonoverlap matching
-pair, and the blended energy output and the rate invariant count the overlap
+pair, and the energy output and the rate invariant count the overlap
 once with the same weights. Both sides are constrained, so both take one step
 per window: equal time steps are required, and the coupled initial
 acceleration, the matching criterion (`matching relative tolerance`), and

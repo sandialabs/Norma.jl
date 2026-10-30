@@ -107,7 +107,7 @@ function run_constrained_dn(
         "maximum iterations" => 64,
         "matching relative tolerance" => 1.0e-12,
         "relaxation parameter" => theta,
-        "blended energy output" => true,
+        "energy output" => true,
     )
     if relaxation !== nothing
         params["relaxation"] = relaxation
@@ -211,11 +211,45 @@ invariant_drift(header, data) = energy_drift(header, data, "rate_invariant_total
     end
 end
 
+# The energy output of a nonoverlapping pair has one stored, kinetic, and
+# total energy column per subdomain, which sum to the first columns. The
+# weights are one, so they are neither computed nor cached, and the stored
+# energy and the Newmark kinetic energy ½ vᵀ M v are the subdomain's own. The
+# kinetic energy of a central difference subdomain is the staggered product
+# ½ vᵀ M_L v − (Δt²/8) aᵀ M_L a.
+function check_subdomain_energy_columns(sim, header, data)
+    column(name) = data[end][findfirst(==(name), header)]
+    stored_sum = 0.0
+    kinetic_sum = 0.0
+    for subsim in sim.subsims
+        model = subsim.model
+        @test haskey(Norma.ARLEQUIN_WEIGHT_CACHE, model) == false
+        stored = column("stored_energy_" * subsim.name)
+        kinetic = column("kinetic_energy_" * subsim.name)
+        @test stored ≈ model.strain_energy rtol = 1.0e-12
+        v = vec(model.velocity)
+        if subsim.integrator isa Norma.CentralDifference
+            Δt = subsim.integrator.time_step
+            a = vec(model.acceleration)
+            m = model.lumped_mass
+            @test kinetic ≈ 0.5 * dot(m, v .* v) - Δt^2 / 8 * dot(m, a .* a) rtol = 1.0e-12
+        else
+            @test kinetic ≈ 0.5 * dot(v, model.mass * v) rtol = 1.0e-12
+        end
+        @test column("total_energy_" * subsim.name) == stored + kinetic
+        stored_sum += stored
+        kinetic_sum += kinetic
+    end
+    @test column("stored_energy") ≈ stored_sum rtol = 1.0e-14
+    @test column("kinetic_energy") ≈ kinetic_sum rtol = 1.0e-14
+end
+
 @testset "Matching DN: Rate Invariant Conservation (II)" begin
     sim, header, data = run_constrained_dn(false)
     @test sim.failed == false
     @test length(data) == 51
     @test invariant_drift(header, data) < 1.0e-10
+    check_subdomain_energy_columns(sim, header, data)
 end
 
 @testset "Matching DN: Rate Invariant Conservation (EE)" begin
@@ -223,6 +257,7 @@ end
     @test sim.failed == false
     @test length(data) == 51
     @test invariant_drift(header, data) < 1.0e-10
+    check_subdomain_energy_columns(sim, header, data)
     # Central difference on the Dirichlet side: β = 0, so the imposed interface
     # displacement is the predictor value.
     integrator = sim.subsims[1].integrator
@@ -257,7 +292,8 @@ end
 # The retired keys `constrained` and `constraint` abort instead of being
 # ignored, which would run the standard exchange; the top-level key
 # `matching relative tolerance` is required when a pair sets `matching`; the
-# retired top-level key `constraint absolute tolerance` aborts. The controller's
+# retired top-level keys `constraint absolute tolerance` and `blended energy
+# output` (renamed `energy output`) abort. The controller's
 # `relative tolerance` and `absolute tolerance` are required when a coupling
 # other than a matching pair exists (here the pair without `matching`, which
 # is the standard exchange), and ignored when every coupling is a matching pair.
@@ -267,6 +303,7 @@ end
         (edit_bc=bc -> (bc["constraint"] = "velocity"), edit_params=nothing),
         (edit_bc=nothing, edit_params=p -> delete!(p, "matching relative tolerance")),
         (edit_bc=nothing, edit_params=p -> (p["constraint absolute tolerance"] = 1.0e-9)),
+        (edit_bc=nothing, edit_params=p -> (p["blended energy output"] = true)),
         (edit_bc=nothing, edit_params=p -> (p["matching relative tolerance"] = -1.0)),
         (edit_bc=bc -> delete!(bc, "matching"), edit_params=nothing),
     ]

@@ -322,9 +322,12 @@ end
 # product ½ v_{n-½}ᵀ M_L v_{n+½} of the half-step velocities, ½ vᵀ M_L v -
 # (Δt²/8) aᵀ M_L a, which the scheme conserves exactly on a linear problem. It
 # can be negative: for a body released at rest it is -(Δt²/8) aᵀ M_L a at t = 0.
+#
+# A subdomain without an overlapping coupling has unit weights, and its weights
+# are neither computed nor cached: its stored and kinetic energy are its own.
 function blended_subdomain_energy(subsim::SingleDomainSimulation)
     model = subsim.model
-    aw = get_arlequin_weights(subsim)
+    weights = has_overlap_coupling(subsim) ? get_arlequin_weights(subsim).weights : nothing
     dynamic = is_dynamic(subsim.integrator)
     integrator = subsim.integrator
     half_dt = 0.0
@@ -340,8 +343,9 @@ function blended_subdomain_energy(subsim::SingleDomainSimulation)
     kinetic = 0.0
     for (block_index, block) in enumerate(model.blocks)
         material = model.materials[block_index]
+        block_weights = weights === nothing ? nothing : weights[block_index]
         block_stored, block_kinetic = blended_block_energy(
-            model, block, block_index, material, material.ρ, aw.weights[block_index], dynamic, half_dt
+            model, block, block_index, material, material.ρ, block_weights, dynamic, half_dt
         )
         stored += block_stored
         kinetic += block_kinetic
@@ -358,7 +362,7 @@ function blended_block_energy(
     block_index::Int64,
     material::Material,
     density::Float64,
-    block_weights::Vector{Vector{Float64}},
+    block_weights::Union{Nothing,Vector{Vector{Float64}}},
     dynamic::Bool,
     half_dt::Float64,
 )
@@ -382,13 +386,12 @@ function blended_block_energy(
             element_current = element_reference + gather_nodal(model.displacement, node_indices, N)
             element_velocity = gather_nodal(model.velocity, node_indices, N)
             element_acceleration = gather_nodal(model.acceleration, node_indices, N)
-            element_weights = block_weights[e]
             stored = 0.0
             kinetic = 0.0
             weighted_volume = 0.0
             volume = 0.0
             for point in 1:num_points
-                w = element_weights[point]
+                w = block_weights === nothing ? 1.0 : block_weights[e][point]
                 dNdξ = dN[:, :, point]
                 dXdξ = dNdξ * element_reference'
                 dvol = det(dXdξ) * ip_weights[point]
@@ -447,17 +450,18 @@ function blended_block_energy(
     return sum(first, results), sum(last, results)
 end
 
-# Blended (stored, kinetic, total) energy of a multidomain simulation, summed
-# over subdomains with the overlap double count removed by the Arlequin weights.
-function total_blended_energy(sim::MultiDomainSimulation)
-    stored = 0.0
-    kinetic = 0.0
-    for subsim in sim.subsims
-        subsim_stored, subsim_kinetic = blended_subdomain_energy(subsim)
-        stored += subsim_stored
-        kinetic += subsim_kinetic
-    end
-    return stored, kinetic, stored + kinetic
+# True when the subdomain has an overlapping Schwarz coupling, the only
+# coupling whose blending weights differ from one.
+function has_overlap_coupling(subsim::SingleDomainSimulation)
+    return any(bc isa SolidMechanicsOverlapCouplingSchwarzBoundaryCondition for bc in subsim.model.boundary_conditions)
+end
+
+# Stored and kinetic energy of each subdomain, its contribution to the energy
+# of the coupled problem, with the overlap double count removed by the
+# Arlequin weights.
+function subdomain_blended_energies(sim::MultiDomainSimulation)
+    energies = [blended_subdomain_energy(subsim) for subsim in sim.subsims]
+    return first.(energies), last.(energies)
 end
 
 # ---------------------------------------------------------------------------
@@ -648,14 +652,22 @@ function dn_jump_columns(sim::MultiDomainSimulation)
     return names, values
 end
 
-# Append the current blended energy to <sim.name>-energy.csv (header written on
-# the first stop). The first four columns are the blended physical energy; the
-# columns after them are the rate invariant Ẽ (total and per
-# subdomain), the staggered kinetic energy of the central difference subdomains
-# on the Schwarz interface rows and on the remaining rows, and the one-sided
-# displacement and velocity jumps of each Dirichlet-Neumann pair.
-function write_blended_energy_csv(sim::MultiDomainSimulation)
-    stored, kinetic, total = total_blended_energy(sim)
+# Append the energy of the coupled problem to <sim.name>-energy.csv (header
+# written on the first stop). The first four columns are the physical energy E
+# summed over the subdomains; the columns after them are the rate invariant Ẽ
+# (total and per subdomain), the staggered kinetic energy of the central
+# difference subdomains on the Schwarz interface rows and on the remaining
+# rows, the one-sided displacement and velocity jumps and the impulse residual
+# of each Dirichlet-Neumann pair, and the stored, kinetic, and total energy of
+# each subdomain, which sum to the first columns. The kinetic energy of a
+# central difference subdomain is the staggered product of its half-step
+# velocities, not ½ vᵀ M_L v (see blended_subdomain_energy).
+function write_energy_csv(sim::MultiDomainSimulation)
+    stored_k, kinetic_k = subdomain_blended_energies(sim)
+    total_k = stored_k .+ kinetic_k
+    stored = sum(stored_k)
+    kinetic = sum(kinetic_k)
+    total = stored + kinetic
     invariant = Float64[]
     staggered_interface = 0.0
     staggered_interior = 0.0
@@ -676,18 +688,34 @@ function write_blended_energy_csv(sim::MultiDomainSimulation)
     filename = sim.name * "-energy.csv"
     stop = sim.controller.stop
     time = sim.controller.time
+    if stop == 0 && any_explicit
+        names = join([subsim.name for subsim in sim.subsims if subsim.integrator isa CentralDifference], ", ")
+        norma_log(
+            0,
+            :output,
+            "Energy output: the kinetic energy of the central difference subdomains ($names) is the staggered " *
+            "product ½ v_{n-½}ᵀ M_L v_{n+½} = ½ vᵀ M_L v - (Δt²/8) aᵀ M_L a, not ½ vᵀ M_L v",
+        )
+    end
+    names = [subsim.name for subsim in sim.subsims]
     open(filename, stop == 0 ? "w" : "a") do io
         if stop == 0
             header = ["time", "stored_energy", "kinetic_energy", "total_energy", "rate_invariant_total"]
-            append!(header, ["rate_invariant_" * subsim.name for subsim in sim.subsims])
+            append!(header, ["rate_invariant_" * name for name in names])
             append!(header, ["staggered_kinetic_interface", "staggered_kinetic_interior"])
             append!(header, jump_names)
+            append!(header, ["stored_energy_" * name for name in names])
+            append!(header, ["kinetic_energy_" * name for name in names])
+            append!(header, ["total_energy_" * name for name in names])
             println(io, join(header, ","))
         end
         row = Any[time, stored, kinetic, total, sum(invariant)]
         append!(row, invariant)
         append!(row, [staggered_interface, staggered_interior])
         append!(row, jump_values)
+        append!(row, stored_k)
+        append!(row, kinetic_k)
+        append!(row, total_k)
         return println(io, join(row, ","))
     end
     return nothing

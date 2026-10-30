@@ -13,4 +13,4 @@ matching relative tolerance: 1.0e-12
 relaxation: anderson
 anderson depth: 10
 relaxation parameter: 0.5
-blended energy output: true
+energy output: true
