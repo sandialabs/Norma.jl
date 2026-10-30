@@ -434,7 +434,8 @@ end
 # fixed, by descent steps on the energy of the elements around the node, as
 # relax_split_node: the gradient from element_energy_gradients, the step
 # scaled by the mean length of the edges from the node, halved until the
-# energy decreases.  After the first step over the nodes the energy of the
+# energy decreases, and the target sampled at the positions before the
+# relaxation (see SPLIT_RELAXATION_STEPS).  After the first step over the nodes the energy of the
 # elements is compared with `energy_before`, that of the old and surrounding
 # elements, and the relaxation stops when the ratio is above
 # CAVITY_RELAXATION_CONTINUE_RATIO.  Returns the positions with the nodes
@@ -467,10 +468,10 @@ function relax_cavity_nodes(
             star = stars[k]
             function energy(x)
                 trial.moved[:, k] = x
-                return sum(element_energies(model, block, star, trial))
+                return sum(element_energies(model, block, star, trial; sample_positions=positions))
             end
             x = SVector{3,Float64}(view(trial.moved, :, k))
-            energies, gradients = element_energy_gradients(model, block, star, trial)
+            energies, gradients = element_energy_gradients(model, block, star, trial; sample_positions=positions)
             value = sum(energies)
             isfinite(value) || return nothing
             step = node_descent_step(energy, identity, x, value, node_gradient(gradients, star, n), scales[k])
@@ -483,7 +484,7 @@ function relax_cavity_nodes(
         end
         improved || break
         if step_index == 1
-            first_step_energy = sum(element_energies(model, block, around, trial))
+            first_step_energy = sum(element_energies(model, block, around, trial; sample_positions=positions))
             first_step_energy > CAVITY_RELAXATION_CONTINUE_RATIO * energy_before && return nothing, first_step_energy
         end
     end
@@ -1255,17 +1256,22 @@ function project_to_surfaces(x::SVector{3,Float64}, constraints::Vector{Tuple{Fu
     return SVector{3,Float64}(y)
 end
 
-# Energy of the elements around a new node as a function of its position.
+# Energy of the elements around a new node as a function of its position,
+# with the target sampled at `sample`, the positions with the node at its
+# initial position during the relaxation, and at the positions themselves
+# for the acceptance test.
 function split_cavity_energy(
     model::SolidMechanics,
     topology::MeshTopology,
     block::Int,
     connectivity::Matrix{Int},
     position::SVector{3,Float64},
-    metric::Union{MetricField,Nothing},
+    metric::Union{MetricField,Nothing};
+    sample::Union{PositionsWithNode,Nothing}=nothing,
 )
     positions = PositionsWithNode(topology.positions, position)
-    return sum(element_energies(model, block, connectivity, positions; metric))
+    sample_positions = sample === nothing ? positions : sample
+    return sum(element_energies(model, block, connectivity, positions; sample_positions, metric))
 end
 
 # Local relaxation of a new node with the rest of the cavity fixed: a few
@@ -1274,6 +1280,17 @@ end
 # evaluation of the cavity instead of the six of central differences), each
 # step returned to the node's surfaces.  The operation is then judged at its
 # locally relaxed position rather than at the midpoint.
+#
+# Within a relaxation the target is sampled at the positions before it (the
+# new node at its initial position), so that the gradient is the exact
+# derivative of the energy descended on; the acceptance test and the stored
+# energies sample the target at the current positions, as everywhere in a
+# topology phase, and the energy of the relaxed configuration is evaluated
+# again in that convention after the relaxation.  The two differ only where
+# the target depends on the positions (the equal-volume rule, a size field
+# varying over an element, a metric field); the derivative of the energy
+# through the target, the configurational force of the fictitious problem,
+# is what the gradient within the relaxation leaves out.
 const SPLIT_RELAXATION_STEPS = 5
 
 # Gradient of the energy of the elements of `connectivity` with respect to
@@ -1320,7 +1337,8 @@ function relax_split_node(
     scale::Float64,
     metric::Union{MetricField,Nothing},
 )
-    energy(x) = split_cavity_energy(model, topology, block, connectivity, x, metric)
+    sample = PositionsWithNode(topology.positions, position)
+    energy(x) = split_cavity_energy(model, topology, block, connectivity, x, metric; sample)
     project(x) = project_to_surfaces(x, constraints, model.time)
     m = size(topology.positions, 2) + 1
     x = position
@@ -1328,13 +1346,14 @@ function relax_split_node(
     isfinite(value) || return x, value
     for _ in 1:SPLIT_RELAXATION_STEPS
         _, gradients = element_energy_gradients(
-            model, block, connectivity, PositionsWithNode(topology.positions, x); metric
+            model, block, connectivity, PositionsWithNode(topology.positions, x); sample_positions=sample, metric
         )
         step = node_descent_step(energy, project, x, value, node_gradient(gradients, connectivity, m), scale)
         step === nothing && break
         x, value = step
     end
-    return x, value
+    x == position && return x, value
+    return x, split_cavity_energy(model, topology, block, connectivity, x, metric)
 end
 
 # Try to split the edge (a, b) at a new node: every element around the edge
