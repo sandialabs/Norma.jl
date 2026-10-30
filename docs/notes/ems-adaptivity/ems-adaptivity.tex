@@ -815,7 +815,13 @@ against 2.4~s without the relaxation; the analytic gradient brought them
 to 51~s with the same mesh to the last digit, and the stop after the
 first step to 26~s, with the final energy 7.08 against 9.51, the
 minimum scaled Jacobian 0.38 against 0.36 and the mean 0.72 against
-0.68 at the same element count. A bound on the energy ratio of the new
+0.68 at the same element count. With the boundary nodes relaxed as well,
+sliding on the surfaces of their Surface conditions and keeping the
+components their Dirichlet conditions fix, the loop reaches a minimum of
+$0.42$ and a mean of $0.73$ with 5406 elements, against $0.41$ and
+$0.70$ for the staggered workflow with \code{improve\_mesh} and $0.40$
+and $0.70$ for the shipped configuration of the example at 8258
+elements, in 40~s of topology time. A bound on the energy ratio of the new
 to the old cavity at the fixed positions does not select the candidates:
 the accepted operations have a median ratio of 2.6 and a tail to
 $10^{13}$ (new elements nearly degenerate at the fixed positions that

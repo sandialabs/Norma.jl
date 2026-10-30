@@ -389,24 +389,65 @@ const RECORD_RELAXATION_RATIOS = Ref(false)
 const RELAXATION_RATIOS = Tuple{Float64,Float64,Bool}[]
 const RELAXATION_RATIOS_LOCK = ReentrantLock()
 
-# The nodes of a cavity that its relaxation may move: the nodes of its old
-# and new elements, other than the node a collapse removes, that are in no
-# node set and on no side set (so that the boundary and its features are
-# kept), that the adjacency knows, and whose every element outside the
-# cavity is alive and in the block of the cavity.  An element around the
-# node that died in the pass means that an operation of the pass replaced
-# it by elements the adjacency does not know, which the relaxation could
-# not evaluate.
+# What constrains a node during a relaxation: the Surface conditions of its
+# side sets, which the closest-point projection keeps it on (a surface, or
+# the line of two), and the components a Dirichlet condition on one of its
+# node sets fixes, as the smoothing solver constrains it.  Nothing when the
+# node may not move: all three components fixed, a node set with a condition
+# of another kind, a side set without a Surface condition (whose surface is
+# unknown), or three or more surfaces (a corner).
+struct NodeConstraints
+    surfaces::Vector{Tuple{Function,Function}}
+    fixed::SVector{3,Bool}
+end
+
+function node_constraints(model::SolidMechanics, topology::MeshTopology, n::Int)
+    fixed = MVector{3,Bool}(false, false, false)
+    for bc in model.boundary_conditions
+        hasproperty(bc, :node_set_id) || continue
+        flags = get(topology.node_sets, Int(bc.node_set_id), nothing)
+        (flags !== nothing && n ≤ length(flags) && flags[n]) || continue
+        bc isa SolidMechanicsDirichletBoundaryCondition || return nothing
+        fixed[bc.offset] = true
+    end
+    all(fixed) && return nothing
+    side_sets = [id for (id, flags) in topology.node_side_sets if n ≤ length(flags) && flags[n]]
+    length(side_sets) ≥ 3 && return nothing
+    constraints = surface_constraints(model, side_sets)
+    length(constraints) == length(side_sets) || return nothing
+    return NodeConstraints(constraints, SVector(fixed))
+end
+
+# A trial position of a node returned to its constraints: projected to its
+# surfaces, with its fixed components reset to those of `x0`.
+function constrain_node(y::SVector{3,Float64}, x0::SVector{3,Float64}, c::NodeConstraints, time::Float64)
+    z = project_to_surfaces(y, c.surfaces, time)
+    return SVector{3,Float64}(ntuple(i -> c.fixed[i] ? x0[i] : z[i], 3))
+end
+
+# The nodes of a cavity that its relaxation may move, with their
+# constraints: the nodes of its old and new elements, other than the node a
+# collapse removes, that node_constraints allows, that the adjacency knows, and whose
+# every element outside the cavity is alive and in the block of the cavity.
+# An element around the node that died in the pass means that an operation
+# of the pass replaced it by elements the adjacency does not know, which the
+# relaxation could not evaluate.
 function movable_cavity_nodes(
-    topology::MeshTopology, old_elements::Vector{Int}, new_connectivity::Matrix{Int}, block::Int, removed_node::Int
+    model::SolidMechanics,
+    topology::MeshTopology,
+    old_elements::Vector{Int},
+    new_connectivity::Matrix{Int},
+    block::Int,
+    removed_node::Int,
 )
     nodes = Int[]
-    in_set(sets, n) = any(n ≤ length(flags) && flags[n] for flags in values(sets))
+    constraints = NodeConstraints[]
     for n in unique(vcat(vec(topology.connectivity[:, old_elements]), vec(new_connectivity)))
         n == removed_node && continue
         n < length(topology.node_to_elements_offsets) || continue
         topology.node_alive[n] || continue
-        (in_set(topology.node_sets, n) || in_set(topology.node_side_sets, n)) && continue
+        node_constraint = node_constraints(model, topology, n)
+        node_constraint === nothing && continue
         movable = true
         for e in node_elements(topology, n)
             e in old_elements && continue
@@ -415,9 +456,11 @@ function movable_cavity_nodes(
                 break
             end
         end
-        movable && push!(nodes, n)
+        movable || continue
+        push!(nodes, n)
+        push!(constraints, node_constraint)
     end
-    return nodes
+    return nodes, constraints
 end
 
 # The elements outside the cavity around the given nodes, without repetition.
@@ -434,8 +477,9 @@ end
 # fixed, by descent steps on the energy of the elements around the node, as
 # relax_split_node: the gradient from element_energy_gradients, the step
 # scaled by the mean length of the edges from the node, halved until the
-# energy decreases, and the target sampled at the positions before the
-# relaxation (see SPLIT_RELAXATION_STEPS).  After the first step over the nodes the energy of the
+# energy decreases, each trial returned to the node's constraints
+# (constrain_node), and the target sampled at the positions before the relaxation (see
+# SPLIT_RELAXATION_STEPS).  After the first step over the nodes the energy of the
 # elements is compared with `energy_before`, that of the old and surrounding
 # elements, and the relaxation stops when the ratio is above
 # CAVITY_RELAXATION_CONTINUE_RATIO.  Returns the positions with the nodes
@@ -448,6 +492,7 @@ function relax_cavity_nodes(
     new_connectivity::Matrix{Int},
     outer_connectivity::Matrix{Int},
     nodes::Vector{Int},
+    constraints::Vector{NodeConstraints},
     energy_before::Float64,
 )
     positions = topology.positions
@@ -474,7 +519,9 @@ function relax_cavity_nodes(
             energies, gradients = element_energy_gradients(model, block, star, trial; sample_positions=positions)
             value = sum(energies)
             isfinite(value) || return nothing
-            step = node_descent_step(energy, identity, x, value, node_gradient(gradients, star, n), scales[k])
+            x0 = SVector{3,Float64}(view(positions, :, n))
+            project(y) = constrain_node(y, x0, constraints[k], model.time)
+            step = node_descent_step(energy, project, x, value, node_gradient(gradients, star, n), scales[k])
             if step === nothing
                 trial.moved[:, k] = x
             else
@@ -509,13 +556,13 @@ function relaxed_proposal(
     surviving_node::Int,
     surface::Union{SurfaceSwap,Nothing},
 )
-    nodes = movable_cavity_nodes(topology, old_elements, new_connectivity, block, removed_node)
+    nodes, constraints = movable_cavity_nodes(model, topology, old_elements, new_connectivity, block, removed_node)
     isempty(nodes) && return nothing
     outer = outer_elements(topology, old_elements, nodes)
     outer_connectivity = topology.connectivity[:, outer]
     energy_before = old_energy + sum(element_energies(model, block, outer_connectivity, topology.positions))
     positions, first_step_energy = relax_cavity_nodes(
-        model, topology, block, new_connectivity, outer_connectivity, nodes, energy_before
+        model, topology, block, new_connectivity, outer_connectivity, nodes, constraints, energy_before
     )
     accepted = false
     energy_after = Inf

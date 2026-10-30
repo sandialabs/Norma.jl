@@ -451,7 +451,8 @@ end
                !any(flags[n] for flags in values(topology.node_side_sets))
     end
     # Interior edges refused at fixed positions and accepted after the
-    # relaxation: the moved nodes are interior nodes of the cavity, the
+    # relaxation: the moved nodes are interior nodes of the cavity (the
+    # boundary nodes of this model are in node sets, so none may move), the
     # energies of the proposal are those of the old and the new elements
     # together with the elements around the moved nodes, before and after
     # the move, and the new elements alone do not lower the cavity energy
@@ -550,4 +551,81 @@ end
     @test agree
     @test !isempty(created.moved)
     rm("swap-relaxed.e"; force=true)
+end
+
+@testset "cavity_relaxation_boundary" begin
+    # Under Surface conditions the relaxation moves boundary nodes along
+    # their surfaces, a node of two surfaces along their line, and leaves the
+    # corners; under Dirichlet conditions it keeps the fixed components.
+    params = Norma.YAML.load_file("../examples/ems/awful-cube/awful-cube-adaptive.yaml")
+    delete!(params, "adaptivity")
+    params["input mesh file"] = "../examples/ems/awful-cube/awful-cube.g"
+    params["output mesh file"] = "swap-boundary.e"
+    params["name"] = "swap-boundary"
+    Norma.YAML.write_file("swap-boundary.yaml", params)
+    sim = Norma.run("swap-boundary.yaml")
+    model = sim.model
+    relaxed = Norma.AdaptivityOptions(
+        Dict{String,Any}(
+            "desired energy density" => 0.0, "collapses" => false, "splits" => false, "cavity relaxation" => true
+        ),
+    )
+    topology = Norma.build_topology(model)
+    x0 = Matrix{Float64}(topology.positions)
+    side_sets_of(n) = [id for (id, flags) in topology.node_side_sets if flags[n]]
+    # Every face of the cube carries a Surface condition, so a node on one or
+    # two faces may move and a corner may not; the interior nodes have no
+    # constraint.
+    for n in 1:size(x0, 2)
+        c = Norma.node_constraints(model, topology, n)
+        k = length(side_sets_of(n))
+        if k ≥ 3
+            @test c === nothing
+        else
+            @test c !== nothing
+            @test length(c.surfaces) == k
+            @test !any(c.fixed)
+        end
+    end
+    memory = Norma.PhaseMemory()
+    Norma.phase_element_values!(memory, model, topology, relaxed)
+    result = Norma.swap_operator!(memory, model, topology, relaxed)
+    @test result.accepted > 0
+    moved = [n for n in 1:size(x0, 2) if topology.positions[:, n] != x0[:, n]]
+    boundary_moved = [n for n in moved if !isempty(side_sets_of(n))]
+    @test !isempty(boundary_moved)
+    @test any(n -> length(side_sets_of(n)) == 2, boundary_moved)
+    @test !any(n -> length(side_sets_of(n)) ≥ 3, moved)
+    # A moved boundary node stays on the faces of the cube: the Surface
+    # conditions of the example are the planes x, y, z = ±1.
+    names = Dict(id => topology.side_set_names[id] for id in keys(topology.side_set_names))
+    plane(name) = (Dict('x' => 1, 'y' => 2, 'z' => 3)[name[3]], name[4] == '-' ? -1.0 : 1.0)
+    for n in boundary_moved, id in side_sets_of(n)
+        component, value = plane(names[id])
+        @test abs(topology.positions[component, n] - value) < 1.0e-8
+    end
+    @test Set(Norma.boundary_faces(topology)) == Set(Norma.boundary_faces(Norma.build_topology(model)))
+    @test all(Norma.element_volume(topology, e) > 0.0 for e in 1:Norma.num_alive_elements(topology))
+    # Under a Dirichlet condition on a component the relaxation keeps it.
+    dirichlet = smoothing_model(
+        "../examples/ems/awful-cube/awful-cube.g", "awful", "swap-dirichlet.e"; size_field="0.214"
+    )
+    for n in 1:size(dirichlet.model.reference, 2)
+        c = Norma.node_constraints(dirichlet.model, Norma.build_topology(dirichlet.model), n)
+        sets = [id for (id, flags) in Norma.build_topology(dirichlet.model).node_sets if flags[n]]
+        if length(sets) ≥ 3
+            @test c === nothing
+        elseif !isempty(sets)
+            # The faces carry side sets without Surface conditions in this
+            # model, so a boundary node may not move.
+            @test c === nothing
+        else
+            @test c !== nothing && !any(c.fixed)
+        end
+        n ≥ 200 && break
+    end
+    Norma.finalize_writing(dirichlet)
+    for f in ("swap-boundary.e", "swap-boundary.yaml", "swap-dirichlet.e")
+        rm(f; force=true)
+    end
 end

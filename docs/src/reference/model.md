@@ -432,7 +432,12 @@ converged mesh of half a million elements this takes a pass from about
 
 With `cavity relaxation: true` a swap or collapse that the energy test
 refuses at the fixed positions is judged again after a relaxation of the
-interior nodes of its cavity (the nodes in no node set and on no side set):
+nodes of its cavity that may move, under the constraints of the smoothing:
+a node on side sets with Surface conditions slides on their surfaces (along
+their line for two), a node in a node set with Dirichlet conditions keeps
+the components they fix, and a corner, a node with all components fixed, a
+node set with a condition of another kind, and a node on a side set
+without a Surface condition stay:
 each node in turn takes up to five descent steps on the energy of the
 elements around it under the new connectivity, with the gradient of the
 energy with respect to the node (the element internal force of the
@@ -451,10 +456,12 @@ refusals of their edges and faces are forgotten. The relaxation applies to
 the energy test only, not to the tests on the length or on the scaled
 Jacobian. A swap that is accepted at the fixed positions is not relaxed,
 since the smoothing phase that follows moves the nodes anyway. Measured on
-the awful cube example under the energy criteria: the final energy 7.08
-against 9.51, the minimum scaled Jacobian 0.38 against 0.36, and the mean
-0.72 against 0.68 at the same element count, with the topology phases
-taking 26 s against 2.4 s, which is why the option is off by default.
+the awful cube example under the energy criteria: the final energy 6.24
+against 9.51, the minimum scaled Jacobian 0.42 against 0.36, and the mean
+0.73 against 0.68 at the same element count (the shipped configuration of
+the example reaches 0.40 and 0.70 with half again as many elements), with
+the topology phases taking 40 s against 2.4 s, which is why the option is
+off by default.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|
