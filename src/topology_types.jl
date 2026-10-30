@@ -86,3 +86,21 @@ function Base.getindex(m::MatrixWithColumn, i::Int, j::Int)
     return j ≤ size(m.base, 2) ? m.base[i, j] : m.extra[i]
 end
 const PositionsWithNode = MatrixWithColumn{3}
+
+# The positions of a topology with the columns of a few nodes replaced, so
+# that a cavity can be evaluated at trial positions of its nodes without
+# writing the positions of the topology, which the evaluations of a pass
+# read on several threads.  The nodes are few (those of one cavity), so a
+# column is found by a linear search.
+struct MovedPositions{M<:AbstractMatrix{Float64}} <: AbstractMatrix{Float64}
+    base::M
+    nodes::Vector{Int}
+    moved::Matrix{Float64}  # 3 × length(nodes)
+end
+Base.size(m::MovedPositions) = size(m.base)
+function Base.getindex(m::MovedPositions, i::Int, j::Int)
+    for k in eachindex(m.nodes)
+        m.nodes[k] == j && return m.moved[i, k]
+    end
+    return m.base[i, j]
+end

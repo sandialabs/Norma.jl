@@ -9,7 +9,10 @@
 # size operations under `size criterion: length`, on the edge length in the
 # prescribed target with the energy as a validity check only, and, for the
 # shape operations under `shape criterion: scaled Jacobian`, on the minimum
-# scaled Jacobian of the cavity.
+# scaled Jacobian of the cavity.  Under `cavity relaxation` a swap or
+# collapse refused at fixed positions is judged again after the interior
+# nodes of its cavity are relaxed against the new connectivity
+# (relaxed_proposal).
 
 function AdaptivityOptions(params::Parameters)
     size_criterion = get(params, "size criterion", "energy")
@@ -41,13 +44,19 @@ function AdaptivityOptions(params::Parameters)
         Float64(get(params, "desired scaled Jacobian", 0.9)),
         Bool(get(params, "size operations first", false)),
         Bool(get(params, "shape operations every pass", false)),
+        Bool(get(params, "cavity relaxation", false)),
     )
 end
 
 # Forget the refusals of every edge and face of the elements added since
 # `first_new`, whose cavities have changed, and drop the dead ones.
 function forget_changed!(memory::PhaseMemory, topology::MeshTopology, first_new::Int)
-    for e in first_new:length(topology.element_alive)
+    return forget_elements!(memory, topology, first_new:length(topology.element_alive))
+end
+
+# Forget the refusals of every edge and face of the given elements.
+function forget_elements!(memory::PhaseMemory, topology::MeshTopology, elements)
+    for e in elements
         for edge in element_edges(topology, e)
             delete!(memory.swaps, edge)
             delete!(memory.boundary_swaps, edge)
@@ -295,7 +304,11 @@ end
 # element exceeds the allowed density, and the geometric floor holds.
 # Returns the proposal, with the node a collapse removes and the node it
 # moves onto, or the change of a side set by a boundary swap, when given; or
-# nothing.
+# nothing.  Under `cavity relaxation` a proposal refused on the energy at
+# fixed positions is judged again after the relaxation of the interior nodes
+# of its cavity (relaxed_proposal); the test on the length and the test on
+# the scaled Jacobian are not relaxed, since the relaxation descends on the
+# energy.
 function accept_proposal(
     model::SolidMechanics,
     topology::MeshTopology,
@@ -313,7 +326,7 @@ function accept_proposal(
     new_energies = element_energies(model, block, new_connectivity, positions)
     all(isfinite, new_energies) || return nothing
     new_energy = sum(new_energies)
-    passes_acceptance_tests(
+    if passes_acceptance_tests(
         model,
         topology,
         old_elements,
@@ -326,9 +339,198 @@ function accept_proposal(
         new_energy,
         options;
         require_decrease,
+    )
+        return CavityProposal(
+            old_elements,
+            new_connectivity,
+            block,
+            old_energy,
+            new_energy,
+            removed_node,
+            surviving_node,
+            nothing,
+            surface,
+            Int[],
+            zeros(3, 0),
+        )
+    end
+    (options.cavity_relaxation && require_decrease && !options.shape_by_quality) || return nothing
+    return relaxed_proposal(
+        model,
+        topology,
+        old_elements,
+        new_connectivity,
+        block,
+        old_energy,
+        options,
+        removed_node,
+        surviving_node,
+        surface,
+    )
+end
+
+# Descent steps of the relaxation of each node of a cavity.
+const CAVITY_RELAXATION_STEPS = 5
+
+# The nodes of a cavity that its relaxation may move: the nodes of its old
+# and new elements, other than the node a collapse removes, that are in no
+# node set and on no side set (so that the boundary and its features are
+# kept), that the adjacency knows, and whose every element outside the
+# cavity is alive and in the block of the cavity.  An element around the
+# node that died in the pass means that an operation of the pass replaced
+# it by elements the adjacency does not know, which the relaxation could
+# not evaluate.
+function movable_cavity_nodes(
+    topology::MeshTopology, old_elements::Vector{Int}, new_connectivity::Matrix{Int}, block::Int, removed_node::Int
+)
+    nodes = Int[]
+    in_set(sets, n) = any(n ≤ length(flags) && flags[n] for flags in values(sets))
+    for n in unique(vcat(vec(topology.connectivity[:, old_elements]), vec(new_connectivity)))
+        n == removed_node && continue
+        n < length(topology.node_to_elements_offsets) || continue
+        topology.node_alive[n] || continue
+        (in_set(topology.node_sets, n) || in_set(topology.node_side_sets, n)) && continue
+        movable = true
+        for e in node_elements(topology, n)
+            e in old_elements && continue
+            if !topology.element_alive[e] || topology.block[e] != block
+                movable = false
+                break
+            end
+        end
+        movable && push!(nodes, n)
+    end
+    return nodes
+end
+
+# The elements outside the cavity around the given nodes, without repetition.
+function outer_elements(topology::MeshTopology, old_elements::Vector{Int}, nodes::Vector{Int})
+    outer = Int[]
+    for n in nodes, e in node_elements(topology, n)
+        (e in old_elements || e in outer) || push!(outer, e)
+    end
+    return outer
+end
+
+# Relax the given nodes against the new elements of a cavity and the
+# elements around the nodes outside it, one node at a time with the others
+# fixed, by descent steps on the energy of the elements around the node, as
+# relax_split_node: the gradient by central differences of the position,
+# the step scaled by the mean length of the edges from the node, halved
+# until the energy decreases.  Returns the positions with the nodes moved,
+# or nothing when no node moved.
+function relax_cavity_nodes(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    block::Int,
+    new_connectivity::Matrix{Int},
+    outer_connectivity::Matrix{Int},
+    nodes::Vector{Int},
+)
+    positions = topology.positions
+    trial = MovedPositions(positions, nodes, Matrix{Float64}(positions[:, nodes]))
+    around = hcat(new_connectivity, outer_connectivity)
+    stars = [around[:, [n in column for column in eachcol(around)]] for n in nodes]
+    scales = Float64[]
+    for (k, n) in enumerate(nodes)
+        x = SVector{3,Float64}(view(positions, :, n))
+        neighbors = unique(m for m in vec(stars[k]) if m != n)
+        push!(scales, sum(norm(SVector{3,Float64}(view(positions, :, m)) - x) for m in neighbors) / length(neighbors))
+    end
+    moved = false
+    for _ in 1:CAVITY_RELAXATION_STEPS
+        improved = false
+        for (k, n) in enumerate(nodes)
+            star = stars[k]
+            function energy(x)
+                trial.moved[:, k] = x
+                return sum(element_energies(model, block, star, trial))
+            end
+            x = SVector{3,Float64}(view(trial.moved, :, k))
+            value = energy(x)
+            isfinite(value) || return nothing
+            δ = 1.0e-6 * scales[k]
+            gradient = SVector{3,Float64}(
+                (energy(x + SVector(δ, 0.0, 0.0)) - energy(x - SVector(δ, 0.0, 0.0))) / (2δ),
+                (energy(x + SVector(0.0, δ, 0.0)) - energy(x - SVector(0.0, δ, 0.0))) / (2δ),
+                (energy(x + SVector(0.0, 0.0, δ)) - energy(x - SVector(0.0, 0.0, δ))) / (2δ),
+            )
+            trial.moved[:, k] = x
+            all(isfinite, gradient) || continue
+            step_length = 0.1 * scales[k] / max(norm(gradient), floatmin(Float64))
+            node_improved = false
+            for _ in 1:8
+                trial_value = energy(x - step_length * gradient)
+                if isfinite(trial_value) && trial_value < value
+                    node_improved = true
+                    break
+                end
+                step_length *= 0.5
+            end
+            if node_improved
+                improved = moved = true
+            else
+                trial.moved[:, k] = x
+            end
+        end
+        improved || break
+    end
+    return moved ? trial : nothing
+end
+
+# The acceptance test of a proposal after the relaxation of its cavity: the
+# energy and the floor compare the old elements with the new ones at the
+# relaxed positions, both together with the elements around the moved nodes
+# that the operation keeps, since those change with the positions.  Returns
+# the proposal with the moved nodes and their positions, or nothing.
+function relaxed_proposal(
+    model::SolidMechanics,
+    topology::MeshTopology,
+    old_elements::Vector{Int},
+    new_connectivity::Matrix{Int},
+    block::Int,
+    old_energy::Float64,
+    options::AdaptivityOptions,
+    removed_node::Int,
+    surviving_node::Int,
+    surface::Union{SurfaceSwap,Nothing},
+)
+    nodes = movable_cavity_nodes(topology, old_elements, new_connectivity, block, removed_node)
+    isempty(nodes) && return nothing
+    outer = outer_elements(topology, old_elements, nodes)
+    outer_connectivity = topology.connectivity[:, outer]
+    energy_before = old_energy + sum(element_energies(model, block, outer_connectivity, topology.positions))
+    positions = relax_cavity_nodes(model, topology, block, new_connectivity, outer_connectivity, nodes)
+    positions === nothing && return nothing
+    extended = hcat(new_connectivity, outer_connectivity)
+    energies = element_energies(model, block, extended, positions)
+    all(isfinite, energies) || return nothing
+    energy_after = sum(energies)
+    passes_acceptance_tests(
+        model,
+        topology,
+        vcat(old_elements, outer),
+        extended,
+        block,
+        positions,
+        model.metric_field,
+        energies,
+        energy_before,
+        energy_after,
+        options,
     ) || return nothing
     return CavityProposal(
-        old_elements, new_connectivity, block, old_energy, new_energy, removed_node, surviving_node, nothing, surface
+        old_elements,
+        new_connectivity,
+        block,
+        energy_before,
+        energy_after,
+        removed_node,
+        surviving_node,
+        nothing,
+        surface,
+        nodes,
+        positions.moved,
     )
 end
 
@@ -342,6 +544,9 @@ function apply!(topology::MeshTopology, proposal::CavityProposal; metric::Union{
     end
     remove_elements!(topology, proposal.old_elements)
     add_elements!(topology, proposal.new_connectivity, proposal.block)
+    for (k, n) in enumerate(proposal.moved_nodes)
+        topology.positions[:, n] = proposal.moved_positions[:, k]
+    end
     if proposal.surface !== nothing
         for face in proposal.surface.removed
             remove_side_set_face!(topology, proposal.surface.side_set, face)
@@ -707,7 +912,11 @@ end
 # of that triangulation are unchanged, those of the other sub-polygons can
 # only have increased, and each sub-polygon keeps its first apex of least
 # score.  The outcome of the acceptance test, which depends on the cavity
-# alone, is then the same.  Otherwise the swap is evaluated again.
+# alone, is then the same.  Otherwise the swap is evaluated again.  Under
+# cavity relaxation the test also depends on the positions of the cavity
+# nodes and on the elements around them, so the swap is evaluated again
+# when a node of the cavity was moved in the pass or an element around one
+# died since (cavity_surroundings_intact).
 function edge_swap_from_evaluation(
     model::SolidMechanics,
     topology::MeshTopology,
@@ -720,12 +929,36 @@ function edge_swap_from_evaluation(
     best = evaluation.best
     best === nothing && return nothing
     all(topology.element_alive[e] for e in best.elements) || return nothing
+    # The admissible triangulations depend on the positions as well, so
+    # this test precedes the one on the connectivity found.
+    if options.cavity_relaxation &&
+        !cavity_surroundings_intact(topology, created, best.elements, (a, b, best.ring_nodes...))
+        return try_edge_swap(model, topology, a, b, options; created)
+    end
     best.connectivity === nothing && return nothing
     if chords_exist(topology, best.ring_nodes, best.triangles, created) ||
         !faces_are_new(topology, best.elements, best.connectivity, created)
         return try_edge_swap(model, topology, a, b, options; created)
     end
     return evaluation.proposal
+end
+
+# Whether every element around the nodes of a cavity outside the cavity is
+# alive and no node of those elements, or of the cavity, was moved in the
+# pass, so that an evaluation of the cavity made earlier in the pass under
+# cavity relaxation, which reads exactly those elements and positions, is
+# still current.
+function cavity_surroundings_intact(topology::MeshTopology, created::CreatedEntities, elements::Vector{Int}, nodes)
+    for n in nodes
+        n in created.moved && return false
+        n < length(topology.node_to_elements_offsets) || continue
+        for e in node_elements(topology, n)
+            e in elements && continue
+            topology.element_alive[e] || return false
+            any(m in created.moved for m in view(topology.connectivity, :, e)) && return false
+        end
+    end
+    return true
 end
 
 # Score of a candidate configuration of a swap, lower is better: the cavity
@@ -1134,7 +1367,9 @@ function try_edge_split(
         require_decrease=(!by_length),
     ) || return nothing
     split = SplitNode(position, node_sets, side_sets, (a, b), node_metric)
-    return CavityProposal(collect(ring), connectivity, block, energy_before, energy_after, 0, 0, split, nothing)
+    return CavityProposal(
+        collect(ring), connectivity, block, energy_before, energy_after, 0, 0, split, nothing, Int[], zeros(3, 0)
+    )
 end
 
 # Edges whose length in the prescribed target satisfies `outside`, a test
@@ -1316,8 +1551,7 @@ function collapse_pass!(
             stars_intact && push!(memory.collapses, (a, b))
             continue
         end
-        apply!(topology, proposal; metric=model.metric_field)
-        record!(created, proposal.new_connectivity)
+        apply_accepted!(memory, model, topology, options, created, proposal)
         accepted += 1
         decrease += proposal.energy_before - proposal.energy_after
     end
@@ -1440,7 +1674,7 @@ function swap_pass!(
     intact(a, b) = all(topology.element_alive[e] for e in edge_elements(topology, a, b))
     for (a, b) in ranked_boundary
         proposal = try_boundary_edge_swap(model, topology, a, b, options; created)
-        if apply_swap!(model, topology, created, proposal, (a, b), memory.boundary_swaps, intact(a, b))
+        if apply_swap!(memory, model, topology, options, created, proposal, (a, b), memory.boundary_swaps, intact(a, b))
             accepted += 1
             decrease += proposal.energy_before - proposal.energy_after
         end
@@ -1455,7 +1689,7 @@ function swap_pass!(
         end
         for (k, (a, b)) in enumerate(chunk)
             proposal = edge_swap_from_evaluation(model, topology, a, b, options, evaluations[k], created)
-            if apply_swap!(model, topology, created, proposal, (a, b), memory.swaps, intact(a, b))
+            if apply_swap!(memory, model, topology, options, created, proposal, (a, b), memory.swaps, intact(a, b))
                 accepted += 1
                 decrease += proposal.energy_before - proposal.energy_after
             end
@@ -1464,7 +1698,7 @@ function swap_pass!(
     for face in ranked_faces
         proposal = try_face_swap(model, topology, face, options; created)
         cavity_intact = all(topology.element_alive[e] for e in topology.faces[face])
-        if apply_swap!(model, topology, created, proposal, face, memory.face_swaps, cavity_intact)
+        if apply_swap!(memory, model, topology, options, created, proposal, face, memory.face_swaps, cavity_intact)
             accepted += 1
             decrease += proposal.energy_before - proposal.energy_after
         end
@@ -1477,8 +1711,10 @@ end
 # cavity is intact; when the cavity was changed earlier in the pass the edge
 # or face is deferred to the next pass instead.
 function apply_swap!(
+    memory::PhaseMemory,
     model::SolidMechanics,
     topology::MeshTopology,
+    options::AdaptivityOptions,
     created::CreatedEntities,
     proposal::Union{CavityProposal,Nothing},
     key,
@@ -1489,9 +1725,36 @@ function apply_swap!(
         cavity_intact && push!(refused, key)
         return false
     end
+    apply_accepted!(memory, model, topology, options, created, proposal)
+    return true
+end
+
+# Apply an accepted proposal within a pass: the topology, the record of the
+# entities the operation created, and, when it moved nodes, the record of
+# the moved nodes and the memory of the phase.  The elements around a moved
+# node that the operation keeps have changed, so their stored values are
+# evaluated again and the refusals of their edges and faces are forgotten;
+# the elements the operation added are evaluated at the compaction.
+function apply_accepted!(
+    memory::PhaseMemory,
+    model::SolidMechanics,
+    topology::MeshTopology,
+    options::AdaptivityOptions,
+    created::CreatedEntities,
+    proposal::CavityProposal,
+)
     apply!(topology, proposal; metric=model.metric_field)
     record!(created, proposal.new_connectivity)
-    return true
+    isempty(proposal.moved_nodes) && return nothing
+    union!(created.moved, proposal.moved_nodes)
+    changed = Int[]
+    for n in proposal.moved_nodes, e in node_elements(topology, n)
+        (topology.element_alive[e] && !(e in changed)) && push!(changed, e)
+    end
+    forget_elements!(memory, topology, changed)
+    isempty(memory.density) || energy_densities!(memory.density, model, topology, changed)
+    options.shape_by_quality && !isempty(memory.quality) && element_qualities!(memory.quality, model, topology, changed)
+    return nothing
 end
 
 # The topology is compacted after every operator, so that each one starts

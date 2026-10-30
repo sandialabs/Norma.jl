@@ -25,6 +25,7 @@ struct AdaptivityOptions
     desired_quality::Float64     # under the scaled Jacobian criterion, elements below this are candidates
     size_first::Bool             # collapse and split before swapping in every pass, rather than after
     shape_every_pass::Bool       # try the shape-driven collapses and splits in every pass
+    cavity_relaxation::Bool      # judge a refused swap or collapse again after relaxing the interior nodes of its cavity
 end
 
 # The options before the criteria and the extra operators, with those as
@@ -48,6 +49,7 @@ function AdaptivityOptions(
     desired_quality::Real=0.9,
     size_first::Bool=false,
     shape_every_pass::Bool=false,
+    cavity_relaxation::Bool=false,
 )
     return AdaptivityOptions(
         desired_density,
@@ -68,6 +70,7 @@ function AdaptivityOptions(
         desired_quality,
         size_first,
         shape_every_pass,
+        cavity_relaxation,
     )
 end
 
@@ -92,8 +95,12 @@ end
 
 # Result of one topological operation: the cavity replaced, the energies
 # before and after, for a collapse the node removed and the node it was moved
-# onto (zero otherwise), and for a split the node added (nothing otherwise),
-# which the new connectivity refers to by the index it will receive.
+# onto (zero otherwise), for a split the node added (nothing otherwise),
+# which the new connectivity refers to by the index it will receive, and,
+# when the operation was accepted after a cavity relaxation, the nodes it
+# moves with their new positions (empty otherwise).  The energies of a
+# relaxed operation include the elements around the moved nodes that the
+# operation keeps, since the relaxation changes them too.
 struct CavityProposal
     old_elements::Vector{Int}
     new_connectivity::Matrix{Int}
@@ -104,16 +111,21 @@ struct CavityProposal
     surviving_node::Int
     split::Union{Nothing,SplitNode}
     surface::Union{Nothing,SurfaceSwap}
+    moved_nodes::Vector{Int}
+    moved_positions::Matrix{Float64}
 end
 
 # The edges and faces whose operation a topology phase has refused, kept
 # until an element around them changes: nodes do not move within a phase,
-# so a refused proposal stays refused until its cavity does.
+# except the interior nodes of a cavity that a relaxed operation moves, so a
+# refused proposal stays refused until its cavity changes or a node around
+# it moves.
 #
 # For the same reason the energy density and the scaled Jacobian of an
-# element do not change while it lives, and the memory keeps them, indexed
-# like the elements of the topology: the operators read them instead of
-# evaluating the whole mesh, and only the elements added by an operator are
+# element do not change while it lives, unless a node of it is moved, and
+# the memory keeps them, indexed like the elements of the topology: the
+# operators read them instead of evaluating the whole mesh, and only the
+# elements added by an operator, and those around the nodes it moved, are
 # evaluated after it (issue #231).  The vectors are empty until the first
 # operator of the phase fills them, `quality` stays empty unless the shape
 # criterion is the scaled Jacobian, and both are emptied when they no longer
@@ -140,12 +152,13 @@ function PhaseMemory()
 end
 
 # Edges and faces created by the operations of a pass, which the adjacency
-# does not know until the pass ends.
+# does not know until the pass ends, and the nodes they moved.
 struct CreatedEntities
     edges::Set{Tuple{Int,Int}}
     faces::Set{NTuple{3,Int}}
+    moved::Set{Int}
 end
-CreatedEntities() = CreatedEntities(Set{Tuple{Int,Int}}(), Set{NTuple{3,Int}}())
+CreatedEntities() = CreatedEntities(Set{Tuple{Int,Int}}(), Set{NTuple{3,Int}}(), Set{Int}())
 
 # Wall times of an adaptive run, in seconds, accumulated over its adaptivity
 # iterations (issue #230): the smoothing phases, the setup of each smoothing

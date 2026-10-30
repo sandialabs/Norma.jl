@@ -1,5 +1,6 @@
 # Edge swaps and the acceptance test of the adaptivity loop
-# (docs/notes/ems-adaptivity), on a hand-built cavity and on a mesh.
+# (docs/notes/ems-adaptivity), on a hand-built cavity and on a mesh, and the
+# cavity relaxation of a refused swap.
 using LinearAlgebra
 using Random
 using Test
@@ -425,4 +426,128 @@ end
     @test applied > 10
     @test agree
     rm("swap-ahead.e"; force=true)
+end
+
+@testset "cavity_relaxation" begin
+    # Under `cavity relaxation` a swap refused at fixed positions is judged
+    # again after the interior nodes of its cavity are relaxed against the
+    # new connectivity, with the elements around them in the energy.
+    sim = smoothing_model("../examples/ems/awful-cube/awful-cube.g", "awful", "swap-relaxed.e"; size_field="0.214")
+    Norma.run(sim)
+    model = sim.model
+    fixed = Norma.AdaptivityOptions(
+        Dict{String,Any}("desired energy density" => 0.0, "collapses" => false, "splits" => false)
+    )
+    relaxed = Norma.AdaptivityOptions(
+        Dict{String,Any}(
+            "desired energy density" => 0.0, "collapses" => false, "splits" => false, "cavity relaxation" => true
+        ),
+    )
+    @test !fixed.cavity_relaxation
+    @test relaxed.cavity_relaxation
+    topology = Norma.build_topology(model)
+    function interior(n)
+        return !any(flags[n] for flags in values(topology.node_sets)) &&
+               !any(flags[n] for flags in values(topology.node_side_sets))
+    end
+    # Interior edges refused at fixed positions and accepted after the
+    # relaxation: the moved nodes are interior nodes of the cavity, the
+    # energies of the proposal are those of the old and the new elements
+    # together with the elements around the moved nodes, before and after
+    # the move, and the new elements alone do not lower the cavity energy
+    # at the fixed positions.
+    found = 0
+    for edge in sort(collect(keys(topology.edges)))
+        Norma.is_boundary_edge(topology, edge...) && continue
+        Norma.try_edge_swap(model, topology, edge..., fixed) === nothing || continue
+        proposal = Norma.try_edge_swap(model, topology, edge..., relaxed)
+        proposal === nothing && continue
+        found += 1
+        @test !isempty(proposal.moved_nodes)
+        @test all(interior, proposal.moved_nodes)
+        cavity_nodes = vec(topology.connectivity[:, proposal.old_elements])
+        @test all(n in cavity_nodes for n in proposal.moved_nodes)
+        outer = Norma.outer_elements(topology, proposal.old_elements, proposal.moved_nodes)
+        @test !isempty(outer)
+        @test isempty(intersect(outer, proposal.old_elements))
+        x = topology.positions
+        old_connectivity = topology.connectivity[:, proposal.old_elements]
+        before = sum(Norma.element_energies(model, 1, hcat(old_connectivity, topology.connectivity[:, outer]), x))
+        @test proposal.energy_before ≈ before
+        moved = Norma.MovedPositions(x, proposal.moved_nodes, proposal.moved_positions)
+        after_connectivity = hcat(proposal.new_connectivity, topology.connectivity[:, outer])
+        after = sum(Norma.element_energies(model, 1, after_connectivity, moved))
+        @test proposal.energy_after ≈ after
+        @test after < before * (1 - relaxed.minimum_decrease)
+        @test sum(Norma.element_energies(model, 1, proposal.new_connectivity, x)) >
+            sum(Norma.element_energies(model, 1, old_connectivity, x)) * (1 - fixed.minimum_decrease)
+        @test all(
+            Norma.tetrahedron_volume(Matrix(moved[:, after_connectivity[:, e]])) > 0.0 for
+            e in 1:size(after_connectivity, 2)
+        )
+        found ≥ 5 && break
+    end
+    @test found ≥ 5
+    # A swap operator with the relaxation accepts at least as many swaps as
+    # one without it and reaches a lower energy; it moves interior nodes
+    # only, keeps the boundary and the orientation of every element, its
+    # decrease is that of the total energy, and the memory of the phase
+    # matches a fresh evaluation after the moves (apply_accepted!).
+    results = Dict{Bool,Tuple{Int,Float64}}()
+    for opts in (fixed, relaxed)
+        topology = Norma.build_topology(model)
+        x0 = Matrix{Float64}(topology.positions)
+        boundary0 = Set(Norma.boundary_faces(topology))
+        total_energy(t) =
+            sum(Norma.energy_densities(model, t) .* Norma.ideal_element_volumes(model, 1, t.connectivity, t.positions))
+        energy0 = total_energy(topology)
+        memory = Norma.PhaseMemory()
+        Norma.phase_element_values!(memory, model, topology, opts)
+        result = Norma.swap_operator!(memory, model, topology, opts)
+        moved_nodes = [n for n in 1:size(x0, 2) if topology.positions[:, n] != x0[:, n]]
+        @test isempty(moved_nodes) == !opts.cavity_relaxation
+        @test all(interior, moved_nodes)
+        @test Set(Norma.boundary_faces(topology)) == boundary0
+        @test all(Norma.element_volume(topology, e) > 0.0 for e in 1:Norma.num_alive_elements(topology))
+        energy1 = total_energy(topology)
+        @test energy1 ≈ energy0 - result.decrease rtol = 1.0e-8
+        @test memory.density == Norma.energy_densities(model, topology)
+        results[opts.cavity_relaxation] = (result.accepted, energy1)
+    end
+    @test results[true][1] >= results[false][1]
+    @test results[true][2] < results[false][2]
+    # The evaluation ahead of the sequential loop agrees with the sequential
+    # result under the relaxation, which also depends on the positions of
+    # the nodes around the cavity (edge_swap_from_evaluation).
+    topology = Norma.build_topology(model)
+    memory = Norma.PhaseMemory()
+    Norma.phase_element_values!(memory, model, topology, relaxed)
+    edges = sort([edge for edge in keys(topology.edges) if !Norma.is_boundary_edge(topology, edge...)])
+    evaluations = [Norma.evaluate_edge_swap(model, topology, a, b, relaxed) for (a, b) in edges]
+    created = Norma.CreatedEntities()
+    same(p, q) =
+        (p === nothing && q === nothing) || (
+            p !== nothing &&
+            q !== nothing &&
+            p.old_elements == q.old_elements &&
+            p.new_connectivity == q.new_connectivity &&
+            p.energy_before == q.energy_before &&
+            p.energy_after == q.energy_after &&
+            p.moved_nodes == q.moved_nodes &&
+            p.moved_positions == q.moved_positions
+        )
+    agree = true
+    applied = 0
+    for (k, (a, b)) in enumerate(edges)
+        expected = Norma.try_edge_swap(model, topology, a, b, relaxed; created)
+        taken = Norma.edge_swap_from_evaluation(model, topology, a, b, relaxed, evaluations[k], created)
+        agree &= same(expected, taken)
+        expected === nothing && continue
+        Norma.apply_accepted!(memory, model, topology, relaxed, created, expected)
+        applied += 1
+    end
+    @test applied > 10
+    @test agree
+    @test !isempty(created.moved)
+    rm("swap-relaxed.e"; force=true)
 end

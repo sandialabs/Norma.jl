@@ -430,6 +430,22 @@ and retried only when an element around its edge or face has changed; on a
 converged mesh of half a million elements this takes a pass from about
 200 seconds to 7.
 
+With `cavity relaxation: true` a swap or collapse that the energy test
+refuses at the fixed positions is judged again after a relaxation of the
+interior nodes of its cavity (the nodes in no node set and on no side set):
+each node in turn takes up to five descent steps on the energy of the
+elements around it under the new connectivity, with the gradient by central
+differences and the step halved until the energy decreases, as the node of
+a split does. The energy test and the geometric floor then compare the old
+elements with the new ones at the relaxed positions, both together with the
+elements around the moved nodes that the operation keeps, since those
+change with the positions; an accepted operation moves the nodes, the
+stored values of the elements around them are evaluated again, and the
+refusals of their edges and faces are forgotten. The relaxation applies to
+the energy test only, not to the tests on the length or on the scaled
+Jacobian. A swap that is accepted at the fixed positions is not relaxed,
+since the smoothing phase that follows moves the nodes anyway.
+
 | Key | Required | Default | Meaning |
 |---|---|---|---|
 | `size criterion` | no | `energy` | `energy`: every operation must lower the cavity energy; `length`: the splits and collapses of edges outside the length band of the prescribed target are accepted on the length alone, subject to the floor and the constraints |
@@ -438,6 +454,7 @@ converged mesh of half a million elements this takes a pass from about
 | `boundary swap angle` | no | `20` | largest angle in degrees between the two boundary faces of an edge for its swap to be tried |
 | `size operations first` | no | `false` | collapse and split the edges outside the band before the swaps in every pass, rather than after; recommended, since the swaps then act on elements already near their target size |
 | `shape operations every pass` | no | `false` | try the shape-driven collapses and splits in every pass, not only in a pass that accepted no swap |
+| `cavity relaxation` | no | `false` | judge a swap or collapse that the energy test refuses at the fixed positions again after relaxing the interior nodes of its cavity against the new connectivity, with the elements around those nodes included in the energy and the floor |
 | `desired scaled Jacobian` | no | `0.9` | under `shape criterion: scaled Jacobian`, the elements below this are the candidates of the swaps and the shape-driven operations, without dilation; lowering it restricts the phase to the elements of lowest quality and shortens it |
 | `face swaps` | no | `false` | try the swap of an interior face into the three elements around the edge between the apexes |
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |

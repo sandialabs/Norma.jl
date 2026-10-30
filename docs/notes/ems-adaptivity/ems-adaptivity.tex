@@ -773,6 +773,40 @@ is the natural advantage of an energy framework over the position-free
 acceptance tests of \omegah{}, and it is the precise mechanism by which
 the alternation outperforms either method alone: each accepted
 operation unlocks relaxation that the previous topology forbade.
+
+The same relaxation applies to a swap or a collapse that
+\eqref{eq:acceptance} refuses at the fixed positions
+(\code{cavity relaxation: true}, October 30, 2026). The interior nodes
+of the cavity---those in no node set and on no side set---are relaxed one
+at a time against the new connectivity, each by up to five descent steps
+on the energy of the elements around it, with the gradient by central
+differences and the step halved until the energy decreases, as for the
+node of a split. The test then compares the old elements with the new
+ones at the relaxed positions, both together with the elements around
+the moved nodes that the operation keeps, since those change with the
+positions; so an accepted operation still lowers the global functional,
+and Proposition~\ref{prop:descent} holds with the moved nodes included
+in the step. A swap accepted at the fixed positions is not relaxed, since
+the smoothing phase moves the nodes anyway. Measured on the smoothed
+cube and awful cube of the Delaunay study
+(\texttt{\textasciitilde/Projects/Norma-EMS-Topology-2026-10-30/delaunay/relaxation.md}),
+with the swap phase alone at all candidates: at the fixed positions the
+phase accepts 51 swaps on the cube and lowers the energy by 2\%; with
+the relaxation it accepts 734, moves 907 of the 1800 nodes, and after
+the smoothing that follows the energy is $5.69\times 10^{2}$ against
+$7.24\times 10^{2}$, the minimum scaled Jacobian $0.52$ against $0.45$,
+and the mean $0.786$ against $0.762$. On the awful cube, whose smoothing
+needs 500 steps to converge, the energy after smoothing is
+$9.92\times 10^{3}$ against $1.51\times 10^{4}$, the minimum scaled
+Jacobian $0.40$ against $0.36$, and the mean $0.70$ against $0.65$. Started from the Delaunay connectivity of the same
+positions instead, the relaxed phase ends within 2\% in energy of these
+values. The cost is the obstacle: 86 to 119~s against 0.1~s for the
+phase, since every refused candidate is relaxed, with six energy
+evaluations of the elements around a node per gradient, and a refusal is
+forgotten as soon as a node around it moves. The relaxation is therefore
+off by default until the gradient is computed analytically, as the
+assembly computes the internal force, and the candidates to relax are
+bounded.
 \end{remark}
 
 \section{Question 3: stagnation detection}
