@@ -687,13 +687,21 @@ functions in physical coordinates, is inexact (on the paved cap facets of
 the nested cylinders it differs from the facet's Gauss rule by up to
 $10^{-2}$; on the beam the two agree to roundoff); $~P_d$ therefore
 reproduces constants and the transposed transfer conserves the total force
-exactly on every interface. A facet that the projected
+exactly on every interface. The part of a facet that the projected
 source facets do not cover to a relative $10^{-8}$ of its area (a gap, a
-partial overlap, or a curved interface, on which the projected neighbors
-overlap or leave gaps of the order of the sagitta) is integrated with its
-own Gauss rule, each quadrature point located on the source by the
-projection of Sec.~\ref{sec:location}, and the setup log reports the
-count of such facets. That rule, which was the only one before, carries
+partial overlap, or the rim of a flat cap bounded by a curved interface,
+where the two sides are meshed with different chords of the same circle and
+the sliver between the chords is uncovered) is integrated on its own: the
+pieces are subtracted from the facet, the remainder is decomposed into
+convex polygons integrated with the same triangle rule, and each of its
+quadrature points is located on the source by the projection of
+Sec.~\ref{sec:location}; the setup log reports the count of such facets
+(since October 31, 2026; before, such a facet took its own Gauss rule as a
+whole, and on the material boundaries of the nested cylinders the two
+integration directions of $~B$ differed by $0.11$ and $0.32$ in the
+largest entry, against $0.038$ and $0.0083$ now). A curved six-node facet
+is integrated with its own Gauss rule and the same point location. That
+rule, which was the only one before October 18, 2026, carries
 the quadrature error of the kinks of the source basis inside the facet.
 Integrated on the facets of the Dirichlet side it reproduces constants and
 linear fields, but the entries of $~B$ are in error by $9\times 10^{-3}$

@@ -558,14 +558,29 @@ error of 9e-3 to 1.1e-2 on the non-nested 1:0.75 beam interface, so the
 transposed force transfer distributed a uniform traction over the Neumann
 nodes with a strain error of 4e-3 that rose to 7e-3 under one refinement;
 with the segmented rule both uniform-strain patch tests are reproduced to
-roundoff, measured statically on rigel on October 18, 2026). A facet that
-the other side's facets do not cover to a relative 1e-8 of its area (gap,
-partial overlap, or a curved interface on which the projection of a
-quadrature point fails), or a TRI6 facet whose midside nodes depart from
-the edge midpoints by more than 1e-8 of the longest edge (a curved facet),
-is integrated with its own Gauss rule and the
-containing-facet projection of each point, and the log warns with the count
-of such facets. B is then taken on the Neumann side when Π_D reproduces
+roundoff, measured statically on rigel on October 18, 2026). The part of a
+facet that the other side's facets do not cover to a relative 1e-8 of its
+area is integrated on its own, since October 31, 2026 (issue #258): the
+pieces are subtracted from the facet, the remainder is decomposed into
+convex polygons integrated with the same triangle rule, and each of its
+points is located on the other side by the containing-facet projection; the
+log reports the count of such facets and the share of the side set area.
+On the material boundaries of the nested cylinders, whose two sides are
+meshed with different chords of the same circle, every rim facet of the flat
+caps has such a remainder, the sliver between the chords of the two sides;
+before, the whole facet took its Gauss rule, and the two integration
+directions of B differed by 0.11 (core against filler) and 0.32 (filler
+against shell) in the largest entry, against 0.038 and 0.0083 now, the
+remaining difference being that of the areas of the two chord surfaces
+(test `transfer-operators-curved.jl`). The parametric coordinates of a
+quadrature point in the facets are found by Newton's iteration on the facet
+map in the plane; the closest-point projection in space used before
+converged, near the corners of the paved rim facets, to a spurious point
+far outside the facet. A TRI6 facet whose midside nodes depart from the
+edge midpoints by more than 1e-8 of the longest edge (a curved facet), or a
+facet on which that iteration fails, is integrated with its own Gauss rule
+and the containing-facet projection of each point, and the log warns with
+the count of such facets. B is then taken on the Neumann side when Π_D reproduces
 constants to 1e-12 with it, and otherwise on the Dirichlet side, where its
 row sums equal those of W_D exactly for any quadrature, so Π_D reproduces
 constants to roundoff and the total force transferred to the Neumann side
