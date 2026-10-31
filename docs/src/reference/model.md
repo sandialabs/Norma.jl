@@ -460,8 +460,15 @@ the awful cube example under the energy criteria: the final energy 6.24
 against 9.51, the minimum scaled Jacobian 0.42 against 0.36, and the mean
 0.73 against 0.68 at the same element count (the shipped configuration of
 the example reaches 0.40 and 0.70 with half again as many elements), with
-the topology phases taking 40 s against 2.4 s, which is why the option is
-off by default.
+the topology phases taking 40 s against 2.4 s. On the tube in its shipped
+configuration, whose swaps use the energy test, the minimum rises from 0.28
+to 0.30 and the mean from 0.62 to 0.66 at a factor of 5.4 in topology time;
+on the first phase of the fourth plate stage, half a million elements, the
+minimum rises from 0.19 to 0.27 and the mean from 0.62 to 0.71 at a factor
+of 17 (531 s against 31 s). The factor comes from the number of relaxations
+tried, about 25 for every operation accepted, since a relaxed swap lowers
+the energy at about one interior edge in four and no ranking of the
+candidates separates them, which is why the option is off by default.
 
 | Key | Required | Default | Meaning |
 |---|---|---|---|

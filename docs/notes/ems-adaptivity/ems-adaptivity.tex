@@ -825,9 +825,24 @@ elements, in 40~s of topology time. A bound on the energy ratio of the new
 to the old cavity at the fixed positions does not select the candidates:
 the accepted operations have a median ratio of 2.6 and a tail to
 $10^{13}$ (new elements nearly degenerate at the fixed positions that
-the moved nodes open up). The relaxation is off by default at a factor
-of 11 in the time of the topology phases; the number of relaxations
-tried, 120\,678 for 5642 accepted, is the remaining lever.
+the moved nodes open up). On the tube in its shipped
+configuration, whose swaps use the energy test, the relaxation raises the
+minimum from $0.277$ to $0.300$ and the mean from $0.619$ to $0.656$ with
+6\% fewer elements, at a factor of $5.4$ in topology time; on the first
+phase of the fourth plate stage (half a million elements, the length test
+for the size operations) it raises the minimum from $0.194$ to $0.269$,
+the mean from $0.618$ to $0.709$, and the edges in the band from $91$ to
+$99$\%, at a factor of 17 (531 against 31~s), its passes growing from 11
+to 101~s within the phase. The factor is the number of relaxations
+tried, about 25 for every operation accepted: a relaxed swap lowers the
+energy at about one interior edge in four of a smoothed mesh, no ranking
+of the candidates tried (the configurational force of the fictitious
+problem, the ring energy, its density) is better than chance, and no move
+of the relaxation is small enough for a refusal around it to stand. The
+relaxation is therefore off by default; the energy test alone also does
+not refine a graded target (48 to 50\% of the edges in the band on the
+tube and the plate against 92 to 97\% with the length test), which is the
+size term of the energy, the next item.
 \end{remark}
 
 \section{Question 3: stagnation detection}
