@@ -2128,12 +2128,42 @@ function overlap_force_residual(
     return scale > 0.0 ? difference / scale : difference
 end
 
+# Interface degrees of freedom of the side of `bc` (3 × n, interleaved like
+# interface_dofs) held by a Dirichlet condition other than the Schwarz ones, for
+# example a symmetry plane that meets the interface. On those rows the side's
+# kinematics are set by that condition, applied after the Schwarz condition
+# (bc_type_rank), so they are not unknowns of the exchange: the jump there is
+# Π_D q_N minus the prescribed value, which no Schwarz iteration changes, and
+# the reaction there contains the reaction of the other condition. Both are
+# excluded from the exchange, as the direct interface solve does
+# (interface_inverse_mass). The Dirichlet conditions are fixed for the run.
+const HELD_INTERFACE_DOFS = IdDict{Any,BitMatrix}()
+function held_interface_dofs(bc::SolidMechanicsSchwarzBoundaryCondition)
+    return get!(HELD_INTERFACE_DOFS, bc) do
+        model = self_subsim_of(bc).model
+        n = length(bc.global_from_local_map)
+        model isa SolidMechanics || return falses(3, n)
+        return BitMatrix(reshape(prescribed_dofs(model)[interface_dofs(bc)], 3, n))
+    end
+end
+
+# Zero the held rows of a 3 × n interface field (or of its interleaved vector).
+function zero_held!(x::AbstractArray{Float64}, held::BitMatrix)
+    any(held) || return x
+    x[vec(held)] .= 0.0
+    return x
+end
+
 function dn_one_sided_jump(
-    W::AbstractMatrix{Float64}, P::AbstractMatrix{Float64}, q_D::Matrix{Float64}, q_N::Matrix{Float64}
+    W::AbstractMatrix{Float64},
+    P::AbstractMatrix{Float64},
+    q_D::Matrix{Float64},
+    q_N::Matrix{Float64},
+    held::BitMatrix=falses(size(q_D)),
 )
     transferred = project_components(P, q_N)
-    jump = weighted_norm(W, q_D - transferred)
-    scale = weighted_norm(W, q_D)
+    jump = weighted_norm(W, zero_held!(q_D - transferred, held))
+    scale = weighted_norm(W, zero_held!(copy(q_D), held))
     area = sum(W)
     rms = area > 0.0 ? jump / sqrt(area) : jump
     relative = scale > 0.0 ? jump / scale : (jump > 0.0 ? Inf : 0.0)
@@ -2154,9 +2184,10 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsConstra
     P = bc.dirichlet_projector
     d_map = bc.global_from_local_map
     n_map = partner_node_map(bc)
-    jv, jv_rms = dn_one_sided_jump(W_D, P, model.velocity[:, d_map], n_model.velocity[:, n_map])
-    ju, ju_rms = dn_one_sided_jump(W_D, P, model.displacement[:, d_map], n_model.displacement[:, n_map])
-    ja, ja_rms = dn_one_sided_jump(W_D, P, model.acceleration[:, d_map], n_model.acceleration[:, n_map])
+    held = held_interface_dofs(bc)
+    jv, jv_rms = dn_one_sided_jump(W_D, P, model.velocity[:, d_map], n_model.velocity[:, n_map], held)
+    ju, ju_rms = dn_one_sided_jump(W_D, P, model.displacement[:, d_map], n_model.displacement[:, n_map], held)
+    ja, ja_rms = dn_one_sided_jump(W_D, P, model.acceleration[:, d_map], n_model.acceleration[:, n_map], held)
     force_residual = NaN
     # A reduced order partner's coupling condition may be of another type,
     # without the transferred force and the square projector the residual needs.
@@ -2172,7 +2203,7 @@ function dn_interface_residuals(model::SolidMechanics, bc::SolidMechanicsConstra
     end
     if !isempty(f_N) && length(model.internal_force) == length(model.displacement)
         dofs = interface_dofs(bc)
-        r_D = reshape(-(model.internal_force[dofs] + dalembert_inertia_minus_loads(model, dofs)), 3, :)
+        r_D = zero_held!(reshape(-(model.internal_force[dofs] + dalembert_inertia_minus_loads(model, dofs)), 3, :), held)
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
             force_residual = overlap_force_residual(P, r_D, reshape(f_N, 3, :), n_sim)
         elseif W_N_factor !== nothing && size(W_N_factor, 1) == length(n_map)
@@ -2248,8 +2279,9 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
         bc.window_end_constraint && k < length(d_times) && continue
         v_N = nodal(interpolate(n_times, controller.velo_hist[n_id], t, n_dofs))
         u_N = nodal(interpolate(n_times, controller.disp_hist[n_id], t, n_dofs))
-        r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], v_N)
-        r_u, rms_u = dn_one_sided_jump(W_D, P, nodal(controller.disp_hist[d_id][k])[:, d_map], u_N)
+        held = held_interface_dofs(bc)
+        r_v, rms_v = dn_one_sided_jump(W_D, P, nodal(controller.velo_hist[d_id][k])[:, d_map], v_N, held)
+        r_u, rms_u = dn_one_sided_jump(W_D, P, nodal(controller.disp_hist[d_id][k])[:, d_map], u_N, held)
         jv = max(jv, r_v)
         jv_rms = max(jv_rms, rms_v)
         ju = max(ju, r_u)
@@ -2266,7 +2298,7 @@ function dn_substep_residuals(sim::MultiDomainSimulation, bc::SolidMechanicsCons
         # reach the neighbors of the interface nodes); the force only its rows.
         a_D = interpolate(d_times, controller.acce_hist[d_id], t)
         f_int = interpolate(d_times, controller.∂Ω_f_hist[d_id], t, d_dofs)
-        r_D = nodal(-(f_int + dalembert_inertia_minus_loads(d_model, d_dofs, a_D)))
+        r_D = zero_held!(nodal(-(f_int + dalembert_inertia_minus_loads(d_model, d_dofs, a_D))), held_interface_dofs(bc))
         if bc isa SolidMechanicsOverlapMatchingSchwarzBoundaryCondition
             force_residual = max(force_residual, overlap_force_residual(P, r_D, nodal(f_N), n_sim))
         else
@@ -2332,7 +2364,10 @@ function dn_impulse_residual(sim::MultiDomainSimulation, bc::SolidMechanicsNonOv
         end
         a_k = controller.acce_hist[d_id][k]
         dofs = interface_dofs(bc)
-        return reshape(-(controller.∂Ω_f_hist[d_id][k][dofs] + dalembert_inertia_minus_loads(d_model, dofs, a_k)), 3, :)
+        return zero_held!(
+            reshape(-(controller.∂Ω_f_hist[d_id][k][dofs] + dalembert_inertia_minus_loads(d_model, dofs, a_k)), 3, :),
+            held_interface_dofs(bc),
+        )
     end
     impulse_D = zeros(3, size(P, 1))
     for k in 2:length(d_times)
@@ -2561,7 +2596,7 @@ end
 function window_reaction(model::SolidMechanics, bc::SolidMechanicsConstrainedSchwarzBoundaryCondition)
     length(model.internal_force) == length(model.displacement) || return Float64[]
     dofs = interface_dofs(bc)
-    return model.internal_force[dofs] + dalembert_inertia_minus_loads(model, dofs)
+    return zero_held!(model.internal_force[dofs] + dalembert_inertia_minus_loads(model, dofs), held_interface_dofs(bc))
 end
 
 # Interface force of a window-end-constrained side at time t of the window:
@@ -3257,6 +3292,9 @@ function get_dst_force(dst_bc::SolidMechanicsSchwarzBoundaryCondition)
         # of the undecomposed problem. f_boundary is the Dirichlet side's own
         # applied surface load on the interface nodes, if any.
         src_force .-= dalembert_inertia_minus_loads(get_fom_model(src_sim), src_dofs)
+        # Rows of the Dirichlet side held by another Dirichlet condition carry
+        # that condition's reaction (a symmetry plane's), not the interface's.
+        zero_held!(src_force, held_interface_dofs(src_bc))
     end
     neumann_projector = dst_bc.neumann_projector
     num_dst_nodes = size(neumann_projector, 1)
