@@ -326,7 +326,19 @@ collapses edges (a node is removed only onto a node that carries its node
 sets and lies on its surfaces, along a boundary edge if it is on the
 boundary), and splits edges, the new mesh is written as
 `<output name>-adapted-<k>.g` and smoothed again, and so on until a topology
-phase accepts no operation or the outer iterations are exhausted. The
+phase accepts no operation or the outer iterations are exhausted. With
+`topology first` the loop starts with the topology phase on the input mesh;
+that phase ends the loop only after a smoothing phase has run, so a first
+phase that accepts no operation is followed by the smoothing of the input
+mesh. The phase evaluates the target at the initial time, whereas after a
+smoothing phase it evaluates it at the final time. On the four stages of
+`examples/ems/plate/refine.jl` (8 threads, 8 outer iterations), the option
+leaves one smoothing phase less per stage: the Newton iterations fall from
+1330 to 919, and over stages 2 to 4 the smoothing time falls from 66.0 to
+57.7 s and the total from 231.6 to 225.6 s, since the topology phases take
+about 70% of the time. The final mesh of stage 4 has 494198 elements
+against 486740, with minimum and mean scaled Jacobians of 0.333 and 0.706
+against 0.329 and 0.702. The
 output of the first smoothing phase is the `output mesh file`, and that of
 each later phase appends `-s_0002`, `-s_0003`, and so on
 (`cube.e`, `cube.e-s_0002`, ...), which ParaView opens as one sequence; the
@@ -479,6 +491,7 @@ candidates separates them, which is why the option is off by default.
 | `size operations first` | no | `false` | collapse and split the edges outside the band before the swaps in every pass, rather than after; recommended, since the swaps then act on elements already near their target size |
 | `shape operations every pass` | no | `false` | try the shape-driven collapses and splits in every pass, not only in a pass that accepted no swap |
 | `cavity relaxation` | no | `false` | judge a swap or collapse that the energy test refuses at the fixed positions again after relaxing the interior nodes of its cavity against the new connectivity, with the elements around those nodes included in the energy and the floor |
+| `topology first` | no | `false` | start the loop with a topology phase on the input mesh rather than with a smoothing phase; the outer iterations then count the same topology phases with one smoothing phase fewer |
 | `desired scaled Jacobian` | no | `0.9` | under `shape criterion: scaled Jacobian`, the elements below this are the candidates of the swaps and the shape-driven operations, without dilation; lowering it restricts the phase to the elements of lowest quality and shortens it |
 | `face swaps` | no | `false` | try the swap of an interior face into the three elements around the edge between the apexes |
 | `desired energy density` | no | `0.1` | elements above this energy per unit ideal volume are candidates |

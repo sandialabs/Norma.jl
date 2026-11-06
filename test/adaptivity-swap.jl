@@ -361,6 +361,59 @@ end
         rm("adaptive-adapted-$k.g"; force=true)
         rm(Norma.sequence_file_name("adaptive.e", k + 1); force=true)
     end
+
+    # Under `topology first` the input mesh goes to a topology phase before
+    # any smoothing: the first output is the smoothing of the first adapted
+    # mesh, and two outer iterations give two smoothing phases, not three.
+    start = deepcopy(params)
+    start["name"] = "topology-first"
+    start["output mesh file"] = "topology-first.e"
+    start["adaptivity"]["topology first"] = true
+    @test Norma.AdaptivityOptions(start["adaptivity"]).topology_first
+    @test !Norma.AdaptivityOptions(params["adaptivity"]).topology_first
+    sim = Norma.run(start)
+    @test sim.model.failed == false
+    @test isfile("topology-first-adapted-1.g")
+    @test isfile("topology-first.e-s_0002")
+    @test !isfile("topology-first.e-s_0003")
+    element_count(file) = begin
+        exo = ExodusDatabase(file, "r")
+        count = Int(Exodus.num_elements(exo.init))
+        Exodus.close(exo)
+        count
+    end
+    input_elements = element_count(params["input mesh file"])
+    @test element_count("topology-first-adapted-1.g") != input_elements
+    @test element_count("topology-first.e") == element_count("topology-first-adapted-1.g")
+    times = Float64[]
+    for file in ("topology-first.e", "topology-first.e-s_0002")
+        exo = ExodusDatabase(file, "r")
+        append!(times, Exodus.read_times(exo))
+        Exodus.close(exo)
+    end
+    @test times ≈ [0.0, 1.0, 2.0, 3.0]
+    for k in 1:2
+        rm("topology-first-adapted-$k.g"; force=true)
+        rm(Norma.sequence_file_name("topology-first.e", k); force=true)
+    end
+
+    # A first topology phase that accepts nothing does not end the loop
+    # before the mesh is smoothed: with every operator off, the run equals
+    # the smoothing phase of the default order, in one output file.
+    idle = deepcopy(params)
+    idle["output mesh file"] = "idle.e"
+    merge!(idle["adaptivity"], Dict{String,Any}("swaps" => false, "collapses" => false, "splits" => false))
+    start = deepcopy(idle)
+    start["output mesh file"] = "idle-first.e"
+    start["adaptivity"]["topology first"] = true
+    reference = Norma.run(idle)
+    sim = Norma.run(start)
+    @test sim.model.displacement == reference.model.displacement
+    @test element_count("idle-first.e") == input_elements
+    @test !isfile("idle-first-adapted-1.g")
+    @test !isfile("idle-first.e-s_0002")
+    rm("idle.e"; force=true)
+    rm("idle-first.e"; force=true)
 end
 
 @testset "phase_element_values" begin

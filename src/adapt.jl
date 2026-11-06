@@ -45,6 +45,7 @@ function AdaptivityOptions(params::Parameters)
         Bool(get(params, "size operations first", false)),
         Bool(get(params, "shape operations every pass", false)),
         Bool(get(params, "cavity relaxation", false)),
+        Bool(get(params, "topology first", false)),
     )
 end
 
@@ -2014,9 +2015,23 @@ function sequence_file_name(file::AbstractString, position::Integer)
     return position == 1 ? String(file) : file * "-s_" * lpad(position, 4, '0')
 end
 
+# The initial state of a simulation that has not run, for a topology phase
+# on its input mesh: the time, positions, and boundary data at the initial
+# time, as a smoothing phase would start from them.
+function prepare_topology_start!(sim::SingleDomainSimulation)
+    sync_control_time(sim)
+    apply_ics(sim)
+    apply_bcs(sim)
+    return sim
+end
+
 # The coupled loop: smoothing on the current mesh, a topology phase, a new
 # mesh written to disk, and smoothing again on it, until a topology phase
-# accepts nothing or the outer iterations are exhausted.  Each adapted mesh
+# accepts nothing or the outer iterations are exhausted.  Under `topology
+# first` the loop starts with the topology phase on the input mesh, and a
+# first phase that accepts nothing does not end it, since the mesh has not
+# been smoothed; the simulation built for that phase only supplies the model
+# and is closed without running.  Each adapted mesh
 # is a separate Exodus file, numbered after the output name, and so is the
 # output of each smoothing phase: the first under the output name, the
 # following ones with the suffixes -s_0002, -s_0003, and so on, which
@@ -2030,9 +2045,15 @@ function run_adaptive(params::Parameters)
     run_start = time()
     times = AdaptivityTimes()
     times.setup += @elapsed sim = create_simulation(params)
-    times.smoothing += @elapsed run(sim)
     model = sim.model
     model isa SolidMechanics && model.mesh_smoothing || norma_abort("Adaptivity requires a mesh smoothing model")
+    smoothing_phases = 0
+    if options.topology_first
+        prepare_topology_start!(sim)
+    else
+        times.smoothing += @elapsed run(sim)
+        smoothing_phases = 1
+    end
     for iteration in 1:options.outer_iterations
         build_start = time()
         topology = build_topology(model)
@@ -2071,16 +2092,21 @@ function run_adaptive(params::Parameters)
             "(build $(format_time(time_build)), passes $(format_time(time_passes)), " *
             "mesh write $(format_time(time_write)))",
         )
-        accepted == 0 && break
+        accepted == 0 && smoothing_phases > 0 && break
         next_params = deepcopy(params)
-        next_params["input mesh file"] = mesh_file
-        next_params["output mesh file"] = sequence_file_name(output_file, iteration + 1)
-        controller = sim.controller
-        time_offset = get(sim.params, "exodus_time_offset", 0.0)
-        elapsed = controller.time - controller.initial_time
-        next_params["exodus_time_offset"] = time_offset + elapsed + controller.time_step
+        accepted > 0 && (next_params["input mesh file"] = mesh_file)
+        next_params["output mesh file"] = sequence_file_name(output_file, smoothing_phases + 1)
+        if smoothing_phases > 0
+            controller = sim.controller
+            time_offset = get(sim.params, "exodus_time_offset", 0.0)
+            elapsed = controller.time - controller.initial_time
+            next_params["exodus_time_offset"] = time_offset + elapsed + controller.time_step
+        else
+            finalize_writing(sim)
+        end
         times.setup += @elapsed sim = create_simulation(next_params)
         times.smoothing += @elapsed run(sim)
+        smoothing_phases += 1
         model = sim.model
     end
     norma_log(0, :time, adaptivity_time_report(time() - run_start, times))
