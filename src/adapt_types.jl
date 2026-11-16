@@ -26,6 +26,7 @@ struct AdaptivityOptions
     size_first::Bool             # collapse and split before swapping in every pass, rather than after
     shape_every_pass::Bool       # try the shape-driven collapses and splits in every pass
     cavity_relaxation::Bool      # judge a refused swap or collapse again after relaxing the interior nodes of its cavity
+    topology_first::Bool         # start with a topology phase on the input mesh, rather than with a smoothing phase
 end
 
 # The options before the criteria and the extra operators, with those as
@@ -50,6 +51,7 @@ function AdaptivityOptions(
     size_first::Bool=false,
     shape_every_pass::Bool=false,
     cavity_relaxation::Bool=false,
+    topology_first::Bool=false,
 )
     return AdaptivityOptions(
         desired_density,
@@ -71,6 +73,7 @@ function AdaptivityOptions(
         size_first,
         shape_every_pass,
         cavity_relaxation,
+        topology_first,
     )
 end
 

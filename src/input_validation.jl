@@ -208,6 +208,7 @@ const ADAPTIVITY_KEYS = Set([
     "size operations first",
     "shape operations every pass",
     "cavity relaxation",
+    "topology first",
     "desired energy density",
     "allowed energy density",
     "minimum scaled Jacobian",
