@@ -1096,7 +1096,7 @@ function SolidMultiDomainTimeController(params::Parameters)
         predictor_∂Ω_f,
         prev_stop_disp,
         prev_stop_∂Ω_f,
-        Inf,     # relaxation_theta_min, set per Schwarz iteration
+        false,   # relaxation_frozen, set per Schwarz iteration
         parse_inexact_newton(params),
         NaN,     # interface_residual, set per Schwarz iteration
     )
@@ -1787,7 +1787,7 @@ function schwarz(sim::MultiDomainSimulation)
         norma_log(0, :schwarz, "Iteration [$iteration_number]")
         sim.controller.iteration_number = iteration_number
         # Recorded by the coupling BCs as they apply their relaxation factors.
-        sim.controller.relaxation_theta_min = Inf
+        sim.controller.relaxation_frozen = false
         newton_tolerance = NaN
         if inexact !== nothing
             newton_tolerance = if floor_forced
@@ -1809,8 +1809,16 @@ function schwarz(sim::MultiDomainSimulation)
             NEWTON_ITERATION_COUNT[] - newton_iterations_before,
         )
         ΔU, Δu = update_schwarz_convergence_criterion(sim)
-        refuse_relaxed_convergence!(sim)
         constrained_converged, constrained_stall = apply_constrained_dn_criterion!(sim, constrained_stall)
+        if sim.controller.converged && sim.controller.relaxation_frozen
+            # A relaxation factor of essentially zero left an interface iterate
+            # unchanged, so every subdomain re-solved against the data it
+            # already had and returned the solution it already had. The small
+            # update that follows measures the frozen blend, not the interface
+            # residual, and must not be read as convergence.
+            norma_log(0, :schwarz, "Relaxation factor near zero froze an interface iterate; update is not convergence.")
+            sim.controller.converged = false
+        end
         # Under `tight final solve`, an iterate whose subdomain solves used a
         # Newton tolerance above the floor is not accepted as converged; the
         # iteration continues with the tolerance at the floor.
@@ -2220,56 +2228,6 @@ function update_schwarz_convergence_criterion(sim::MultiDomainSimulation)
     return controller.absolute_error, controller.relative_error
 end
 
-# Factor by which the update criterion is loosened when it is checked again
-# with the update divided by the smallest relaxation factor of the iteration
-# (refuse_relaxed_convergence!).
-const RELAXATION_GUARD_FACTOR = 1.0e4
-
-# A relaxed interface iterate moves by θ times its fixed-point residual, so the
-# update of a Schwarz iteration in which some factor θ is small is small
-# whatever that residual is, and the displacement-based criterion can read a
-# stalled iteration as convergence. Aitken factors do collapse: on the static
-# 3D analog of Sambataro and Tezaur's 5-subdomain beam (November 2026), 28 of
-# 157 Aitken runs reported convergence with |ΔU|/|U| < 1e-8 while their error
-# against the monolithic solution was 0.02 to 1.2, as large as the solution
-# itself; the global factor had decayed to 6e-8 to 1.3e-5 and the
-# per-interface factor of one interface to 2.5e-12 to 1.3e-10. The guard of
-# August 2026, which refused only factors at or below 1e-12, caught none of them.
-#
-# The update divided by the smallest |θ| of the iteration estimates the update
-# that the unrelaxed iteration would make. A converged update is accepted only
-# when that estimate is within RELAXATION_GUARD_FACTOR of a tolerance, relative
-# or absolute. On the study above the estimate was 1.9e-9 to 8.2e-6 for the 129
-# genuinely converged Aitken runs and 7.1e-4 to 2.6 for the 28 false ones, with
-# a relative tolerance of 1e-8, so a factor of 1e4 separates them with a margin
-# of 7 to 12. The estimate is about the size of the remaining error in a false
-# run and scales with the tolerance in a genuine one, so the factor does not
-# depend on the tolerance. Fixed relaxation is not affected: with θ ≥ 1e-4 the
-# estimate is at most 1e4 times the tolerance. A factor θ = 0 always refuses.
-# Returns whether the update criterion was refused.
-function refuse_relaxed_convergence!(sim::MultiDomainSimulation)
-    controller = sim.controller
-    controller.converged || return false
-    θ = controller.relaxation_theta_min
-    θ < 1.0 || return false
-    relative = θ > 0.0 ? controller.relative_error / θ : Inf
-    absolute = θ > 0.0 ? controller.absolute_error / θ : Inf
-    relative ≤ RELAXATION_GUARD_FACTOR * controller.relative_tolerance && return false
-    absolute ≤ RELAXATION_GUARD_FACTOR * controller.absolute_tolerance && return false
-    norma_logf(
-        0,
-        :schwarz,
-        "Update |ΔU|/|U| = %.2e met the tolerance with relaxation factor |θ| = %.2e; the unrelaxed update " *
-        "%.2e is above %.0e times the tolerance, so this is not convergence.",
-        controller.relative_error,
-        θ,
-        relative,
-        RELAXATION_GUARD_FACTOR,
-    )
-    controller.converged = false
-    return true
-end
-
 # Consecutive iterations without a 5% decrease of the constrained residual
 # below its smallest value that make a stall.
 const STALL_ITERATIONS = 3
@@ -2499,11 +2457,6 @@ function report_unconverged_step(sim::MultiDomainSimulation, iteration_number::I
             controller.relative_error,
             controller.relative_tolerance,
         )
-        # A small relaxation factor in the last iteration means the update was
-        # refused or is about to stall (refuse_relaxed_convergence!).
-        if controller.relaxation_theta_min < 1.0
-            update *= @sprintf(", with smallest relaxation factor |θ| = %.2e", controller.relaxation_theta_min)
-        end
         isnan(controller.interface_residual) ? update : update * ", and " * matching
     end
     message = @sprintf(

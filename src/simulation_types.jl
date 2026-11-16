@@ -101,13 +101,13 @@ mutable struct SolidMultiDomainTimeController <: MultiDomainTimeController
     predictor_∂Ω_f::Vector{Vector{Float64}}
     prev_stop_disp::Vector{Vector{Float64}}
     prev_stop_∂Ω_f::Vector{Vector{Float64}}
-    # Smallest |θ| of the relaxation factors applied to any interface during the
-    # current Schwarz iteration; Inf when none was applied (Anderson
-    # acceleration, unrelaxed couplings). A small factor hides the interface
-    # residual from the displacement-based criterion, which therefore checks
-    # the update divided by it (`refuse_relaxed_convergence!`). Reset at the
-    # start of each Schwarz iteration; see `record_relaxation_factor!`.
-    relaxation_theta_min::Float64
+    # Set during a Schwarz iteration in which a relaxation factor of essentially
+    # zero froze an interface iterate. Such an iteration re-solves every subdomain against
+    # unchanged coupling data and reproduces the previous solution, so its
+    # update is not evidence of convergence: the interface residual it leaves
+    # behind is invisible to the displacement-based criterion. Cleared at the
+    # start of each Schwarz iteration; see `frozen_relaxation_update!`.
+    relaxation_frozen::Bool
     # Inexact Newton settings, or nothing when the block is absent.
     inexact_newton::Union{Nothing,InexactNewtonSettings}
     # Largest constrained interface residual (velocity or displacement jump,
