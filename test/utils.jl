@@ -89,6 +89,10 @@ using Logging
 
             @test occursin("BLAS", Norma.thread_report())
 
+            # The log records the machine of the run with its thread counts.
+            @test Norma.host_report() == strip(Libc.gethostname())
+            @test !isempty(Norma.host_report())
+
             # An automatic count is refused, whether given on the command
             # line (Julia records it as -1) or in the environment.
             @test Norma.thread_count_is_auto(-1, "") == true
