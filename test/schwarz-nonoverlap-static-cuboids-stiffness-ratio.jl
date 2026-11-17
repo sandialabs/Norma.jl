@@ -9,10 +9,11 @@
 # a ratio r scales by r: with the soft side as the Dirichlet side every gain
 # is below 0.034 and the unrelaxed iteration converges in 8 iterations; with
 # the stiff side as the Dirichlet side the gains reach -340 and Aitken
-# recursive relaxation converges in 73. The example records the measurements.
+# recursive relaxation converges in 52 at a relative tolerance of 1e-9, below
+# which the iteration stalls. The example records the measurements.
 @testset "Schwarz Nonoverlap Static Cuboids Stiffness Ratio" begin
     src = "../examples/nonoverlap/static-same-step/cuboids-stiffness-ratio/"
-    for (input, max_iters) in [("soft-dirichlet", 10), ("stiff-dirichlet", 80)]
+    for (input, max_iters) in [("soft-dirichlet", 10), ("stiff-dirichlet", 60)]
         domains = ["$input-soft", "$input-stiff"]
         files = vcat(["$input.yaml"], ["$d.yaml" for d in domains], ["cuboid-1.g", "cuboid-2.g"])
         for file in files
