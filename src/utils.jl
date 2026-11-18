@@ -284,6 +284,19 @@ function thread_report()::String
     return report
 end
 
+# The name of the machine the run is on, so that a log records where it was
+# produced as well as which code produced it (version_report) and with how
+# many threads (thread_report): run times are comparable only between runs on
+# the same machine. "unknown" when the system does not report a name.
+function host_report()::String
+    name = try
+        strip(Libc.gethostname())
+    catch
+        ""
+    end
+    return isempty(name) ? "unknown" : String(name)
+end
+
 # The commit of the Norma source tree, its date, and whether tracked files
 # differ from it, so that a log records which code produced it (issue #229).
 # Computed once per Julia session: the code loaded in a session does not change

@@ -87,6 +87,7 @@ end
 function run(sim::Simulation)
     start_time = time()
     reset_newton_counters!()
+    norma_log(0, :info, "Host: " * host_report())
     norma_log(0, :info, "Threads: " * thread_report())
     try
         evolve(sim)
