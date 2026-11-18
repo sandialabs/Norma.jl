@@ -46,17 +46,16 @@ function aitken_resolved(difference_sq::Float64, iterate_sq::Float64)
     return difference_sq > AITKEN_RELATIVE_FLOOR^2 * iterate_sq
 end
 
-# A relaxation factor at or below this magnitude leaves the interface iterate
-# unchanged to working precision. Every subdomain then re-solves against the
-# coupling data it already used and returns the solution it already had, so the
-# displacement-based Schwarz criterion sees no update and reads it as
-# convergence, however large the interface residual still is. Record such a
-# Schwarz iteration on the controller so the criterion can refuse to convert it into
-# convergence (see update_schwarz_convergence_criterion).
-const FROZEN_THETA = 1.0e-12
-
-function frozen_relaxation_update!(controller::MultiDomainTimeController, θ::Float64)
-    abs(θ) <= FROZEN_THETA && (controller.relaxation_frozen = true)
+# A relaxed interface iterate moves by θ times its fixed-point residual, so a
+# small factor θ makes every subdomain re-solve against almost the coupling
+# data it already used, and the displacement-based Schwarz criterion sees a
+# small update however large the interface residual still is. Record the
+# smallest |θ| applied in the Schwarz iteration on the controller, so the
+# criterion can check the update scaled back by it (see
+# refuse_relaxed_convergence! in simulation.jl). Anderson acceleration and
+# unrelaxed couplings record nothing.
+function record_relaxation_factor!(controller::MultiDomainTimeController, θ::Float64)
+    controller.relaxation_theta_min = min(controller.relaxation_theta_min, abs(θ))
     return θ
 end
 
@@ -1094,7 +1093,7 @@ function apply_bc_detail(model::SolidMechanics, bc::SolidMechanicsRobinNonOverla
             if controller.relaxation_method === :aitken_recursive || controller.relaxation_method === :aitken_secant
                 theta = relaxation_theta!(bc, key, slot_k, iter, rhs, g)
             end
-            frozen_relaxation_update!(controller, theta)
+            record_relaxation_factor!(controller, theta)
             datum = (1 - theta) .* g .+ theta .* rhs
         end
         g_slots[slot_k] = datum
@@ -2987,7 +2986,7 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
                 c_slots[slot_k] = expand(anderson_data!(bc, time)[1], interp_c, anderson_footprint(bc))
             else
                 θ = relaxation_theta!(bc, key, slot_k, iter, trace_c, trace_prev)
-                frozen_relaxation_update!(controller, θ)
+                record_relaxation_factor!(controller, θ)
                 c_slots[slot_k] = θ * interp_c + (1 - θ) * λ_c_prev
             end
             if relax_velocity
@@ -3021,12 +3020,12 @@ function apply_bc(model::Model, bc::SolidMechanicsSchwarzBoundaryCondition)
             # Relax the single d-form interface unknown (displacement); recover
             # velocity and acceleration consistently from it (see functions above).
             θ = relaxation_theta!(bc, key, slot_k, iter, interp_disp, λ_u_prev)
-            frozen_relaxation_update!(controller, θ)
+            record_relaxation_factor!(controller, θ)
             disp_slots[slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
             recover_interface_kinematics!(controller, key, slot_k, coupled_integrator, interp_velo, interp_acce)
         else
             θ = relaxation_theta!(bc, key, slot_k, iter, interp_disp, λ_u_prev)
-            frozen_relaxation_update!(controller, θ)
+            record_relaxation_factor!(controller, θ)
 
             disp_slots[slot_k] = θ * interp_disp + (1 - θ) * λ_u_prev
             velo_slots[slot_k] = θ * interp_velo + (1 - θ) * λ_v_prev

@@ -216,13 +216,25 @@ windowed stop couples all of its time slots in one Schwarz iteration, where the 
 factors were measured to diverge or to need more iterations than a fixed
 factor, so such stops use `relaxation parameter` throughout. This is automatic and needs no input.
 
-If a relaxation factor ever becomes small enough to leave an interface iterate
-unchanged, the Schwarz iteration carries no information: every subdomain re-solves against
-the data it already had and returns the solution it already had. The
-displacement-based convergence test cannot distinguish that from convergence,
-so such an iteration is refused as evidence of convergence and the run logs
-`Relaxation factor near zero froze an interface iterate`. Seeing that message
-repeatedly means the coupling is not advancing; check `relaxation parameter`.
+A relaxed interface iterate moves by θ times its fixed-point residual, so when
+an Aitken factor collapses toward zero every subdomain re-solves against almost
+the data it already had, and the update is small however far the iteration
+still is from the solution. The displacement-based convergence test cannot
+tell that from convergence by itself. A converged update is therefore checked
+again after dividing it by the smallest |θ| applied in the iteration, an
+estimate of the unrelaxed update, and is accepted only when that estimate is
+within a factor of 1e4 of a tolerance. Otherwise the run logs
+`Update |ΔU|/|U| = ... met the tolerance with relaxation factor |θ| = ...` and
+continues; a step that then exhausts `maximum iterations` reports the smallest
+factor of its last iteration. On the static 3D analog of Sambataro and Tezaur's
+5-subdomain beam, 28 of 157 Aitken runs had reported convergence with errors
+of 2% to 120% against the monolithic solution, at factors of 6e-8 to 1.3e-5
+(global) and 2.5e-12 to 1.3e-10 (per interface); the estimate separates them
+from the genuinely converged runs by a factor of about 90 (8.2e-6 against
+7.1e-4 at a relative tolerance of 1e-8). Fixed relaxation with θ ≥ 1e-4 and
+Anderson acceleration are not affected. Seeing the message repeatedly means the
+Aitken factor has stalled the coupling; try Anderson acceleration or another
+`relaxation parameter`.
 
 ### Output
 
